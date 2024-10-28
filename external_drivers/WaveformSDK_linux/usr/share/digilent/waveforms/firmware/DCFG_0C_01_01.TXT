@@ -1,0 +1,2 @@
+osc: 4 ram: 1000000 awg: 1 ram: 65536 play: 1000000 pwg: 0 ram: 0 pwr: 3 log: 45 ram: 1000000 num: 0 ram: 0 sio: 8 _
+

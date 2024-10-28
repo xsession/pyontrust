@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<mime-info xmlns='http://www.freedesktop.org/standards/shared-mime-info'>
+  <mime-type type="application/x-dwf3work">
+    <comment>Digilent WaveForms workspace</comment>
+    <glob-deleteall/>
+    <glob pattern="*.dwf3work"/>
+  </mime-type>
+  <mime-type type="application/x-dwf3project">
+    <comment>Digilent WaveForms project</comment>
+    <glob-deleteall/>
+    <glob pattern="*.dwf3scope"/>
+    <glob pattern="*.dwf3wavegen"/>
+    <glob pattern="*.dwf3logic"/>
+    <glob pattern="*.dwf3patterns"/>
+    <glob pattern="*.dwf3static"/>
+    <glob pattern="*.dwf3supplies"/>
+    <glob pattern="*.dwf3logger"/>
+    <glob pattern="*.dwf3script"/>
+    <glob pattern="*.dwf3network"/>
+    <glob pattern="*.dwf3spectrum"/>
+    <glob pattern="*.dwf3scopeacq"/>
+    <glob pattern="*.dwf3logicacq"/>
+  </mime-type>
+</mime-info>

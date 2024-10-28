@@ -1,0 +1,1 @@
+osc: 0 ram: 0 awg: 0 ram: 0 pwg: 0 ram: 0 pwr: 1 log: 24 ram: 67108864 num: 16 ram: 32768 sio: 16 _

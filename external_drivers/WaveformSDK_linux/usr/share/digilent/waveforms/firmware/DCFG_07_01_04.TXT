@@ -1,0 +1,3 @@
+osc: 0 ram: 0 awg: 4 ram: 32768 pwg: 0 ram: 0 pwr: 0 log: 16 ram: 134217728 num: 16 ram: 16384 sio: 16 A_DAC_B_DAC
+ZMOD A AWG
+ZMOD B AWG

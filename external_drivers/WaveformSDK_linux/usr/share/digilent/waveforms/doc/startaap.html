@@ -1,0 +1,42 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta content="text/html; charset=ISO-8859-1" http-equiv="content-type">
+<title>
+Audio Adapter +
+</title>
+<link rel="stylesheet" href="style.css" type="text/css" media="all" /> 
+</head>
+<body>
+<h1>Audio Adapter +</h1>
+
+<p>The Audio Adapter+ is a module that provides easy audio connectivity to the Analog Discovery. It is equipped with Mono and Stereo 3.5 mm audio connectors that provide signal paths to both the inputs of the oscilloscope and outputs of the arbitrary waveform generator. The Audio Adapter+ is equipped with a 2×15 MTE connector, which makes it compatible with the Analog Discovery 3, in addition to the Analog Discovery (Legacy), and Analog Discovery 2. An additional 2×15 MTE connector is loaded as a pass-through for digital signals, power supplies, and trigger pins so that these features are fully supported for your audio applications.</p>
+<p><img src="images/startaapt.png"><img src="images/startaapb.png"></p>
+<p>In order to function properly, the Audio Adapter+ <b>must be provided with power</b> from the Analog Discovery 3 power supplies. Active circuitry is used in the output amplifier and should be provided power through the use of the Power Supplies instrument in WaveForms. The Power Supplies should provide 1.5 V or greater through the positive supply rail, with tracking enabled to provide -1.5 V or the equivalent through the negative rail.</p>
+<p>The audio outputs go through a voltage divider and an amplifier, which are used to scale down the output range from -5 to 5 V to between -1 and 1 V, in order to protect external audio equipment from inadvertent damage. The gain between the AWG output and the audio connector is roughly 1/5.</p>
+<ul>
+<li>Provides audio connectivity via 3.5 mm jacks for both Scope inputs and Wavegen outputs
+<li>Inputs and outputs can independently use 2 mono jacks or 1 stereo jack, selected via jumpers
+<li>Active circuitry powered by the Analog Discovery 3 power supplies
+<li>Pass-through Connector for all other Analog Discovery 3 signals, including Digital I/O, Triggers, and Power Supplies
+<li>Compatible with the Analog Discovery 3, Analog Discovery 2, and Analog Discovery (Legacy)
+</ul>
+
+<p><b>JP1 Stereo</b> Scope channels 1+ and 2+ are connected to J1 left and right channels, respectively, and J2 is grounded.<br>
+<img src="images/startaap1.png"></p>
+
+<p><b>JP1 Mono</b> Scope channel 1+ is connected to J1, Scope channel 2+ is connected to J2.<br>
+<img src="images/startaap2.png"><img src="images/startaap3.png"></p>
+
+<p><b>JP2 Stereo</b> AWG Channels 1 and 2 are connected to J3 left and right channels, respectively, and the J4 input is left floating.<br>
+<img src="images/startaap4.png"></p>
+
+<p><b>JP2 Mono</b> AWG Channel 1 (W1) is connected to J1, AWG Channel 2 (W2) is connected to J2<br>
+<img src="images/startaap5.png"></p>
+
+<p>For more information, visit the <a target="_blank" href="https://digilent.com/reference/add-ons/audio-adapter-plus/reference-manual">reference page</a>.</p>
+
+<p>&nbsp;</p>
+
+</body>
+</html>

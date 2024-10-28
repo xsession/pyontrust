@@ -1,0 +1,22 @@
+digilent.waveforms: non-dev-pkg-with-shlib-symlink usr/lib/libdwf.so.3.23.4 usr/lib/libdwf.so
+digilent.waveforms: shlib-without-versioned-soname usr/lib/libdwf.so.3.23.4 libdwf.so
+digilent.waveforms: no-shlibs-control-file usr/lib/libdwf.so.3.23.4
+digilent.waveforms: package-name-doesnt-match-sonames libdwf
+digilent.waveforms: arch-dependent-file-in-usr-share usr/share/digilent/waveforms/firmware/DCFG_06_01_01.elf
+digilent.waveforms: binary-from-other-architecture usr/share/digilent/waveforms/firmware/DCFG_06_01_01.elf
+digilent.waveforms: unstripped-binary-or-object usr/share/digilent/waveforms/firmware/DCFG_06_01_01.elf
+digilent.waveforms: statically-linked-binary usr/share/digilent/waveforms/firmware/DCFG_06_01_01.elf
+digilent.waveforms: arch-dependent-file-in-usr-share usr/share/digilent/waveforms/firmware/DCFG_06_01_01.bin
+digilent.waveforms: binary-from-other-architecture usr/share/digilent/waveforms/firmware/DCFG_06_01_01.bin
+digilent.waveforms: statically-linked-binary usr/share/digilent/waveforms/firmware/DCFG_06_01_01.bin
+digilent.waveforms: arch-dependent-file-in-usr-share usr/share/digilent/waveforms/firmware/DCFG_06_01_02.bin
+digilent.waveforms: binary-from-other-architecture usr/share/digilent/waveforms/firmware/DCFG_06_01_02.bin
+digilent.waveforms: unstripped-binary-or-object usr/share/digilent/waveforms/firmware/DCFG_06_01_02.bin
+digilent.waveforms: statically-linked-binary usr/share/digilent/waveforms/firmware/DCFG_06_01_02.bin
+digilent.waveforms: arch-dependent-file-in-usr-share usr/share/digilent/waveforms/firmware/DCFG_07_01_01.elf
+digilent.waveforms: binary-from-other-architecture usr/share/digilent/waveforms/firmware/DCFG_07_01_01.elf
+digilent.waveforms: unstripped-binary-or-object usr/share/digilent/waveforms/firmware/DCFG_07_01_01.elf
+digilent.waveforms: statically-linked-binary usr/share/digilent/waveforms/firmware/DCFG_07_01_01.elf
+digilent.waveforms: package-must-activate-ldconfig-trigger
+digilent.waveforms: maintscript-calls-ldconfig postinst
+digilent.waveforms: maintscript-calls-ldconfig postrm

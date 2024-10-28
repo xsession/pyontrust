@@ -1,0 +1,20 @@
+[Desktop Entry]
+Version=3.0
+Name=WaveForms
+Comment=Digilent WaveForms application
+GenericName=WaveForms
+Keywords=WaveForms;Digilent;Oscilloscope;Scope;Analog;Discovery;Electronics;Explorer
+Exec=/usr/bin/waveforms %u
+Terminal=false
+X-MultipleArgs=false
+Type=Application
+Icon=/usr/share/digilent/waveforms/pixmaps/256.png
+MimeType=application/x-dwf3work;application/x-dwf3project;
+Categories=GNOME;GTK;Science;Education;Development
+StartupNotify=false
+X-Ayatana-Desktop-Shortcuts=Safe;
+
+[Safe Shortcut Group]
+Name=Safe Mode
+Exec=/usr/bin/waveforms -safe-mode
+TargetEnvironment=Unity

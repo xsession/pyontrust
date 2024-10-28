@@ -1,0 +1,6 @@
+osc: 6 ram: 1024 awg: 3 ram: 2048 pwg: 0 ram: 0 pwr: 3 log: 0 ram: 0 num: 0 ram: 0 sio: 0 _
+Meter/Oscilloscope with 6 channels:
+   1Ki samples 12bit for each voltage and current reading
+   
+Arbitrary Waveform Generator x 3:
+   2Ki samples carrier buffer

@@ -1,0 +1,18 @@
+osc: 2 ram: 8192 awg: 4 ram: 4096 pwg: 0 ram: 0 pwr: 2 log: 16 ram: 2048 num: 8 ram: 256 sio: 16 Power_Supply_Waveform_Generator
+Oscilloscope with 2 channels:
+   8Ki 14bit sample and 1Ki 13bit noise buffer
+   
+Arbitrary Waveform Generator x 2:
+   4Ki 14bit carrier, 2Ki 9bit AM and FM buffer
+Power Supply Waveform Generator x 2:
+   2Ki 9bit sample buffer
+   
+Logic Analyzer
+    2Ki 16bit sample buffer
+    
+Signal Generator
+    256 8bit custom buffer
+
+Power Supplies: 
+    Positive: 0..5V
+    Negative: 0..-5V
