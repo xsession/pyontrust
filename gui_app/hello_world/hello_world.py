@@ -4,10 +4,18 @@ import site
 from pathlib import Path
 import sys
 
-package_dir = os.getenv(
-    'PYONTRUST_PACKAGE_DIR',
-    os.path.join(Path(__file__).parent, "pyontrust_packages")
-)
+# Check if running in a PyInstaller bundle
+if hasattr(sys, '_MEIPASS'):
+    # Running from a PyInstaller executable
+    package_dir = os.path.join(sys._MEIPASS, "pyontrust_packages")
+else:
+    # Running locally
+    package_dir = os.getenv(
+        'PYONTRUST_PACKAGE_DIR',
+        os.path.join(Path(__file__).parent.parent.parent, "pyontrust_packages")
+    )
+
+# Add the package directory to sys.path if not already included
 if package_dir not in sys.path:
     sys.path.append(package_dir)
 
