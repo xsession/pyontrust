@@ -1,18 +1,21 @@
-# import tkinter as tk
+import os
+import shutil
+import site
+from pathlib import Path
 
-# def say_hello():
-#     print("Hello, World!")
+def copy_pth_to_site_packages(source_pth_file):
+    site_packages_dir = site.getsitepackages()[0]
+    destination_path = os.path.join(site_packages_dir, os.path.basename(source_pth_file))
+    try:
+        shutil.copy(source_pth_file, destination_path)
+        print(f"Successfully copied {source_pth_file} to {destination_path}")
+    except Exception as e:
+        print(f"Failed to copy {source_pth_file} to {destination_path}: {e}")
 
-# app = tk.Tk()
-# app.title("Hello World App")
-
-# hello_button = tk.Button(app, text="Say Hello", command=say_hello)
-# hello_button.pack(pady=20)
-
-# app.mainloop()
+copy_pth_to_site_packages(f"{Path(__file__).parent}/../../scripts/python_packages.pth")
 
 import eel
-from pathlib import Path
+import greeting
 
 # Initialize Eel with the 'web' folder
 eel.init(f'{Path(__file__).parent}/web')

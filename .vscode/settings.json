@@ -1,0 +1,6 @@
+{
+    "iis.configDir": "",
+    "python.analysis.extraPaths": [
+        "./pyontrust_packages"
+    ]
+}
