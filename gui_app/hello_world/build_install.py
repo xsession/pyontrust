@@ -2,11 +2,32 @@ import os
 import subprocess
 import shutil
 from pathlib import Path
+import importlib.util
 
-import os, sys; sys.path.append(os.getenv('PYONTRUST_PACKAGE_DIR', os.path.join(os.path.dirname(__file__), '..\..\pyontrust_packages')))
+def get_version(version_file="version.py"):
+    """
+    Dynamically fetch the app version from a version file.
+    Args:
+        version_file (str): Path to the version file.
+    Returns:
+        str: The application version.
+    """
+    version_path = Path(__file__).parent / version_file
+    if version_path.exists():
+        spec = importlib.util.spec_from_file_location("version", version_path)
+        version_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(version_module)
+        return getattr(version_module, "__version__", "unknown")
+    return "unknown"
 
 def build_installer(app_name="YourAppName", main_script="main.py", dist_folder="dist", build_folder="build"):
+    
+    
+    # Get version from version.py
+    version = get_version(version_file=main_script)
+    
     # Define paths
+    app_name = f"{app_name}_v{version}"
     spec_file = f"{app_name}.spec"
 
     # Step 1: Clean previous builds

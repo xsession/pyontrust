@@ -4,6 +4,8 @@ import site
 from pathlib import Path
 import sys
 
+__version__ = "1.0.0"
+
 # Check if running in a PyInstaller bundle
 if hasattr(sys, '_MEIPASS'):
     # Running from a PyInstaller executable
