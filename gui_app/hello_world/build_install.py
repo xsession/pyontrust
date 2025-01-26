@@ -3,6 +3,7 @@ import subprocess
 import shutil
 from pathlib import Path
 
+import os, sys; sys.path.append(os.getenv('PYONTRUST_PACKAGE_DIR', os.path.join(os.path.dirname(__file__), '..\..\pyontrust_packages')))
 
 def build_installer(app_name="YourAppName", main_script="main.py", dist_folder="dist", build_folder="build"):
     # Define paths
@@ -27,12 +28,14 @@ def build_installer(app_name="YourAppName", main_script="main.py", dist_folder="
         # "--windowed",  # Hide the console window (useful for GUI apps)
         f"--name={app_name}",  # Set the name of the executable
         f"--add-data={Path(__file__).parent}/web;web",  # Add your Eel web directory (adjust as needed)
+        f"--add-data={Path(__file__).parent.parent.parent}/pyontrust_packages;pyontrust_packages",  # Add your PyOnTrust packages
+        # f"--debug=imports",  # Print debug information about imports
         main_script,  # Main script to run the app
     ]
 
     # Step 3: Run PyInstaller
     print("[INFO] Building the installer...")
-    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    result = subprocess.run(cmd, text=True)
 
     # Step 4: Handle success or failure
     if result.returncode == 0:
