@@ -1,0 +1,1 @@
+import os, sys; sys.path.append(os.getenv('PYONTRUST_PACKAGE_DIR', os.path.join(os.path.dirname(__file__), '..\..\pyontrust_packages')))

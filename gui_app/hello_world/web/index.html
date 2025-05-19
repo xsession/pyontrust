@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eel Test App</title>
+</head>
+<body>
+    <h1>Welcome to Eel Test App</h1>
+    <p>Enter your name below and click the button to interact with Python:</p>
+    <input type="text" id="nameInput" placeholder="Enter your name">
+    <button onclick="sayHello()">Say Hello</button>
+    <p id="response"></p>
+
+    <script type="text/javascript" src="/eel.js"></script>
+    <script>
+        // Function to send the name to Python and get a response
+        function sayHello() {
+            const name = document.getElementById("nameInput").value;
+            eel.say_hello_py(name)(function(response) {
+                document.getElementById("response").innerText = response;
+            }).catch(error => {
+                console.error("Error calling Python function:", error);
+            });
+        }
+
+    </script>
+</body>
+</html>
