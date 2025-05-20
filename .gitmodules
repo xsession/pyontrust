@@ -1,0 +1,4 @@
+
+[submodule "externals/node-red-nodes"]
+	path = externals/node-red-nodes
+	url = https://github.com/node-red/node-red-nodes.git
