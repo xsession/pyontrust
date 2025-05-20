@@ -1,0 +1,3 @@
+osc: 2 ram: 134217728 awg: 2 ram: 65536 pwg: 0 ram: 0 pwr: 0 log: 16 ram: 134217728 num: 16 ram: 16384 sio: 16 A_ADC_B_DAC
+ZMOD A Scope or Digitizer
+ZMOD B AWG

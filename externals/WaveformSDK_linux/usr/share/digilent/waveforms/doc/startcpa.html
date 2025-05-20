@@ -1,0 +1,44 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta content="text/html; charset=ISO-8859-1" http-equiv="content-type">
+<title>
+Current and Power Adapter
+</title>
+<link rel="stylesheet" href="style.css" type="text/css" media="all" /> 
+</head>
+<body>
+<h1>Current and Power Adapter</h1>
+
+<p>The Current and Power Adapter helps you visualize currents, voltages, and powers in a DC or AC circuit. The Adapter is inserted between the power source and the load and uses Analog Discovery and the WaveForms software to perform calculations on the circuit.</p>
+<p><img src="images/startcaat.png"><img src="images/startcaab.png"></p>
+<ul>
+<li><b>J1</b> Power Source Input	Used to as the input of the external power source to the Adapter
+<li><b>J2</b> Ground Connection	Used to establish a common ground between the power source, adapter, and external load
+<li><b>J3</b> Adapter Output	Used to connect the Adapter to the external load
+<li><b>J4</b> 2×15 MTE Connector	Connects the Current and Power Adapter to the Analog Discovery
+</ul>
+<p>Note: The J2 GND connector connects the Adapter to the reference system ground. This is the GND of the USB interface, which further connects to the GND of the host computer. No voltage applied in the J1 or J3 binding posts can be beyond +/-40V relative to GND.</p>
+<p>The Analog Discovery Current and Power Adapter is used to visualize and measure Voltage and Current and compute Power transmission between a source and a load. It uses a 10 m&#8486; 1% shunt resistor, MAX49925 programmable gain current sense amplifier. It also uses features of the Analog Discovery and WaveForms, as explained below:<br>
+The <b>Positive Voltage Supply</b> to provide the <b>5V</b> supply to the current sense amplifier.
+DIO9 (Gain1) and DIO8 (Gain2) to set the gain of the current sense amplifier.
+The Oscilloscope differential channels:<br>
+<b>Channel 1</b> to measure the <b>Voltage</b> between the poles of the Output binding post.<br>
+<b>Channel 2</b> to measure the output of the <b>current</b> sense amplifier.</p>
+
+<table border="1">
+<tr><td>DIO8</td><td>0</td><td>0</td><td>1</td><td>1</td></tr>
+<tr><td>DIO9</td><td>0</td><td>1</td><td>0</td><td>1</td></tr>
+<tr><td>Gain</td><td>10</td><td>20</td><td>50</td><td>100</td></tr>
+<tr><td>Range</td><td>-25 A.+25 A</td><td>-12.5 A.+12.5 A</td><td>-5 A.+5 A</td><td>-2.5 A.+2.5 A</td></tr>
+<tr><td>Resolution</td><td>3.5 mA</td><td>1.75 mA</td><td>0.7 mA</td><td>0.35 mA</td></tr>
+<tr><td>Bandwidth</td><td>600 kHz</td><td>400 kHz</td><td>200 kHz</td><td>100 kHz</td></tr>
+<tr><td>Attenuation for V->A</td><td>10.4 X</td><td>5.21 X</td><td>2.01 X</td><td>1.04 X</td></tr>
+</table>
+
+<p>For more information, visit the <a target="_blank" href="https://digilent.com/reference/test-and-measurement/current-and-power-adapter/reference-manual">reference page</a>.</p>
+
+<p>&nbsp;</p>
+
+</body>
+</html>

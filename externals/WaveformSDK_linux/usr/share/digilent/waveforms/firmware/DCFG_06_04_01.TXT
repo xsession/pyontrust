@@ -1,0 +1,12 @@
+osc: 4 ram: 32768 awg: 2 ram: 32768 play: 0 pwg: 0 ram: 0 pwr: 1 log: 16 ram: 32768 num: 16 ram: 16384 sio: 16 for_Linux
+Oscilloscope with 4/2 channels:
+   32/64Ki 16bit sample buffer
+
+Arbitrary Waveform Generator x 2:
+   32Ki 14bit carrier, 8Ki 16bit AM and FM buffer
+
+Logic Analyzer
+   32Ki 16bit sample buffer
+    
+Pattern Generator
+   16Ki 16bits custom buffer

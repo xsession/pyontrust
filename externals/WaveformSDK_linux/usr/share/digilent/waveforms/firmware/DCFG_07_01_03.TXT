@@ -1,0 +1,3 @@
+osc: 4 ram: 67108864 awg: 0 ram: 0 pwg: 0 ram: 0 pwr: 0 log: 16 ram: 134217728 num: 16 ram: 32768 sio: 16 A_ADC_B_ADC
+ZMOD A Scope or Digitizer
+ZMOD B Scope or Digitizer
