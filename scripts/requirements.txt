@@ -10,3 +10,6 @@
 
 # CLI parsing for profile runner
 docopt>=0.6.2
+
+# NOTE: The Reflex web GUI has its own dependency set.
+# Install it from `gui_app/reflex_control/requirements.txt` in a dedicated venv.

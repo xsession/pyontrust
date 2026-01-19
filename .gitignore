@@ -6,3 +6,5 @@ dist/
 **/__pycache__/**
 
 pyontrust_packages/greeting/__pycache__/
+
+.venv-gui/
