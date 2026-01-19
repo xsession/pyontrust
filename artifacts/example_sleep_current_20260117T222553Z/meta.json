@@ -1,0 +1,53 @@
+{
+  "test": {
+    "name": "example_sleep_current",
+    "description": "Simulated test: active burst then sleep.",
+    "power_meter_key": "power_meter",
+    "steps": [
+      {
+        "name": "active",
+        "duration_s": 1.0
+      },
+      {
+        "name": "sleep",
+        "duration_s": 2.0
+      }
+    ]
+  },
+  "markers": [
+    {
+      "t_s": 1.479999627918005e-05,
+      "label": "step_start",
+      "step": "active"
+    },
+    {
+      "t_s": 1.0096875999952317,
+      "label": "step_end",
+      "step": "active"
+    },
+    {
+      "t_s": 1.0096983999974327,
+      "label": "step_start",
+      "step": "sleep"
+    },
+    {
+      "t_s": 3.024709299999813,
+      "label": "step_end",
+      "step": "sleep"
+    }
+  ],
+  "recorders": {},
+  "meta": {
+    "note": "simulated"
+  },
+  "summary": {
+    "duration_s": 3.0084254999965196,
+    "samples": 196,
+    "avg_current_a": 0.002666903181876121,
+    "max_current_a": 0.00800549967560205,
+    "avg_voltage_v": 3.0,
+    "charge_c": 0.008023179538377978,
+    "energy_j": 0.024069538615133963,
+    "avg_power_w": 0.008000709545628372
+  }
+}

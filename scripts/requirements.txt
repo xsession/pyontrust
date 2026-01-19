@@ -1,0 +1,12 @@
+
+# This repository's power-test framework (`pyontrust_packages/power_test_framework`) is
+# standard-library only by default.
+#
+# Optional tooling you may choose to install/use (NOT required by tests):
+# - ffmpeg (webcam recording)
+# - SEGGER J-Link tools (JLink.exe / JLinkExe)
+# - Nordic tooling for PPK2 / BLE sniffer capture
+# - hackrf tools (hackrf_transfer)
+
+# CLI parsing for profile runner
+docopt>=0.6.2

@@ -1,0 +1,44 @@
+{
+  "name": "example_profile_simulated",
+  "description": "Simulated profile with one dummy recorder.",
+  "meta": {
+    "dut": "demo"
+  },
+  "instruments": {
+    "power_meter": {
+      "type": "simulated",
+      "sample_rate_hz": 200,
+      "voltage_v": 3.0
+    }
+  },
+  "recorders": [
+    {
+      "type": "process",
+      "name": "dummy_recorder",
+      "command": [
+        "python",
+        "-c",
+        "import time; print('dummy recorder started'); time.sleep(2); print('dummy recorder done')"
+      ],
+      "skip_if_missing": true
+    }
+  ],
+  "steps": [
+    {
+      "name": "active",
+      "duration_s": 1.0,
+      "actions": [
+        { "type": "set_power_mode", "mode": "active" },
+        { "type": "mark", "label": "enter_active" }
+      ]
+    },
+    {
+      "name": "sleep",
+      "duration_s": 1.0,
+      "actions": [
+        { "type": "set_power_mode", "mode": "sleep" },
+        { "type": "mark", "label": "enter_sleep" }
+      ]
+    }
+  ]
+}

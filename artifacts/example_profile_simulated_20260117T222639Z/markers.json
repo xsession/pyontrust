@@ -1,0 +1,54 @@
+[
+  {
+    "t_s": 0.03322019999905024,
+    "label": "recorder_start",
+    "recorder": "dummy_recorder"
+  },
+  {
+    "t_s": 0.033227500003704336,
+    "label": "step_start",
+    "step": "active"
+  },
+  {
+    "t_s": 0.03382499999861466,
+    "label": "power_mode",
+    "mode": "active",
+    "step": "active"
+  },
+  {
+    "t_s": 0.03383100000064587,
+    "label": "enter_active",
+    "step": "active"
+  },
+  {
+    "t_s": 1.040562599999248,
+    "label": "step_end",
+    "step": "active"
+  },
+  {
+    "t_s": 1.0405744000017876,
+    "label": "step_start",
+    "step": "sleep"
+  },
+  {
+    "t_s": 1.0408680000036838,
+    "label": "power_mode",
+    "mode": "sleep",
+    "step": "sleep"
+  },
+  {
+    "t_s": 1.0408724000008078,
+    "label": "enter_sleep",
+    "step": "sleep"
+  },
+  {
+    "t_s": 2.0472233000036795,
+    "label": "step_end",
+    "step": "sleep"
+  },
+  {
+    "t_s": 2.1092740000021877,
+    "label": "recorder_stop",
+    "recorder": "dummy_recorder"
+  }
+]
