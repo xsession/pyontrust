@@ -4,9 +4,8 @@ import json
 import pathlib
 import shutil
 import sys
-import tempfile
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Optional
 
 import reflex as rx
 
@@ -214,105 +213,110 @@ class AppState(rx.State):
 
 
 def _field(label: str, value: str, on_change):
-    return rx.hstack(
-        rx.text(label, width="220px"),
-        rx.input(value=value, on_change=on_change, width="420px"),
-        align="center",
+    return rx.vstack(
+        rx.text(label, size="2"),
+        rx.input(value=value, on_change=on_change, width="100%"),
+        spacing="1",
+        width="100%",
+    )
+
+
+def _panel(title: str, body: rx.Component) -> rx.Component:
+    return rx.box(
+        rx.vstack(
+            rx.hstack(
+                rx.heading(title, size="4"),
+                rx.spacer(),
+                align="center",
+                width="100%",
+            ),
+            rx.divider(),
+            body,
+            spacing="3",
+            width="100%",
+        ),
+        border="1px solid var(--gray-a6)",
+        border_radius="12px",
+        padding="14px",
         width="100%",
     )
 
 
 def index() -> rx.Component:
-    return rx.container(
-        rx.heading("Instrument Control", size="7"),
-        rx.text(f"Repo: {REPO_ROOT}"),
-        rx.divider(),
-        rx.heading("Power Meter", size="5"),
-        rx.select(
-            ["simulated", "ad3_dwf", "csv_file", "csv_process"],
-            value=AppState.power_meter_type,
-            on_change=AppState.set_power_meter_type,
-            width="260px",
-        ),
-        rx.cond(
-            AppState.power_meter_type == "simulated",
-            rx.vstack(
-                _field("Sample rate (Hz)", AppState.sim_sample_rate_hz, AppState.set_sim_sample_rate_hz),
-                _field("Voltage (V)", AppState.sim_voltage_v, AppState.set_sim_voltage_v),
-                spacing="2",
-                width="100%",
-            ),
-            rx.box(),
-        ),
-        rx.cond(
-            AppState.power_meter_type == "ad3_dwf",
-            rx.vstack(
-                _field("Sample rate (Hz)", AppState.ad3_sample_rate_hz, AppState.set_ad3_sample_rate_hz),
-                _field("Device index", AppState.ad3_device_index, AppState.set_ad3_device_index),
-                _field("Current channel", AppState.ad3_current_channel, AppState.set_ad3_current_channel),
-                _field("Voltage channel", AppState.ad3_voltage_channel, AppState.set_ad3_voltage_channel),
-                _field("Current A/V", AppState.ad3_current_a_per_v, AppState.set_ad3_current_a_per_v),
-                _field("Voltage V/V", AppState.ad3_voltage_v_per_v, AppState.set_ad3_voltage_v_per_v),
-                _field("Current offset (V)", AppState.ad3_current_offset_v, AppState.set_ad3_current_offset_v),
-                _field("Voltage offset (V)", AppState.ad3_voltage_offset_v, AppState.set_ad3_voltage_offset_v),
-                spacing="2",
-                width="100%",
-            ),
-            rx.box(),
-        ),
-        rx.cond(
-            AppState.power_meter_type == "csv_file",
-            rx.vstack(
-                _field("CSV path", AppState.csv_file_path, AppState.set_csv_file_path),
-                spacing="2",
-                width="100%",
-            ),
-            rx.box(),
-        ),
-        rx.cond(
-            AppState.power_meter_type == "csv_process",
-            rx.vstack(
-                _field("Command", AppState.csv_process_command, AppState.set_csv_process_command),
-                _field("CSV output path", AppState.csv_process_csv_path, AppState.set_csv_process_csv_path),
-                spacing="2",
-                width="100%",
-            ),
-            rx.box(),
-        ),
-        rx.divider(),
-        rx.heading("Recorders", size="5"),
+    power_meter_panel = _panel(
+        "Power Meter",
         rx.vstack(
-            rx.checkbox("HackRF IQ", is_checked=AppState.enable_hackrf, on_change=AppState.set_enable_hackrf),
+            rx.select(
+                ["simulated", "ad3_dwf", "csv_file", "csv_process"],
+                value=AppState.power_meter_type,
+                on_change=AppState.set_power_meter_type,
+                width="100%",
+            ),
             rx.cond(
-                AppState.enable_hackrf,
+                AppState.power_meter_type == "simulated",
                 rx.vstack(
-                    _field("Tool", AppState.hackrf_tool, AppState.set_hackrf_tool),
-                    _field("Freq (Hz)", AppState.hackrf_freq_hz, AppState.set_hackrf_freq_hz),
-                    _field("Sample rate (Hz)", AppState.hackrf_sample_rate_hz, AppState.set_hackrf_sample_rate_hz),
-                    spacing="2",
+                    _field("Sample rate (Hz)", AppState.sim_sample_rate_hz, AppState.set_sim_sample_rate_hz),
+                    _field("Voltage (V)", AppState.sim_voltage_v, AppState.set_sim_voltage_v),
+                    spacing="3",
                     width="100%",
                 ),
                 rx.box(),
             ),
-            rx.checkbox("Webcam (ffmpeg)", is_checked=AppState.enable_webcam, on_change=AppState.set_enable_webcam),
             rx.cond(
-                AppState.enable_webcam,
+                AppState.power_meter_type == "ad3_dwf",
                 rx.vstack(
-                    _field("ffmpeg", AppState.webcam_ffmpeg, AppState.set_webcam_ffmpeg),
-                    _field("Input device", AppState.webcam_input_device, AppState.set_webcam_input_device),
-                    rx.text("Windows: DirectShow camera name. Linux: /dev/video0"),
-                    spacing="2",
+                    _field("Sample rate (Hz)", AppState.ad3_sample_rate_hz, AppState.set_ad3_sample_rate_hz),
+                    _field("Device index", AppState.ad3_device_index, AppState.set_ad3_device_index),
+                    rx.hstack(
+                        rx.box(
+                            _field("Current channel", AppState.ad3_current_channel, AppState.set_ad3_current_channel),
+                            width="100%",
+                        ),
+                        rx.box(
+                            _field("Voltage channel", AppState.ad3_voltage_channel, AppState.set_ad3_voltage_channel),
+                            width="100%",
+                        ),
+                        spacing="3",
+                        width="100%",
+                    ),
+                    rx.hstack(
+                        rx.box(_field("Current A/V", AppState.ad3_current_a_per_v, AppState.set_ad3_current_a_per_v), width="100%"),
+                        rx.box(_field("Voltage V/V", AppState.ad3_voltage_v_per_v, AppState.set_ad3_voltage_v_per_v), width="100%"),
+                        spacing="3",
+                        width="100%",
+                    ),
+                    rx.hstack(
+                        rx.box(
+                            _field("Current offset (V)", AppState.ad3_current_offset_v, AppState.set_ad3_current_offset_v),
+                            width="100%",
+                        ),
+                        rx.box(
+                            _field("Voltage offset (V)", AppState.ad3_voltage_offset_v, AppState.set_ad3_voltage_offset_v),
+                            width="100%",
+                        ),
+                        spacing="3",
+                        width="100%",
+                    ),
+                    spacing="3",
                     width="100%",
                 ),
                 rx.box(),
             ),
-            rx.checkbox("Process", is_checked=AppState.enable_process, on_change=AppState.set_enable_process),
             rx.cond(
-                AppState.enable_process,
+                AppState.power_meter_type == "csv_file",
                 rx.vstack(
-                    _field("Name", AppState.process_name, AppState.set_process_name),
-                    _field("Command", AppState.process_command, AppState.set_process_command),
-                    spacing="2",
+                    _field("CSV path", AppState.csv_file_path, AppState.set_csv_file_path),
+                    spacing="3",
+                    width="100%",
+                ),
+                rx.box(),
+            ),
+            rx.cond(
+                AppState.power_meter_type == "csv_process",
+                rx.vstack(
+                    _field("Command", AppState.csv_process_command, AppState.set_csv_process_command),
+                    _field("CSV output path", AppState.csv_process_csv_path, AppState.set_csv_process_csv_path),
+                    spacing="3",
                     width="100%",
                 ),
                 rx.box(),
@@ -320,34 +324,162 @@ def index() -> rx.Component:
             spacing="3",
             width="100%",
         ),
-        rx.divider(),
-        rx.heading("Run", size="5"),
-        _field("Artifacts root", AppState.artifacts_root, AppState.set_artifacts_root),
-        rx.hstack(
-            rx.button("Validate tools", on_click=AppState.validate_tools),
-            rx.button("Run quick test", on_click=AppState.run_quick_test),
+    )
+
+    recorders_panel = _panel(
+        "Recorders",
+        rx.vstack(
+            rx.vstack(
+                rx.checkbox("HackRF IQ", is_checked=AppState.enable_hackrf, on_change=AppState.set_enable_hackrf),
+                rx.cond(
+                    AppState.enable_hackrf,
+                    rx.vstack(
+                        _field("Tool", AppState.hackrf_tool, AppState.set_hackrf_tool),
+                        _field("Freq (Hz)", AppState.hackrf_freq_hz, AppState.set_hackrf_freq_hz),
+                        _field("Sample rate (Hz)", AppState.hackrf_sample_rate_hz, AppState.set_hackrf_sample_rate_hz),
+                        spacing="3",
+                        width="100%",
+                    ),
+                    rx.box(),
+                ),
+                spacing="2",
+                width="100%",
+            ),
+            rx.divider(),
+            rx.vstack(
+                rx.checkbox("Webcam (ffmpeg)", is_checked=AppState.enable_webcam, on_change=AppState.set_enable_webcam),
+                rx.cond(
+                    AppState.enable_webcam,
+                    rx.vstack(
+                        _field("ffmpeg", AppState.webcam_ffmpeg, AppState.set_webcam_ffmpeg),
+                        _field("Input device", AppState.webcam_input_device, AppState.set_webcam_input_device),
+                        rx.text("Windows: DirectShow camera name. Linux: /dev/video0", size="2"),
+                        spacing="3",
+                        width="100%",
+                    ),
+                    rx.box(),
+                ),
+                spacing="2",
+                width="100%",
+            ),
+            rx.divider(),
+            rx.vstack(
+                rx.checkbox("Process", is_checked=AppState.enable_process, on_change=AppState.set_enable_process),
+                rx.cond(
+                    AppState.enable_process,
+                    rx.vstack(
+                        _field("Name", AppState.process_name, AppState.set_process_name),
+                        _field("Command", AppState.process_command, AppState.set_process_command),
+                        spacing="3",
+                        width="100%",
+                    ),
+                    rx.box(),
+                ),
+                spacing="2",
+                width="100%",
+            ),
             spacing="3",
+            width="100%",
         ),
-        rx.cond(
-            AppState.last_error != "",
-            rx.callout(AppState.last_error, icon="triangle_alert", color_scheme="red"),
-            rx.box(),
+    )
+
+    run_panel = _panel(
+        "Run Settings",
+        rx.vstack(
+            _field("Artifacts root", AppState.artifacts_root, AppState.set_artifacts_root),
+            rx.text(f"Repo: {REPO_ROOT}", size="2"),
+            spacing="2",
+            width="100%",
         ),
-        rx.cond(
-            AppState.last_run_ok,
-            rx.callout(
+    )
+
+    status_panel = _panel(
+        "Output",
+        rx.vstack(
+            rx.cond(
+                AppState.last_error != "",
+                rx.callout(AppState.last_error, icon="triangle_alert", color_scheme="red"),
+                rx.box(),
+            ),
+            rx.cond(
+                AppState.last_run_ok,
+                rx.callout(
+                    rx.vstack(
+                        rx.text("Run completed"),
+                        rx.text(AppState.last_artifacts_dir, size="2"),
+                        spacing="1",
+                    ),
+                    icon="check",
+                    color_scheme="green",
+                ),
+                rx.box(),
+            ),
+            rx.box(
                 rx.vstack(
-                    rx.text("Run completed"),
-                    rx.text(AppState.last_artifacts_dir),
+                    rx.text("Last artifacts directory", size="2"),
+                    rx.text(rx.cond(AppState.last_artifacts_dir != "", AppState.last_artifacts_dir, "(none)"), size="3"),
                     spacing="1",
                 ),
-                icon="check",
-                color_scheme="green",
+                width="100%",
             ),
-            rx.box(),
+            spacing="3",
+            width="100%",
         ),
-        padding_y="1em",
-        max_width="900px",
+    )
+
+    top_bar = rx.box(
+        rx.hstack(
+            rx.vstack(
+                rx.heading("Instrument Control", size="6"),
+                rx.text("Configure instruments and run a quick capture.", size="2"),
+                spacing="1",
+            ),
+            rx.spacer(),
+            rx.hstack(
+                rx.button("Validate tools", on_click=AppState.validate_tools),
+                rx.button("Run quick test", on_click=AppState.run_quick_test),
+                spacing="3",
+            ),
+            align="center",
+            width="100%",
+        ),
+        border_bottom="1px solid var(--gray-a6)",
+        padding="14px",
+        width="100%",
+    )
+
+    sidebar = rx.vstack(
+        power_meter_panel,
+        recorders_panel,
+        run_panel,
+        spacing="3",
+        width="380px",
+        min_width="320px",
+    )
+
+    main = rx.vstack(
+        status_panel,
+        spacing="3",
+        width="100%",
+    )
+
+    return rx.box(
+        rx.vstack(
+            top_bar,
+            rx.hstack(
+                sidebar,
+                main,
+                spacing="3",
+                align="start",
+                width="100%",
+            ),
+            spacing="3",
+            width="100%",
+        ),
+        padding="16px",
+        width="100%",
+        max_width="1200px",
+        margin_x="auto",
     )
 
 
