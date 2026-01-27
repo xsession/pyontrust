@@ -1,4 +1,6 @@
-# Reflex Instrument Control GUI
+# Reflex Instrument Control GUI (legacy)
+
+This GUI has been superseded by the NiceGUI-based app in `gui_app/nicegui_control`.
 
 Minimal Reflex UI to configure instruments/recorders and run a quick `PowerTestRunner` capture.
 
@@ -26,6 +28,36 @@ cd gui_app\reflex_control
 ```
 
 Then open the URL Reflex prints (typically `http://localhost:3000`).
+
+## Recommended: NiceGUI app
+
+See `gui_app/nicegui_control/README.md` for the supported GUI.
+
+## Vision + object detection (optional)
+
+The GUI can post-process the recorded webcam video to:
+
+- Log **changes** (LED blink / display change) using only `ffmpeg`.
+- Run **object detection** (labels + boxes) using Ultralytics YOLO.
+
+### Install vision deps (recommended)
+
+```powershell
+Set-Location C:\GIT\pyontrust
+\.\.venv-gui\Scripts\python -m pip install -r gui_app\reflex_control\requirements-vision.txt
+```
+
+### Bootstrap ML deps (no preinstall)
+
+If you enable **Bootstrap ML deps if missing (venv only)** in the GUI, it will attempt to run:
+
+`python -m pip install ultralytics>=8.0.0`
+
+inside the active virtualenv when you run the test.
+
+Notes:
+- This is intentionally **blocked outside a venv** to avoid polluting your lab environment.
+- The YOLO model (default `yolov8n.pt`) is typically downloaded on first run.
 
 ## If you already installed Reflex into your main env
 

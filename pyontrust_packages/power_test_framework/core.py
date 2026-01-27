@@ -149,6 +149,7 @@ class PowerTestRunner:
         instruments: dict[str, Any],
         recorders: Optional[list[Recorder]] = None,
         meta: Optional[dict[str, Any]] = None,
+        post_run: Optional[Callable[[TestContext], None]] = None,
     ) -> TestArtifacts:
         self._artifacts_root.mkdir(parents=True, exist_ok=True)
         run_id = utc_timestamp_id()
@@ -185,6 +186,7 @@ class PowerTestRunner:
         trace: PowerTrace | None = None
         summary: PowerSummary | None = None
         run_error: str | None = None
+        post_run_error: str | None = None
 
         test_meta: dict[str, Any] = {
             "name": test.name,
@@ -219,6 +221,13 @@ class PowerTestRunner:
                     ctx.recorder_outputs.setdefault(rec.name, {})
                     ctx.recorder_outputs[rec.name]["stop_error"] = repr(exc)
 
+            if post_run is not None:
+                try:
+                    post_run(ctx)
+                except BaseException as exc:  # noqa: BLE001
+                    post_run_error = repr(exc)
+                    ctx.mark("post_run_error", error=post_run_error)
+
             for inst in reversed(opened):
                 if hasattr(inst, "close"):
                     inst.close()
@@ -231,6 +240,8 @@ class PowerTestRunner:
             }
             if run_error:
                 meta_out["error"] = run_error
+            if post_run_error:
+                meta_out["post_run_error"] = post_run_error
             if meta:
                 meta_out["meta"] = meta
 

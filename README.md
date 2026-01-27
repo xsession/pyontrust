@@ -33,7 +33,19 @@ Example (simulated + dummy recorder):
 python scripts\power_tests\run_profile.py run scripts\power_tests\example_profile.json --repo-root=.
 ```
 
-### Minimal GUI
+### GUI
+
+Recommended (NiceGUI):
+
+```powershell
+python -m venv .venv-nicegui
+.\.venv-nicegui\Scripts\python -m pip install -U pip
+.\.venv-nicegui\Scripts\python -m pip install -r scripts\requirements.txt
+.\.venv-nicegui\Scripts\python -m pip install -e gui_app\nicegui_control
+.\.venv-nicegui\Scripts\python -m pyontrust_gui
+```
+
+Legacy entrypoint (now launches NiceGUI):
 
 ```powershell
 python gui_app\power_test_gui\power_test_gui.py

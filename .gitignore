@@ -8,3 +8,5 @@ dist/
 pyontrust_packages/greeting/__pycache__/
 
 .venv-gui/
+
+.venv-nicegui/

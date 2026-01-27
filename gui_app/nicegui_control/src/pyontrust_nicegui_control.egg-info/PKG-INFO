@@ -1,0 +1,7 @@
+Metadata-Version: 2.4
+Name: pyontrust-nicegui-control
+Version: 0.1.0
+Summary: Pyontrust instrument control GUI (NiceGUI)
+Requires-Python: >=3.10
+Requires-Dist: nicegui>=1.4.0
+Requires-Dist: pywebview>=5.0
