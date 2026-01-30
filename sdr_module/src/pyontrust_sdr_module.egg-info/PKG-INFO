@@ -1,0 +1,49 @@
+Metadata-Version: 2.4
+Name: pyontrust-sdr-module
+Version: 0.1.0
+Summary: Embeddable GNU Radio–like SDR flowgraph module (NiceGUI UI + HAL/MAL + blocks)
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: nicegui>=1.4.0
+Requires-Dist: numpy>=1.24
+Requires-Dist: pydantic>=2.5
+Requires-Dist: typing-extensions>=4.8
+Provides-Extra: soapy
+Requires-Dist: SoapySDR>=0.8.1; extra == "soapy"
+Provides-Extra: dev
+Requires-Dist: ruff>=0.5; extra == "dev"
+
+# pyontrust-sdr-module
+
+Embeddable SDR flowgraph module (GNU Radio–like) with a NiceGUI UI.
+
+## Quick start (Simulated)
+
+```powershell
+python -m venv .venv-sdr
+.\.venv-sdr\Scripts\python -m pip install -U pip
+.\.venv-sdr\Scripts\python -m pip install -e sdr_module
+.\.venv-sdr\Scripts\python sdr_module\examples\run_standalone.py
+```
+
+## HackRF (via SoapySDR)
+
+This module uses **SoapySDR** as the initial HackRF integration to keep the HAL portable and make future devices (RTL-SDR, etc.) pluggable.
+
+### Windows (notes)
+- Install SoapySDR runtime (DLLs) and the HackRF module.
+- Ensure SoapySDR DLLs are on `PATH`.
+- Then install Python bindings:
+
+```powershell
+.\.venv-sdr\Scripts\python -m pip install -e sdr_module
+.\.venv-sdr\Scripts\python -m pip install "SoapySDR>=0.8.1"
+```
+
+### Linux (notes)
+- Install `soapysdr`, `soapysdr-module-hackrf`, and `hackrf` packages via your distro.
+- Then `pip install SoapySDR` (or use system python bindings).
+
+## Embedding into an existing NiceGUI app
+
+See `sdr_module/examples/embed_in_existing_app.py`.

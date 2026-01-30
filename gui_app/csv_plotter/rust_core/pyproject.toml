@@ -1,0 +1,16 @@
+[build-system]
+requires = ["maturin>=1.6,<2"]
+build-backend = "maturin"
+
+[project]
+name = "pyontrust-csv-plotter-core"
+version = "0.1.0"
+requires-python = ">=3.10"
+description = "Rust backend for pyontrust gui_app/csv_plotter (CSV parsing + stats + decimation)"
+
+[tool.maturin]
+module-name = "pyontrust_csv_plotter_core"
+features = ["pyo3/extension-module"]
+
+[tool.maturin.platform]
+linux = { manylinux = "auto" }

@@ -1,0 +1,120 @@
+{
+  "version": 2,
+  "highlighted_channels": [
+    "Temp_1.Ctmh_5_Module",
+    "Temp_1.Ctmh_6_Module"
+  ],
+  "ui_theme": "dark",
+  "current_folder": "C:/temp_gui_reports/detector_curve_logs",
+  "auto_load_newest": false,
+  "auto_reload_selected": false,
+  "auto_save_layout": true,
+  "open_folder_recursive": false,
+  "last_loaded_file": "E:\\temp_gui_reports\\detector_curve_logs\\detector_curve_log_20251216_133929__000\\detector_curve_log_20251216_133929__000.csv",
+  "ui": {
+    "sashes": {
+      "main_pane": {
+        "sashpos": [
+          711
+        ]
+      },
+      "left_pane": {
+        "sashpos": [
+          38
+        ]
+      },
+      "selector_container": {
+        "sash_coord": []
+      },
+      "plots_pane": {
+        "sashpos": []
+      }
+    }
+  },
+  "subplots": [
+    {
+      "selected_columns": [
+        "Temp_1.Ctmh_1_Module",
+        "Temp_1.Ctmh_20_Module",
+        "Temp_1.Ctmh_21_Module",
+        "Temp_1.Ctmh_22_Module",
+        "Temp_1.Ctmh_23_Module",
+        "Temp_1.Ctmh_24_Module",
+        "Temp_1.Ctmh_2_Module",
+        "Temp_1.Ctmh_3_Module",
+        "Temp_1.Ctmh_4_Module",
+        "Temp_1.Ctmh_5_Module",
+        "Temp_1.Ctmh_6_Module",
+        "Temp_1.Ctmh_7_Module",
+        "Temp_1.Ctmh_8_Module",
+        "Temp_1.Ctmh_9_Module"
+      ],
+      "ylim": {
+        "enabled": false,
+        "ymin": "",
+        "ymax": ""
+      },
+      "display": {
+        "show_table": true,
+        "show_hist": true,
+        "show_abs_check": true,
+        "show_rel_change": true,
+        "show_custom": false,
+        "hist_bins": "30"
+      },
+      "x_window": [
+        1765888726.4044735,
+        1765893961.5266623
+      ],
+      "barriers": {
+        "abs": {
+          "enabled": true,
+          "target": "38",
+          "limit_in": "1",
+          "limit_out": "5",
+          "start_idx": "175",
+          "end_idx": "40000"
+        },
+        "rel": {
+          "enabled": true,
+          "target": "38",
+          "limit_in": "3",
+          "limit_out": "5",
+          "start_idx": "175",
+          "end_idx": "40000"
+        }
+      },
+      "plot_mode": "Time series",
+      "files": [
+        "E:\\temp_gui_reports\\detector_curve_logs\\detector_curve_log_20251216_133929__000\\detector_curve_log_20251216_133929__000.csv"
+      ],
+      "x_alignment": "aligned",
+      "file_shifts": {
+        "E:\\temp_gui_reports\\detector_curve_logs\\detector_curve_log_20251216_133929__000\\detector_curve_log_20251216_133929__000.csv": {
+          "x_shift_s": 0.0,
+          "y_shift": 0.0
+        }
+      },
+      "ui": {
+        "inner_split": {
+          "x": 1,
+          "y": 111
+        },
+        "plot_split": 260,
+        "bottom_pane": {
+          "order": [
+            "hist",
+            "abs",
+            "rel",
+            "table"
+          ],
+          "sashpos": [
+            129,
+            264,
+            398
+          ]
+        }
+      }
+    }
+  ]
+}

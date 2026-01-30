@@ -1,0 +1,35 @@
+{
+  "en": {
+    "menu.file": "File",
+    "menu.file.add_new_file": "Add New File...",
+    "menu.file.open_folder": "Open Folder...",
+    "menu.history": "History",
+    "menu.history.prev": "Prev",
+    "menu.history.next": "Next",
+    "menu.history.clear": "Clear history",
+    "menu.history.empty": "No recent files",
+    "menu.settings": "Settings",
+    "menu.settings.open": "Settings...",
+    "menu.layout": "Layout",
+    "menu.layout.save": "Save layout...",
+    "menu.layout.load": "Load layout...",
+    "menu.layout.clear": "Clear layout (reset)",
+    "menu.export": "Export",
+    "menu.export.png": "Export plots as PNG...",
+    "menu.export.svg": "Export plots as SVG...",
+    "menu.export.combined_png": "Export plots section as PNG (combined)...",
+    "menu.export.combined_svg": "Export plots section as SVG (combined)...",
+    "menu.help": "Help",
+    "menu.help.help": "Help",
+    "menu.help.about": "About",
+
+    "dialog.help.title": "Help",
+    "dialog.about.title": "About",
+    "dialog.clear_layout.title": "Clear layout",
+    "dialog.clear_layout.text": "This will reset subplots to default and delete the saved layout.json.\nAuto-save layout will be turned OFF to prevent recreating layout.json on exit.\n\nContinue?",
+
+    "help.text": "CSV Plotter / Multi-Subplot CSV Viewer\n\nFiles & folders:\n- Choose Folder: set the root folder for CSV logs.\n- Choose CSV File: load a specific CSV file (turns OFF Auto-load newest).\n- History menu: Prev/Next and quick-open recent files.\n- History -> Clear history: clears the recent files list.\n\nAuto loading:\n- Auto-load newest CSV: periodically finds/loads the newest CSV under the folder tree.\n- Auto-reload selected CSV: reloads the currently loaded CSV when the file changes.\n\nSubplots & selection:\n- Add Subplot: adds a selector + plot panel.\n- Close (per subplot): removes that subplot selector and its plot.\n- Multi-select: Ctrl-click toggles; Shift-click selects a range.\n- Right-click on a plotted line: removes that signal from the subplot selection and replots.\n- Left-click on a plotted line: highlights the line and its legend entry.\n\nTime-series overlays (per subplot):\n- Overlay files: add multiple CSV files and plot them together.\n- Overlay X: choose Aligned timestamps vs Independent (t=0 per file).\n- Per-file shifts: set X shift (sec) and Y shift for the selected overlay file.\n\nPlots & tools:\n- Mode (per subplot): Time series + special analysis views (MS-1353 / AF-10047).\n- Toolbar: Zoom, Pan, Home/Back/Forward.\n- X-range sync: zoom/pan syncs across subplots (where supported by the mode).\n- Manual Y limits (per subplot): enable and set Min/Max to lock y-scale.\n- Time window selection: drag on the plot (when Zoom/Pan is OFF) to select a segment;\n  stats and histogram use only that segment. Use Clear window to reset.\n\nStats & histogram:\n- Show table: computed metrics for selected signals.\n- Show histogram: value distribution for selected signals (uses current time window if set).\n\nResizable UI:\n- Drag the sashes to resize left/right, controls vs selectors, subplot panels, and plot vs histogram/table areas.\n\nLayout:\n- Layout -> Save/Load layout: store/restore selections and per-subplot settings.\n- Layout -> Clear layout: reset UI and delete layout.json.\n- Settings -> Auto-save layout (layout.json): auto-saves to layout.json (toggleable).\n",
+
+    "about.text": "Multi-Subplot CSV Viewer\nLoads semicolon/comma CSV logs and plots selected signals.\n"
+  }
+}

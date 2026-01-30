@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyontrust-sdr-module"
+version = "0.1.0"
+description = "Embeddable GNU Radio–like SDR flowgraph module (NiceGUI UI + HAL/MAL + blocks)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "nicegui>=1.4.0",
+  "numpy>=1.24",
+  "pydantic>=2.5",
+  "typing-extensions>=4.8",
+]
+
+[project.optional-dependencies]
+soapy = [
+  "SoapySDR>=0.8.1",
+]
+dev = [
+  "ruff>=0.5",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

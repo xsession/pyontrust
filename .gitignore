@@ -10,3 +10,7 @@ pyontrust_packages/greeting/__pycache__/
 .venv-gui/
 
 .venv-nicegui/
+
+.venv-sdr/
+
+artifacts/

@@ -1,4 +1,0 @@
-# GUI-only dependencies.
-# Install these in a dedicated virtualenv to avoid version conflicts with lab tooling.
-
-reflex>=0.8.0

@@ -1,4 +1,0 @@
-# Optional vision/object-detection deps for the Reflex GUI venv.
-# Install in `.venv-gui` only.
-
-ultralytics>=8.0.0

@@ -371,6 +371,8 @@ def _comfortable_checkbox(label: str, value: bool, on_change) -> ui.checkbox:
 
 
 def main() -> None:
+    port = _safe_int(os.environ.get("PYONTRUST_GUI_PORT", "8080"), 8080)
+
     def _root() -> None:
         ui.page_title("Pyontrust GUI")
 
@@ -510,6 +512,9 @@ def main() -> None:
             with ui.tabs().classes("w-full") as tabs:
                 ui.tab("Instrument Control")
                 ui.tab("Profile Runner")
+                ui.tab("SDR")
+                ui.tab("Waveforms")
+                ui.tab("CSV Plotter")
 
             with ui.tab_panels(tabs, value="Instrument Control").classes("w-full"):
                 with ui.tab_panel("Instrument Control"):
@@ -546,7 +551,71 @@ def main() -> None:
                         profile_button = ui.button("Run profile", on_click=_profile_clicked).props("color=primary")
                         ui.button("Clear log", on_click=lambda: log.clear()).props("outline")
 
-    ui.run(title="Pyontrust GUI", native=False, reload=False, port=8080, root=_root)
+                with ui.tab_panel("SDR"):
+                    with ui.card().classes("w-full"):
+                        ui.label("SDR Flowgraph").classes("text-subtitle2")
+
+                        try:
+                            from pyontrust_sdr import SdrModule  # type: ignore
+
+                            SdrModule.mount(ui.column().classes("w-full"), config=None)
+                        except Exception as exc:  # noqa: BLE001
+                            ui.label("Optional module not installed: pyontrust_sdr").classes("text-sm text-gray-600")
+                            ui.label(repr(exc)).classes("text-xs text-gray-500")
+                            ui.label("Install (dev):").classes("text-sm")
+                            ui.code(
+                                "Set-Location C:\\GIT\\pyontrust\n"
+                                ".\\.venv-nicegui\\Scripts\\python -m pip install -e sdr_module\n"
+                            ).classes("w-full")
+
+                with ui.tab_panel("Waveforms"):
+                    with ui.card().classes("w-full"):
+                        ui.label("Waveforms Module").classes("text-subtitle2")
+
+                        try:
+                            from pyontrust_waveforms import WaveformsConfig, WaveformsModule  # type: ignore
+
+                            WaveformsModule.mount(ui.column().classes("w-full"), config=WaveformsConfig())
+                        except Exception as exc:  # noqa: BLE001
+                            ui.label("Optional module not installed: pyontrust_waveforms").classes("text-sm text-gray-600")
+                            ui.label(repr(exc)).classes("text-xs text-gray-500")
+                            ui.label("Install (dev):").classes("text-sm")
+                            ui.code(
+                                "Set-Location C:\\GIT\\pyontrust\n"
+                                ".\\.venv-nicegui\\Scripts\\python -m pip install -e waveforms_module\n"
+                            ).classes("w-full")
+
+                with ui.tab_panel("CSV Plotter"):
+                    with ui.card().classes("w-full"):
+                        ui.label("CSV Plotter").classes("text-subtitle2")
+
+                        # Embed the CSV plotter without installing it as a package.
+                        try:
+                            repo_root = _default_repo_root()
+                            csv_root = repo_root / "gui_app" / "csv_plotter"
+                            if not csv_root.exists():
+                                raise FileNotFoundError(str(csv_root))
+
+                            # Temporarily expose csv_plotter's internal package name `app`.
+                            sys.path.insert(0, str(csv_root))
+                            try:
+                                from app.embed import mount as _mount_csv  # type: ignore
+                            finally:
+                                # avoid repeated duplicates; keep import cache loaded
+                                if str(csv_root) in sys.path:
+                                    sys.path.remove(str(csv_root))
+
+                            _mount_csv(ui.column().classes("w-full"))
+                        except Exception as exc:  # noqa: BLE001
+                            ui.label("CSV Plotter embed failed").classes("text-sm text-gray-600")
+                            ui.label(repr(exc)).classes("text-xs text-gray-500")
+                            ui.label("Standalone run:").classes("text-sm")
+                            ui.code(
+                                "Set-Location C:\\GIT\\pyontrust\n"
+                                ".\\.venv-nicegui\\Scripts\\python gui_app\\csv_plotter\\nicegui_csv_plotter.py\n"
+                            ).classes("w-full")
+
+    ui.run(title="Pyontrust GUI", native=True, reload=False, port=port, root=_root)
 
 
 if __name__ == "__main__":

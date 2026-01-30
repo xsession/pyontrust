@@ -1,0 +1,18 @@
+[package]
+name = "pyontrust_waveforms_core"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "pyontrust_waveforms_core"
+crate-type = ["cdylib"]
+
+[dependencies]
+numpy = "0.21"
+pyo3 = { version = "0.21", features = ["extension-module", "abi3-py310"] }
+ndarray = "0.15"
+rustfft = "6"
+thiserror = "1"
+
+[dev-dependencies]
+approx = "0.5"
