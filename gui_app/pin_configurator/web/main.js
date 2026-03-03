@@ -572,6 +572,9 @@ document.addEventListener("DOMContentLoaded", () => {
       if (target === "clock") {
         clkLoadTrees();
       }
+      if (target === "sensors") {
+        snsLoadJobs();
+      }
     });
   });
 
@@ -592,6 +595,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // ── MCU Lookup init ────────────────────────────────────────────────
   mcuInit();
+
+  // ── Sensor Parser init ─────────────────────────────────────────────
+  snsInit();
 });
 
 
@@ -2630,4 +2636,454 @@ async function mcuFetchDatasheet(partNumber) {
       fetchBtn.textContent = "\u2B07 Fetch & Parse Datasheet";
     }
   }
+}
+
+
+// ══════════════════════════════════════════════════════════════════════
+// Sensor Parser module
+// ══════════════════════════════════════════════════════════════════════
+
+let snsJobs = [];
+let snsSelectedJob = null;
+
+function snsInit() {
+  const uploadArea = $("#snsUploadArea");
+  const fileInput  = $("#snsFileInput");
+
+  // Click to browse
+  uploadArea.addEventListener("click", () => fileInput.click());
+
+  // File selected via browse
+  fileInput.addEventListener("change", () => {
+    if (fileInput.files.length) {
+      snsUploadPdf(fileInput.files[0]);
+      fileInput.value = "";
+    }
+  });
+
+  // Drag & drop
+  uploadArea.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    uploadArea.classList.add("dragover");
+  });
+  uploadArea.addEventListener("dragleave", () => {
+    uploadArea.classList.remove("dragover");
+  });
+  uploadArea.addEventListener("drop", (e) => {
+    e.preventDefault();
+    uploadArea.classList.remove("dragover");
+    if (e.dataTransfer.files.length) {
+      const file = e.dataTransfer.files[0];
+      if (file.name.toLowerCase().endsWith(".pdf")) {
+        snsUploadPdf(file);
+      } else {
+        toast("Please drop a .pdf file");
+      }
+    }
+  });
+
+  // Sensor identify button
+  const idBtn = $("#snsBtnIdentify");
+  const idInput = $("#snsPartInput");
+  idBtn.addEventListener("click", () => snsIdentifySensor());
+  idInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") snsIdentifySensor();
+  });
+}
+
+
+// ── Upload & Parse ───────────────────────────────────────────────────
+
+async function snsUploadPdf(file) {
+  const uploadArea = $("#snsUploadArea");
+  const origHTML = uploadArea.innerHTML;
+
+  uploadArea.innerHTML = `
+    <div class="spinner"></div>
+    <div style="margin-top:8px;">Parsing ${file.name}...</div>
+    <div class="upload-hint">Extracting register map &amp; addresses</div>
+  `;
+
+  const formData = new FormData();
+  formData.append("pdf", file);
+
+  try {
+    const res = await fetch("/api/parse-sensor-pdf", { method: "POST", body: formData });
+    const data = await res.json();
+
+    if (!res.ok) {
+      uploadArea.innerHTML = origHTML;
+      toast(data.error || "Upload failed");
+      return;
+    }
+
+    snsJobs.push({
+      job_id: data.job_id,
+      filename: data.filename,
+      result: data.result,
+    });
+
+    snsRenderJobList();
+    snsSelectJob(data.job_id);
+    toast(`Parsed ${data.result.summary.part_number || file.name}: ${data.result.register_map.registers.length} registers found`);
+  } catch (err) {
+    toast("Upload error: " + err.message);
+  } finally {
+    uploadArea.innerHTML = origHTML;
+  }
+}
+
+
+// ── Load existing jobs ───────────────────────────────────────────────
+
+async function snsLoadJobs() {
+  try {
+    const res = await fetch("/api/sensor-jobs");
+    const data = await res.json();
+
+    snsJobs = data.map(j => ({
+      job_id: j.job_id,
+      filename: j.filename,
+      result: null,           // lazy-loaded
+      summary: {
+        part_number: j.part_number,
+        vendor: j.vendor,
+        sensor_type: j.sensor_type,
+        register_count: j.register_count,
+        i2c_addresses: j.i2c_addresses,
+        protocol: j.protocol,
+      },
+    }));
+
+    snsRenderJobList();
+  } catch (err) {
+    console.error("snsLoadJobs:", err);
+  }
+}
+
+
+// ── Render job list ──────────────────────────────────────────────────
+
+function snsRenderJobList() {
+  const list = $("#snsJobList");
+  if (!snsJobs.length) {
+    list.innerHTML = `<div class="empty-state" style="padding:20px;">
+      <div>No sensors parsed yet</div>
+      <div class="hint">Upload a PDF above</div>
+    </div>`;
+    return;
+  }
+
+  list.innerHTML = snsJobs.map(j => {
+    const s = j.result ? j.result.summary : j.summary;
+    const pn = s.part_number || j.filename;
+    const vendor = s.vendor_name || s.vendor || "";
+    const type = s.sensor_type || "";
+    const regCount = j.result ? j.result.register_map.registers.length : (s.register_count || 0);
+    const selected = j.job_id === snsSelectedJob ? " selected" : "";
+
+    return `<div class="sns-job-item${selected}" data-id="${j.job_id}">
+      <div class="job-name">
+        ${pn}
+        ${vendor ? `<span class="sns-badge">${vendor}</span>` : ""}
+      </div>
+      <div class="job-info">${type ? type + " · " : ""}${regCount} registers</div>
+    </div>`;
+  }).join("");
+
+  list.querySelectorAll(".sns-job-item").forEach(el => {
+    el.addEventListener("click", () => snsSelectJob(el.dataset.id));
+  });
+}
+
+
+// ── Select job & render detail ───────────────────────────────────────
+
+async function snsSelectJob(jobId) {
+  snsSelectedJob = jobId;
+
+  // Highlight in list
+  $$("#snsJobList .sns-job-item").forEach(el => {
+    el.classList.toggle("selected", el.dataset.id === jobId);
+  });
+
+  const job = snsJobs.find(j => j.job_id === jobId);
+  if (!job) return;
+
+  // Lazy-load full result if needed
+  if (!job.result) {
+    try {
+      const res = await fetch(`/api/sensor-job/${jobId}`);
+      const data = await res.json();
+      job.result = data.result;
+    } catch (err) {
+      toast("Failed to load sensor data");
+      return;
+    }
+  }
+
+  snsRenderDetail(job);
+}
+
+
+function snsRenderDetail(job) {
+  const r = job.result;
+  const s = r.summary;
+  const regs = r.register_map.registers;
+  const addr = r.address;
+  const main = $("#snsMain");
+
+  // Header
+  let headerHTML = `<div class="sns-detail-header">
+    <h2>${s.part_number || job.filename}</h2>
+    <div class="sns-specs">
+      ${s.vendor_name ? `<span>🏭 ${s.vendor_name}</span>` : ""}
+      ${s.sensor_type ? `<span>📡 ${s.sensor_type}</span>` : ""}
+      ${addr.protocol ? `<span>🔌 ${addr.protocol.toUpperCase()}</span>` : ""}
+      ${addr.i2c_addresses && addr.i2c_addresses.length ? `<span>📍 I2C: ${addr.i2c_addresses.join(", ")}</span>` : ""}
+      ${addr.spi_max_freq_mhz ? `<span>⚡ SPI ${addr.spi_max_freq_mhz} MHz</span>` : ""}
+      <span>📋 ${regs.length} registers</span>
+    </div>
+  </div>`;
+
+  // Body
+  let bodyHTML = `<div class="sns-detail-body">`;
+
+  // ─── Description ───
+  if (s.description) {
+    bodyHTML += `<div class="sns-section">
+      <h3>📄 Description</h3>
+      <p style="font-size:12px;line-height:1.6;color:var(--fg);">${snsEsc(s.description)}</p>
+    </div>`;
+  }
+
+  // ─── Address Info ───
+  bodyHTML += `<div class="sns-section">
+    <h3>📍 Address / Interface</h3>
+    <table class="sns-reg-table" style="max-width:500px;">
+      <tr><th>Property</th><th>Value</th></tr>
+      <tr><td>Protocol</td><td>${addr.protocol || "unknown"}</td></tr>
+      ${addr.i2c_addresses && addr.i2c_addresses.length ? `<tr><td>I2C Addresses</td><td class="addr">${addr.i2c_addresses.join(", ")}</td></tr>` : ""}
+      ${addr.spi_max_freq_mhz ? `<tr><td>SPI Max Freq</td><td>${addr.spi_max_freq_mhz} MHz</td></tr>` : ""}
+    </table>
+  </div>`;
+
+  // ─── Register Map ───
+  if (regs.length) {
+    bodyHTML += `<div class="sns-section">
+      <h3>🗂 Register Map (${regs.length} registers)</h3>
+      <table class="sns-reg-table">
+        <thead>
+          <tr>
+            <th style="width:80px">Address</th>
+            <th style="width:180px">Name</th>
+            <th style="width:55px">Size</th>
+            <th style="width:55px">Access</th>
+            <th style="width:80px">Reset</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>`;
+
+    for (const reg of regs) {
+      const rwClass = reg.access === "R" ? "rw-r" : reg.access === "W" ? "rw-w" : "rw-rw";
+      bodyHTML += `<tr>
+        <td class="addr">${reg.address}</td>
+        <td>${snsEsc(reg.name)}</td>
+        <td>${reg.size}</td>
+        <td class="${rwClass}">${reg.access || "-"}</td>
+        <td class="addr">${reg.reset_value || "-"}</td>
+        <td style="font-family:'Segoe UI',sans-serif;font-size:11px;">${snsEsc(reg.description || "")}</td>
+      </tr>`;
+
+      // Bit-fields
+      if (reg.fields && reg.fields.length) {
+        for (const f of reg.fields) {
+          bodyHTML += `<tr class="sns-field-row">
+            <td></td>
+            <td style="color:var(--mauve);">[${f.bits}] ${snsEsc(f.name)}</td>
+            <td></td>
+            <td class="${f.access === "R" ? "rw-r" : f.access === "W" ? "rw-w" : "rw-rw"}">${f.access || "-"}</td>
+            <td class="addr">${f.reset_value || "-"}</td>
+            <td style="font-family:'Segoe UI',sans-serif;">${snsEsc(f.description || "")}</td>
+          </tr>`;
+        }
+      }
+    }
+
+    bodyHTML += `</tbody></table></div>`;
+  }
+
+  // ─── C Header Generation ───
+  bodyHTML += `<div class="sns-section">
+    <h3>💻 C Register Header</h3>
+    <div class="sns-code-actions">
+      <button class="btn" id="snsGenHeader">Generate Header</button>
+      <button class="btn" id="snsCopyHeader" style="display:none;">📋 Copy</button>
+      <button class="btn" id="snsGenDriver">🔧 Generate Zephyr Driver</button>
+    </div>
+    <div id="snsHeaderCode" class="sns-code-block" style="display:none;"></div>
+  </div>`;
+
+  // ─── Driver Generation ───
+  bodyHTML += `<div class="sns-section" id="snsDriverSection" style="display:none;">
+    <h3>🔧 Generated Zephyr Driver</h3>
+    <div id="snsDriverFiles"></div>
+  </div>`;
+
+  bodyHTML += `</div>`;
+
+  main.innerHTML = headerHTML + bodyHTML;
+
+  // Wire header generation
+  $("#snsGenHeader").addEventListener("click", () => snsGenerateHeader(job.job_id));
+  $("#snsCopyHeader").addEventListener("click", () => snsCopyHeaderToClipboard());
+  $("#snsGenDriver").addEventListener("click", () => snsGenerateDriver(job.job_id));
+}
+
+
+// ── Generate C header ────────────────────────────────────────────────
+
+async function snsGenerateHeader(jobId) {
+  const btn = $("#snsGenHeader");
+  btn.disabled = true;
+  btn.textContent = "Generating...";
+
+  try {
+    const res = await fetch(`/api/sensor-job/${jobId}/header`);
+    const data = await res.json();
+
+    if (!res.ok) {
+      toast(data.error || "Header generation failed");
+      return;
+    }
+
+    const codeEl = $("#snsHeaderCode");
+    codeEl.textContent = data.code;
+    codeEl.style.display = "block";
+
+    const copyBtn = $("#snsCopyHeader");
+    copyBtn.style.display = "inline-flex";
+
+    toast(`Generated ${data.filename}`);
+  } catch (err) {
+    toast("Error: " + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Generate Header";
+  }
+}
+
+function snsCopyHeaderToClipboard() {
+  const code = $("#snsHeaderCode").textContent;
+  navigator.clipboard.writeText(code).then(() => {
+    toast("Header copied to clipboard");
+  }).catch(() => {
+    // Fallback
+    const ta = document.createElement("textarea");
+    ta.value = code;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    document.body.removeChild(ta);
+    toast("Header copied to clipboard");
+  });
+}
+
+
+// ── Generate Zephyr driver ───────────────────────────────────────────
+
+async function snsGenerateDriver(jobId) {
+  const btn = $("#snsGenDriver");
+  btn.disabled = true;
+  btn.textContent = "Generating driver...";
+
+  try {
+    const res = await fetch(`/api/sensor-job/${jobId}/driver`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      toast(data.error || "Driver generation failed");
+      return;
+    }
+
+    const section = $("#snsDriverSection");
+    section.style.display = "block";
+
+    const filesDiv = $("#snsDriverFiles");
+    let html = "";
+
+    // Show each generated file
+    const fileEntries = [
+      { label: "Driver Source", key: "source", ext: ".c" },
+      { label: "Kconfig", key: "kconfig", ext: "" },
+      { label: "CMakeLists", key: "cmake", ext: "" },
+      { label: "Device Tree Binding", key: "binding", ext: ".yaml" },
+      { label: "Register Header", key: "register_header", ext: ".h" },
+      { label: "Register Defines", key: "register_defines", ext: ".h" },
+    ];
+
+    for (const entry of fileEntries) {
+      const code = data[entry.key];
+      if (!code) continue;
+      html += `<div style="margin-bottom:16px;">
+        <div style="font-size:12px;font-weight:600;margin-bottom:6px;color:var(--accent);">${entry.label}</div>
+        <div class="sns-code-block">${snsEsc(code)}</div>
+      </div>`;
+    }
+
+    filesDiv.innerHTML = html;
+    toast("Zephyr driver generated successfully");
+    section.scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (err) {
+    toast("Error: " + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "🔧 Generate Zephyr Driver";
+  }
+}
+
+
+// ── Sensor Identify ──────────────────────────────────────────────────
+
+async function snsIdentifySensor() {
+  const input = $("#snsPartInput");
+  const resultEl = $("#snsIdResult");
+  const pn = input.value.trim();
+
+  if (!pn) {
+    resultEl.textContent = "Enter a part number";
+    return;
+  }
+
+  resultEl.innerHTML = "Identifying...";
+
+  try {
+    const res = await fetch("/api/identify-sensor", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ part_number: pn }),
+    });
+    const data = await res.json();
+
+    if (data.known) {
+      resultEl.innerHTML = `<span style="color:var(--green);">✅ ${data.vendor_name}</span> (${data.vendor})`;
+    } else {
+      resultEl.innerHTML = `<span style="color:var(--yellow);">⚠ Unknown vendor for "${pn}"</span>`;
+    }
+  } catch (err) {
+    resultEl.innerHTML = `<span style="color:var(--red);">Error: ${err.message}</span>`;
+  }
+}
+
+
+// ── Utility ──────────────────────────────────────────────────────────
+
+function snsEsc(str) {
+  if (!str) return "";
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }

@@ -41,6 +41,11 @@ from datasheet_fetcher import identify_vendor, download_datasheet, fetch_and_par
 from driver_generator import (
     DriverSpec, DRIVER_TYPES, generate_driver, driver_to_json, spec_from_json,
 )
+from sensor_parser import (
+    parse_sensor_datasheet, SensorDatasheetInfo,
+    sensor_info_to_json, sensor_info_from_json,
+    identify_sensor, generate_register_header, generate_register_defines,
+)
 
 
 app = Flask(
@@ -876,6 +881,182 @@ def api_generate_driver():
     except Exception as exc:
         log.exception("Driver generation failed")
         return jsonify({"error": str(exc)}), 500
+
+
+# ── Sensor datasheet parsing ─────────────────────────────────────────
+
+_SENSOR_JOBS: dict[str, dict] = {}
+
+
+@app.route("/api/parse-sensor-pdf", methods=["POST"])
+def parse_sensor_pdf():
+    """Upload and parse a sensor/IC datasheet PDF for register map extraction.
+
+    Accepts multipart/form-data with field 'pdf'.
+    Returns the sensor info including register map, addresses, and device summary.
+    """
+    if "pdf" not in request.files:
+        return jsonify({"error": "No 'pdf' file in request"}), 400
+
+    f = request.files["pdf"]
+    if not f.filename or not f.filename.lower().endswith(".pdf"):
+        return jsonify({"error": "File must be a .pdf"}), 400
+
+    safe_name = secure_filename(f.filename)
+    job_id = uuid.uuid4().hex[:12]
+    upload_path = _UPLOAD_DIR / f"{job_id}_{safe_name}"
+    f.save(str(upload_path))
+
+    try:
+        info = parse_sensor_datasheet(str(upload_path), verbose=False)
+    except Exception as exc:
+        upload_path.unlink(missing_ok=True)
+        log.exception("Sensor PDF parsing failed")
+        return jsonify({"error": f"Sensor PDF parsing failed: {exc}"}), 500
+
+    _SENSOR_JOBS[job_id] = {
+        "filename": safe_name,
+        "upload_path": str(upload_path),
+        "info": info,
+    }
+
+    return jsonify({
+        "job_id": job_id,
+        "filename": safe_name,
+        "result": sensor_info_to_json(info),
+    })
+
+
+@app.route("/api/sensor-jobs")
+def list_sensor_jobs():
+    """List all parsed sensor datasheet jobs."""
+    jobs = []
+    for jid, jdata in _SENSOR_JOBS.items():
+        info: SensorDatasheetInfo = jdata["info"]
+        jobs.append({
+            "job_id": jid,
+            "filename": jdata["filename"],
+            "part_number": info.summary.part_number,
+            "vendor": info.summary.vendor_name,
+            "sensor_type": info.summary.sensor_type,
+            "register_count": len(info.register_map.registers),
+            "i2c_addresses": [f"0x{a:02X}" for a in info.address.i2c_addresses],
+            "protocol": info.address.protocol,
+        })
+    return jsonify(jobs)
+
+
+@app.route("/api/sensor-job/<job_id>")
+def get_sensor_job(job_id: str):
+    """Get full parsed result for a sensor datasheet job."""
+    if job_id not in _SENSOR_JOBS:
+        return jsonify({"error": "Job not found"}), 404
+    info = _SENSOR_JOBS[job_id]["info"]
+    return jsonify({
+        "job_id": job_id,
+        "filename": _SENSOR_JOBS[job_id]["filename"],
+        "result": sensor_info_to_json(info),
+    })
+
+
+@app.route("/api/sensor-job/<job_id>/header")
+def get_sensor_header(job_id: str):
+    """Generate C register-map header for a parsed sensor."""
+    if job_id not in _SENSOR_JOBS:
+        return jsonify({"error": "Job not found"}), 404
+    info: SensorDatasheetInfo = _SENSOR_JOBS[job_id]["info"]
+    prefix = request.args.get("prefix", "").strip()
+    header_code = generate_register_header(info, prefix)
+    return jsonify({
+        "job_id": job_id,
+        "filename": f"{(info.summary.part_number or 'sensor').lower()}_regs.h",
+        "code": header_code,
+    })
+
+
+@app.route("/api/sensor-job/<job_id>/driver", methods=["POST"])
+def generate_sensor_driver_from_job(job_id: str):
+    """Generate a complete Zephyr driver from a parsed sensor datasheet.
+
+    Merges the extracted register map into a driver_generator DriverSpec
+    and returns the full generated driver.
+
+    JSON body (all optional, overrides auto-detected values):
+        name:          str  driver name (default: part_number)
+        compatible:    str  DT compatible (default: "vendor,part")
+        bus:           str  "i2c" | "spi" (default: auto-detected)
+        has_interrupt:  bool  include IRQ boilerplate
+    """
+    if job_id not in _SENSOR_JOBS:
+        return jsonify({"error": "Job not found"}), 404
+
+    sensor: SensorDatasheetInfo = _SENSOR_JOBS[job_id]["info"]
+    data = request.get_json(force=True) or {}
+
+    # Auto-derive from sensor info
+    part = sensor.summary.part_number or "sensor"
+    vendor = sensor.summary.vendor or "vendor"
+    drv_name = data.get("name", part.lower().replace("-", "_"))
+    compat = data.get("compatible", f"{vendor},{part.lower()}")
+
+    # Bus auto-detection
+    bus = data.get("bus", "")
+    if not bus:
+        proto = sensor.address.protocol
+        if "i2c" in proto:
+            bus = "i2c"
+        elif "spi" in proto:
+            bus = "spi"
+        else:
+            bus = "i2c"  # safe default
+
+    # Convert sensor registers to driver RegisterDef list
+    from driver_generator import RegisterDef
+    reg_defs = [
+        RegisterDef(name=r.c_name, address=r.address, size=r.size, rw=r.access)
+        for r in sensor.register_map.registers
+    ]
+
+    try:
+        spec = DriverSpec(
+            name=drv_name,
+            driver_type="sensor",
+            compatible=compat,
+            bus=bus,
+            description=sensor.summary.description or f"{part} {sensor.summary.sensor_type} driver",
+            vendor=vendor,
+            has_interrupt=data.get("has_interrupt", False),
+            registers=reg_defs,
+        )
+        drv = generate_driver(spec)
+        result = driver_to_json(drv)
+        # Also include the register header
+        result["register_header"] = generate_register_header(sensor)
+        result["register_defines"] = generate_register_defines(sensor)
+        return jsonify(result)
+    except Exception as exc:
+        log.exception("Driver generation from sensor job failed")
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/identify-sensor", methods=["POST"])
+def api_identify_sensor():
+    """Identify sensor vendor from a part number.
+
+    JSON body: { "part_number": "BME280" }
+    """
+    body = request.get_json(force=True)
+    pn = body.get("part_number", "").strip()
+    if not pn:
+        return jsonify({"error": "No part_number provided"}), 400
+
+    result = identify_sensor(pn)
+    return jsonify({
+        "part_number": pn,
+        "known": result is not None,
+        "vendor": result[0] if result else None,
+        "vendor_name": result[1] if result else None,
+    })
 
 
 # ── Entry point ──────────────────────────────────────────────────────

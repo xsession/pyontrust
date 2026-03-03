@@ -922,6 +922,9 @@ def parse_datasheet(pdf_path: str, verbose: bool = False) -> DatasheetInfo:
     -------
     DatasheetInfo
     """
+    # Always suppress pdfminer's extremely verbose per-token debug logging
+    logging.getLogger("pdfminer").setLevel(logging.WARNING)
+
     if verbose:
         logging.basicConfig(level=logging.DEBUG)
 
