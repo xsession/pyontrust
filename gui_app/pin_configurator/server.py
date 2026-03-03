@@ -89,7 +89,13 @@ def index():
 @app.route("/api/boards")
 def list_boards():
     return jsonify([
-        {"id": k, "name": _get_board(k).soc, "board": _get_board(k).board}
+        {
+            "id": k,
+            "name": _get_board(k).soc,
+            "board": _get_board(k).board,
+            "package": _get_board(k).package,
+            "pin_count": _get_board(k).pin_count,
+        }
         for k in BOARDS
     ])
 
@@ -241,6 +247,10 @@ def project_file_save():
         "periph_states": body.get("periph_states", {}),
         "generated_overlay": body.get("generated_overlay", ""),
         "generated_conf": body.get("generated_conf", ""),
+        "sensor_jobs": body.get("sensor_jobs", []),
+        "sensor_selected": body.get("sensor_selected", ""),
+        "mcu_jobs": body.get("mcu_jobs", []),
+        "mcu_selected": body.get("mcu_selected", ""),
     }
 
     fp.write_text(json.dumps(project, indent=2), encoding="utf-8")

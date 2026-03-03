@@ -14,3 +14,7 @@ pyontrust_packages/greeting/__pycache__/
 .venv-sdr/
 
 artifacts/
+
+gui_app/pin_configurator/.venv/
+
+gui_app/baram/baram-web/Project(1)/

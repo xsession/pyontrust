@@ -276,6 +276,42 @@ svg.chip-svg .pin-func {
 .color-gpio  { stroke: var(--fg-dim) !important; }
 .color-comp  { stroke: var(--red) !important; }
 
+/* BGA grid-specific styles */
+svg.chip-svg .bga-ball {
+  stroke-width: 1.5;
+  cursor: pointer;
+  transition: fill .15s, stroke .15s;
+}
+svg.chip-svg .bga-ball:hover {
+  stroke-width: 2.5;
+  filter: brightness(1.3);
+}
+svg.chip-svg .bga-ball.selected {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+  fill: rgba(137, 180, 250, .25);
+}
+svg.chip-svg .bga-ball.assigned {
+  stroke: var(--green);
+  fill: rgba(166, 227, 161, .2);
+}
+svg.chip-svg .bga-ball.power {
+  fill: rgba(249, 226, 175, .18);
+  stroke: var(--yellow);
+}
+svg.chip-svg .bga-ball.ground {
+  fill: rgba(108, 112, 134, .18);
+  stroke: var(--fg-dim);
+}
+svg.chip-svg .bga-ball.special {
+  fill: rgba(203, 166, 247, .15);
+  stroke: var(--mauve);
+}
+svg.chip-svg .bga-label {
+  pointer-events: none;
+  font-weight: 600;
+}
+
 /* ─── Right panel: Pin config ──────────────────────────────── */
 .config-panel {
   width: 320px;
@@ -613,6 +649,35 @@ svg.chip-svg .pin-func {
 }
 .sns-job-item .job-info { font-size: 11px; color: var(--fg-dim); }
 
+/* ─── Job remove button (shared for sensor + MCU items) ──── */
+.job-remove-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  color: var(--fg-dim);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity .15s, background .15s, color .15s;
+}
+.sns-job-item:hover .job-remove-btn,
+.pkg-job-item:hover .job-remove-btn { opacity: 1; }
+.job-remove-btn:hover {
+  background: var(--red);
+  color: #fff;
+  opacity: 1;
+}
+.sns-job-item, .pkg-job-item { position: relative; }
+
 .sns-main {
   flex: 1;
   display: flex;
@@ -945,6 +1010,14 @@ svg.chip-svg .pin-func {
 }
 .existing-pkg-list li .file-icon { color: var(--green); }
 .existing-pkg-list li .file-size { margin-left: auto; font-size: 11px; }
+.existing-pkg-list li.pkg-board-link:hover {
+  background: var(--bg3);
+  color: var(--fg);
+}
+.existing-pkg-list li.pkg-board-link:active {
+  background: var(--accent);
+  color: var(--bg);
+}
 
 /* Spinner for loading */
 .spinner {

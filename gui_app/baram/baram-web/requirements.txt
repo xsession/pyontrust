@@ -1,0 +1,10 @@
+flask>=3.0.0
+flask-sock>=0.7.0
+werkzeug>=3.0.0
+lxml>=4.9.0
+xmlschema>=2.0.0
+h5py>=3.0.0
+numpy>=1.24.0
+PyYAML>=6.0
+psutil>=5.9.0
+filelock>=3.12.0

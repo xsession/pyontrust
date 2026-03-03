@@ -71,7 +71,8 @@ async function loadBoardList() {
   boards.forEach(b => {
     const opt = document.createElement("option");
     opt.value = b.id;
-    opt.textContent = `${b.name} (${b.board})`;
+    const pkg = b.package ? ` – ${b.package}` : "";
+    opt.textContent = `${b.name}${pkg}`;
     boardSelect.appendChild(opt);
   });
   if (boards.length) {
@@ -155,11 +156,47 @@ function renderPeripherals() {
 
 // ── Chip SVG renderer ────────────────────────────────────────────────
 
+/** Detect whether the package name indicates a BGA / grid layout. */
+function isBgaPackage(pkgName) {
+  if (!pkgName) return false;
+  const up = pkgName.toUpperCase();
+  return /BGA|WLCSP|CSP|LGA/i.test(up);
+}
+
 function renderChip() {
   if (!boardData) return;
 
+  if (isBgaPackage(boardData.package)) {
+    renderChipBga();
+  } else {
+    renderChipQfp();
+  }
+
+  // Attach click handlers (shared)
+  chipContainer.querySelectorAll(".pin-pad").forEach(el => {
+    el.addEventListener("click", () => {
+      const pinNum = parseInt(el.dataset.pin);
+      selectPin(pinNum);
+    });
+  });
+}
+
+// ── QFP / LQFP / QFN renderer (4-sided) ─────────────────────────────
+
+function renderChipQfp() {
   const pinCount = boardData.pin_count;
-  const perSide  = pinCount / 4;
+
+  // Gather pins per side from board data
+  const sides = { left: [], bottom: [], right: [], top: [] };
+  boardData.pins.forEach(p => {
+    const s = p.side || "left";
+    if (sides[s]) sides[s].push(p);
+    else sides.left.push(p); // fallback
+  });
+
+  // Compute how many pins on the longest side
+  const maxSide = Math.max(sides.left.length, sides.bottom.length,
+                           sides.right.length, sides.top.length, 1);
 
   // Layout constants
   const PAD_W     = 48;   // pin pad width
@@ -168,7 +205,7 @@ function renderChip() {
   const LABEL_W   = 90;   // space for labels outside
   const BODY_PAD  = 8;    // gap between pads and body
 
-  const bodyW     = perSide * (PAD_H + PAD_GAP) + 20;
+  const bodyW     = maxSide * (PAD_H + PAD_GAP) + 20;
   const bodyH     = bodyW;  // square body
 
   const svgW = bodyW + 2 * (PAD_W + LABEL_W + BODY_PAD + 20);
@@ -192,40 +229,35 @@ function renderChip() {
   svg += `<text x="${cx}" y="${cy - 8}" text-anchor="middle" fill="var(--fg-dim)" font-size="14" font-weight="700" font-family="Consolas">${boardData.soc}</text>`;
   svg += `<text x="${cx}" y="${cy + 10}" text-anchor="middle" fill="var(--fg-dim)" font-size="10" font-family="Consolas">${boardData.package}</text>`;
 
-  // Assign pins to sides
-  const sides = { left: [], bottom: [], right: [], top: [] };
-  boardData.pins.forEach(p => sides[p.side].push(p));
-
-  // Render pins per side
   // LEFT: pins go top to bottom, pads extend left from body
   sides.left.forEach((pin, i) => {
     const px = bodyX - BODY_PAD - PAD_W;
     const py = bodyY + 10 + i * (PAD_H + PAD_GAP);
-    renderPin(pin, px, py, PAD_W, PAD_H, "left");
+    renderQfpPin(svg, pin, px, py, PAD_W, PAD_H, "left");
   });
 
   // BOTTOM: pins go left to right, pads extend below body
   sides.bottom.forEach((pin, i) => {
     const px = bodyX + 10 + i * (PAD_H + PAD_GAP);
     const py = bodyY + bodyH + BODY_PAD;
-    renderPin(pin, px, py, PAD_H, PAD_W, "bottom");
+    renderQfpPin(svg, pin, px, py, PAD_H, PAD_W, "bottom");
   });
 
   // RIGHT: pins go bottom to top, pads extend right from body
   sides.right.forEach((pin, i) => {
     const px = bodyX + bodyW + BODY_PAD;
     const py = bodyY + bodyH - 10 - PAD_H - i * (PAD_H + PAD_GAP);
-    renderPin(pin, px, py, PAD_W, PAD_H, "right");
+    renderQfpPin(svg, pin, px, py, PAD_W, PAD_H, "right");
   });
 
   // TOP: pins go right to left, pads extend above body
   sides.top.forEach((pin, i) => {
     const px = bodyX + bodyW - 10 - PAD_H - i * (PAD_H + PAD_GAP);
     const py = bodyY - BODY_PAD - PAD_W;
-    renderPin(pin, px, py, PAD_H, PAD_W, "top");
+    renderQfpPin(svg, pin, px, py, PAD_H, PAD_W, "top");
   });
 
-  function renderPin(pin, x, y, w, h, side) {
+  function renderQfpPin(svg_, pin, x, y, w, h, side) {
     const state = pinStates[pin.number];
     const isSelected = selectedPin === pin.number;
 
@@ -239,7 +271,6 @@ function renderChip() {
     svg += `<rect class="${cls}" x="${x}" y="${y}" width="${w}" height="${h}" rx="3"
                   data-pin="${pin.number}"/>`;
 
-    // Pin number
     let numX, numY, nameX, nameY, funcX, funcY;
     let numAnchor = "middle", nameAnchor = "middle";
 
@@ -264,7 +295,6 @@ function renderChip() {
     svg += `<text class="pin-num" x="${numX}" y="${numY}" text-anchor="${numAnchor}">${pin.number}</text>`;
     svg += `<text class="pin-name" x="${nameX}" y="${nameY}" text-anchor="${nameAnchor}">${pin.name}</text>`;
 
-    // Show assigned function
     const funcLabel = state && state.af ? state.af.name : (pin.kind !== "io" ? pin.default_function : "");
     if (funcLabel) {
       const fanchor = (side === "left") ? "end" : (side === "right") ? "start" : "middle";
@@ -274,14 +304,170 @@ function renderChip() {
 
   svg += `</svg>`;
   chipContainer.innerHTML = svg;
+}
 
-  // Attach click handlers
-  chipContainer.querySelectorAll(".pin-pad").forEach(el => {
-    el.addEventListener("click", () => {
-      const pinNum = parseInt(el.dataset.pin);
-      selectPin(pinNum);
+// ── BGA / WLCSP / UFBGA renderer (grid layout) ──────────────────────
+
+function renderChipBga() {
+  const pins = boardData.pins;
+  const pinCount = boardData.pin_count;
+
+  // Try to determine grid dimensions from pin names or pin numbers
+  // BGA naming: letter(s) + number  e.g. "A1", "AB12"
+  // Or encoded pin numbers: row*100 + col  (e.g. 101=row1/col1, 305=row3/col5)
+  const bgaRe = /^([A-Z]{1,2})(\d+)$/;
+
+  const rowSet = new Set();
+  const colSet = new Set();
+  const gridMap = {};  // { "row_col": pin }
+
+  // First try BGA letter+number naming
+  let bgaNameMatch = 0;
+  for (const pin of pins) {
+    const m = bgaRe.exec(pin.name.toUpperCase());
+    if (m) bgaNameMatch++;
+  }
+
+  const useBgaNames = bgaNameMatch > pinCount * 0.3;
+
+  if (useBgaNames) {
+    // Use BGA ball names (A1, B2, ...)
+    for (const pin of pins) {
+      const m = bgaRe.exec(pin.name.toUpperCase());
+      if (m) {
+        rowSet.add(m[1]);
+        colSet.add(parseInt(m[2]));
+        gridMap[`${m[1]}_${m[2]}`] = pin;
+      }
+    }
+  } else {
+    // Use encoded pin numbers (row*100+col) or fall back to sequential grid
+    let encoded = 0;
+    for (const pin of pins) {
+      if (pin.number >= 100) {
+        const row = Math.floor(pin.number / 100);
+        const col = pin.number % 100;
+        if (row >= 1 && row <= 30 && col >= 1 && col <= 30) encoded++;
+      }
+    }
+
+    if (encoded > pinCount * 0.5) {
+      // Encoded row*100+col format
+      for (const pin of pins) {
+        const row = Math.floor(pin.number / 100);
+        const col = pin.number % 100;
+        const rowLetter = String.fromCharCode(64 + row); // 1→A, 2→B, ...
+        rowSet.add(rowLetter);
+        colSet.add(col);
+        gridMap[`${rowLetter}_${col}`] = pin;
+      }
+    } else {
+      // Fallback: arrange in a square grid by sequence
+      const side = Math.ceil(Math.sqrt(pinCount));
+      let idx = 0;
+      for (let r = 0; r < side; r++) {
+        const rowLetter = String.fromCharCode(65 + r);
+        rowSet.add(rowLetter);
+        for (let c = 1; c <= side; c++) {
+          colSet.add(c);
+          if (idx < pins.length) {
+            gridMap[`${rowLetter}_${c}`] = pins[idx++];
+          }
+        }
+      }
+    }
+  }
+
+  // Letter sorting for rows (A, B, ..., Z, AA, AB, ...)
+  const letterVal = (s) => {
+    let v = 0;
+    for (let i = 0; i < s.length; i++) v = v * 26 + (s.charCodeAt(i) - 64);
+    return v;
+  };
+
+  const gridRows = [...rowSet].sort((a, b) => letterVal(a) - letterVal(b));
+  const gridCols = [...colSet].sort((a, b) => a - b);
+
+  const nRows = gridRows.length;
+  const nCols = gridCols.length;
+
+  // Layout constants for BGA
+  const BALL_SIZE  = 28;   // ball pad size
+  const BALL_GAP   = 4;    // gap between balls
+  const CELL       = BALL_SIZE + BALL_GAP;
+  const HEADER     = 24;   // row/col header width
+  const MARGIN     = 60;   // outer margin for labels
+
+  const gridW = nCols * CELL;
+  const gridH = nRows * CELL;
+
+  const svgW = gridW + 2 * MARGIN + HEADER;
+  const svgH = gridH + 2 * MARGIN + HEADER;
+
+  const gridX = MARGIN + HEADER;
+  const gridY = MARGIN + HEADER;
+
+  let svg = `<svg class="chip-svg" width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}" xmlns="http://www.w3.org/2000/svg">`;
+
+  // Chip body background
+  svg += `<rect class="chip-body" x="${gridX - 6}" y="${gridY - 6}" width="${gridW + 12}" height="${gridH + 12}" rx="6"/>`;
+
+  // Pin-1 dot (top-left corner, A1)
+  svg += `<circle class="chip-dot" cx="${gridX - 12}" cy="${gridY - 12}" r="5"/>`;
+
+  // Chip label (centered above)
+  const titleY = 20;
+  svg += `<text x="${svgW / 2}" y="${titleY}" text-anchor="middle" fill="var(--fg-dim)" font-size="14" font-weight="700" font-family="Consolas">${boardData.soc}</text>`;
+  svg += `<text x="${svgW / 2}" y="${titleY + 16}" text-anchor="middle" fill="var(--fg-dim)" font-size="10" font-family="Consolas">${boardData.package}</text>`;
+
+  // Column headers (numbers)
+  gridCols.forEach((c, ci) => {
+    const x = gridX + ci * CELL + CELL / 2;
+    svg += `<text x="${x}" y="${gridY - 10}" text-anchor="middle" fill="var(--fg-dim)" font-size="10" font-family="Consolas">${c}</text>`;
+  });
+
+  // Row headers (letters) + balls
+  gridRows.forEach((r, ri) => {
+    const y = gridY + ri * CELL;
+
+    // Row header
+    svg += `<text x="${gridX - 12}" y="${y + CELL / 2 + 3}" text-anchor="middle" fill="var(--fg-dim)" font-size="10" font-family="Consolas">${r}</text>`;
+
+    gridCols.forEach((c, ci) => {
+      const pin = gridMap[`${r}_${c}`];
+      if (!pin) return; // empty position
+
+      const x = gridX + ci * CELL;
+      const state = pinStates[pin.number];
+      const isSelected = selectedPin === pin.number;
+
+      let cls = "pin-pad bga-ball";
+      if (pin.kind === "power")  cls += " power";
+      else if (pin.kind === "ground") cls += " ground";
+      else if (pin.kind === "special") cls += " special";
+      else if (state && state.af) cls += " assigned " + periphColor(state.af.peripheral);
+      if (isSelected) cls += " selected";
+
+      // Ball (circle inside cell)
+      const bcx = x + CELL / 2;
+      const bcy = y + CELL / 2;
+      const br = BALL_SIZE / 2;
+      svg += `<circle class="${cls}" cx="${bcx}" cy="${bcy}" r="${br}" data-pin="${pin.number}"/>`;
+
+      // Pin name inside or below ball
+      const shortName = pin.name.length > 4 ? pin.name.slice(0, 4) : pin.name;
+      svg += `<text class="bga-label" x="${bcx}" y="${bcy + 3}" text-anchor="middle" font-size="7" font-family="Consolas" fill="var(--fg)">${shortName}</text>`;
+
+      // Show assigned function as tooltip title
+      const funcLabel = state && state.af ? state.af.name : (pin.kind !== "io" ? pin.default_function : "");
+      if (funcLabel) {
+        svg += `<title>${pin.name}: ${funcLabel}</title>`;
+      }
     });
   });
+
+  svg += `</svg>`;
+  chipContainer.innerHTML = svg;
 }
 
 function updatePinVisuals() {
@@ -308,15 +494,27 @@ function renderConfigPanel() {
   const pin = boardData.pins.find(p => p.number === selectedPin);
   if (!pin) return;
 
+  // For BGA packages, show grid position (e.g. "A1") instead of raw pin number
+  const bgaPkg = isBgaPackage(boardData.package);
+  let pinLabel;
+  if (bgaPkg && pin.number >= 100) {
+    const row = Math.floor(pin.number / 100);
+    const col = pin.number % 100;
+    const rowLetter = String.fromCharCode(64 + row);
+    pinLabel = `${rowLetter}${col}`;
+  } else {
+    pinLabel = `Pin ${pin.number}`;
+  }
+
   if (pin.kind !== "io") {
-    panel.innerHTML = `<h3><span class="pin-badge">${pin.name}</span> Pin ${pin.number}</h3>
+    panel.innerHTML = `<h3><span class="pin-badge">${pin.name}</span> ${pinLabel}</h3>
       <div class="empty-state">${pin.kind === 'power' ? 'Power pin' : pin.kind === 'ground' ? 'Ground pin' : 'Special pin'}<br>${pin.default_function}</div>`;
     return;
   }
 
   const state = pinStates[pin.number] || {};
 
-  let html = `<h3><span class="pin-badge">${pin.name}</span> Pin ${pin.number}</h3>`;
+  let html = `<h3><span class="pin-badge">${pin.name}</span> ${pinLabel}</h3>`;
 
   // Reset button
   html += `<div style="margin-bottom:12px;">
@@ -571,6 +769,20 @@ async function saveProjectFile(filePath) {
     toast("No board loaded");
     return;
   }
+
+  // Serialize sensor & MCU job histories for project save
+  const snsJobsData = snsJobs.map(j => ({
+    job_id: j.job_id,
+    filename: j.filename,
+    result: j.result,
+    summary: j.summary || null,
+  }));
+  const pkgJobsData = pkgJobs.map(j => ({
+    job_id: j.job_id,
+    filename: j.filename,
+    result: j.result,
+  }));
+
   const res = await fetch("/api/project-file/save", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -581,6 +793,10 @@ async function saveProjectFile(filePath) {
       periph_states: { ...periphStates },
       generated_overlay: generatedOverlay,
       generated_conf: generatedConf,
+      sensor_jobs: snsJobsData,
+      sensor_selected: snsSelectedJob || "",
+      mcu_jobs: pkgJobsData,
+      mcu_selected: pkgSelectedJob || "",
     }),
   });
   const result = await res.json();
@@ -661,6 +877,24 @@ async function loadProjectFile(filePath) {
   renderPeripherals();
   renderChip();
   renderConfigPanel();
+
+  // Restore sensor job history from project file
+  if (project.sensor_jobs && Array.isArray(project.sensor_jobs) && project.sensor_jobs.length) {
+    snsJobs = project.sensor_jobs;
+    snsSelectedJob = project.sensor_selected || null;
+    snsSaveToStorage();
+    snsRenderJobList();
+    if (snsSelectedJob) snsSelectJob(snsSelectedJob);
+  }
+
+  // Restore MCU/package job history from project file
+  if (project.mcu_jobs && Array.isArray(project.mcu_jobs) && project.mcu_jobs.length) {
+    pkgJobs = project.mcu_jobs;
+    pkgSelectedJob = project.mcu_selected || null;
+    pkgSaveToStorage();
+    pkgRenderJobList();
+    if (pkgSelectedJob) pkgSelectJob(pkgSelectedJob);
+  }
 
   toast(`Project loaded (${Object.keys(pinStates).length} pin(s))`);
 }
@@ -840,6 +1074,53 @@ let pkgJobs = [];           // Parsed PDF jobs
 let pkgSelectedJob = null;  // Currently selected job_id
 let pkgSelectedPkgs = new Set(); // Selected package names for generation
 
+// ── LocalStorage persistence helpers ─────────────────────────────────
+
+function pkgSaveToStorage() {
+  try {
+    const data = pkgJobs.map(j => ({
+      job_id: j.job_id,
+      filename: j.filename,
+      result: j.result,
+    }));
+    localStorage.setItem("zpincfg_pkg_jobs", JSON.stringify(data));
+    localStorage.setItem("zpincfg_pkg_selected", pkgSelectedJob || "");
+  } catch (e) { console.warn("pkgSaveToStorage:", e); }
+}
+
+function pkgLoadFromStorage() {
+  try {
+    const raw = localStorage.getItem("zpincfg_pkg_jobs");
+    if (raw) {
+      const data = JSON.parse(raw);
+      if (Array.isArray(data) && data.length) {
+        pkgJobs = data;
+        pkgSelectedJob = localStorage.getItem("zpincfg_pkg_selected") || null;
+        return true;
+      }
+    }
+  } catch (e) { console.warn("pkgLoadFromStorage:", e); }
+  return false;
+}
+
+function pkgRemoveJob(jobId) {
+  pkgJobs = pkgJobs.filter(j => j.job_id !== jobId);
+  if (pkgSelectedJob === jobId) {
+    pkgSelectedJob = pkgJobs.length ? pkgJobs[0].job_id : null;
+  }
+  pkgSaveToStorage();
+  pkgRenderJobList();
+  if (pkgSelectedJob) pkgSelectJob(pkgSelectedJob);
+  else {
+    $("#pkgMain").innerHTML = `<div class="pkg-empty">
+      <div class="icon">&#128230;</div>
+      <div>MCU Package Generator</div>
+      <div class="hint">Upload an MCU datasheet PDF to extract pin-mux data<br>
+        and generate board definition files.</div>
+    </div>`;
+  }
+}
+
 function pkgInit() {
   const uploadArea = $("#pdfUploadArea");
   const fileInput  = $("#pdfFileInput");
@@ -878,6 +1159,14 @@ function pkgInit() {
 
   // Load existing packages on init
   pkgLoadExisting();
+
+  // Restore from localStorage
+  if (pkgLoadFromStorage()) {
+    pkgRenderJobList();
+    if (pkgSelectedJob) {
+      pkgSelectJob(pkgSelectedJob);
+    }
+  }
 }
 
 
@@ -916,6 +1205,7 @@ async function pkgUploadPdf(file) {
       result: data.result,
     });
 
+    pkgSaveToStorage();
     pkgRenderJobList();
     pkgSelectJob(data.job_id);
     toast(`Parsed ${data.filename}: ${data.result.packages.length} package(s) found`);
@@ -946,6 +1236,7 @@ function pkgRenderJobList() {
     return `
       <div class="pkg-job-item ${isSelected ? 'selected' : ''}"
            data-job-id="${job.job_id}">
+        <button class="job-remove-btn" data-remove-id="${job.job_id}" title="Remove">&times;</button>
         <div class="job-filename">
           ${job.filename}
           ${r.device.soc ? `<span class="soc-badge">${r.device.soc}</span>` : ''}
@@ -960,7 +1251,18 @@ function pkgRenderJobList() {
 
   // Attach click handlers
   list.querySelectorAll(".pkg-job-item").forEach(el => {
-    el.addEventListener("click", () => pkgSelectJob(el.dataset.jobId));
+    el.addEventListener("click", (e) => {
+      if (e.target.closest(".job-remove-btn")) return;
+      pkgSelectJob(el.dataset.jobId);
+    });
+  });
+
+  // Attach remove handlers
+  list.querySelectorAll(".job-remove-btn").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      pkgRemoveJob(btn.dataset.removeId);
+    });
   });
 }
 
@@ -968,6 +1270,7 @@ function pkgRenderJobList() {
 function pkgSelectJob(jobId) {
   pkgSelectedJob = jobId;
   pkgSelectedPkgs = new Set();
+  pkgSaveToStorage();
   pkgRenderJobList();
   pkgRenderDetail();
 }
@@ -1192,13 +1495,50 @@ async function pkgLoadExisting() {
       return;
     }
 
-    list.innerHTML = files.map(f => `
-      <li>
+    list.innerHTML = files.map(f => {
+      // Derive a display name from the module: e.g. "stm32l476_lqfp64" → "STM32L476 – LQFP64"
+      const parts = f.module.split("_");
+      let soc = "", pkg = "";
+      // Find where package part starts (common suffixes: qfp, lqfp, ufbga, wlcsp, bga, qfn, etc.)
+      const pkgRe = /^(lqfp|qfp|ufbga|wlcsp|bga|qfn|csp|lga|ssop|tssop|soic)\d*$/i;
+      for (let i = parts.length - 1; i >= 0; i--) {
+        if (pkgRe.test(parts[i])) {
+          pkg = parts.slice(i).join("_").toUpperCase();
+          soc = parts.slice(0, i).join("_").toUpperCase();
+          break;
+        }
+      }
+      if (!soc) { soc = f.module.toUpperCase(); }
+      const label = pkg ? `${soc} – ${pkg}` : soc;
+
+      return `
+      <li class="pkg-board-link" data-module="${f.module}" title="Click to open in Pin Configurator">
         <span class="file-icon">&#128196;</span>
-        <span>${f.module}</span>
+        <span>${label}</span>
         <span class="file-size">${(f.size / 1024).toFixed(1)} KB</span>
-      </li>
-    `).join("");
+      </li>`;
+    }).join("");
+
+    // Make entries clickable → switch to Pin Configurator with that board
+    list.querySelectorAll(".pkg-board-link").forEach(li => {
+      li.style.cursor = "pointer";
+      li.addEventListener("click", () => {
+        const mod = li.dataset.module;
+        // Find matching board in select
+        const opts = [...boardSelect.options];
+        const match = opts.find(o => o.value === mod || o.value.includes(mod));
+        if (match) {
+          boardSelect.value = match.value;
+          loadBoard(match.value);
+          // Switch to Pin Configurator tab
+          $$(".app-tab").forEach(t => t.classList.toggle("active", t.dataset.appTab === "configurator"));
+          $$(".tab-content").forEach(c => c.classList.toggle("active", c.dataset.appContent === "configurator"));
+          toast(`Loaded ${mod} in Pin Configurator`);
+        } else {
+          toast(`Board "${mod}" not found in selector`);
+        }
+      });
+    });
 
   } catch (err) {
     console.warn("Failed to load existing packages", err);
@@ -2849,6 +3189,7 @@ async function mcuFetchDatasheet(partNumber) {
       result: data.result,
     });
 
+    pkgSaveToStorage();
     pkgRenderJobList();
     pkgSelectJob(data.job_id);
 
@@ -2876,6 +3217,54 @@ async function mcuFetchDatasheet(partNumber) {
 
 let snsJobs = [];
 let snsSelectedJob = null;
+
+// ── LocalStorage persistence helpers ─────────────────────────────────
+
+function snsSaveToStorage() {
+  try {
+    const data = snsJobs.map(j => ({
+      job_id: j.job_id,
+      filename: j.filename,
+      result: j.result,
+      summary: j.summary || null,
+    }));
+    localStorage.setItem("zpincfg_sns_jobs", JSON.stringify(data));
+    localStorage.setItem("zpincfg_sns_selected", snsSelectedJob || "");
+  } catch (e) { console.warn("snsSaveToStorage:", e); }
+}
+
+function snsLoadFromStorage() {
+  try {
+    const raw = localStorage.getItem("zpincfg_sns_jobs");
+    if (raw) {
+      const data = JSON.parse(raw);
+      if (Array.isArray(data) && data.length) {
+        snsJobs = data;
+        snsSelectedJob = localStorage.getItem("zpincfg_sns_selected") || null;
+        return true;
+      }
+    }
+  } catch (e) { console.warn("snsLoadFromStorage:", e); }
+  return false;
+}
+
+function snsRemoveJob(jobId) {
+  snsJobs = snsJobs.filter(j => j.job_id !== jobId);
+  if (snsSelectedJob === jobId) {
+    snsSelectedJob = snsJobs.length ? snsJobs[0].job_id : null;
+  }
+  snsSaveToStorage();
+  snsRenderJobList();
+  if (snsSelectedJob) snsSelectJob(snsSelectedJob);
+  else {
+    $("#snsMain").innerHTML = `<div class="sns-empty">
+      <div class="icon">🔬</div>
+      <div>Sensor / IC Register Parser</div>
+      <div class="hint">Upload a sensor datasheet PDF to extract the register map,<br>
+        I2C/SPI addresses, bit-fields, and generate C headers.</div>
+    </div>`;
+  }
+}
 
 function snsInit() {
   const uploadArea = $("#snsUploadArea");
@@ -2920,6 +3309,14 @@ function snsInit() {
   idInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") snsIdentifySensor();
   });
+
+  // Restore from localStorage on init
+  if (snsLoadFromStorage()) {
+    snsRenderJobList();
+    if (snsSelectedJob) {
+      snsSelectJob(snsSelectedJob);
+    }
+  }
 }
 
 
@@ -2954,6 +3351,7 @@ async function snsUploadPdf(file) {
       result: data.result,
     });
 
+    snsSaveToStorage();
     snsRenderJobList();
     snsSelectJob(data.job_id);
     toast(`Parsed ${data.result.summary.part_number || file.name}: ${data.result.register_map.registers.length} registers found`);
@@ -2968,27 +3366,47 @@ async function snsUploadPdf(file) {
 // ── Load existing jobs ───────────────────────────────────────────────
 
 async function snsLoadJobs() {
+  // First restore from localStorage (has full result data)
+  const hadLocal = snsLoadFromStorage();
+
   try {
     const res = await fetch("/api/sensor-jobs");
-    const data = await res.json();
+    const serverJobs = await res.json();
 
-    snsJobs = data.map(j => ({
-      job_id: j.job_id,
-      filename: j.filename,
-      result: null,           // lazy-loaded
-      summary: {
-        part_number: j.part_number,
-        vendor: j.vendor,
-        sensor_type: j.sensor_type,
-        register_count: j.register_count,
-        i2c_addresses: j.i2c_addresses,
-        protocol: j.protocol,
-      },
-    }));
+    // Merge: server jobs that we don't already have locally
+    const existingIds = new Set(snsJobs.map(j => j.job_id));
+    for (const j of serverJobs) {
+      if (!existingIds.has(j.job_id)) {
+        snsJobs.push({
+          job_id: j.job_id,
+          filename: j.filename,
+          result: null,           // lazy-loaded
+          summary: {
+            part_number: j.part_number,
+            vendor: j.vendor,
+            sensor_type: j.sensor_type,
+            register_count: j.register_count,
+            i2c_addresses: j.i2c_addresses,
+            protocol: j.protocol,
+          },
+        });
+      }
+    }
 
+    snsSaveToStorage();
     snsRenderJobList();
+
+    // Auto-select the previously selected job
+    if (snsSelectedJob) {
+      snsSelectJob(snsSelectedJob);
+    }
   } catch (err) {
     console.error("snsLoadJobs:", err);
+    // If server is unreachable but we have local data, still render
+    if (hadLocal) {
+      snsRenderJobList();
+      if (snsSelectedJob) snsSelectJob(snsSelectedJob);
+    }
   }
 }
 
@@ -3007,13 +3425,14 @@ function snsRenderJobList() {
 
   list.innerHTML = snsJobs.map(j => {
     const s = j.result ? j.result.summary : j.summary;
-    const pn = s.part_number || j.filename;
-    const vendor = s.vendor_name || s.vendor || "";
-    const type = s.sensor_type || "";
-    const regCount = j.result ? j.result.register_map.registers.length : (s.register_count || 0);
+    const pn = s ? (s.part_number || j.filename) : j.filename;
+    const vendor = s ? (s.vendor_name || s.vendor || "") : "";
+    const type = s ? (s.sensor_type || "") : "";
+    const regCount = j.result ? j.result.register_map.registers.length : (s ? s.register_count || 0 : 0);
     const selected = j.job_id === snsSelectedJob ? " selected" : "";
 
     return `<div class="sns-job-item${selected}" data-id="${j.job_id}">
+      <button class="job-remove-btn" data-remove-id="${j.job_id}" title="Remove">&times;</button>
       <div class="job-name">
         ${pn}
         ${vendor ? `<span class="sns-badge">${vendor}</span>` : ""}
@@ -3023,7 +3442,18 @@ function snsRenderJobList() {
   }).join("");
 
   list.querySelectorAll(".sns-job-item").forEach(el => {
-    el.addEventListener("click", () => snsSelectJob(el.dataset.id));
+    el.addEventListener("click", (e) => {
+      if (e.target.closest(".job-remove-btn")) return;
+      snsSelectJob(el.dataset.id);
+    });
+  });
+
+  // Attach remove handlers
+  list.querySelectorAll(".job-remove-btn").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      snsRemoveJob(btn.dataset.removeId);
+    });
   });
 }
 
@@ -3032,6 +3462,7 @@ function snsRenderJobList() {
 
 async function snsSelectJob(jobId) {
   snsSelectedJob = jobId;
+  snsSaveToStorage();
 
   // Highlight in list
   $$("#snsJobList .sns-job-item").forEach(el => {
@@ -3047,6 +3478,7 @@ async function snsSelectJob(jobId) {
       const res = await fetch(`/api/sensor-job/${jobId}`);
       const data = await res.json();
       job.result = data.result;
+      snsSaveToStorage(); // persist the full result
     } catch (err) {
       toast("Failed to load sensor data");
       return;
