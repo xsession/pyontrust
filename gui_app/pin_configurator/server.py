@@ -38,6 +38,9 @@ from pdf_parser import parse_datasheet, DatasheetInfo
 from package_generator import generate_board_files
 from overlay_parser import parse_import, import_result_to_json
 from datasheet_fetcher import identify_vendor, download_datasheet, fetch_and_parse
+from driver_generator import (
+    DriverSpec, DRIVER_TYPES, generate_driver, driver_to_json, spec_from_json,
+)
 
 
 app = Flask(
@@ -824,6 +827,55 @@ def api_fetch_datasheet():
         "part_number": pn,
         "result": _datasheet_to_json(info),
     })
+
+
+# ── Driver Generator ─────────────────────────────────────────────────
+
+@app.route("/api/driver-templates", methods=["GET"])
+def api_driver_templates():
+    """List available driver scaffolding templates."""
+    templates = []
+    for dt in DRIVER_TYPES:
+        templates.append({
+            "type": dt,
+            "description": {
+                "sensor": "Sensor API (sample_fetch / channel_get)",
+                "gpio": "GPIO controller driver",
+                "i2c": "I2C bus device driver",
+                "spi": "SPI bus device driver",
+                "uart": "UART serial driver",
+                "pwm": "PWM output driver",
+                "adc": "ADC channel driver",
+                "custom": "Bare DEVICE_DT_INST_DEFINE skeleton",
+            }.get(dt, dt),
+        })
+    return jsonify(templates)
+
+
+@app.route("/api/generate-driver", methods=["POST"])
+def api_generate_driver():
+    """Generate Zephyr driver boilerplate from a specification.
+
+    Request JSON:
+        name:          str   driver name (e.g. "my_sensor")
+        driver_type:   str   one of DRIVER_TYPES
+        compatible:    str   DT compatible (e.g. "vendor,my-sensor")
+        bus:           str   "i2c" | "spi" | "none"
+        description:   str   human-readable description
+        has_interrupt: bool  include IRQ boilerplate
+        registers:     list  [{name, address, size, rw}, ...]
+    """
+    data = request.get_json(force=True)
+    if not data:
+        return jsonify({"error": "JSON body required"}), 400
+
+    try:
+        spec = spec_from_json(data)
+        drv = generate_driver(spec)
+        return jsonify(driver_to_json(drv))
+    except Exception as exc:
+        log.exception("Driver generation failed")
+        return jsonify({"error": str(exc)}), 500
 
 
 # ── Entry point ──────────────────────────────────────────────────────

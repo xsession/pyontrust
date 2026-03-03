@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: Apache-2.0
+# Pyontrust Pin Configurator - Python Dependencies
+
+# Core web framework
+flask>=3.0.0
+werkzeug>=3.0.0
+
+# PDF parsing (datasheet parser)
+pdfplumber>=0.10.0
+
+# HTTP requests (datasheet fetcher)
+requests>=2.31.0
+
+# Development / Testing
+pytest>=8.0.0
+pytest-cov>=5.0.0
+flake8>=7.0.0
+
+# Optional: Renode RobotFramework testing
+# robotframework>=7.0
+# robotframework-renodekeywords>=0.1.0

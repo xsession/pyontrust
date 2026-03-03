@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Uploads / temp
+.uploads/
+
+# Build artifacts
+build-release/
+release/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Test / coverage
+htmlcov/
+.coverage
+.pytest_cache/
+
+# PDF backups
+pdf_parser_backup.py

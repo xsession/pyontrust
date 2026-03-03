@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: Apache-2.0
+# West extension commands for Pyontrust Pin Configurator
+
+west-commands:
+  - file: scripts/west/configure.py
+    commands:
+      - name: configure
+        class: Configure
+        help: Launch the Pyontrust pin configurator GUI

@@ -1,0 +1,77 @@
+# SPDX-License-Identifier: Apache-2.0
+
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyontrust-pin-configurator"
+version = "0.1.0"
+description = "Web-based Zephyr RTOS pin configurator with MCU datasheet parsing"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Pyontrust Contributors"},
+]
+keywords = ["zephyr", "rtos", "embedded", "pin-configurator", "mcu", "devicetree"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: Flask",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Embedded Systems",
+]
+dependencies = [
+    "flask>=3.0.0",
+    "werkzeug>=3.0.0",
+    "pdfplumber>=0.10.0",
+    "requests>=2.31.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=5.0.0",
+    "flake8>=7.0.0",
+]
+robot = [
+    "robotframework>=7.0",
+]
+
+[project.scripts]
+pyontrust = "run:main"
+
+[project.urls]
+Homepage = "https://github.com/pyontrust/pin-configurator"
+Documentation = "https://github.com/pyontrust/pin-configurator#readme"
+Issues = "https://github.com/pyontrust/pin-configurator/issues"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "integration: marks tests that require a running server",
+    "slow: marks tests that take >10s (e.g. PDF parsing)",
+]
+addopts = "-v --tb=short"
+
+[tool.flake8]
+max-line-length = 120
+exclude = [".venv", "__pycache__", "boards/__pycache__"]
+
+[tool.coverage.run]
+source = ["."]
+omit = [
+    "tests/*",
+    ".venv/*",
+    "__pycache__/*",
+    "pdf_parser_backup.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
