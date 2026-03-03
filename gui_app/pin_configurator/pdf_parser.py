@@ -1,26 +1,44 @@
 """
-MCU Datasheet PDF Parser – extracts pin-mux and package information.
+MCU Datasheet PDF Parser  –  multi-vendor, speed-optimised.
 
-Currently supports Texas Instruments MSPM0 family datasheets.
+Extracts **pin-mux / alternate-function tables**, **package pin-outs**,
+and a **device summary** (SOC name, flash, SRAM, clock) from the PDF
+datasheets of all major MCU manufacturers.
 
-The parser looks for:
-  1. **Package pin-out tables** – mapping physical pin number → pin name
-     for each package variant (e.g. 48-QFP, 64-QFP, 32-QFN …).
-  2. **PINCM pin-mux table** – lists every I/O pin's multiplexed functions
-     (function codes, peripheral, signal names).
-  3. **Device summary** – SOC name, flash/SRAM sizes, max clock frequency.
+Supported vendor families (auto-detected)
+-----------------------------------------
+  TI          MSPM0, MSP430, TMS320, CC13xx/CC26xx, AM243x, AM335x
+  ST          STM32 (F0/F1/F2/F3/F4/F7/G0/G4/H5/H7/L0/L1/L4/L5/U0/U5/WB/WL/C0)
+  NXP         LPC, i.MX RT, Kinetis (MKxx), S32K
+  Microchip   PIC16/PIC18/PIC24/dsPIC33, SAM (SAMD/SAML/SAME/SAMV), AVR
+  Nordic      nRF52, nRF53, nRF54, nRF91
+  Infineon    PSoC4/PSoC6, CY8C, XMC1000/XMC4000, TRAVEO
+  Renesas     RA (R7FA), RX, RL78, R5F
+  Espressif   ESP32, ESP32-S2/S3/C2/C3/C6/H2
+  Silicon Labs EFM32, EFR32, BGM/MGM
+  GigaDevice  GD32 (F/E/L/W/C/H/VF series)
+  WCH         CH32V, CH32X, CH57x, CH58x
+  Nuvoton     M031/M051/M261/M480, NUC series
+  Bouffalo Lab BL602, BL616, BL702, BL808
+  HPMicro     HPM5300, HPM6200, HPM6700
+  Puya        PY32F0, PY32F4
+  Artery      AT32F403, AT32F413, AT32F415, AT32F435
+  MindMotion  MM32F, MM32L
+  Air/Luat    Air001, Air32F103, Air105
 
 Usage
 -----
     from pdf_parser import parse_datasheet
-    result = parse_datasheet("path/to/MSPM0G3507.pdf")
-    # result is a DatasheetInfo dataclass
+    info = parse_datasheet("MSPM0G3507.pdf")
+    info = parse_datasheet("stm32l476rg.pdf")
+    info = parse_datasheet("nrf52840.pdf")
 """
 
 from __future__ import annotations
 
 import re
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -28,17 +46,15 @@ import pdfplumber
 
 log = logging.getLogger(__name__)
 
-# ─────────────────────────────────────────────────────────────────────
-# Data model for parsed results
-# ─────────────────────────────────────────────────────────────────────
+# ─────────────────────────── data model ──────────────────────────────
 
 @dataclass
 class PinMuxEntry:
-    """One alternate-function row from the PINCM table."""
+    """One alternate-function slot for a pin."""
     pin_name: str          # e.g. "PA0"
-    pincm: int             # PINCM register index (1-based)
-    function_id: int       # function code (0 = analog, 1 = GPIO, 2+ = alt)
-    function_name: str     # e.g. "TIMA0_CCP0", "UART0_TX", "GPIO"
+    pincm: int             # TI PINCM index, or AF number for STM32, or -1
+    function_id: int       # function code / AF number
+    function_name: str     # e.g. "TIMA0_CCP0", "TIM2_CH1", "GPIO"
     peripheral: str        # e.g. "tima0", "uart0", "gpioa"
     signal: str            # e.g. "ccp0", "tx", "0"
     direction: str = "io"  # "in" / "out" / "io" / "analog"
@@ -47,9 +63,9 @@ class PinMuxEntry:
 @dataclass
 class PackagePin:
     """One pin in a specific package."""
-    number: int            # physical pin number
+    number: int            # physical pin number (BGA encoded as row*100+col)
     name: str              # e.g. "PA0", "VDD", "GND", "NRST"
-    port: str = ""         # "A" or "B" (empty for power/special)
+    port: str = ""         # port letter (empty for power/special)
     gpio_num: int = -1     # GPIO bit number (-1 for non-GPIO)
     kind: str = "io"       # "io" / "power" / "ground" / "special"
 
@@ -57,7 +73,7 @@ class PackagePin:
 @dataclass
 class PackageInfo:
     """Describes one physical package variant."""
-    name: str              # e.g. "QFP-48", "LQFP-64"
+    name: str              # e.g. "QFP-48", "LQFP64"
     pin_count: int
     pins: list[PackagePin] = field(default_factory=list)
 
@@ -65,8 +81,8 @@ class PackageInfo:
 @dataclass
 class DeviceSummary:
     """Top-level device info extracted from the datasheet."""
-    soc: str = ""                  # e.g. "MSPM0G3507"
-    vendor: str = "ti"
+    soc: str = ""
+    vendor: str = ""
     flash_size_kb: int = 0
     sram_size_kb: int = 0
     clock_hz: int = 0
@@ -78,622 +94,822 @@ class DatasheetInfo:
     device: DeviceSummary = field(default_factory=DeviceSummary)
     packages: list[PackageInfo] = field(default_factory=list)
     pin_mux: dict[str, list[PinMuxEntry]] = field(default_factory=dict)
-    # key = pin_name (e.g. "PA0"), value = list of alt functions
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Regex patterns for TI MSPM0 datasheets
-# ─────────────────────────────────────────────────────────────────────
+# ────────────────────── compiled regex cache ─────────────────────────
 
-# Match pin names like PA0, PA31, PB0, PB22
-_RE_PIN_NAME = re.compile(r'^P([AB])(\d+)$')
+_RE_GPIO_PIN = re.compile(r'^P([A-K])(\d{1,2})$')
+_RE_TI_PIN   = re.compile(r'^P([AB])(\d+)$')
+_RE_STM32_SOC = re.compile(r'STM32[A-Z]\d{3}[A-Z0-9]*', re.I)
+_RE_TI_SOC    = re.compile(r'MSPM0[A-Z]\d{4}', re.I)
+_RE_PKG_NxPIN = re.compile(r'(\d+)[\s-]*[Pp]in\s+([A-Z]{2,8})', re.I)
+_RE_PKG_TYPE  = re.compile(
+    r'(LQFP|UFBGA|WLCSP|BGA|TFBGA|TSSOP|UFQFPN|QFN|QFP|TQFP|VFQFPN|HVQFN|'
+    r'MAPBGA|EWLCSP|SO|SOIC|SSOP|CSP|MLF|TFLGA|FBGA)\s*[-]?\s*(\d+)', re.I)
+_RE_FUNC_SPLIT = re.compile(r'([A-Za-z]+\d*)(?:_(.+))?')
+_RE_BGA_COORD  = re.compile(r'^([A-Z])(\d+)$')
 
-# Match package descriptions like "48-Pin LQFP", "64-Pin QFP", "32-Pin QFN"
-_RE_PKG_HEADER = re.compile(
-    r'(\d+)[\s-]*[Pp]in\s+([A-Z]{2,6})',
-    re.IGNORECASE,
-)
+# ── broad SOC-detection patterns (most specific first) ──
+_VENDOR_PATTERNS: list[tuple[str, re.Pattern]] = [
+    ("ti",         re.compile(r'MSPM0[A-Z]\d|MSP430|TMS320|CC[12][36]\d{2}|AM[23]\d{2}', re.I)),
+    ("st",         re.compile(r'STM32[A-Z]\d{3}|STM8[SLA]', re.I)),
+    ("nxp",        re.compile(r'LPC\d{3,4}|MIMXRT\d|MK[LEVW]\d|S32K|MCX[A-Z]\d', re.I)),
+    ("microchip",  re.compile(r'PIC\d{2}|dsPIC|SAM[DLEVC]\d|AT(?:mega|tiny|SAM)|AVR\d', re.I)),
+    ("nordic",     re.compile(r'nRF\d{4,5}', re.I)),
+    ("infineon",   re.compile(r'PSoC\s*[46]|CY8C|XMC[14]\d{3}|TRAVEO', re.I)),
+    ("renesas",    re.compile(r'R[57]F\w{5,}|RA\d[A-Z]\d|RX\d{3}|RL78', re.I)),
+    ("espressif",  re.compile(r'ESP32[-]?[A-Z0-9]*', re.I)),
+    ("silabs",     re.compile(r'EF[MR]32[A-Z]{2}\d|BGM\d|MGM\d', re.I)),
+    ("gigadevice", re.compile(r'GD32[A-Z]\d{3}', re.I)),
+    ("wch",        re.compile(r'CH32[VX]\d{3}|CH5[78]\d', re.I)),
+    ("nuvoton",    re.compile(r'M\d{3}[A-Z]|NUC\d{3}', re.I)),
+    ("bouffalo",   re.compile(r'BL[6-8]\d{2}', re.I)),
+    ("hpmicro",    re.compile(r'HPM\d{4}', re.I)),
+    ("puya",       re.compile(r'PY32[A-Z]\d', re.I)),
+    ("artery",     re.compile(r'AT32[A-Z]\d{3}', re.I)),
+    ("mindmotion", re.compile(r'MM32[A-Z]', re.I)),
+    ("luat",       re.compile(r'Air\d{3}', re.I)),
+]
 
-# Match PINCM column header patterns
-_RE_PINCM_HDR = re.compile(r'PINCM|Pin\s*Name|Function', re.IGNORECASE)
+# power / ground / special keywords (union across vendors)
+_PWR = frozenset({
+    'VDD', 'AVDD', 'DVDD', 'VCORE', 'VDDA', 'VDDIO2', 'VDDIO',
+    'VDDUSB', 'VDD12', 'VBAT', 'VREF+', 'VREF-', 'VCAP1', 'VCAP2',
+    'VLCD', 'VDDSMPS', 'VDD_SMPS', 'SMPS', 'VBUS', 'VDDQ', 'V33',
+    'VCC', 'AVCC', 'VDDANA', 'VDD_IO', 'VDDIOP', 'VDDIOA', 'VDDIOB',
+    'DECOUPLE', 'DEC1', 'DEC4', 'DEC6',
+})
+_GND = frozenset({
+    'GND', 'VSS', 'AVSS', 'DVSS', 'VSSA', 'VSSSMPS', 'VSS_SMPS',
+    'AGND', 'DGND', 'EPAD', 'EP', 'EXPOSED',
+})
+_SPEC = frozenset({
+    'NRST', 'RESET', 'RSTN', '/RESET', 'XIN', 'XOUT', 'XIN32', 'XOUT32',
+    'SWDIO', 'SWCLK', 'SWDCLK', 'SWO', 'JTMS', 'JTCK', 'JTDI', 'JTDO',
+    'NJTRST', 'BOOT0', 'PDR_ON', 'BYPASS_REG', 'TEST', 'TCK', 'TMS',
+    'TDI', 'TDO', 'OSC_IN', 'OSC_OUT', 'OSC32_IN', 'OSC32_OUT',
+    'NC', 'DNC', 'N/C', 'RFU',
+})
 
-# Match function entries like "TIMA0.CCP0", "UART0.TX", "GPIO"
-_RE_FUNC = re.compile(r'([A-Z]+\d*)[._]?([A-Z0-9_]*)', re.IGNORECASE)
+# STM32-like vendors (GD32, AT32, PY32, MM32 share STM32 table format)
+_STM32_LIKE = frozenset({"st", "gigadevice", "artery", "puya", "mindmotion"})
 
-# Match typical SOC part numbers: MSPM0G3507, MSPM0L1306, etc.
-_RE_SOC = re.compile(r'MSPM0[A-Z]\d{4}', re.IGNORECASE)
+# Package-name decode (handles reversed text from rotated PDF columns)
+_PKG_DECODE = {
+    "LQFP": "LQFP",    "PFQL": "LQFP",
+    "UFBGA": "UFBGA",  "AGBFU": "UFBGA",
+    "WLCSP": "WLCSP",  "PSCLW": "WLCSP",
+    "QFN": "QFN",       "NFQ": "QFN",
+    "TSSOP": "TSSOP",   "POSST": "TSSOP",
+    "UFQFPN": "UFQFPN", "NPFQFU": "UFQFPN",
+    "TQFP": "TQFP",     "PFQT": "TQFP",
+    "VFQFPN": "VFQFPN", "NPFQFV": "VFQFPN",
+    "HVQFN": "HVQFN",   "NFQVH": "HVQFN",
+    "BGA": "BGA",        "AGB": "BGA",
+}
 
-# Power / ground / special pin names
-_PWR_NAMES = {'VDD', 'AVDD', 'DVDD', 'VCORE'}
-_GND_NAMES = {'GND', 'VSS', 'AVSS', 'DVSS'}
-_SPEC_NAMES = {'NRST', 'XIN', 'XOUT', 'SWDIO', 'SWCLK', 'SWO',
-               'TEST', 'TCK', 'TMS', 'TDI', 'TDO'}
 
+# ──────────────────────── tiny helpers ───────────────────────────────
 
-# ─────────────────────────────────────────────────────────────────────
-# Helpers
-# ─────────────────────────────────────────────────────────────────────
-
-def _classify_pin(name: str) -> str:
-    """Return pin kind: 'io', 'power', 'ground', or 'special'."""
-    upper = name.upper().replace("/", "").strip()
-    if upper in _PWR_NAMES:
+def _classify(name: str) -> str:
+    u = name.upper().strip().replace("/", "")
+    if u in _PWR or any(k in u for k in ("VDD", "VCC", "VREF", "VBAT", "VBUS", "DECOUPLE")):
         return "power"
-    if upper in _GND_NAMES:
+    if u in _GND or any(k in u for k in ("VSS", "GND", "AGND", "EPAD")):
         return "ground"
-    if upper in _SPEC_NAMES:
+    if u in _SPEC:
         return "special"
-    if _RE_PIN_NAME.match(upper):
+    if _RE_GPIO_PIN.match(u):
         return "io"
-    # Heuristic: if it contains VDD/VCC → power, VSS/GND → ground
-    if any(v in upper for v in ("VDD", "VCC", "VCORE")):
-        return "power"
-    if any(v in upper for v in ("VSS", "GND")):
-        return "ground"
     return "special"
 
 
-def _parse_port_gpio(name: str) -> tuple[str, int]:
-    """Extract (port_letter, gpio_num) from pin name, e.g. 'PA12' → ('A', 12)."""
-    m = _RE_PIN_NAME.match(name.upper().strip())
-    if m:
-        return m.group(1), int(m.group(2))
-    return "", -1
+def _port_gpio(name: str) -> tuple[str, int]:
+    m = _RE_GPIO_PIN.match(name.upper().strip())
+    return (m.group(1), int(m.group(2))) if m else ("", -1)
 
 
-def _guess_direction(func_name: str, signal: str) -> str:
-    """Heuristic for pin direction from function/signal name."""
-    fn = func_name.upper()
-    sig = signal.upper()
-    # Explicit RX / input signals
-    if any(k in sig for k in ("RX", "POCI", "CTS", "IDX")):
+def _norm_periph(func_name: str) -> tuple[str, str]:
+    fn = func_name.strip()
+    if not fn:
+        return "", ""
+    m = _RE_FUNC_SPLIT.match(fn)
+    if not m:
+        return fn.lower(), ""
+    return m.group(1).lower(), (m.group(2) or "").lower()
+
+
+def _guess_dir(fn: str, sig: str) -> str:
+    f, s = fn.upper(), sig.upper()
+    if any(k in s for k in ("RX", "POCI", "CTS", "IDX", "MISO")):
         return "in"
-    if any(k in fn for k in ("_RX", "_POCI", "_CTS", "_IDX")):
+    if any(k in f for k in ("_RX", "_POCI", "_CTS", "_IDX", "_MISO")):
         return "in"
-    # Explicit TX / output signals
-    if any(k in sig for k in ("TX", "PICO", "RTS", "OUT")):
+    if any(k in s for k in ("TX", "PICO", "RTS", "OUT", "MOSI")):
         return "out"
-    if any(k in fn for k in ("_TX", "_PICO", "_RTS", "COMP")):
+    if any(k in f for k in ("_TX", "_PICO", "_RTS", "_MOSI", "COMP")):
         return "out"
-    # CCP (capture/compare) → output (PWM)
-    if "CCP" in fn:
+    if "CCP" in f or "PWM" in f or "OC" in s:
         return "out"
-    # SCL / SDA → bidirectional
-    if any(k in sig for k in ("SCL", "SDA")):
+    if any(k in s for k in ("SCL", "SDA", "SCK", "CLK")):
         return "io"
-    # ADC / DAC → analog
-    if any(k in fn for k in ("ADC", "DAC", "COMP")):
+    if any(k in f for k in ("ADC", "DAC", "COMP", "AIN", "AOUT")):
         return "analog"
     return "io"
 
 
-def _normalise_peripheral(func_name: str) -> tuple[str, str]:
+# ──────────────────── speed: batch page text ─────────────────────────
+
+def _extract_all_text(pdf: pdfplumber.PDF, max_workers: int = 1) -> list[str]:
+    """Extract text from all pages.
+    
+    Note: pdfplumber is NOT thread-safe (shared internal state), so we
+    default to sequential extraction with per-page error handling.
     """
-    Derive (peripheral_id, signal) from a function name.
-
-    Examples:
-        "TIMA0_CCP0"  → ("tima0", "ccp0")
-        "UART0_TX"    → ("uart0", "tx")
-        "ADC0_CH3"    → ("adc0", "ch3")
-        "GPIO"        → ("gpio", "")
-        "I2C1_SCL"    → ("i2c1", "scl")
-        "SPI0_CS2"    → ("spi0", "cs2")
-        "COMP0_OUT"   → ("comp0", "out")
-        "DAC0_OUT"    → ("dac0", "out")
-    """
-    fn = func_name.strip()
-    if not fn:
-        return "", ""
-    # Split on first underscore after peripheral name
-    # Pattern: PERIPH_SIGNAL  or  PERIPH (no signal)
-    m = re.match(r'([A-Za-z]+\d*)(?:_(.+))?', fn)
-    if not m:
-        return fn.lower(), ""
-    periph = m.group(1).lower()
-    sig = (m.group(2) or "").lower()
-    return periph, sig
+    n = len(pdf.pages)
+    texts: list[str] = [""] * n
+    for idx in range(n):
+        try:
+            texts[idx] = pdf.pages[idx].extract_text() or ""
+        except Exception as exc:
+            log.warning("Page %d text extraction failed: %s", idx + 1, exc)
+            texts[idx] = ""
+    return texts
 
 
-def _normalise_gpio_peripheral(pin_name: str) -> str:
-    """Return GPIO peripheral id, e.g. 'PA12' → 'gpioa'."""
-    port, _ = _parse_port_gpio(pin_name)
-    if port:
-        return f"gpio{port.lower()}"
-    return "gpio"
+def _pages_matching(texts: list[str], pattern: re.Pattern) -> list[int]:
+    """Return 0-based page indices whose text matches *pattern*."""
+    return [i for i, t in enumerate(texts) if pattern.search(t)]
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Table detection and extraction
-# ─────────────────────────────────────────────────────────────────────
+# ─────────────────── vendor auto-detection ───────────────────────────
 
-def _find_pin_mux_tables(pdf: pdfplumber.PDF) -> list[list[list[str]]]:
-    """
-    Scan all pages for PINCM / pin-mux tables.
-
-    TI datasheets typically have a table titled something like:
-      "Table X-Y. Pin Attributes" or "PINCM Pin Functions"
-    with columns like: Pin Name | PINCM | Function 0 | Function 1 | …
-
-    Returns a list of tables (each table is a list of rows).
-    """
-    tables = []
-    for page in pdf.pages:
-        text = page.extract_text() or ""
-        # Check if this page likely contains a PINCM table
-        if not re.search(r'PINCM|Pin\s*Attributes|Pin\s*Function|Digital\s*I/O\s*Features',
-                         text, re.IGNORECASE):
-            continue
-
-        page_tables = page.extract_tables()
-        for tbl in page_tables:
-            if not tbl or len(tbl) < 2:
-                continue
-            # Check header row for PINCM-related columns
-            header = [str(c).strip() if c else "" for c in tbl[0]]
-            header_text = " ".join(header).upper()
-            if "PINCM" in header_text or ("PIN" in header_text and "FUNCTION" in header_text):
-                tables.append(tbl)
-                log.debug("Found pin-mux table on page %d: %d rows",
-                          page.page_number, len(tbl))
-    return tables
+def _detect_vendor(texts: list[str]) -> str:
+    sample = "\n".join(texts[:6]).upper()
+    for vendor, pat in _VENDOR_PATTERNS:
+        if pat.search(sample):
+            return vendor
+    kw = {
+        "st": "STMICROELECTRONICS", "nxp": "NXP SEMICONDUCTORS",
+        "nordic": "NORDIC SEMICONDUCTOR", "microchip": "MICROCHIP TECHNOLOGY",
+        "infineon": "INFINEON TECHNOLOGIES", "renesas": "RENESAS ELECTRONICS",
+        "espressif": "ESPRESSIF SYSTEMS", "silabs": "SILICON LABORATORIES",
+        "gigadevice": "GIGADEVICE", "wch": "NANJING QINHENG",
+        "nuvoton": "NUVOTON", "bouffalo": "BOUFFALO",
+        "hpmicro": "HPMICRO", "puya": "PUYA SEMICONDUCTOR",
+        "artery": "ARTERY TECHNOLOGY", "mindmotion": "MINDMOTION",
+        "luat": "LUAT",
+    }
+    for v, kword in kw.items():
+        if kword in sample:
+            return v
+    return "unknown"
 
 
-def _find_package_tables(pdf: pdfplumber.PDF) -> dict[str, list[list[str]]]:
-    """
-    Scan for package pin-out tables.
+# ────────────── generic device-summary extraction ────────────────────
 
-    TI datasheets have tables like:
-      "Table X-Y. Signal Descriptions" with columns per package,
-    or separate "48-Pin QFP" / "64-Pin QFP" pinout diagrams with tables.
+def _extract_summary(texts: list[str], vendor: str) -> DeviceSummary:
+    """Generic device-summary extractor — works across many vendors."""
+    summary = DeviceSummary(vendor=vendor)
+    scan = "\n".join(texts[:12])
 
-    Returns {package_name: rows}.
-    """
-    result: dict[str, list[list[str]]] = {}
+    # SOC name
+    for _, pat in _VENDOR_PATTERNS:
+        m = pat.search(scan)
+        if m:
+            summary.soc = m.group(0).upper()
+            break
 
-    for page in pdf.pages:
-        text = page.extract_text() or ""
+    # Flash (KB or MB)
+    for pat in [
+        r'(?:up\s+to\s+)?(\d+)\s*[-]?\s*(?:MB|Mbyte)\s+(?:of\s+)?(?:Flash|program|code)',
+        r'(?:up\s+to\s+)?(\d+)\s*[-]?\s*(?:KB|Kbyte|KiB)\s+(?:of\s+)?(?:Flash|program|code)',
+        r'Flash\s*(?:Memory|ROM)?[:\s]+(?:up\s+to\s+)?(\d+)\s*[-]?\s*(?:KB|MB)',
+        r'(\d+)\s*[-]?\s*(?:KB|Kbyte)\s+Flash',
+    ]:
+        m = re.search(pat, scan, re.I)
+        if m:
+            v = int(m.group(1))
+            # check if the unit in the matched text is MB
+            matched_text = m.group(0).upper()
+            if "MB" in matched_text or "MBYTE" in matched_text:
+                v *= 1024
+            summary.flash_size_kb = v
+            break
 
-        # Look for pages that have pin assignment / signal description tables
-        if not re.search(
-            r'Signal\s*Descriptions?|Pin\s*Diagram|Pin\s*(Out|Assignment)|'
-            r'Package\s*Pin|Terminal\s*Functions',
-            text, re.IGNORECASE
-        ):
-            continue
+    # SRAM (KB or MB)
+    for pat in [
+        r'(\d+)\s*[-]?\s*(?:KB|Kbyte|KiB)\s+(?:of\s+)?(?:SRAM|RAM|data\s+memory)',
+        r'(?:SRAM|RAM)[:\s]+(?:up\s+to\s+)?(\d+)\s*[-]?\s*(?:KB|MB)',
+        r'(\d+)\s*[-]?\s*(?:MB|Mbyte)\s+(?:of\s+)?(?:SRAM|RAM)',
+    ]:
+        m = re.search(pat, scan, re.I)
+        if m:
+            v = int(m.group(1))
+            matched_text = m.group(0).upper()
+            if ("MB" in matched_text or "MBYTE" in matched_text) and v < 32:
+                v *= 1024
+            summary.sram_size_kb = v
+            break
 
-        page_tables = page.extract_tables()
-        for tbl in page_tables:
-            if not tbl or len(tbl) < 2:
-                continue
-
-            header = [str(c).strip() if c else "" for c in tbl[0]]
-            header_text = " ".join(header).upper()
-
-            # Look for columns that reference package pin numbers
-            # e.g. "48-QFP Pin", "64-LQFP Pin", "Pin Number"
-            pkg_cols: dict[str, int] = {}
-            name_col: int = -1
-
-            for ci, h in enumerate(header):
-                h_up = h.upper().strip()
-                # Find columns with package pin numbers
-                m = _RE_PKG_HEADER.search(h_up)
-                if m:
-                    count = int(m.group(1))
-                    pkg_type = m.group(2).upper()
-                    pkg_name = f"{pkg_type}-{count}"
-                    pkg_cols[pkg_name] = ci
-
-                # Find pin name column
-                if re.search(r'SIGNAL|PIN\s*NAME|NAME|FUNCTION', h_up):
-                    name_col = ci
-
-            if not pkg_cols:
-                # Maybe it's a simpler table with just "Pin" and "Name" columns
-                for ci, h in enumerate(header):
-                    h_up = h.upper().strip()
-                    if h_up in ("PIN", "PIN NO", "PIN NO.", "PIN NUMBER", "#"):
-                        # Try to detect package from page text
-                        pkg_m = _RE_PKG_HEADER.search(text)
-                        if pkg_m:
-                            count = int(pkg_m.group(1))
-                            pkg_type = pkg_m.group(2).upper()
-                            pkg_name = f"{pkg_type}-{count}"
-                            pkg_cols[pkg_name] = ci
-
-            if pkg_cols and name_col >= 0:
-                for pkg_name, pin_col in pkg_cols.items():
-                    if pkg_name not in result:
-                        result[pkg_name] = []
-                    for row in tbl[1:]:
-                        if len(row) > max(pin_col, name_col):
-                            pin_num_str = str(row[pin_col]).strip() if row[pin_col] else ""
-                            pin_name = str(row[name_col]).strip() if row[name_col] else ""
-                            if pin_num_str and pin_name:
-                                result[pkg_name].append([pin_num_str, pin_name])
-
-                log.debug("Found package table(s) on page %d: %s",
-                          page.page_number, list(pkg_cols.keys()))
-
-    return result
-
-
-def _extract_device_summary(pdf: pdfplumber.PDF) -> DeviceSummary:
-    """
-    Extract SOC name, flash/SRAM size, and clock from the first few pages.
-    """
-    summary = DeviceSummary(vendor="ti")
-
-    # Scan first 10 pages for device info
-    for page in pdf.pages[:10]:
-        text = page.extract_text() or ""
-
-        # SOC name
-        if not summary.soc:
-            m = _RE_SOC.search(text)
-            if m:
-                summary.soc = m.group(0).upper()
-
-        # Flash size: "128KB Flash" or "128-KB flash" or "Flash Memory: 128KB"
-        if not summary.flash_size_kb:
-            m = re.search(r'(\d+)\s*[-]?\s*KB\s+(?:Flash|Program\s*Memory)',
-                          text, re.IGNORECASE)
-            if not m:
-                m = re.search(r'Flash\s*(?:Memory)?[:\s]+(\d+)\s*[-]?\s*KB',
-                              text, re.IGNORECASE)
-            if m:
-                summary.flash_size_kb = int(m.group(1))
-
-        # SRAM size
-        if not summary.sram_size_kb:
-            m = re.search(r'(\d+)\s*[-]?\s*KB\s+(?:SRAM|RAM|Data\s*Memory)',
-                          text, re.IGNORECASE)
-            if not m:
-                m = re.search(r'(?:SRAM|RAM)[:\s]+(\d+)\s*[-]?\s*KB',
-                              text, re.IGNORECASE)
-            if m:
-                summary.sram_size_kb = int(m.group(1))
-
-        # Clock speed: "80 MHz" or "up to 80MHz"
-        if not summary.clock_hz:
-            m = re.search(r'(?:up\s+to\s+)?(\d+)\s*[-]?\s*MHz\s+(?:CPU|system|clock|frequency)',
-                          text, re.IGNORECASE)
-            if not m:
-                m = re.search(r'(?:CPU|System|Clock)\s*(?:Frequency|Speed)?[:\s]+(?:up\s+to\s+)?(\d+)\s*MHz',
-                              text, re.IGNORECASE)
-            if not m:
-                # Common TI pattern: "80-MHz"
-                m = re.search(r'(\d+)\s*-?\s*MHz', text, re.IGNORECASE)
-            if m:
-                summary.clock_hz = int(m.group(1)) * 1_000_000
+    # Clock (MHz) — prefer qualified "up to N MHz CPU/system"
+    for pat in [
+        r'(?:up\s+to\s+)?(\d+)\s*[-]?\s*MHz\s+(?:Arm|CPU|system|core|clock|frequency)',
+        r'(?:CPU|System|Core|Arm)\s*(?:Frequency|Speed|Clock)?[:\s]+(?:up\s+to\s+)?(\d+)\s*MHz',
+        r'(?:frequency|freq|clock)\s+(?:up\s+to\s+)(\d+)\s*MHz',
+    ]:
+        m = re.search(pat, scan, re.I)
+        if m:
+            val = int(m.group(1) if m.group(1) else m.group(2))
+            summary.clock_hz = val * 1_000_000
+            break
+    if not summary.clock_hz:
+        for m in re.finditer(r'(\d+)\s*[-]?\s*MHz', scan, re.I):
+            v = int(m.group(1))
+            if 16 <= v <= 1200:
+                summary.clock_hz = v * 1_000_000
+                break
 
     return summary
 
 
-# ─────────────────────────────────────────────────────────────────────
-# PINCM table parsing
-# ─────────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════
+#  TI MSPM0 parsing
+# ═══════════════════════════════════════════════════════════════════════
 
-def _parse_pincm_table(tables: list[list[list[str]]]) -> dict[str, list[PinMuxEntry]]:
-    """
-    Parse extracted PINCM tables into PinMuxEntry records.
+def _ti_find_pincm(pdf: pdfplumber.PDF, texts: list[str]) -> list[list[list[str]]]:
+    pages = _pages_matching(texts,
+        re.compile(r'PINCM|Pin\s*Attributes|Pin\s*Function|Digital\s*I/O\s*Features', re.I))
+    tables: list[list[list[str]]] = []
+    for idx in pages:
+        for tbl in pdf.pages[idx].extract_tables():
+            if not tbl or len(tbl) < 2:
+                continue
+            hdr = " ".join(str(c) for c in tbl[0] if c).upper()
+            if "PINCM" in hdr or ("PIN" in hdr and "FUNCTION" in hdr):
+                tables.append(tbl)
+    return tables
 
-    Expected columns (order may vary):
-      Pin Name | PINCM | Function 0 (Analog) | Function 1 (GPIO) |
-      Function 2 | Function 3 | … | Function N
 
-    Returns dict keyed by pin_name.
-    """
+def _ti_parse_pincm(tables: list[list[list[str]]]) -> dict[str, list[PinMuxEntry]]:
     result: dict[str, list[PinMuxEntry]] = {}
-
     for tbl in tables:
         if len(tbl) < 2:
             continue
-
-        # Parse header to find column indices
         header = [str(c).strip() if c else "" for c in tbl[0]]
-        header_upper = [h.upper() for h in header]
-
-        name_col = -1
-        pincm_col = -1
-        func_cols: list[tuple[int, int]] = []   # (col_index, function_id)
-
-        for ci, h in enumerate(header_upper):
+        hu = [h.upper() for h in header]
+        name_col = pincm_col = -1
+        func_cols: list[tuple[int, int]] = []
+        for ci, h in enumerate(hu):
             if re.search(r'PIN\s*NAME|SIGNAL\s*NAME|NAME', h) and name_col < 0:
                 name_col = ci
             elif "PINCM" in h:
                 pincm_col = ci
-            elif re.search(r'FUNCTION\s*(\d+)', h):
-                m = re.search(r'FUNCTION\s*(\d+)', h)
-                if m:
-                    func_cols.append((ci, int(m.group(1))))
-            elif re.search(r'^F(\d+)$', h.strip()):
-                m = re.search(r'^F(\d+)$', h.strip())
-                if m:
-                    func_cols.append((ci, int(m.group(1))))
-
+            else:
+                m2 = re.search(r'FUNCTION\s*(\d+)|^F(\d+)$', h.strip())
+                if m2:
+                    func_cols.append((ci, int(m2.group(1) or m2.group(2))))
         if name_col < 0 or pincm_col < 0:
-            log.warning("PINCM table missing Name or PINCM column: %s", header)
             continue
-
         if not func_cols:
-            # If no explicit function columns, assume columns after PINCM are functions
             start = max(name_col, pincm_col) + 1
-            for ci in range(start, len(header)):
-                func_cols.append((ci, ci - start))
+            func_cols = [(ci, ci - start) for ci in range(start, len(header))]
 
-        # Parse data rows
         for row in tbl[1:]:
             if not row or len(row) <= max(name_col, pincm_col):
                 continue
-
-            pin_name = str(row[name_col]).strip() if row[name_col] else ""
-            pincm_str = str(row[pincm_col]).strip() if row[pincm_col] else ""
-
-            if not pin_name or not _RE_PIN_NAME.match(pin_name.upper()):
+            pn = str(row[name_col]).strip().upper() if row[name_col] else ""
+            ps = str(row[pincm_col]).strip() if row[pincm_col] else ""
+            if not pn or not _RE_TI_PIN.match(pn):
                 continue
-
-            pin_name = pin_name.upper()
-
-            # Parse PINCM index
             try:
-                pincm = int(re.sub(r'[^\d]', '', pincm_str))
+                pincm = int(re.sub(r'[^\d]', '', ps))
             except (ValueError, TypeError):
-                log.debug("Skipping row with non-numeric PINCM: %s", pincm_str)
                 continue
-
-            entries: list[PinMuxEntry] = []
-
-            # Always add GPIO as function 1
-            port, gpio_num = _parse_port_gpio(pin_name)
-            gpio_periph = _normalise_gpio_peripheral(pin_name)
-
-            for col_idx, func_id in func_cols:
-                if col_idx >= len(row):
+            port, gnum = _port_gpio(pn)
+            gperiph = f"gpio{port.lower()}" if port else "gpio"
+            for ci, fid in func_cols:
+                if ci >= len(row):
                     continue
-                cell = str(row[col_idx]).strip() if row[col_idx] else ""
-                if not cell or cell == "—" or cell == "-" or cell == "–":
+                cell = str(row[ci]).strip() if row[ci] else ""
+                if not cell or cell in ("—", "-", "–"):
                     continue
-
-                # A cell might contain multiple functions separated by newlines / commas
-                for fn_raw in re.split(r'[,\n/]', cell):
-                    fn = fn_raw.strip()
-                    if not fn or fn == "—":
+                for fn in re.split(r'[,\n/]', cell):
+                    fn = fn.strip()
+                    if not fn or fn in ("—", "-", "–"):
                         continue
-
-                    # Handle "GPIO" specifically
                     if fn.upper().startswith("GPIO"):
-                        periph = gpio_periph
-                        sig = str(gpio_num) if gpio_num >= 0 else ""
-                        direction = "io"
-                        entries.append(PinMuxEntry(
-                            pin_name=pin_name,
-                            pincm=pincm,
-                            function_id=func_id,
-                            function_name=f"GPIO{port}{gpio_num}",
-                            peripheral=periph,
-                            signal=sig,
-                            direction=direction,
-                        ))
+                        result.setdefault(pn, []).append(PinMuxEntry(
+                            pn, pincm, fid, f"GPIO{port}{gnum}",
+                            gperiph, str(gnum), "io"))
                     else:
-                        periph, sig = _normalise_peripheral(fn)
-                        direction = _guess_direction(fn, sig)
-                        entries.append(PinMuxEntry(
-                            pin_name=pin_name,
-                            pincm=pincm,
-                            function_id=func_id,
-                            function_name=fn.upper().replace(".", "_"),
-                            peripheral=periph,
-                            signal=sig,
-                            direction=direction,
-                        ))
-
-            if entries:
-                result.setdefault(pin_name, []).extend(entries)
-
+                        p, s = _norm_periph(fn)
+                        result.setdefault(pn, []).append(PinMuxEntry(
+                            pn, pincm, fid,
+                            fn.upper().replace(".", "_"), p, s,
+                            _guess_dir(fn, s)))
     return result
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Package table parsing
-# ─────────────────────────────────────────────────────────────────────
-
-def _parse_package_tables(
-    raw: dict[str, list[list[str]]]
-) -> list[PackageInfo]:
-    """Convert raw package table rows into PackageInfo objects."""
-    packages = []
-
-    for pkg_name, rows in raw.items():
-        # Parse pin count from package name
-        m = re.search(r'(\d+)', pkg_name)
-        pin_count = int(m.group(1)) if m else 0
-
-        pins: list[PackagePin] = []
-        for row in rows:
-            if len(row) < 2:
+def _ti_find_packages(pdf: pdfplumber.PDF, texts: list[str]) -> dict[str, list[list[str]]]:
+    pages = _pages_matching(texts,
+        re.compile(r'Signal\s*Descriptions?|Pin\s*Diagram|Pin\s*(Out|Assignment)|'
+                   r'Package\s*Pin|Terminal\s*Functions', re.I))
+    raw: dict[str, list[list[str]]] = {}
+    for idx in pages:
+        for tbl in pdf.pages[idx].extract_tables():
+            if not tbl or len(tbl) < 2:
                 continue
-            pin_num_str, pin_name = row[0], row[1]
+            header = [str(c).strip() if c else "" for c in tbl[0]]
+            pkg_cols: dict[str, int] = {}
+            name_col = -1
+            for ci, h in enumerate(header):
+                hup = h.upper().strip()
+                m2 = _RE_PKG_NxPIN.search(hup)
+                if m2:
+                    pkg_cols[f"{m2.group(2).upper()}-{m2.group(1)}"] = ci
+                if re.search(r'SIGNAL|PIN\s*NAME|NAME|FUNCTION', hup):
+                    name_col = ci
+            if not pkg_cols:
+                for ci, h in enumerate(header):
+                    if h.upper().strip() in ("PIN", "PIN NO", "PIN NO.", "PIN NUMBER", "#"):
+                        pm = _RE_PKG_NxPIN.search(texts[idx])
+                        if pm:
+                            pkg_cols[f"{pm.group(2).upper()}-{pm.group(1)}"] = ci
+            if pkg_cols and name_col >= 0:
+                for pn, pc in pkg_cols.items():
+                    for row in tbl[1:]:
+                        if len(row) > max(pc, name_col):
+                            ns = str(row[pc]).strip() if row[pc] else ""
+                            nm = str(row[name_col]).strip() if row[name_col] else ""
+                            if ns and nm:
+                                raw.setdefault(pn, []).append([ns, nm])
+    return raw
 
-            # Clean up
-            pin_name = re.sub(r'\s+', '', pin_name).upper()
+
+def _ti_build_packages(raw: dict[str, list[list[str]]]) -> list[PackageInfo]:
+    pkgs: list[PackageInfo] = []
+    for name, rows in raw.items():
+        m = re.search(r'(\d+)', name)
+        cnt = int(m.group(1)) if m else 0
+        pins: list[PackagePin] = []
+        for r in rows:
+            if len(r) < 2:
+                continue
+            pname = re.sub(r'\s+', '', r[1]).upper()
             try:
-                pin_num = int(re.sub(r'[^\d]', '', pin_num_str))
+                pnum = int(re.sub(r'[^\d]', '', r[0]))
             except (ValueError, TypeError):
                 continue
-
-            kind = _classify_pin(pin_name)
-            port, gpio_num = _parse_port_gpio(pin_name)
-
-            pins.append(PackagePin(
-                number=pin_num,
-                name=pin_name,
-                port=port,
-                gpio_num=gpio_num,
-                kind=kind,
-            ))
-
-        # Sort by pin number
+            port, gn = _port_gpio(pname)
+            pins.append(PackagePin(pnum, pname, port, gn, _classify(pname)))
         pins.sort(key=lambda p: p.number)
-
-        if not pin_count:
-            pin_count = len(pins)
-
-        packages.append(PackageInfo(
-            name=pkg_name,
-            pin_count=pin_count,
-            pins=pins,
-        ))
-
-    return packages
+        pkgs.append(PackageInfo(name, cnt or len(pins), pins))
+    return pkgs
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Fallback: text-based extraction for difficult PDFs
-# ─────────────────────────────────────────────────────────────────────
+def _ti_text_fallback_mux(texts: list[str]) -> dict[str, list[PinMuxEntry]]:
+    result: dict[str, list[PinMuxEntry]] = {}
+    pat = re.compile(r'(P[AB]\d+)\s+(\d+)\s+(.*)', re.I)
+    in_tbl = False
+    for txt in texts:
+        for line in txt.split('\n'):
+            line = line.strip()
+            if re.search(r'PINCM|Pin\s*Name.*Function', line, re.I):
+                in_tbl = True
+                continue
+            if not in_tbl:
+                continue
+            if not line or re.match(r'^(Table|Note|Copyright|\d+\s+of\s+\d+)', line, re.I):
+                if result:
+                    in_tbl = False
+                continue
+            m = pat.match(line)
+            if not m:
+                continue
+            pn = m.group(1).upper()
+            pincm = int(m.group(2))
+            port, gnum = _port_gpio(pn)
+            gp = f"gpio{port.lower()}" if port else "gpio"
+            for fid, fn in enumerate(re.split(r'\s{2,}|\t', m.group(3))):
+                fn = fn.strip()
+                if not fn or fn in ("—", "-", "–", "N/A"):
+                    continue
+                if fn.upper().startswith("GPIO"):
+                    result.setdefault(pn, []).append(PinMuxEntry(
+                        pn, pincm, fid, f"GPIO{port}{gnum}", gp, str(gnum), "io"))
+                elif fn.upper() not in ("ANALOG", "ANA"):
+                    p, s = _norm_periph(fn)
+                    result.setdefault(pn, []).append(PinMuxEntry(
+                        pn, pincm, fid, fn.upper().replace(".", "_"), p, s, _guess_dir(fn, s)))
+    return result
 
-def _text_fallback_pin_mux(pdf: pdfplumber.PDF) -> dict[str, list[PinMuxEntry]]:
+
+# ═══════════════════════════════════════════════════════════════════════
+#  STM32 parsing (also works for GD32, AT32, PY32, MM32 clones)
+# ═══════════════════════════════════════════════════════════════════════
+
+def _stm32_find_af_tables(pdf: pdfplumber.PDF, texts: list[str]) -> list[list[list[str]]]:
+    """Locate AF0-AF15 alternate-function tables (fast pre-filter)."""
+    pages = _pages_matching(texts, re.compile(r'\bAF\d+\b'))
+    tables: list[list[list[str]]] = []
+    for idx in pages:
+        for tbl in pdf.pages[idx].extract_tables():
+            if not tbl or len(tbl) < 3:
+                continue
+            hdr = [str(c).strip() if c else "" for c in tbl[0]]
+            hdr_up = " ".join(hdr).upper()
+            if "PORT" not in hdr_up:
+                continue
+            af_count = sum(1 for h in hdr if re.match(r'^AF\d+$', h.strip(), re.I))
+            if af_count >= 2:
+                tables.append(tbl)
+    return tables
+
+
+def _stm32_parse_af(tables: list[list[list[str]]]) -> dict[str, list[PinMuxEntry]]:
+    result: dict[str, list[PinMuxEntry]] = {}
+    for tbl in tables:
+        if len(tbl) < 3:
+            continue
+        hdr = [str(c).strip() if c else "" for c in tbl[0]]
+        af_map: list[tuple[int, int]] = []
+        for ci, h in enumerate(hdr):
+            m2 = re.match(r'^AF(\d+)$', h.strip(), re.I)
+            if m2:
+                af_map.append((ci, int(m2.group(1))))
+        if not af_map:
+            continue
+        for row in tbl[2:]:  # skip header + peripheral sub-header
+            if not row:
+                continue
+            raw_pin = str(row[1]).strip().upper() if len(row) > 1 and row[1] else ""
+            if not raw_pin or not _RE_GPIO_PIN.match(raw_pin):
+                continue
+            port, gnum = _port_gpio(raw_pin)
+            for ci, af in af_map:
+                if ci >= len(row):
+                    continue
+                cell = str(row[ci]).strip() if row[ci] else ""
+                if not cell or cell in ("—", "-", "–"):
+                    continue
+                for fn in re.split(r'[/\n]', cell):
+                    fn = fn.strip()
+                    if not fn or fn in ("—", "-", "–"):
+                        continue
+                    p, s = _norm_periph(fn)
+                    result.setdefault(raw_pin, []).append(PinMuxEntry(
+                        raw_pin, af, af,
+                        fn.upper().replace(".", "_"), p, s, _guess_dir(fn, s)))
+            # GPIO always available
+            result.setdefault(raw_pin, []).append(PinMuxEntry(
+                raw_pin, -1, -1,
+                f"GPIO{port}{gnum}",
+                f"gpio{port.lower()}", str(gnum), "io"))
+    return result
+
+
+def _stm32_find_pindef(pdf: pdfplumber.PDF, texts: list[str]) -> list[list[list[str]]]:
+    """Locate the wide 'pin definitions' table (Table 16 style)."""
+    pages = _pages_matching(texts,
+        re.compile(r'Pin\s*Number|pin\s+definitions?|Pin\s*name.*function\s*after\s*reset', re.I))
+    tables: list[list[list[str]]] = []
+    active = False
+    for idx in sorted(set(pages)):
+        for tbl in pdf.pages[idx].extract_tables():
+            if not tbl or len(tbl) < 2:
+                continue
+            hdr = " ".join(str(c) for c in tbl[0] if c).upper()
+            if "PIN NUMBER" in hdr:
+                active = True
+                tables.append(tbl)
+                continue
+            if active and len(tbl) > 2:
+                sub = " ".join(str(c) for c in tbl[1] if c).upper()
+                if any(k in sub for k in ("LQFP", "UFBGA", "WLCSP", "QFP", "BGA",
+                                           "PFQL", "AGBFU", "PSCLW", "ALTERNATE")):
+                    tables.append(tbl)
+                elif "PIN NUMBER" in hdr:
+                    tables.append(tbl)
+                else:
+                    active = False
+    return tables
+
+
+def _stm32_parse_pindef(tables: list[list[list[str]]]) -> tuple[list[PackageInfo], dict[str, list[PinMuxEntry]]]:
+    pkg_pins: dict[str, list[PackagePin]] = {}
+    extra_mux: dict[str, list[PinMuxEntry]] = {}
+
+    for tbl in tables:
+        if len(tbl) < 3:
+            continue
+        header = [str(c).strip() if c else "" for c in tbl[0]]
+        sub = [str(c).strip() if c else "" for c in tbl[1]]
+
+        name_col = alt_col = addl_col = -1
+        for ci, h in enumerate(header):
+            if h and re.search(r'Pin\s*name', h, re.I):
+                name_col = ci
+        for ci, s in enumerate(sub):
+            su = s.upper() if s else ""
+            if "ALTERNATE" in su:
+                alt_col = ci
+            elif "ADDITIONAL" in su:
+                addl_col = ci
+        if name_col < 0 and len(header) >= 18:
+            name_col, alt_col, addl_col = 12, 16, 17
+        if name_col < 0:
+            continue
+
+        pkg_col: dict[str, int] = {}
+        for ci, s in enumerate(sub):
+            if ci >= name_col:
+                break
+            if not s:
+                continue
+            su = s.upper().replace("_", "").replace("-", "").replace(" ", "")
+            # Skip SPMS_ (SmartPowerManagement) variants — same package, different probe pads
+            if su.startswith("SPMS"):
+                continue
+            for key, real in _PKG_DECODE.items():
+                if key in su:
+                    nums = re.findall(r'\d+', su)
+                    if nums:
+                        # Column headers have reversed text (e.g. '46PFQL' = LQFP64)
+                        # Reverse the digit string BEFORE converting to int
+                        rc = int(nums[0][::-1])
+                        label = f"{real}{rc}"
+                    else:
+                        label = real
+                    if label not in pkg_col:
+                        pkg_col[label] = ci
+                    break
+
+        for row in tbl[2:]:
+            if not row or len(row) <= name_col:
+                continue
+            raw = str(row[name_col]).strip() if row[name_col] else ""
+            if not raw:
+                continue
+            clean = re.sub(r'\s+', ' ', raw)
+            m2 = re.search(r'(P[A-I]\d+)', clean, re.I)
+            pin_name = m2.group(1).upper() if m2 else re.sub(r'\(.*?\)', '', clean).split()[0].upper().rstrip("-")
+            kind = _classify(pin_name)
+            port, gn = _port_gpio(pin_name)
+
+            for pkg, ci in pkg_col.items():
+                if ci >= len(row):
+                    continue
+                cell = str(row[ci]).strip() if row[ci] else ""
+                if not cell or cell in ("-", "–"):
+                    continue
+                bm = _RE_BGA_COORD.match(cell.upper())
+                if bm:
+                    pnum = (ord(bm.group(1)) - 64) * 100 + int(bm.group(2))
+                else:
+                    try:
+                        pnum = int(re.sub(r'[^\d]', '', cell))
+                    except (ValueError, TypeError):
+                        continue
+                if pnum > 0:
+                    pkg_pins.setdefault(pkg, []).append(
+                        PackagePin(pnum, pin_name, port, gn, kind))
+
+            if alt_col >= 0 and alt_col < len(row):
+                at = str(row[alt_col]).strip() if row[alt_col] else ""
+                if at and at not in ("-", "–", "—"):
+                    for fn in re.split(r'[,\n]', at):
+                        fn = re.sub(r'\s+', '_', fn.strip())
+                        if not fn or fn in ("-", "–", "—"):
+                            continue
+                        p, s = _norm_periph(fn)
+                        extra_mux.setdefault(pin_name, []).append(PinMuxEntry(
+                            pin_name, -1, -1, fn.upper(), p, s, _guess_dir(fn, s)))
+
+    pkgs: list[PackageInfo] = []
+    for name, pins in pkg_pins.items():
+        seen: set[int] = set()
+        uniq: list[PackagePin] = []
+        for p in pins:
+            if p.number not in seen:
+                seen.add(p.number)
+                uniq.append(p)
+        uniq.sort(key=lambda p: p.number)
+        m2 = re.search(r'(\d+)', name)
+        pkgs.append(PackageInfo(name, int(m2.group(1)) if m2 else len(uniq), uniq))
+    pkgs.sort(key=lambda p: p.pin_count)
+    return pkgs, extra_mux
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  Generic / NXP / Microchip / Nordic / Renesas / Infineon / Espressif
+#  → universal table-scanner heuristic
+# ═══════════════════════════════════════════════════════════════════════
+
+def _generic_find_pinmux(pdf: pdfplumber.PDF, texts: list[str]) -> dict[str, list[PinMuxEntry]]:
     """
-    If pdfplumber table extraction fails, try a line-by-line regex approach
-    on the raw text.  Works for TI datasheets where the PINCM table is
-    rendered as plain text columns.
+    Universal heuristic pin-mux extractor.
+    Works for NXP (LPC, i.MX RT), Microchip (SAM), Nordic (nRF),
+    Infineon, Renesas, Espressif, Silicon Labs, etc.
     """
     result: dict[str, list[PinMuxEntry]] = {}
 
-    # Pattern: PA0  1  ANALOG  GPIO  TIMA0_CCP0  TIMG8_CCP0  SPI0_CS2 …
-    line_pat = re.compile(
-        r'(P[AB]\d+)\s+(\d+)\s+(.*)',
-        re.IGNORECASE,
-    )
+    pages = _pages_matching(texts, re.compile(
+        r'alternate\s+function|pin\s*mux|pin\s*function|signal\s*mux|'
+        r'GPIO\s*Mapping|GPIO\s*alternate|'
+        r'Pin\s*Name\s.*Function|Port\s*Pin\s*Function|'
+        r'IO_MUX|IOMUX|PINMUX|AFR|'
+        r'\bAF\d+\b|I/O\s+Multiplex|Pin\s+Multiplexing',
+        re.I))
 
-    in_table = False
-    for page in pdf.pages:
-        text = page.extract_text() or ""
-        for line in text.split('\n'):
-            line = line.strip()
-            if re.search(r'PINCM|Pin\s*Name.*Function', line, re.IGNORECASE):
-                in_table = True
+    for idx in pages:
+        try:
+            page_tables = pdf.pages[idx].extract_tables()
+        except Exception:
+            continue
+        for tbl in page_tables:
+            if not tbl or len(tbl) < 3:
                 continue
-            if not in_table:
+            header = [str(c).strip() if c else "" for c in tbl[0]]
+            hu = [h.upper() for h in header]
+
+            pin_col = -1
+            func_cols: list[tuple[int, str]] = []
+            for ci, h in enumerate(hu):
+                if pin_col < 0 and re.search(
+                    r'PIN\s*NAME|GPIO|PORT\s*PIN|PAD\s*NAME|BALL\s*NAME|IO\s*NAME', h):
+                    pin_col = ci
+                elif re.search(
+                    r'AF\d+|ALT\s*\d|FUNC|MUX|PERIPH|SIGNAL|ALTERNATE', h):
+                    func_cols.append((ci, h))
+
+            if pin_col < 0 or not func_cols:
                 continue
-            # End of table heuristic: empty line or page break
-            if not line or re.match(r'^(Table|Note|Copyright|\d+\s+of\s+\d+)', line, re.IGNORECASE):
-                if result:
-                    in_table = False
-                continue
 
-            m = line_pat.match(line)
-            if not m:
-                continue
-
-            pin_name = m.group(1).upper()
-            pincm = int(m.group(2))
-            funcs_str = m.group(3)
-
-            port, gpio_num = _parse_port_gpio(pin_name)
-            gpio_periph = _normalise_gpio_peripheral(pin_name)
-
-            # Split remaining into function fields (tab or multi-space separated)
-            funcs = re.split(r'\s{2,}|\t', funcs_str)
-
-            for fid, fn_raw in enumerate(funcs):
-                fn = fn_raw.strip()
-                if not fn or fn in ("—", "-", "–", "N/A"):
+            for row in tbl[1:]:
+                if not row or len(row) <= pin_col:
                     continue
+                raw_pin = str(row[pin_col]).strip().upper() if row[pin_col] else ""
+                if not raw_pin:
+                    continue
+                m2 = re.search(r'(P[A-K]\d+|GPIO_?\d+|IO\d+)', raw_pin, re.I)
+                if not m2:
+                    continue
+                pin_name = m2.group(1).upper()
+                port, gnum = _port_gpio(pin_name)
 
-                if fn.upper().startswith("GPIO"):
-                    result.setdefault(pin_name, []).append(PinMuxEntry(
-                        pin_name=pin_name, pincm=pincm,
-                        function_id=fid,
-                        function_name=f"GPIO{port}{gpio_num}",
-                        peripheral=gpio_periph,
-                        signal=str(gpio_num),
-                        direction="io",
-                    ))
-                elif fn.upper() in ("ANALOG", "ANA"):
-                    # Skip bare analog placeholder
-                    pass
-                else:
-                    periph, sig = _normalise_peripheral(fn)
-                    direction = _guess_direction(fn, sig)
-                    result.setdefault(pin_name, []).append(PinMuxEntry(
-                        pin_name=pin_name, pincm=pincm,
-                        function_id=fid,
-                        function_name=fn.upper().replace(".", "_"),
-                        peripheral=periph,
-                        signal=sig,
-                        direction=direction,
-                    ))
+                for ci, cname in func_cols:
+                    if ci >= len(row):
+                        continue
+                    cell = str(row[ci]).strip() if row[ci] else ""
+                    if not cell or cell in ("—", "-", "–", "Reserved"):
+                        continue
+                    am = re.search(r'AF(\d+)|ALT\s*(\d+)', cname, re.I)
+                    af = int(am.group(1) or am.group(2)) if am else -1
+
+                    for fn in re.split(r'[,\n/;]', cell):
+                        fn = fn.strip()
+                        if not fn or fn in ("—", "-", "–"):
+                            continue
+                        p, s = _norm_periph(fn)
+                        result.setdefault(pin_name, []).append(PinMuxEntry(
+                            pin_name, af, af,
+                            fn.upper().replace(".", "_"), p, s,
+                            _guess_dir(fn, s)))
 
     return result
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Fallback: text-based package pin extraction
-# ─────────────────────────────────────────────────────────────────────
+def _generic_find_packages(pdf: pdfplumber.PDF, texts: list[str]) -> list[PackageInfo]:
+    """Universal package extractor."""
+    pages = _pages_matching(texts, re.compile(
+        r'pin\s*(out|diagram|assignment|description|definition)|'
+        r'ball\s*map|signal\s*description|package\s*pin|'
+        r'terminal\s*function|pin\s*configuration',
+        re.I))
 
-def _text_fallback_packages(pdf: pdfplumber.PDF) -> list[PackageInfo]:
-    """
-    Scan raw page text for simple 'pin_number  pin_name' patterns near
-    known package headings.
-    """
-    packages: list[PackageInfo] = []
-    current_pkg: Optional[str] = None
-    current_pins: list[PackagePin] = []
-    current_count = 0
+    raw: dict[str, list[PackagePin]] = {}
+    for idx in pages:
+        text = texts[idx]
+        try:
+            page_tables = pdf.pages[idx].extract_tables()
+        except Exception:
+            continue
+        for tbl in page_tables:
+            if not tbl or len(tbl) < 2:
+                continue
+            header = [str(c).strip() if c else "" for c in tbl[0]]
+            hu = [h.upper() for h in header]
 
-    pin_line = re.compile(r'^\s*(\d+)\s+(P[AB]\d+|VDD|GND|AVDD|AVSS|DVDD|DVSS|NRST|XIN|XOUT|VCORE)',
-                          re.IGNORECASE)
+            pin_col = name_col = -1
+            for ci, h in enumerate(hu):
+                if pin_col < 0 and re.search(r'PIN\s*(NO|NUM|#)|^#$|BALL', h):
+                    pin_col = ci
+                if name_col < 0 and re.search(
+                    r'PIN\s*NAME|SIGNAL|NAME|GPIO|PAD|FUNCTION', h):
+                    name_col = ci
 
-    for page in pdf.pages:
-        text = page.extract_text() or ""
-        for line in text.split('\n'):
-            # Check for package heading
-            m = _RE_PKG_HEADER.search(line)
-            if m:
-                # Save previous
-                if current_pkg and current_pins:
-                    packages.append(PackageInfo(
-                        name=current_pkg,
-                        pin_count=current_count or len(current_pins),
-                        pins=sorted(current_pins, key=lambda p: p.number),
-                    ))
-                count = int(m.group(1))
-                ptype = m.group(2).upper()
-                current_pkg = f"{ptype}-{count}"
-                current_count = count
-                current_pins = []
+            if pin_col < 0 or name_col < 0 or pin_col == name_col:
                 continue
 
-            pm = pin_line.match(line)
-            if pm and current_pkg:
-                num = int(pm.group(1))
-                name = pm.group(2).upper()
-                kind = _classify_pin(name)
-                port, gpio = _parse_port_gpio(name)
-                current_pins.append(PackagePin(
-                    number=num, name=name, port=port,
-                    gpio_num=gpio, kind=kind,
-                ))
+            pm = _RE_PKG_TYPE.search(text)
+            pkg_name = f"{pm.group(1).upper()}{pm.group(2)}" if pm else f"PKG_p{idx+1}"
 
-    # Save last
-    if current_pkg and current_pins:
-        packages.append(PackageInfo(
-            name=current_pkg,
-            pin_count=current_count or len(current_pins),
-            pins=sorted(current_pins, key=lambda p: p.number),
-        ))
+            for row in tbl[1:]:
+                if len(row) <= max(pin_col, name_col):
+                    continue
+                ns = str(row[pin_col]).strip() if row[pin_col] else ""
+                nm = str(row[name_col]).strip().upper() if row[name_col] else ""
+                if not ns or not nm:
+                    continue
+                bm = _RE_BGA_COORD.match(ns.upper())
+                if bm:
+                    pnum = (ord(bm.group(1)) - 64) * 100 + int(bm.group(2))
+                else:
+                    try:
+                        pnum = int(re.sub(r'[^\d]', '', ns))
+                    except (ValueError, TypeError):
+                        continue
+                port, gn = _port_gpio(nm)
+                raw.setdefault(pkg_name, []).append(
+                    PackagePin(pnum, nm, port, gn, _classify(nm)))
 
-    return packages
+    pkgs: list[PackageInfo] = []
+    for name, pins in raw.items():
+        seen: set[int] = set()
+        uniq: list[PackagePin] = []
+        for p in pins:
+            if p.number not in seen:
+                seen.add(p.number)
+                uniq.append(p)
+        uniq.sort(key=lambda p: p.number)
+        m2 = re.search(r'(\d+)', name)
+        pkgs.append(PackageInfo(name, int(m2.group(1)) if m2 else len(uniq), uniq))
+    pkgs.sort(key=lambda p: p.pin_count)
+    return pkgs
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Public API
-# ─────────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════
+#  Vendor-specific parse pipelines
+# ═══════════════════════════════════════════════════════════════════════
+
+def _parse_ti(pdf: pdfplumber.PDF, texts: list[str]) -> DatasheetInfo:
+    info = DatasheetInfo(device=_extract_summary(texts, "ti"))
+    pincm = _ti_find_pincm(pdf, texts)
+    info.pin_mux = _ti_parse_pincm(pincm) if pincm else _ti_text_fallback_mux(texts)
+    raw = _ti_find_packages(pdf, texts)
+    if raw:
+        info.packages = _ti_build_packages(raw)
+    log.info("TI: %s  flash=%dKB sram=%dKB  pins=%d  pkgs=%d",
+             info.device.soc, info.device.flash_size_kb,
+             info.device.sram_size_kb, len(info.pin_mux), len(info.packages))
+    return info
+
+
+def _parse_stm32_like(pdf: pdfplumber.PDF, texts: list[str], vendor: str) -> DatasheetInfo:
+    info = DatasheetInfo(device=_extract_summary(texts, vendor))
+    af = _stm32_find_af_tables(pdf, texts)
+    if af:
+        info.pin_mux = _stm32_parse_af(af)
+    pdt = _stm32_find_pindef(pdf, texts)
+    if pdt:
+        pkgs, extra = _stm32_parse_pindef(pdt)
+        info.packages = pkgs
+        for pin, entries in extra.items():
+            existing = {e.function_name for e in info.pin_mux.get(pin, [])}
+            for e in entries:
+                if e.function_name not in existing:
+                    info.pin_mux.setdefault(pin, []).append(e)
+    if not info.pin_mux:
+        info.pin_mux = _generic_find_pinmux(pdf, texts)
+    if not info.packages:
+        info.packages = _generic_find_packages(pdf, texts)
+    log.info("STM32-like(%s): %s  flash=%dKB sram=%dKB  pins=%d  pkgs=%d",
+             vendor, info.device.soc, info.device.flash_size_kb,
+             info.device.sram_size_kb, len(info.pin_mux), len(info.packages))
+    return info
+
+
+def _parse_generic(pdf: pdfplumber.PDF, texts: list[str], vendor: str) -> DatasheetInfo:
+    info = DatasheetInfo(device=_extract_summary(texts, vendor))
+    info.pin_mux = _generic_find_pinmux(pdf, texts)
+    info.packages = _generic_find_packages(pdf, texts)
+    log.info("Generic(%s): %s  flash=%dKB sram=%dKB  pins=%d  pkgs=%d",
+             vendor, info.device.soc, info.device.flash_size_kb,
+             info.device.sram_size_kb, len(info.pin_mux), len(info.packages))
+    return info
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  Public API
+# ═══════════════════════════════════════════════════════════════════════
 
 def parse_datasheet(pdf_path: str, verbose: bool = False) -> DatasheetInfo:
     """
     Parse an MCU datasheet PDF and return structured pin/package data.
+
+    Auto-detects the vendor and dispatches to the best parsing strategy.
+    Covers 18+ vendor families with a generic fallback for unknown PDFs.
 
     Parameters
     ----------
@@ -705,50 +921,29 @@ def parse_datasheet(pdf_path: str, verbose: bool = False) -> DatasheetInfo:
     Returns
     -------
     DatasheetInfo
-        Extracted device summary, packages, and pin-mux entries.
     """
     if verbose:
         logging.basicConfig(level=logging.DEBUG)
-    else:
-        logging.basicConfig(level=logging.INFO)
 
     log.info("Parsing datasheet: %s", pdf_path)
 
-    info = DatasheetInfo()
-
     with pdfplumber.open(pdf_path) as pdf:
-        # 1) Device summary
-        info.device = _extract_device_summary(pdf)
-        log.info("Device: %s  Flash=%dKB  SRAM=%dKB  Clock=%dMHz",
-                 info.device.soc, info.device.flash_size_kb,
-                 info.device.sram_size_kb, info.device.clock_hz // 1_000_000
-                 if info.device.clock_hz else 0)
+        texts = _extract_all_text(pdf)
+        log.info("Extracted text from %d pages", len(texts))
 
-        # 2) Pin-mux tables (PINCM)
-        pincm_tables = _find_pin_mux_tables(pdf)
-        if pincm_tables:
-            info.pin_mux = _parse_pincm_table(pincm_tables)
-            log.info("Pin-mux: %d pins extracted from %d table(s)",
-                     len(info.pin_mux), len(pincm_tables))
-        else:
-            log.warning("No PINCM tables found via table extraction, "
-                        "trying text fallback…")
-            info.pin_mux = _text_fallback_pin_mux(pdf)
-            log.info("Pin-mux (text fallback): %d pins", len(info.pin_mux))
+        vendor = _detect_vendor(texts)
+        log.info("Detected vendor: %s", vendor)
 
-        # 3) Package pin-out tables
-        raw_pkgs = _find_package_tables(pdf)
-        if raw_pkgs:
-            info.packages = _parse_package_tables(raw_pkgs)
-            log.info("Packages: %s",
-                     ", ".join(f"{p.name} ({len(p.pins)} pins)"
-                               for p in info.packages))
-        else:
-            log.warning("No package tables found via table extraction, "
-                        "trying text fallback…")
-            info.packages = _text_fallback_packages(pdf)
-            log.info("Packages (text fallback): %s",
-                     ", ".join(f"{p.name} ({len(p.pins)} pins)"
-                               for p in info.packages) or "none")
+        if vendor == "ti":
+            return _parse_ti(pdf, texts)
+        if vendor in _STM32_LIKE:
+            return _parse_stm32_like(pdf, texts, vendor)
 
-    return info
+        # Generic path (Nordic, NXP, Microchip, Infineon, Renesas, …)
+        info = _parse_generic(pdf, texts, vendor)
+        if not info.pin_mux and not info.packages:
+            log.info("Generic found nothing, retrying with STM32-like logic…")
+            info2 = _parse_stm32_like(pdf, texts, vendor)
+            if info2.pin_mux or info2.packages:
+                return info2
+        return info

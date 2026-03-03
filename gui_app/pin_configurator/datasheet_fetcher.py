@@ -113,13 +113,25 @@ _register_vendor(
 
 def _stm32_urls(part: str, m: re.Match) -> list[str]:
     pn = part.upper()
-    # ST datasheets: https://www.st.com/resource/en/datasheet/{part}.pdf
-    return [
-        f"https://www.st.com/resource/en/datasheet/{pn.lower()}.pdf",
+    pn_low = pn.lower()
+    # ST datasheets: try multiple URL patterns
+    # Pattern 1: exact part (e.g. stm32l476rg)
+    # Pattern 2: base part without package suffix (e.g. stm32l476xx)
+    # Pattern 3: just family+density (e.g. stm32l476)
+    base = re.match(r'(STM32[A-Z]\d{3})', pn, re.IGNORECASE)
+    base_pn = base.group(1).lower() if base else pn_low
+    urls = [
+        f"https://www.st.com/resource/en/datasheet/{pn_low}.pdf",
     ]
+    if len(pn) > len(base_pn):
+        # Try with 'xx' suffix (common ST pattern)
+        urls.append(f"https://www.st.com/resource/en/datasheet/{base_pn}xx.pdf")
+    if pn_low != base_pn:
+        urls.append(f"https://www.st.com/resource/en/datasheet/{base_pn}.pdf")
+    return urls
 
 _register_vendor(
-    r'^(STM32[A-Z]\d{3}\w*)',
+    r'^(STM32([A-Z])\d{3}\w*)',
     "st", "STMicroelectronics",
     _stm32_urls,
 )
@@ -182,7 +194,67 @@ _register_vendor(
 )
 
 
+# ── Infineon (PSoC, XMC, AIROC) ───────────────────────────────────────
+
+def _infineon_urls(part: str, m: re.Match) -> list[str]:
+    pn = part.upper()
+    return [
+        f"https://www.infineon.com/dgdl/{pn}-datasheet.pdf",
+    ]
+
+_register_vendor(r'^(CY8C\w+)', "infineon", "Infineon Technologies", _infineon_urls)
+_register_vendor(r'^(PSOC\d\w*)', "infineon", "Infineon Technologies", _infineon_urls)
+_register_vendor(r'^(XMC\d{4}\w*)', "infineon", "Infineon Technologies", _infineon_urls)
+
+
+# ── Renesas (RA, RX, RL78) ────────────────────────────────────────────
+
+def _renesas_urls(part: str, m: re.Match) -> list[str]:
+    pn = part.upper()
+    pn_low = pn.lower()
+    return [
+        f"https://www.renesas.com/document/dst/{pn_low}-group-datasheet",
+    ]
+
+_register_vendor(r'^(R7FA\w+)', "renesas", "Renesas Electronics", _renesas_urls)
+_register_vendor(r'^(R5F\w+)', "renesas", "Renesas Electronics", _renesas_urls)
+_register_vendor(r'^(RA\d[A-Z]\d\w*)', "renesas", "Renesas Electronics", _renesas_urls)
+
+
 # ── Identification ────────────────────────────────────────────────────
+
+def _extract_family(match: str, vendor: str) -> str:
+    """Extract a short family name from a matched part number."""
+    up = match.upper()
+    if vendor == "st":
+        # STM32L476RET6 → STM32L4
+        fm = re.match(r'^(STM32[A-Z]\d)', up)
+        return fm.group(1) if fm else up
+    if vendor == "ti":
+        # MSPM0G3507 → MSPM0
+        fm = re.match(r'^(MSPM0|MSP430|CC\d{2})', up)
+        return fm.group(1) if fm else up
+    if vendor == "nordic":
+        # nRF52840 → nRF52
+        fm = re.match(r'^(NRF\d{2})', up)
+        return fm.group(1) if fm else up
+    if vendor == "nxp":
+        fm = re.match(r'^(LPC\d{2}|MIMXRT\d{3}|MK[A-Z]\d)', up)
+        return fm.group(1) if fm else up
+    if vendor == "espressif":
+        fm = re.match(r'^(ESP32\w?\d?)', up)
+        return fm.group(1) if fm else up
+    if vendor == "microchip":
+        fm = re.match(r'^(ATSAMD?\d+|SAMD?\d+|PIC\d+)', up)
+        return fm.group(1) if fm else up
+    if vendor == "infineon":
+        fm = re.match(r'^(CY8C\d|PSOC\d|XMC\d{4})', up)
+        return fm.group(1) if fm else up
+    if vendor == "renesas":
+        fm = re.match(r'^(RA\d[A-Z]|R7FA|R5F)', up)
+        return fm.group(1) if fm else up
+    return up
+
 
 def identify_vendor(part_number: str) -> Optional[VendorMatch]:
     """
@@ -194,7 +266,9 @@ def identify_vendor(part_number: str) -> Optional[VendorMatch]:
     for pattern, vendor, vendor_name, url_builder in _VENDOR_PATTERNS:
         m = pattern.match(pn)
         if m:
-            family = m.group(1) if m.lastindex else pn
+            full_match = m.group(1) if m.lastindex else pn
+            # Extract a short family name from the match
+            family = _extract_family(full_match, vendor)
             urls = url_builder(pn, m)
             return VendorMatch(
                 vendor=vendor,
