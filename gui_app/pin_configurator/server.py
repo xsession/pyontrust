@@ -200,6 +200,82 @@ def save_project():
     })
 
 
+# ── Project File (save / load full editor state) ─────────────────────
+
+PROJECT_FILE_VERSION = 1
+
+@app.route("/api/project-file/save", methods=["POST"])
+def project_file_save():
+    """
+    Save the full editor state (board, pin assignments, peripheral enables)
+    to a JSON project file (.zpinproj) so it can be reloaded later.
+
+    Body:
+    {
+      "file_path": "C:/path/to/my_config.zpinproj",
+      "board_id": "lp_mspm0g3507",
+      "pin_states": { "1": { "af": { ... }, "props": { ... } }, ... },
+      "periph_states": { "uart0": true, "spi0": false, ... },
+      "generated_overlay": "...",   // optional
+      "generated_conf": "..."       // optional
+    }
+    """
+    body = request.get_json(force=True)
+    file_path = body.get("file_path", "").strip()
+
+    if not file_path:
+        return jsonify({"error": "Missing file_path"}), 400
+
+    # Ensure .zpinproj extension
+    fp = pathlib.Path(file_path)
+    if fp.suffix.lower() != ".zpinproj":
+        fp = fp.with_suffix(".zpinproj")
+
+    # Ensure parent directory exists
+    fp.parent.mkdir(parents=True, exist_ok=True)
+
+    project = {
+        "version": PROJECT_FILE_VERSION,
+        "board_id": body.get("board_id", ""),
+        "pin_states": body.get("pin_states", {}),
+        "periph_states": body.get("periph_states", {}),
+        "generated_overlay": body.get("generated_overlay", ""),
+        "generated_conf": body.get("generated_conf", ""),
+    }
+
+    fp.write_text(json.dumps(project, indent=2), encoding="utf-8")
+
+    return jsonify({"saved": True, "file_path": str(fp)})
+
+
+@app.route("/api/project-file/load", methods=["POST"])
+def project_file_load():
+    """
+    Load a previously saved .zpinproj project file.
+
+    Body:
+        { "file_path": "C:/path/to/my_config.zpinproj" }
+
+    Returns the full project state for the frontend to restore.
+    """
+    body = request.get_json(force=True)
+    file_path = body.get("file_path", "").strip()
+
+    if not file_path:
+        return jsonify({"error": "Missing file_path"}), 400
+
+    fp = pathlib.Path(file_path)
+    if not fp.is_file():
+        return jsonify({"error": f"File not found: {fp}"}), 404
+
+    try:
+        project = json.loads(fp.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        return jsonify({"error": f"Invalid project file: {exc}"}), 400
+
+    return jsonify(project)
+
+
 # ── Package Generator API ────────────────────────────────────────────
 
 def _datasheet_to_json(info: DatasheetInfo) -> dict:

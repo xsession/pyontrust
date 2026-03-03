@@ -159,6 +159,49 @@ body {
 }
 .chip-container {
   position: relative;
+  transform-origin: center center;
+  transition: transform 0.15s ease;
+}
+
+/* Zoom controls */
+.zoom-controls {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 6px;
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+.zoom-btn {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg3);
+  color: var(--fg);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+.zoom-btn:hover {
+  background: var(--accent);
+  color: var(--bg);
+}
+.zoom-level {
+  font-size: 11px;
+  color: var(--fg-dim);
+  min-width: 40px;
+  text-align: center;
+  user-select: none;
 }
 
 /* SVG chip styling */
@@ -1690,8 +1733,10 @@ svg.chip-svg .pin-func {
   <span class="chip-name" id="chipLabel">---</span>
   <span class="spacer"></span>
   <span class="info" id="statsLabel">Flash: - | SRAM: - | Clock: -</span>
+  <button class="btn" id="btnLoadProject" title="Load .zpinproj project file">&#128194; Load Project</button>
   <button class="btn" id="btnImport" title="Import existing overlay &amp; conf files">&#128229; Import</button>
   <button class="btn" id="btnGenerate">Generate</button>
+  <button class="btn" id="btnSaveProject" title="Save project file (.zpinproj)">&#128190; Save Project</button>
   <button class="btn btn-accent" id="btnSave">Save to Project</button>
 </div>
 
@@ -1706,6 +1751,13 @@ svg.chip-svg .pin-func {
   <!-- Chip diagram -->
   <div class="chip-area" id="chipArea">
     <div class="chip-container" id="chipContainer"></div>
+    <div class="zoom-controls" id="zoomControls">
+      <button class="zoom-btn" id="zoomIn" title="Zoom in">+</button>
+      <span class="zoom-level" id="zoomLevel">100%</span>
+      <button class="zoom-btn" id="zoomOut" title="Zoom out">&minus;</button>
+      <button class="zoom-btn" id="zoomReset" title="Reset zoom">&#8634;</button>
+      <button class="zoom-btn" id="zoomFit" title="Fit to view">&#9635;</button>
+    </div>
   </div>
 
   <!-- Pin configuration panel -->
@@ -1840,6 +1892,42 @@ svg.chip-svg .pin-func {
     <div class="modal-btns">
       <button class="btn" id="btnCancelSave">Cancel</button>
       <button class="btn btn-accent" id="btnConfirmSave">Save Files</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Save Project File dialog ──────────────────────────────── -->
+<div class="modal-backdrop" id="saveProjectModal">
+  <div class="modal">
+    <h3>&#128190; Save Project File</h3>
+    <p style="font-size:12px;color:var(--fg-dim);margin:-8px 0 12px;">
+      Save full editor state to a <b>.zpinproj</b> file for later reload
+    </p>
+    <label style="font-size:12px;color:var(--fg-dim);display:block;margin-bottom:4px;">
+      File path (absolute)
+    </label>
+    <input type="text" id="projectFilePath" placeholder="C:\GIT\my_project\pin_config.zpinproj">
+    <div class="modal-btns">
+      <button class="btn" id="btnCancelSaveProject">Cancel</button>
+      <button class="btn btn-accent" id="btnConfirmSaveProject">Save Project</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Load Project File dialog ──────────────────────────────── -->
+<div class="modal-backdrop" id="loadProjectModal">
+  <div class="modal">
+    <h3>&#128194; Load Project File</h3>
+    <p style="font-size:12px;color:var(--fg-dim);margin:-8px 0 12px;">
+      Restore editor state from a previously saved <b>.zpinproj</b> file
+    </p>
+    <label style="font-size:12px;color:var(--fg-dim);display:block;margin-bottom:4px;">
+      File path (absolute)
+    </label>
+    <input type="text" id="loadProjectFilePath" placeholder="C:\GIT\my_project\pin_config.zpinproj">
+    <div class="modal-btns">
+      <button class="btn" id="btnCancelLoadProject">Cancel</button>
+      <button class="btn btn-accent" id="btnConfirmLoadProject">Load Project</button>
     </div>
   </div>
 </div>

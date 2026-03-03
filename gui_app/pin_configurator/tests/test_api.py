@@ -195,3 +195,92 @@ class TestClockEndpoints:
         assert resp.status_code == 200
         data = resp.get_json()
         assert isinstance(data, (list, dict))
+
+
+class TestProjectFileEndpoints:
+    """Tests for project file save/load (.zpinproj)."""
+
+    def test_save_project_file(self, client, tmp_path):
+        """POST /api/project-file/save creates a .zpinproj file."""
+        fp = str(tmp_path / "test.zpinproj")
+        resp = client.post("/api/project-file/save", json={
+            "file_path": fp,
+            "board_id": "lp_mspm0g3507",
+            "pin_states": {
+                "1": {
+                    "af": {"function_id": 1, "name": "UART0_TX",
+                           "pincm": "IOMUX_PINCM1", "peripheral": "uart0",
+                           "signal": "tx", "direction": "output"},
+                    "props": {"bias_pull_up": False},
+                }
+            },
+            "periph_states": {"uart0": True, "spi0": False},
+        })
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["saved"] is True
+        # File should exist on disk
+        import pathlib
+        assert pathlib.Path(fp).is_file()
+
+    def test_load_project_file(self, client, tmp_path):
+        """POST /api/project-file/load returns saved state."""
+        fp = str(tmp_path / "roundtrip.zpinproj")
+        pin_states = {
+            "5": {
+                "af": {"function_id": 3, "name": "SPI0_CLK",
+                       "pincm": "IOMUX_PINCM5", "peripheral": "spi0",
+                       "signal": "clk", "direction": "output"},
+                "props": {"bias_pull_down": True},
+            }
+        }
+        periph_states = {"uart0": False, "spi0": True}
+        # Save first
+        client.post("/api/project-file/save", json={
+            "file_path": fp,
+            "board_id": "lp_mspm0g3507",
+            "pin_states": pin_states,
+            "periph_states": periph_states,
+            "generated_overlay": "/* test overlay */",
+            "generated_conf": "CONFIG_SPI=y",
+        })
+        # Load it back
+        resp = client.post("/api/project-file/load", json={"file_path": fp})
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["version"] == 1
+        assert data["board_id"] == "lp_mspm0g3507"
+        assert "5" in data["pin_states"]
+        assert data["pin_states"]["5"]["af"]["name"] == "SPI0_CLK"
+        assert data["periph_states"]["spi0"] is True
+        assert data["generated_overlay"] == "/* test overlay */"
+        assert data["generated_conf"] == "CONFIG_SPI=y"
+
+    def test_load_missing_file(self, client):
+        """POST /api/project-file/load returns 404 for missing file."""
+        resp = client.post("/api/project-file/load", json={
+            "file_path": "C:/nonexistent/path/missing.zpinproj",
+        })
+        assert resp.status_code == 404
+        data = resp.get_json()
+        assert "error" in data
+
+    def test_save_adds_extension(self, client, tmp_path):
+        """Save auto-appends .zpinproj extension if missing."""
+        fp = str(tmp_path / "noext")
+        resp = client.post("/api/project-file/save", json={
+            "file_path": fp,
+            "board_id": "test",
+            "pin_states": {},
+            "periph_states": {},
+        })
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["file_path"].endswith(".zpinproj")
+
+    def test_save_missing_path(self, client):
+        """Save without file_path returns 400."""
+        resp = client.post("/api/project-file/save", json={
+            "board_id": "test",
+        })
+        assert resp.status_code == 400

@@ -20,6 +20,12 @@ let generatedOverlay = "";
 let generatedConf    = "";
 let activeTab        = "overlay";
 
+// Zoom state
+let chipZoom = 1.0;
+const ZOOM_MIN = 0.2;
+const ZOOM_MAX = 4.0;
+const ZOOM_STEP = 0.15;
+
 // ── DOM refs ─────────────────────────────────────────────────────────
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
@@ -499,6 +505,166 @@ async function saveToProject(projectPath) {
   }
 }
 
+// ── Zoom controls ────────────────────────────────────────────────────
+
+function applyZoom() {
+  chipContainer.style.transform = `scale(${chipZoom})`;
+  const label = $("#zoomLevel");
+  if (label) label.textContent = `${Math.round(chipZoom * 100)}%`;
+}
+
+function zoomIn() {
+  chipZoom = Math.min(ZOOM_MAX, chipZoom + ZOOM_STEP);
+  applyZoom();
+}
+
+function zoomOut() {
+  chipZoom = Math.max(ZOOM_MIN, chipZoom - ZOOM_STEP);
+  applyZoom();
+}
+
+function zoomReset() {
+  chipZoom = 1.0;
+  applyZoom();
+}
+
+function zoomFit() {
+  const svg = chipContainer.querySelector("svg.chip-svg");
+  if (!svg || !chipArea) return;
+  const areaW = chipArea.clientWidth - 40;
+  const areaH = chipArea.clientHeight - 40;
+  const svgW = svg.getAttribute("width");
+  const svgH = svg.getAttribute("height");
+  if (!svgW || !svgH) return;
+  chipZoom = Math.min(areaW / parseFloat(svgW), areaH / parseFloat(svgH));
+  chipZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, chipZoom));
+  applyZoom();
+}
+
+// ── Project file save/load ───────────────────────────────────────────
+
+function serializePinStates() {
+  // Convert pinStates into a clean serializable form
+  const out = {};
+  for (const [pinNum, state] of Object.entries(pinStates)) {
+    const entry = {};
+    if (state.af) {
+      entry.af = {
+        function_id: state.af.function_id,
+        name: state.af.name,
+        pincm: state.af.pincm,
+        peripheral: state.af.peripheral,
+        signal: state.af.signal,
+        direction: state.af.direction || "io",
+      };
+    }
+    if (state.props) {
+      entry.props = { ...state.props };
+    }
+    out[pinNum] = entry;
+  }
+  return out;
+}
+
+async function saveProjectFile(filePath) {
+  if (!boardData) {
+    toast("No board loaded");
+    return;
+  }
+  const res = await fetch("/api/project-file/save", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      file_path: filePath,
+      board_id: boardData.board || boardSelect.value,
+      pin_states: serializePinStates(),
+      periph_states: { ...periphStates },
+      generated_overlay: generatedOverlay,
+      generated_conf: generatedConf,
+    }),
+  });
+  const result = await res.json();
+  if (result.saved) {
+    toast(`Project saved to ${result.file_path}`);
+  } else {
+    toast(`Error: ${result.error}`);
+  }
+}
+
+async function loadProjectFile(filePath) {
+  const res = await fetch("/api/project-file/load", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ file_path: filePath }),
+  });
+  const project = await res.json();
+  if (project.error) {
+    toast(`Error: ${project.error}`);
+    return;
+  }
+
+  // Load the board first if different from current
+  const boardId = project.board_id;
+  if (!boardData || boardData.board !== boardId) {
+    // Find it in the select dropdown
+    const opts = [...boardSelect.options];
+    const match = opts.find(o => o.value === boardId);
+    if (match) {
+      boardSelect.value = boardId;
+      await loadBoard(boardId);
+    } else {
+      toast(`Board "${boardId}" not found in board list`);
+      return;
+    }
+  }
+
+  // Restore pin states by re-matching alt functions from boardData
+  pinStates = {};
+  for (const [pinNum, state] of Object.entries(project.pin_states || {})) {
+    const boardPin = boardData.pins.find(p => p.number === parseInt(pinNum));
+    if (!boardPin) continue;
+
+    const entry = {};
+    if (state.af) {
+      // Match the AF back to the actual board data object
+      const af = boardPin.alt_functions.find(a =>
+        a.pincm === state.af.pincm && a.function_id === state.af.function_id
+      ) || boardPin.alt_functions.find(a =>
+        a.peripheral === state.af.peripheral && a.signal === state.af.signal
+      );
+      if (af) entry.af = af;
+    }
+    if (state.props) {
+      entry.props = { ...state.props };
+    }
+    if (entry.af || entry.props) {
+      pinStates[pinNum] = entry;
+    }
+  }
+
+  // Restore peripheral states
+  for (const [name, enabled] of Object.entries(project.periph_states || {})) {
+    if (name in periphStates) {
+      periphStates[name] = enabled;
+    }
+  }
+
+  // Restore generated output
+  generatedOverlay = project.generated_overlay || "";
+  generatedConf = project.generated_conf || "";
+  if (generatedOverlay || generatedConf) {
+    showOutput(activeTab);
+    outputBar.classList.remove("collapsed");
+  }
+
+  // Re-render everything
+  renderPeripherals();
+  renderChip();
+  renderConfigPanel();
+
+  toast(`Project loaded (${Object.keys(pinStates).length} pin(s))`);
+}
+
 // ── Event wiring ─────────────────────────────────────────────────────
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -540,6 +706,60 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  // ── Save project file modal ──────────────────────────────────────
+  $("#btnSaveProject").addEventListener("click", () => {
+    $("#saveProjectModal").classList.add("show");
+  });
+  $("#btnCancelSaveProject").addEventListener("click", () => {
+    $("#saveProjectModal").classList.remove("show");
+  });
+  $("#btnConfirmSaveProject").addEventListener("click", () => {
+    const path = $("#projectFilePath").value.trim();
+    if (path) {
+      saveProjectFile(path);
+      $("#saveProjectModal").classList.remove("show");
+    }
+  });
+  $("#saveProjectModal").addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) {
+      $("#saveProjectModal").classList.remove("show");
+    }
+  });
+
+  // ── Load project file modal ──────────────────────────────────────
+  $("#btnLoadProject").addEventListener("click", () => {
+    $("#loadProjectModal").classList.add("show");
+  });
+  $("#btnCancelLoadProject").addEventListener("click", () => {
+    $("#loadProjectModal").classList.remove("show");
+  });
+  $("#btnConfirmLoadProject").addEventListener("click", () => {
+    const path = $("#loadProjectFilePath").value.trim();
+    if (path) {
+      loadProjectFile(path);
+      $("#loadProjectModal").classList.remove("show");
+    }
+  });
+  $("#loadProjectModal").addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) {
+      $("#loadProjectModal").classList.remove("show");
+    }
+  });
+
+  // ── Zoom controls ─────────────────────────────────────────────────
+  $("#zoomIn").addEventListener("click", zoomIn);
+  $("#zoomOut").addEventListener("click", zoomOut);
+  $("#zoomReset").addEventListener("click", zoomReset);
+  $("#zoomFit").addEventListener("click", zoomFit);
+
+  // Mouse wheel zoom on chip area
+  chipArea.addEventListener("wheel", (e) => {
+    // Only zoom when hovering over chip area
+    e.preventDefault();
+    if (e.deltaY < 0) zoomIn();
+    else zoomOut();
+  }, { passive: false });
+
   // Keyboard shortcuts
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
@@ -548,10 +768,21 @@ document.addEventListener("DOMContentLoaded", () => {
       renderConfigPanel();
       $("#saveModal").classList.remove("show");
       $("#importModal").classList.remove("show");
+      $("#saveProjectModal").classList.remove("show");
+      $("#loadProjectModal").classList.remove("show");
     }
     if ((e.ctrlKey || e.metaKey) && e.key === "g") {
       e.preventDefault();
       generateOutput();
+    }
+    // Ctrl+S = save project file
+    if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+      // Only intercept if configurator tab is active
+      const confTab = document.querySelector('.tab-content[data-app-content="configurator"]');
+      if (confTab && confTab.classList.contains("active")) {
+        e.preventDefault();
+        $("#saveProjectModal").classList.add("show");
+      }
     }
   });
 
