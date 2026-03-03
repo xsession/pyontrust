@@ -951,18 +951,37 @@ async function pkgLoadExisting() {
 
 
 // ══════════════════════════════════════════════════════════════════════
-// Module Configurator
+// Module Configurator  (dynamic – all Zephyr modules)
 // ══════════════════════════════════════════════════════════════════════
 
-let modModules = [];        // Module definitions from API
-let modActiveId = null;     // Currently selected module
-let modValues = {};         // { CONFIG_KEY: currentValue }
-let modDefaults = {};       // { CONFIG_KEY: defaultValue }
+let modModules = [];            // All module definitions from API
+let modActiveId = null;         // Currently selected module in sidebar
+let modEnabled = {};            // { moduleId: bool } — which modules are "enabled"
+let modValuesMap = {};          // { moduleId: { CONFIG_KEY: value } }
+let modDefaultsMap = {};        // { moduleId: { CONFIG_KEY: default } }
+
+// Convenience accessors for current module
+function _modValues()   { return modValuesMap[modActiveId]   || {}; }
+function _modDefaults() { return modDefaultsMap[modActiveId] || {}; }
 
 async function modInit() {
   try {
-    const res = await fetch("/api/lvgl-modules");
+    const res = await fetch("/api/modules");
     modModules = await res.json();
+
+    // Initialise per-module state
+    for (const m of modModules) {
+      modEnabled[m.id] = false;
+      modValuesMap[m.id] = {};
+      modDefaultsMap[m.id] = {};
+      for (const cat of m.categories) {
+        for (const opt of cat.options) {
+          modDefaultsMap[m.id][opt.key] = opt.default;
+          modValuesMap[m.id][opt.key] = opt.default;
+        }
+      }
+    }
+
     modRenderSidebar();
 
     // Search filter
@@ -985,39 +1004,67 @@ function modRenderSidebar(filter = "") {
 
   list.innerHTML = filtered.map(m => {
     const optCount = m.categories.reduce((n, c) => n + c.options.length, 0);
+    const enabled = modEnabled[m.id];
+    const changed = modCountChanged(m.id);
     return `
-      <div class="modcfg-module-item ${m.id === modActiveId ? 'active' : ''}"
+      <div class="modcfg-module-item ${m.id === modActiveId ? 'active' : ''} ${enabled ? 'enabled' : ''}"
            data-mod-id="${m.id}">
         <div class="mod-icon">${m.icon || '📦'}</div>
-        <div class="mod-label">${m.name}</div>
+        <div class="mod-label">
+          ${m.name}
+          ${changed > 0 ? `<span class="mod-changed-dot" title="${changed} changed">●</span>` : ''}
+        </div>
         <div class="mod-badge">${optCount}</div>
+        <input type="checkbox" class="mod-enable-cb" data-mod-enable="${m.id}"
+               ${enabled ? 'checked' : ''} title="Enable ${m.name} in output">
       </div>`;
   }).join("");
 
+  // Click on item → select
   list.querySelectorAll(".modcfg-module-item").forEach(el => {
-    el.addEventListener("click", () => {
+    el.addEventListener("click", (e) => {
+      // Don't select when clicking the checkbox itself
+      if (e.target.classList.contains("mod-enable-cb")) return;
       const id = el.dataset.modId;
       modActiveId = id;
       modSelectModule(id);
-      list.querySelectorAll(".modcfg-module-item").forEach(e =>
-        e.classList.toggle("active", e.dataset.modId === id));
+      list.querySelectorAll(".modcfg-module-item").forEach(e2 =>
+        e2.classList.toggle("active", e2.dataset.modId === id));
     });
   });
+
+  // Enable checkbox
+  list.querySelectorAll(".mod-enable-cb").forEach(cb => {
+    cb.addEventListener("change", (e) => {
+      e.stopPropagation();
+      modEnabled[cb.dataset.modEnable] = cb.checked;
+      cb.closest(".modcfg-module-item").classList.toggle("enabled", cb.checked);
+      modUpdateGenerateAllBtn();
+    });
+  });
+}
+
+function modCountChanged(moduleId) {
+  const vals = modValuesMap[moduleId] || {};
+  const defs = modDefaultsMap[moduleId] || {};
+  let n = 0;
+  for (const k in defs) {
+    if (vals[k] !== undefined && vals[k] !== defs[k]) n++;
+  }
+  return n;
+}
+
+function modUpdateGenerateAllBtn() {
+  const btn = document.getElementById("modGenerateAllBtn");
+  if (!btn) return;
+  const count = Object.values(modEnabled).filter(Boolean).length;
+  btn.textContent = `⚡ Generate All (${count} module${count !== 1 ? 's' : ''})`;
+  btn.disabled = count === 0;
 }
 
 function modSelectModule(id) {
   const mod = modModules.find(m => m.id === id);
   if (!mod) return;
-
-  // Populate defaults & current values (keep existing user edits)
-  for (const cat of mod.categories) {
-    for (const opt of cat.options) {
-      modDefaults[opt.key] = opt.default;
-      if (!(opt.key in modValues)) {
-        modValues[opt.key] = opt.default;
-      }
-    }
-  }
 
   const main = document.getElementById("modMain");
   main.innerHTML = `
@@ -1029,12 +1076,13 @@ function modSelectModule(id) {
     </div>
     <div class="modcfg-body" id="modBody"></div>
     <div class="modcfg-actions">
-      <button class="btn" id="modResetBtn">⟲ Reset to Defaults</button>
+      <button class="btn" id="modResetBtn">⟲ Reset Module</button>
+      <button class="btn" id="modEnableBtn">${modEnabled[id] ? '✓ Enabled' : '○ Enable'}</button>
       <span class="spacer"></span>
       <label style="font-size:12px;display:flex;align-items:center;gap:6px;">
-        <input type="checkbox" id="modFullOverlay"> Full overlay (all values)
+        <input type="checkbox" id="modFullOverlay"> Full overlay
       </label>
-      <button class="btn btn-primary" id="modGenerateBtn">⚡ Generate Config</button>
+      <button class="btn btn-primary" id="modGenerateAllBtn">⚡ Generate All (0)</button>
       <button class="btn" id="modCopyBtn" style="display:none">📋 Copy</button>
     </div>
     <div class="modcfg-output" id="modOutput" style="display:none">
@@ -1043,15 +1091,32 @@ function modSelectModule(id) {
   `;
 
   modRenderBody(mod);
+  modUpdateGenerateAllBtn();
 
+  // Reset this module
   document.getElementById("modResetBtn").addEventListener("click", () => {
-    modValues = { ...modDefaults };
+    modValuesMap[id] = { ...modDefaultsMap[id] };
     modRenderBody(mod);
-    document.getElementById("modOutput").style.display = "none";
-    document.getElementById("modCopyBtn").style.display = "none";
+    modRenderSidebar(document.getElementById("modSearch")?.value?.trim().toLowerCase() || "");
+    const outEl = document.getElementById("modOutput");
+    if (outEl) outEl.style.display = "none";
+    const cpBtn = document.getElementById("modCopyBtn");
+    if (cpBtn) cpBtn.style.display = "none";
   });
 
-  document.getElementById("modGenerateBtn").addEventListener("click", () => modGenerate(mod));
+  // Enable toggle in main area
+  const enableBtn = document.getElementById("modEnableBtn");
+  enableBtn.addEventListener("click", () => {
+    modEnabled[id] = !modEnabled[id];
+    enableBtn.textContent = modEnabled[id] ? "✓ Enabled" : "○ Enable";
+    modUpdateGenerateAllBtn();
+    modRenderSidebar(document.getElementById("modSearch")?.value?.trim().toLowerCase() || "");
+    // Re-highlight the active item
+    document.querySelectorAll(".modcfg-module-item").forEach(e =>
+      e.classList.toggle("active", e.dataset.modId === id));
+  });
+
+  document.getElementById("modGenerateAllBtn").addEventListener("click", () => modGenerateAll());
 
   document.getElementById("modCopyBtn").addEventListener("click", () => {
     const text = document.getElementById("modOutputPre").textContent;
@@ -1066,9 +1131,11 @@ function modSelectModule(id) {
 function modRenderBody(mod) {
   const body = document.getElementById("modBody");
   if (!body) return;
+  const vals = modValuesMap[mod.id] || {};
+  const defs = modDefaultsMap[mod.id] || {};
 
   body.innerHTML = mod.categories.map(cat => {
-    const rows = cat.options.map(opt => modRenderOption(opt)).join("");
+    const rows = cat.options.map(opt => modRenderOption(opt, vals, defs)).join("");
     return `
       <div class="cfg-group" data-cat="${cat.id}">
         <div class="cfg-group-header">
@@ -1095,25 +1162,31 @@ function modRenderBody(mod) {
       if (!opt) return;
 
       if (opt.type === "bool") {
-        modValues[key] = el.checked;
+        vals[key] = el.checked;
       } else if (opt.type === "int") {
-        modValues[key] = parseInt(el.value, 10) || 0;
+        vals[key] = parseInt(el.value, 10) || 0;
       } else {
-        modValues[key] = el.value;
+        vals[key] = el.value;
       }
 
       // Highlight changed rows
       const row = el.closest(".cfg-row");
       if (row) {
-        row.classList.toggle("changed", modValues[key] !== modDefaults[key]);
+        row.classList.toggle("changed", vals[key] !== defs[key]);
       }
+
+      // Update sidebar changed dot
+      modRenderSidebar(document.getElementById("modSearch")?.value?.trim().toLowerCase() || "");
+      // Re-highlight active
+      document.querySelectorAll(".modcfg-module-item").forEach(e =>
+        e.classList.toggle("active", e.dataset.modId === modActiveId));
     });
   });
 }
 
-function modRenderOption(opt) {
-  const val = modValues[opt.key] ?? opt.default;
-  const changed = val !== modDefaults[opt.key];
+function modRenderOption(opt, vals, defs) {
+  const val = vals[opt.key] ?? opt.default;
+  const changed = val !== defs[opt.key];
   let inputHtml = "";
 
   if (opt.type === "bool") {
@@ -1151,12 +1224,24 @@ function modFindOption(mod, key) {
   return null;
 }
 
-async function modGenerate(mod) {
-  const btn = document.getElementById("modGenerateBtn");
+async function modGenerateAll() {
+  const btn = document.getElementById("modGenerateAllBtn");
   const outEl = document.getElementById("modOutput");
   const preEl = document.getElementById("modOutputPre");
   const copyBtn = document.getElementById("modCopyBtn");
   const fullOverlay = document.getElementById("modFullOverlay")?.checked;
+
+  // Build multi-module payload
+  const modulesPayload = {};
+  for (const [id, en] of Object.entries(modEnabled)) {
+    if (en) modulesPayload[id] = modValuesMap[id] || {};
+  }
+
+  if (Object.keys(modulesPayload).length === 0) {
+    if (preEl) preEl.textContent = "No modules enabled. Check the boxes next to modules in the sidebar.";
+    if (outEl) outEl.style.display = "";
+    return;
+  }
 
   btn.textContent = "⏳ Generating…";
   btn.disabled = true;
@@ -1165,7 +1250,7 @@ async function modGenerate(mod) {
     const res = await fetch("/api/generate-module-config", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ module: mod.id, values: modValues }),
+      body: JSON.stringify({ modules: modulesPayload }),
     });
     const data = await res.json();
 
@@ -1181,7 +1266,7 @@ async function modGenerate(mod) {
     preEl.textContent = `ERROR: ${err.message}`;
     outEl.style.display = "";
   } finally {
-    btn.textContent = "⚡ Generate Config";
+    modUpdateGenerateAllBtn();
     btn.disabled = false;
   }
 }

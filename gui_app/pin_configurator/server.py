@@ -9,6 +9,8 @@ Serves the web UI and provides REST endpoints for:
   POST /api/parse-pdf           – parse an MCU datasheet PDF
   POST /api/generate-package    – generate board definition .py from parsed data
   GET  /api/generated-packages  – list previously generated packages
+  GET  /api/modules             – list all Zephyr module definitions
+  POST /api/generate-module-config – generate prj.conf from module selections
 """
 
 from __future__ import annotations
@@ -391,240 +393,122 @@ def _reload_boards():
 
 # ── Module Configurator API ──────────────────────────────────────────
 
-# LVGL Kconfig module definition tree.
-# Each module has categories -> options.
-_LVGL_MODULES = {
-    "id": "lvgl",
-    "name": "LVGL",
-    "version": "9.2",
-    "icon": "\U0001f3a8",
-    "desc": "Light and Versatile Graphics Library — embedded GUI with advanced visual effects and low memory footprint.",
-    "categories": [
-        {
-            "id": "general",
-            "title": "General",
-            "options": [
-                {"key": "CONFIG_LVGL", "type": "bool", "default": True, "help": "Enable LVGL library"},
-                {"key": "CONFIG_LV_Z_MEM_POOL_SIZE", "type": "int", "default": 16384, "help": "LVGL memory pool size in bytes"},
-                {"key": "CONFIG_LV_COLOR_DEPTH", "type": "choice", "choices": ["1", "8", "16", "32"], "default": "16", "help": "Color depth (bits per pixel)"},
-                {"key": "CONFIG_LV_DPI_DEF", "type": "int", "default": 130, "help": "Default display DPI"},
-            ]
-        },
-        {
-            "id": "display",
-            "title": "Display",
-            "options": [
-                {"key": "CONFIG_LV_HOR_RES_MAX", "type": "int", "default": 320, "help": "Maximum horizontal resolution"},
-                {"key": "CONFIG_LV_VER_RES_MAX", "type": "int", "default": 240, "help": "Maximum vertical resolution"},
-                {"key": "CONFIG_LV_Z_FLUSH_THREAD", "type": "bool", "default": False, "help": "Use a dedicated flush thread for display"},
-                {"key": "CONFIG_LV_Z_FULL_REFRESH", "type": "bool", "default": False, "help": "Always redraw the whole screen"},
-                {"key": "CONFIG_LV_Z_VDB_SIZE", "type": "int", "default": 100, "help": "Display buffer size (% of screen)"},
-                {"key": "CONFIG_LV_Z_DOUBLE_VDB", "type": "bool", "default": False, "help": "Use double display buffering"},
-                {"key": "CONFIG_LV_Z_VBD_CUSTOM_SECTION", "type": "bool", "default": False, "help": "Place VDB in custom linker section"},
-            ]
-        },
-        {
-            "id": "input",
-            "title": "Input Devices",
-            "options": [
-                {"key": "CONFIG_LV_Z_POINTER_INPUT", "type": "bool", "default": False, "help": "Enable pointer (touch) input device"},
-                {"key": "CONFIG_LV_Z_POINTER_INPUT_MSGQ_COUNT", "type": "int", "default": 10, "help": "Pointer input message queue depth"},
-                {"key": "CONFIG_LV_Z_BUTTON_INPUT", "type": "bool", "default": False, "help": "Enable button input device"},
-                {"key": "CONFIG_LV_Z_ENCODER_INPUT", "type": "bool", "default": False, "help": "Enable rotary encoder input device"},
-                {"key": "CONFIG_LV_Z_KEYPAD_INPUT", "type": "bool", "default": False, "help": "Enable keypad input device"},
-            ]
-        },
-        {
-            "id": "fonts",
-            "title": "Fonts",
-            "options": [
-                {"key": "CONFIG_LV_FONT_MONTSERRAT_8", "type": "bool", "default": False, "help": "Montserrat 8px font"},
-                {"key": "CONFIG_LV_FONT_MONTSERRAT_10", "type": "bool", "default": False, "help": "Montserrat 10px font"},
-                {"key": "CONFIG_LV_FONT_MONTSERRAT_12", "type": "bool", "default": False, "help": "Montserrat 12px font"},
-                {"key": "CONFIG_LV_FONT_MONTSERRAT_14", "type": "bool", "default": True, "help": "Montserrat 14px font (default)"},
-                {"key": "CONFIG_LV_FONT_MONTSERRAT_16", "type": "bool", "default": False, "help": "Montserrat 16px font"},
-                {"key": "CONFIG_LV_FONT_MONTSERRAT_18", "type": "bool", "default": False, "help": "Montserrat 18px font"},
-                {"key": "CONFIG_LV_FONT_MONTSERRAT_20", "type": "bool", "default": False, "help": "Montserrat 20px font"},
-                {"key": "CONFIG_LV_FONT_MONTSERRAT_22", "type": "bool", "default": False, "help": "Montserrat 22px font"},
-                {"key": "CONFIG_LV_FONT_MONTSERRAT_24", "type": "bool", "default": False, "help": "Montserrat 24px font"},
-                {"key": "CONFIG_LV_FONT_MONTSERRAT_28", "type": "bool", "default": False, "help": "Montserrat 28px font"},
-                {"key": "CONFIG_LV_FONT_MONTSERRAT_32", "type": "bool", "default": False, "help": "Montserrat 32px font"},
-                {"key": "CONFIG_LV_FONT_MONTSERRAT_36", "type": "bool", "default": False, "help": "Montserrat 36px font"},
-                {"key": "CONFIG_LV_FONT_MONTSERRAT_48", "type": "bool", "default": False, "help": "Montserrat 48px font"},
-                {"key": "CONFIG_LV_FONT_DEFAULT_MONTSERRAT_14", "type": "bool", "default": True, "help": "Use Montserrat 14 as default font"},
-            ]
-        },
-        {
-            "id": "themes",
-            "title": "Themes & Styles",
-            "options": [
-                {"key": "CONFIG_LV_USE_THEME_DEFAULT", "type": "bool", "default": True, "help": "Enable default theme"},
-                {"key": "CONFIG_LV_THEME_DEFAULT_DARK", "type": "bool", "default": False, "help": "Use dark variant of default theme"},
-                {"key": "CONFIG_LV_USE_THEME_BASIC", "type": "bool", "default": False, "help": "Enable basic minimal theme"},
-                {"key": "CONFIG_LV_USE_THEME_MONO", "type": "bool", "default": False, "help": "Enable monochrome theme"},
-            ]
-        },
-        {
-            "id": "widgets",
-            "title": "Widgets",
-            "options": [
-                {"key": "CONFIG_LV_USE_ARC", "type": "bool", "default": True, "help": "Arc / circular gauge widget"},
-                {"key": "CONFIG_LV_USE_BAR", "type": "bool", "default": True, "help": "Progress bar widget"},
-                {"key": "CONFIG_LV_USE_BTN", "type": "bool", "default": True, "help": "Button widget"},
-                {"key": "CONFIG_LV_USE_BTNMATRIX", "type": "bool", "default": True, "help": "Button matrix widget"},
-                {"key": "CONFIG_LV_USE_CALENDAR", "type": "bool", "default": False, "help": "Calendar widget"},
-                {"key": "CONFIG_LV_USE_CANVAS", "type": "bool", "default": False, "help": "Canvas / draw widget"},
-                {"key": "CONFIG_LV_USE_CHART", "type": "bool", "default": False, "help": "Chart widget"},
-                {"key": "CONFIG_LV_USE_CHECKBOX", "type": "bool", "default": True, "help": "Checkbox widget"},
-                {"key": "CONFIG_LV_USE_DROPDOWN", "type": "bool", "default": True, "help": "Dropdown list widget"},
-                {"key": "CONFIG_LV_USE_IMG", "type": "bool", "default": True, "help": "Image widget"},
-                {"key": "CONFIG_LV_USE_IMGBTN", "type": "bool", "default": False, "help": "Image button widget"},
-                {"key": "CONFIG_LV_USE_KEYBOARD", "type": "bool", "default": False, "help": "Virtual keyboard widget"},
-                {"key": "CONFIG_LV_USE_LABEL", "type": "bool", "default": True, "help": "Label / text widget"},
-                {"key": "CONFIG_LV_USE_LED", "type": "bool", "default": False, "help": "LED indicator widget"},
-                {"key": "CONFIG_LV_USE_LINE", "type": "bool", "default": True, "help": "Line drawing widget"},
-                {"key": "CONFIG_LV_USE_LIST", "type": "bool", "default": False, "help": "List widget"},
-                {"key": "CONFIG_LV_USE_MENU", "type": "bool", "default": False, "help": "Menu widget"},
-                {"key": "CONFIG_LV_USE_METER", "type": "bool", "default": False, "help": "Meter / gauge widget"},
-                {"key": "CONFIG_LV_USE_MSGBOX", "type": "bool", "default": False, "help": "Message box widget"},
-                {"key": "CONFIG_LV_USE_ROLLER", "type": "bool", "default": True, "help": "Roller (scrollable list) widget"},
-                {"key": "CONFIG_LV_USE_SLIDER", "type": "bool", "default": True, "help": "Slider widget"},
-                {"key": "CONFIG_LV_USE_SPAN", "type": "bool", "default": False, "help": "Rich text span widget"},
-                {"key": "CONFIG_LV_USE_SPINBOX", "type": "bool", "default": False, "help": "Spinbox / number input widget"},
-                {"key": "CONFIG_LV_USE_SPINNER", "type": "bool", "default": False, "help": "Spinner / loading widget"},
-                {"key": "CONFIG_LV_USE_SWITCH", "type": "bool", "default": True, "help": "Toggle switch widget"},
-                {"key": "CONFIG_LV_USE_TABLE", "type": "bool", "default": False, "help": "Table widget"},
-                {"key": "CONFIG_LV_USE_TABVIEW", "type": "bool", "default": False, "help": "Tab view container widget"},
-                {"key": "CONFIG_LV_USE_TEXTAREA", "type": "bool", "default": True, "help": "Text area / input widget"},
-                {"key": "CONFIG_LV_USE_TILEVIEW", "type": "bool", "default": False, "help": "Tile view (swipeable pages)"},
-                {"key": "CONFIG_LV_USE_WIN", "type": "bool", "default": False, "help": "Window widget"},
-            ]
-        },
-        {
-            "id": "memory",
-            "title": "Memory & Performance",
-            "options": [
-                {"key": "CONFIG_LV_Z_MEM_POOL_NUMBER_BLOCKS", "type": "int", "default": 8, "help": "Number of memory pool blocks"},
-                {"key": "CONFIG_LV_MEM_CUSTOM", "type": "bool", "default": False, "help": "Use custom memory allocator"},
-                {"key": "CONFIG_LV_MEM_SIZE_KILOBYTES", "type": "int", "default": 32, "help": "Internal memory size (KB) when not using pool"},
-                {"key": "CONFIG_LV_DRAW_BUF_ALIGN", "type": "int", "default": 4, "help": "Draw buffer alignment (bytes)"},
-                {"key": "CONFIG_LV_USE_GPU", "type": "bool", "default": False, "help": "Enable GPU accelerated rendering"},
-            ]
-        },
-        {
-            "id": "debug",
-            "title": "Logging & Debug",
-            "options": [
-                {"key": "CONFIG_LV_USE_LOG", "type": "bool", "default": False, "help": "Enable LVGL internal logging"},
-                {"key": "CONFIG_LV_LOG_LEVEL_TRACE", "type": "bool", "default": False, "help": "Trace-level logging (most verbose)"},
-                {"key": "CONFIG_LV_LOG_LEVEL_INFO", "type": "bool", "default": False, "help": "Info-level logging"},
-                {"key": "CONFIG_LV_LOG_LEVEL_WARN", "type": "bool", "default": True, "help": "Warning-level logging"},
-                {"key": "CONFIG_LV_LOG_LEVEL_ERROR", "type": "bool", "default": False, "help": "Error-only logging"},
-                {"key": "CONFIG_LV_USE_ASSERT_NULL", "type": "bool", "default": True, "help": "Assert on NULL pointer dereference"},
-                {"key": "CONFIG_LV_USE_ASSERT_MEM_INTEGRITY", "type": "bool", "default": False, "help": "Assert on memory integrity violation"},
-                {"key": "CONFIG_LV_USE_ASSERT_STYLE", "type": "bool", "default": False, "help": "Assert on invalid style usage"},
-                {"key": "CONFIG_LV_USE_PERF_MONITOR", "type": "bool", "default": False, "help": "Show FPS & CPU usage overlay"},
-                {"key": "CONFIG_LV_USE_MEM_MONITOR", "type": "bool", "default": False, "help": "Show memory usage overlay"},
-            ]
-        },
-    ]
-}
+from module_registry import get_all_modules, get_module
 
-@app.route("/api/lvgl-modules", methods=["GET"])
-def get_lvgl_modules():
-    """Return the LVGL module definition tree for the configurator UI."""
-    return jsonify([_LVGL_MODULES])
+
+@app.route("/api/modules", methods=["GET"])
+def api_get_modules():
+    """Return all available Zephyr module definitions."""
+    return jsonify(get_all_modules())
 
 
 @app.route("/api/generate-module-config", methods=["POST"])
 def generate_module_config():
     """Generate prj.conf / Kconfig fragment from user selections.
 
-    Expects JSON body: { "module": "lvgl", "values": { "CONFIG_KEY": value, ... } }
+    Expects JSON body:
+        {
+          "modules": {
+            "<module_id>": { "CONFIG_KEY": value, ... },
+            ...
+          }
+        }
     Returns { "prj_conf": "...", "overlay_conf": "..." }
     """
     data = request.get_json(force=True)
-    module_id = data.get("module")
-    values = data.get("values", {})
 
-    if module_id != "lvgl":
-        return jsonify({"error": f"Unknown module '{module_id}'"}), 400
+    # Support both old single-module format and new multi-module format
+    if "module" in data and "values" in data:
+        # Legacy single-module format
+        modules_map = {data["module"]: data["values"]}
+    else:
+        modules_map = data.get("modules", {})
 
-    # Build the Kconfig text – only emit values that differ from defaults
-    mod = _LVGL_MODULES
-    defaults = {}
-    for cat in mod["categories"]:
-        for opt in cat["options"]:
-            defaults[opt["key"]] = opt["default"]
+    if not modules_map:
+        return jsonify({"error": "No module configuration provided"}), 400
 
     lines_prj = [
-        "# ─── LVGL module configuration ───────────────────────────────────",
+        "# ─── Zephyr module configuration ─────────────────────────────────",
         "# Generated by Zephyr Module Configurator",
         "",
     ]
-
-    for cat in mod["categories"]:
-        cat_lines = []
-        for opt in cat["options"]:
-            key = opt["key"]
-            val = values.get(key, opt["default"])
-            default = opt["default"]
-
-            # Normalise types for comparison
-            if opt["type"] == "bool":
-                val = bool(val)
-            elif opt["type"] == "int":
-                try:
-                    val = int(val)
-                except (ValueError, TypeError):
-                    val = default
-            else:
-                val = str(val)
-
-            if val != default:
-                if opt["type"] == "bool":
-                    cat_lines.append(f"{key}={'y' if val else 'n'}")
-                elif opt["type"] == "choice":
-                    cat_lines.append(f"{key}={val}")
-                else:
-                    cat_lines.append(f"{key}={val}")
-            elif key == "CONFIG_LVGL" and val:
-                # Always emit the master enable
-                cat_lines.append(f"{key}=y")
-
-        if cat_lines:
-            lines_prj.append(f"# {cat['title']}")
-            lines_prj.extend(cat_lines)
-            lines_prj.append("")
-
-    # Also generate full overlay (all values regardless of defaults)
     lines_overlay = [
-        "# ─── LVGL full overlay configuration ─────────────────────────────",
+        "# ─── Zephyr full overlay configuration ───────────────────────────",
         "# Generated by Zephyr Module Configurator",
         "",
     ]
-    for cat in mod["categories"]:
-        lines_overlay.append(f"# {cat['title']}")
-        for opt in cat["options"]:
-            key = opt["key"]
-            val = values.get(key, opt["default"])
-            if opt["type"] == "bool":
-                val = bool(val)
-                lines_overlay.append(f"{key}={'y' if val else 'n'}")
-            elif opt["type"] == "int":
-                try:
-                    val = int(val)
-                except (ValueError, TypeError):
-                    val = opt["default"]
-                lines_overlay.append(f"{key}={val}")
-            else:
-                lines_overlay.append(f"{key}={val}")
+
+    for module_id, values in modules_map.items():
+        mod = get_module(module_id)
+        if not mod:
+            continue
+
+        # Collect defaults
+        defaults = {}
+        for cat in mod["categories"]:
+            for opt in cat["options"]:
+                defaults[opt["key"]] = opt["default"]
+
+        # Detect the "master enable" key – first boolean option in first category
+        master_key = None
+        if mod["categories"] and mod["categories"][0]["options"]:
+            first = mod["categories"][0]["options"][0]
+            if first["type"] == "bool":
+                master_key = first["key"]
+
+        # ── prj.conf: only changed values ──
+        lines_prj.append(f"# ── {mod['name']} {'─' * max(1, 52 - len(mod['name']))}")
+        for cat in mod["categories"]:
+            cat_lines = []
+            for opt in cat["options"]:
+                key = opt["key"]
+                val = _normalise_value(opt, values.get(key, opt["default"]))
+                default = opt["default"]
+
+                if val != default:
+                    cat_lines.append(_format_kconfig(opt, val))
+                elif key == master_key and val:
+                    cat_lines.append(f"{key}=y")
+
+            if cat_lines:
+                lines_prj.append(f"# {cat['title']}")
+                lines_prj.extend(cat_lines)
+        lines_prj.append("")
+
+        # ── overlay: all values ──
+        lines_overlay.append(f"# ── {mod['name']} {'─' * max(1, 52 - len(mod['name']))}")
+        for cat in mod["categories"]:
+            lines_overlay.append(f"# {cat['title']}")
+            for opt in cat["options"]:
+                key = opt["key"]
+                val = _normalise_value(opt, values.get(key, opt["default"]))
+                lines_overlay.append(_format_kconfig(opt, val))
         lines_overlay.append("")
 
     return jsonify({
         "prj_conf": "\n".join(lines_prj),
         "overlay_conf": "\n".join(lines_overlay),
     })
+
+
+def _normalise_value(opt: dict, val):
+    """Coerce a value to the correct Python type for comparison."""
+    if opt["type"] == "bool":
+        return bool(val)
+    elif opt["type"] == "int":
+        try:
+            return int(val)
+        except (ValueError, TypeError):
+            return opt["default"]
+    return str(val)
+
+
+def _format_kconfig(opt: dict, val) -> str:
+    """Format a single CONFIG line."""
+    key = opt["key"]
+    if opt["type"] == "bool":
+        return f"{key}={'y' if val else 'n'}"
+    return f"{key}={val}"
 
 
 # ── Entry point ──────────────────────────────────────────────────────

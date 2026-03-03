@@ -778,13 +778,32 @@ svg.chip-svg .pin-func {
   flex-shrink: 0;
 }
 .modcfg-module-item.active .mod-icon { background: var(--accent); color: var(--bg); }
-.modcfg-module-item .mod-label { flex: 1; }
 .modcfg-module-item .mod-badge {
   font-size: 10px;
   background: var(--bg);
   color: var(--fg-dim);
   padding: 1px 6px;
   border-radius: 8px;
+}
+.modcfg-module-item .mod-enable-cb {
+  accent-color: var(--green);
+  width: 14px; height: 14px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.modcfg-module-item.enabled { border-left: 2px solid var(--green); }
+.modcfg-module-item .mod-changed-dot {
+  color: var(--yellow);
+  font-size: 8px;
+  vertical-align: super;
+  margin-left: 2px;
+}
+.modcfg-module-item .mod-label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .modcfg-main {
