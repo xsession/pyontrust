@@ -394,6 +394,18 @@ def _reload_boards():
 # ── Module Configurator API ──────────────────────────────────────────
 
 from module_registry import get_all_modules, get_module
+from peripheral_registry import (
+    get_all_peripheral_templates,
+    get_peripheral_template,
+    build_peripheral_instances,
+    generate_peripheral_config,
+)
+from clock_registry import (
+    get_all_clock_trees,
+    get_clock_tree,
+    compute_frequencies,
+    generate_clock_config,
+)
 
 
 @app.route("/api/modules", methods=["GET"])
@@ -509,6 +521,130 @@ def _format_kconfig(opt: dict, val) -> str:
     if opt["type"] == "bool":
         return f"{key}={'y' if val else 'n'}"
     return f"{key}={val}"
+
+
+# ── Peripheral Configurator API ──────────────────────────────────────
+
+
+@app.route("/api/peripheral-templates", methods=["GET"])
+def api_get_peripheral_templates():
+    """Return all available peripheral configuration templates."""
+    return jsonify(get_all_peripheral_templates())
+
+
+@app.route("/api/peripheral-instances/<board_name>", methods=["GET"])
+def api_get_peripheral_instances(board_name: str):
+    """Return board peripherals enriched with configuration templates.
+
+    Merges board-specific peripheral instances (UART 0, SPI 1, etc.) with
+    the generic configuration templates to produce a full list of
+    configurable instances.
+    """
+    brd = _get_board(board_name)
+    if brd is None:
+        return jsonify({"error": f"Board '{board_name}' not found"}), 404
+
+    frontend = board_to_frontend(brd)
+    instances = build_peripheral_instances(frontend["peripherals"])
+    return jsonify({
+        "board": board_name,
+        "soc": frontend["soc"],
+        "package": frontend.get("package", ""),
+        "instances": instances,
+    })
+
+
+@app.route("/api/generate-peripheral-config", methods=["POST"])
+def api_generate_peripheral_config():
+    """Generate DTS overlay + prj.conf from peripheral instance values.
+
+    Expects JSON body:
+    {
+        "board": "mspm0g3507_48qfp",
+        "instances": {
+            "uart0": { "current-speed": 115200, "status": "okay", ... },
+            "spi0":  { "clock-frequency": 4000000, ... },
+            ...
+        }
+    }
+    Returns: { "overlay": "...", "prj_conf": "..." }
+    """
+    data = request.get_json(force=True)
+    board_name = data.get("board")
+    inst_values = data.get("instances", {})
+
+    if not board_name:
+        return jsonify({"error": "Missing 'board' field"}), 400
+    if not inst_values:
+        return jsonify({"error": "No peripheral instances provided"}), 400
+
+    brd = _get_board(board_name)
+    if brd is None:
+        return jsonify({"error": f"Board '{board_name}' not found"}), 404
+
+    frontend = board_to_frontend(brd)
+    result = generate_peripheral_config(inst_values, frontend["peripherals"])
+    return jsonify(result)
+
+
+# ── Clock System Configurator API ────────────────────────────────────
+
+
+@app.route("/api/clock-trees", methods=["GET"])
+def api_get_clock_trees():
+    """Return summary list of all available clock trees."""
+    return jsonify(get_all_clock_trees())
+
+
+@app.route("/api/clock-tree/<tree_id>", methods=["GET"])
+def api_get_clock_tree(tree_id: str):
+    """Return the full clock tree definition for a given SoC."""
+    tree = get_clock_tree(tree_id)
+    if tree is None:
+        return jsonify({"error": f"Clock tree '{tree_id}' not found"}), 404
+    return jsonify(tree)
+
+
+@app.route("/api/clock-frequencies", methods=["POST"])
+def api_compute_clock_frequencies():
+    """Compute resulting frequencies for a clock tree given user values.
+
+    Expects JSON body:
+        { "tree": "mspm0g3507", "values": { "sysosc-freq": 32000000, ... } }
+    Returns: { "frequencies": { "node_id": freq_hz, ... } }
+    """
+    data = request.get_json(force=True)
+    tree_id = data.get("tree")
+    values = data.get("values", {})
+
+    if not tree_id:
+        return jsonify({"error": "Missing 'tree' field"}), 400
+
+    freqs = compute_frequencies(tree_id, values)
+    if not freqs:
+        return jsonify({"error": f"Clock tree '{tree_id}' not found"}), 404
+    return jsonify({"frequencies": freqs})
+
+
+@app.route("/api/generate-clock-config", methods=["POST"])
+def api_generate_clock_config():
+    """Generate DTS overlay + prj.conf for clock configuration.
+
+    Expects JSON body:
+        { "tree": "mspm0g3507", "values": { "sysosc-freq": 32000000, ... } }
+    Returns: { "overlay": "...", "prj_conf": "...", "frequencies": {...} }
+    """
+    data = request.get_json(force=True)
+    tree_id = data.get("tree")
+    values = data.get("values", {})
+
+    if not tree_id:
+        return jsonify({"error": "Missing 'tree' field"}), 400
+
+    result = generate_clock_config(tree_id, values)
+    if not result["overlay"] and not result["prj_conf"]:
+        return jsonify({"error": f"Clock tree '{tree_id}' not found"}), 404
+    return jsonify(result)
 
 
 # ── Entry point ──────────────────────────────────────────────────────

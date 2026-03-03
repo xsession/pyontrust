@@ -565,6 +565,12 @@ document.addEventListener("DOMContentLoaded", () => {
       if (target === "packages") {
         pkgLoadExisting();
       }
+      if (target === "peripherals") {
+        pcfgLoadBoards();
+      }
+      if (target === "clock") {
+        clkLoadTrees();
+      }
     });
   });
 
@@ -573,6 +579,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // ── Package Manager init ───────────────────────────────────────────
   pkgInit();
+
+  // ── Peripheral Configurator init ───────────────────────────────────
+  pcfgInit();
+
+  // ── Clock System Configurator init ─────────────────────────────────
+  clkInit();
 });
 
 
@@ -1268,5 +1280,839 @@ async function modGenerateAll() {
   } finally {
     modUpdateGenerateAllBtn();
     btn.disabled = false;
+  }
+}
+
+
+// ══════════════════════════════════════════════════════════════════════
+// Peripheral Configurator  (board-aware instance config)
+// ══════════════════════════════════════════════════════════════════════
+
+let pcfgInstances   = [];          // enriched peripheral instance list from API
+let pcfgActiveInst  = null;        // currently selected instance name
+let pcfgValues      = {};          // { instanceName: { propKey: value } }
+let pcfgDefaults    = {};          // { instanceName: { propKey: default } }
+let pcfgBoardName   = null;        // current board id
+let pcfgBoardsLoaded = false;
+let pcfgOutputTab   = "overlay";   // "overlay" | "prjconf"
+
+function pcfgInit() {
+  const search = document.getElementById("pcfgSearch");
+  if (search) {
+    search.addEventListener("input", () =>
+      pcfgRenderSidebar(search.value.trim().toLowerCase())
+    );
+  }
+
+  const boardSel = document.getElementById("pcfgBoardSelect");
+  if (boardSel) {
+    boardSel.addEventListener("change", () => {
+      pcfgBoardName = boardSel.value;
+      if (pcfgBoardName) pcfgLoadInstances(pcfgBoardName);
+    });
+  }
+}
+
+async function pcfgLoadBoards() {
+  if (pcfgBoardsLoaded) return;
+  try {
+    const res = await fetch("/api/boards");
+    const boards = await res.json();
+    const sel = document.getElementById("pcfgBoardSelect");
+    sel.innerHTML = "";
+
+    if (boards.length === 0) {
+      sel.innerHTML = '<option value="">No boards available</option>';
+      return;
+    }
+
+    boards.forEach(b => {
+      const opt = document.createElement("option");
+      opt.value = b.id;
+      opt.textContent = `${b.name} (${b.board})`;
+      sel.appendChild(opt);
+    });
+
+    pcfgBoardsLoaded = true;
+    pcfgBoardName = boards[0].id;
+    await pcfgLoadInstances(pcfgBoardName);
+  } catch (err) {
+    console.error("Failed to load boards for peripheral configurator", err);
+  }
+}
+
+async function pcfgLoadInstances(boardName) {
+  try {
+    const res = await fetch(`/api/peripheral-instances/${boardName}`);
+    const data = await res.json();
+    pcfgInstances = data.instances || [];
+    pcfgActiveInst = null;
+
+    // Build per-instance value & default maps
+    pcfgValues = {};
+    pcfgDefaults = {};
+    for (const inst of pcfgInstances) {
+      pcfgValues[inst.instance] = {};
+      pcfgDefaults[inst.instance] = {};
+      for (const grp of inst.groups) {
+        for (const prop of grp.props) {
+          pcfgDefaults[inst.instance][prop.key] = prop.default;
+          pcfgValues[inst.instance][prop.key] = prop.default;
+        }
+      }
+    }
+
+    pcfgRenderSidebar();
+
+    // Show empty main area
+    const main = document.getElementById("pcfgMain");
+    main.innerHTML = `<div class="pkg-empty">
+      <div class="icon">🔧</div>
+      <div>Peripheral Configurator</div>
+      <div class="hint">Select a peripheral from the sidebar to configure it.<br>
+        ${pcfgInstances.length} peripheral instance(s) found for ${data.soc || boardName}.</div>
+    </div>`;
+  } catch (err) {
+    console.error("Failed to load peripheral instances", err);
+  }
+}
+
+function pcfgRenderSidebar(filter = "") {
+  const list = document.getElementById("pcfgInstanceList");
+  if (!list) return;
+
+  const filtered = pcfgInstances.filter(inst =>
+    !filter ||
+    inst.instance.toLowerCase().includes(filter) ||
+    inst.display.toLowerCase().includes(filter) ||
+    (inst.template || "").toLowerCase().includes(filter)
+  );
+
+  // Group by template type
+  const groups = {};
+  for (const inst of filtered) {
+    const tpl = inst.template || "other";
+    if (!groups[tpl]) groups[tpl] = [];
+    groups[tpl].push(inst);
+  }
+
+  let html = "";
+  for (const [tplId, insts] of Object.entries(groups)) {
+    html += insts.map(inst => {
+      const isActive = inst.instance === pcfgActiveInst;
+      const statusVal = (pcfgValues[inst.instance] || {})["status"] || "okay";
+      const changed = pcfgCountChanged(inst.instance);
+      return `
+        <div class="pcfg-instance-item ${isActive ? 'active' : ''}" data-inst="${inst.instance}">
+          <div class="pcfg-icon">${inst.icon || '⚙️'}</div>
+          <div class="pcfg-inst-label">
+            ${inst.display}
+            ${changed > 0 ? `<span class="pcfg-changed-dot" title="${changed} changed">●</span>` : ''}
+          </div>
+          <div class="pcfg-inst-compat">${inst.compatible.split(',').pop() || ''}</div>
+          <div class="pcfg-status-dot ${statusVal === 'okay' ? 'enabled' : 'disabled'}"
+               title="${statusVal}"></div>
+        </div>`;
+    }).join("");
+  }
+
+  list.innerHTML = html || '<div class="empty-state" style="padding:20px;font-size:12px;color:var(--fg-dim)">No peripherals found</div>';
+
+  // Click handlers
+  list.querySelectorAll(".pcfg-instance-item").forEach(el => {
+    el.addEventListener("click", () => {
+      pcfgActiveInst = el.dataset.inst;
+      pcfgSelectInstance(pcfgActiveInst);
+      list.querySelectorAll(".pcfg-instance-item").forEach(e2 =>
+        e2.classList.toggle("active", e2.dataset.inst === pcfgActiveInst)
+      );
+    });
+  });
+}
+
+function pcfgCountChanged(instName) {
+  const vals = pcfgValues[instName] || {};
+  const defs = pcfgDefaults[instName] || {};
+  let n = 0;
+  for (const k in defs) {
+    if (String(vals[k]) !== String(defs[k])) n++;
+  }
+  return n;
+}
+
+function pcfgSelectInstance(instName) {
+  const inst = pcfgInstances.find(i => i.instance === instName);
+  if (!inst) return;
+
+  const main = document.getElementById("pcfgMain");
+
+  // Build signals HTML
+  const signalsHtml = inst.signals.length > 0
+    ? `<div class="pcfg-signals">
+        ${inst.signals.map(s => `<span class="signal-tag">${s}</span>`).join('')}
+       </div>`
+    : '';
+
+  main.innerHTML = `
+    <div class="pcfg-header">
+      <h2>${inst.icon || ''} ${inst.display}
+        <span class="pcfg-compat-badge">${inst.compatible}</span>
+      </h2>
+      <div class="pcfg-desc">DTS node: <code>${inst.dts_node || '&' + inst.instance}</code></div>
+      ${signalsHtml}
+    </div>
+    <div class="pcfg-body" id="pcfgBody"></div>
+    <div class="pcfg-actions">
+      <button class="btn" id="pcfgResetBtn">⟲ Reset</button>
+      <span class="spacer"></span>
+      <button class="btn btn-accent" id="pcfgGenerateBtn">⚡ Generate Config</button>
+      <button class="btn" id="pcfgCopyBtn" style="display:none">📋 Copy</button>
+    </div>
+    <div class="pcfg-output" id="pcfgOutput" style="display:none">
+      <div class="pcfg-output-tabs">
+        <div class="pcfg-output-tab ${pcfgOutputTab === 'overlay' ? 'active' : ''}" data-ptab="overlay">.overlay</div>
+        <div class="pcfg-output-tab ${pcfgOutputTab === 'prjconf' ? 'active' : ''}" data-ptab="prjconf">prj.conf</div>
+      </div>
+      <pre id="pcfgOutputPre"></pre>
+    </div>
+  `;
+
+  pcfgRenderBody(inst);
+
+  // Reset button
+  document.getElementById("pcfgResetBtn").addEventListener("click", () => {
+    pcfgValues[instName] = { ...pcfgDefaults[instName] };
+    pcfgRenderBody(inst);
+    pcfgRenderSidebar(document.getElementById("pcfgSearch")?.value?.trim().toLowerCase() || "");
+    document.querySelectorAll(".pcfg-instance-item").forEach(e =>
+      e.classList.toggle("active", e.dataset.inst === pcfgActiveInst));
+    const outEl = document.getElementById("pcfgOutput");
+    if (outEl) outEl.style.display = "none";
+    document.getElementById("pcfgCopyBtn").style.display = "none";
+  });
+
+  // Generate button
+  document.getElementById("pcfgGenerateBtn").addEventListener("click", () => pcfgGenerate());
+
+  // Copy button
+  document.getElementById("pcfgCopyBtn").addEventListener("click", () => {
+    const text = document.getElementById("pcfgOutputPre").textContent;
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = document.getElementById("pcfgCopyBtn");
+      btn.textContent = "✓ Copied!";
+      setTimeout(() => btn.textContent = "📋 Copy", 1500);
+    });
+  });
+
+  // Output tab switching
+  document.querySelectorAll(".pcfg-output-tab").forEach(tab => {
+    tab.addEventListener("click", () => {
+      pcfgOutputTab = tab.dataset.ptab;
+      document.querySelectorAll(".pcfg-output-tab").forEach(t =>
+        t.classList.toggle("active", t.dataset.ptab === pcfgOutputTab));
+      // Re-display existing output
+      const preEl = document.getElementById("pcfgOutputPre");
+      if (preEl && preEl._overlayText) {
+        preEl.textContent = pcfgOutputTab === "overlay" ? preEl._overlayText : preEl._prjconfText;
+      }
+    });
+  });
+}
+
+function pcfgRenderBody(inst) {
+  const body = document.getElementById("pcfgBody");
+  if (!body) return;
+  const vals = pcfgValues[inst.instance] || {};
+  const defs = pcfgDefaults[inst.instance] || {};
+
+  if (!inst.groups || inst.groups.length === 0) {
+    body.innerHTML = '<div class="pkg-empty" style="padding:40px;"><div class="icon">⚙️</div><div>No configurable properties</div><div class="hint">This peripheral has no configuration template.</div></div>';
+    return;
+  }
+
+  body.innerHTML = inst.groups.map(grp => {
+    const rows = grp.props.map(prop => pcfgRenderProp(prop, vals, defs)).join("");
+    return `
+      <div class="cfg-group" data-cat="${grp.id}">
+        <div class="cfg-group-header">
+          <span class="chevron">▼</span>
+          ${grp.title}
+          <span class="group-count">${grp.props.length} properties</span>
+        </div>
+        <div class="cfg-group-body">${rows}</div>
+      </div>`;
+  }).join("");
+
+  // Collapsible groups
+  body.querySelectorAll(".cfg-group-header").forEach(hdr => {
+    hdr.addEventListener("click", () => {
+      hdr.parentElement.classList.toggle("collapsed");
+    });
+  });
+
+  // Wire up value changes
+  body.querySelectorAll("[data-pcfg-key]").forEach(el => {
+    el.addEventListener("change", () => {
+      const key = el.dataset.pcfgKey;
+      const prop = pcfgFindProp(inst, key);
+      if (!prop) return;
+
+      if (prop.type === "bool") {
+        vals[key] = el.checked;
+      } else if (prop.type === "int") {
+        vals[key] = parseInt(el.value, 10) || 0;
+      } else if (prop.type === "choice") {
+        // Numeric choices: parse as number
+        const num = Number(el.value);
+        vals[key] = isNaN(num) ? el.value : num;
+      } else {
+        vals[key] = el.value;
+      }
+
+      // Highlight changed rows
+      const row = el.closest(".cfg-row");
+      if (row) {
+        row.classList.toggle("changed", String(vals[key]) !== String(defs[key]));
+      }
+
+      // Update sidebar status dots and changed indicators
+      pcfgRenderSidebar(document.getElementById("pcfgSearch")?.value?.trim().toLowerCase() || "");
+      document.querySelectorAll(".pcfg-instance-item").forEach(e =>
+        e.classList.toggle("active", e.dataset.inst === pcfgActiveInst));
+    });
+  });
+}
+
+function pcfgRenderProp(prop, vals, defs) {
+  const val = vals[prop.key] ?? prop.default;
+  const changed = String(val) !== String(defs[prop.key]);
+  let inputHtml = "";
+  const dtsTag = prop.dts
+    ? '<span style="font-size:10px;color:var(--teal);margin-left:4px;" title="DTS property">DTS</span>'
+    : '';
+  const kcTag = prop.kconfig
+    ? '<span style="font-size:10px;color:var(--mauve);margin-left:4px;" title="Kconfig property">KC</span>'
+    : '';
+
+  if (prop.type === "bool") {
+    inputHtml = `<input type="checkbox" data-pcfg-key="${prop.key}" ${val ? "checked" : ""}>`;
+  } else if (prop.type === "int") {
+    inputHtml = `<input type="number" data-pcfg-key="${prop.key}" value="${val}">`;
+  } else if (prop.type === "choice") {
+    const opts = (prop.choices || []).map(c =>
+      `<option value="${c}" ${String(c) === String(val) ? 'selected' : ''}>${c}</option>`
+    ).join("");
+    inputHtml = `<select data-pcfg-key="${prop.key}">${opts}</select>`;
+  } else {
+    inputHtml = `<input type="text" data-pcfg-key="${prop.key}" value="${val || ''}" placeholder="${prop.default || ''}">`;
+  }
+
+  const defaultLabel = prop.type === 'bool' ? (prop.default ? 'y' : 'n') : prop.default;
+
+  return `
+    <div class="cfg-row ${changed ? 'changed' : ''}">
+      <div class="cfg-label">
+        <span class="cfg-name">${prop.label || prop.key}${dtsTag}${kcTag}</span>
+        <span class="cfg-help">${prop.help || ''}</span>
+      </div>
+      <div class="cfg-value">
+        ${inputHtml}
+        <span class="cfg-default">(${defaultLabel})</span>
+      </div>
+    </div>`;
+}
+
+function pcfgFindProp(inst, key) {
+  for (const grp of inst.groups) {
+    for (const prop of grp.props) {
+      if (prop.key === key) return prop;
+    }
+  }
+  return null;
+}
+
+async function pcfgGenerate() {
+  const btn = document.getElementById("pcfgGenerateBtn");
+  const outEl = document.getElementById("pcfgOutput");
+  const preEl = document.getElementById("pcfgOutputPre");
+  const copyBtn = document.getElementById("pcfgCopyBtn");
+
+  // Build payload: all instances that have changes OR are currently selected
+  const payload = {};
+  for (const inst of pcfgInstances) {
+    const vals = pcfgValues[inst.instance] || {};
+    const defs = pcfgDefaults[inst.instance] || {};
+    const hasChanges = Object.keys(defs).some(k => String(vals[k]) !== String(defs[k]));
+    if (hasChanges || inst.instance === pcfgActiveInst) {
+      payload[inst.instance] = vals;
+    }
+  }
+
+  if (Object.keys(payload).length === 0) {
+    preEl.textContent = "No peripheral configuration changes to generate.";
+    outEl.style.display = "";
+    return;
+  }
+
+  btn.textContent = "⏳ Generating…";
+  btn.disabled = true;
+
+  try {
+    const res = await fetch("/api/generate-peripheral-config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        board: pcfgBoardName,
+        instances: payload,
+      }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.error || "Generation failed");
+    }
+
+    // Store both texts on the element for tab switching
+    preEl._overlayText = data.overlay;
+    preEl._prjconfText = data.prj_conf;
+    preEl.textContent = pcfgOutputTab === "overlay" ? data.overlay : data.prj_conf;
+    outEl.style.display = "";
+    copyBtn.style.display = "";
+    toast("Peripheral config generated");
+  } catch (err) {
+    preEl.textContent = `ERROR: ${err.message}`;
+    outEl.style.display = "";
+  } finally {
+    btn.textContent = "⚡ Generate Config";
+    btn.disabled = false;
+  }
+}
+
+
+// ══════════════════════════════════════════════════════════════════════
+// Clock System Configurator module
+// ══════════════════════════════════════════════════════════════════════
+
+let clkTrees = [];          // summary list from /api/clock-trees
+let clkCurrentTree = null;  // full tree object
+let clkSelectedNode = null; // currently selected node id
+let clkValues = {};         // { "prop-key": value, ... }
+let clkFreqs = {};          // { "node_id": hz, ... }
+let clkOutputTab = "overlay";
+let clkTreesLoaded = false;
+
+function clkInit() {
+  const sel = $("#clkTreeSelect");
+  if (sel) {
+    sel.addEventListener("change", () => {
+      const id = sel.value;
+      if (id) clkLoadTree(id);
+    });
+  }
+}
+
+async function clkLoadTrees() {
+  if (clkTreesLoaded) return;
+  try {
+    const res = await fetch("/api/clock-trees");
+    clkTrees = await res.json();
+    const sel = $("#clkTreeSelect");
+    sel.innerHTML = '<option value="">— Select clock tree —</option>';
+    clkTrees.forEach(t => {
+      const opt = document.createElement("option");
+      opt.value = t.id;
+      opt.textContent = `${t.name} (${t.node_count} nodes)`;
+      sel.appendChild(opt);
+    });
+    clkTreesLoaded = true;
+  } catch (err) {
+    console.error("Failed to load clock trees:", err);
+  }
+}
+
+async function clkLoadTree(treeId) {
+  try {
+    const res = await fetch(`/api/clock-tree/${treeId}`);
+    if (!res.ok) throw new Error("Not found");
+    clkCurrentTree = await res.json();
+    clkSelectedNode = null;
+    clkValues = {};
+
+    // Set defaults
+    for (const node of clkCurrentTree.nodes) {
+      for (const prop of node.props || []) {
+        clkValues[prop.key] = prop.default;
+      }
+    }
+
+    // Compute initial frequencies
+    await clkComputeFreqs();
+    clkRenderSidebar();
+    clkRenderEmpty();
+  } catch (err) {
+    console.error("Failed to load clock tree:", err);
+  }
+}
+
+async function clkComputeFreqs() {
+  if (!clkCurrentTree) return;
+  try {
+    const res = await fetch("/api/clock-frequencies", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tree: clkCurrentTree.id, values: clkValues }),
+    });
+    const data = await res.json();
+    clkFreqs = data.frequencies || {};
+  } catch (err) {
+    console.error("Failed to compute frequencies:", err);
+  }
+}
+
+function clkFormatFreq(hz) {
+  if (!hz || hz <= 0) return "OFF";
+  if (hz >= 1_000_000) return `${(hz / 1_000_000).toFixed(2)} MHz`;
+  if (hz >= 1_000) return `${(hz / 1_000).toFixed(2)} kHz`;
+  return `${hz} Hz`;
+}
+
+function clkRenderSidebar() {
+  const list = $("#clkNodeList");
+  if (!list || !clkCurrentTree) return;
+
+  // Group by type for nice ordering
+  const typeOrder = ["source", "pll", "mux", "divider", "output"];
+  const sorted = [...clkCurrentTree.nodes].sort((a, b) => {
+    return typeOrder.indexOf(a.type) - typeOrder.indexOf(b.type);
+  });
+
+  list.innerHTML = "";
+  for (const node of sorted) {
+    const item = document.createElement("div");
+    item.className = "clkcfg-node-item" + (node.id === clkSelectedNode ? " active" : "");
+    const freq = clkFreqs[node.id] || 0;
+    item.innerHTML = `
+      <span class="node-icon">${node.icon}</span>
+      <span class="node-name">${node.name}</span>
+      <span class="node-type t-${node.type}">${node.type}</span>
+      <span class="node-freq">${clkFormatFreq(freq)}</span>
+    `;
+    item.addEventListener("click", () => clkSelectNode(node.id));
+    list.appendChild(item);
+  }
+}
+
+function clkSelectNode(nodeId) {
+  clkSelectedNode = nodeId;
+  clkRenderSidebar();
+  clkRenderBody();
+}
+
+function clkRenderEmpty() {
+  const main = $("#clkMain");
+  if (!main) return;
+  main.innerHTML = `
+    <div class="pkg-empty">
+      <div class="icon">⏱</div>
+      <div>Clock System Configurator</div>
+      <div class="hint">${clkCurrentTree
+        ? "Select a clock node from the sidebar to configure it."
+        : "Select a clock tree and configure oscillators, PLLs,<br>multiplexers, and dividers for your Zephyr project."}</div>
+    </div>
+  `;
+}
+
+function clkRenderBody() {
+  const main = $("#clkMain");
+  if (!main || !clkCurrentTree || !clkSelectedNode) { clkRenderEmpty(); return; }
+
+  const node = clkCurrentTree.nodes.find(n => n.id === clkSelectedNode);
+  if (!node) { clkRenderEmpty(); return; }
+
+  const freq = clkFreqs[node.id] || 0;
+  const props = node.props || [];
+
+  // ── Header ──
+  let html = `
+    <div class="clkcfg-header">
+      <div class="clkcfg-title">
+        <span>${node.icon}</span>
+        <span>${node.name}</span>
+        <span class="node-type t-${node.type}" style="font-size:11px;padding:2px 8px;border-radius:6px;font-weight:600;text-transform:uppercase;">${node.type}</span>
+      </div>
+      <div class="clkcfg-desc">${node.desc}</div>
+      <div class="clkcfg-freq-badge">${clkFormatFreq(freq)}</div>
+    </div>
+  `;
+
+  // ── Tree diagram (visual) ──
+  html += `<div class="clkcfg-body">`;
+
+  // Show upstream/downstream context
+  const conns = clkCurrentTree.connections || [];
+  const upstreamIds = conns.filter(c => c.to === node.id).map(c => c.from);
+  const downstreamIds = conns.filter(c => c.from === node.id).map(c => c.to);
+  const nodeMap = {};
+  clkCurrentTree.nodes.forEach(n => { nodeMap[n.id] = n; });
+
+  if (upstreamIds.length || downstreamIds.length) {
+    html += `<div class="cfg-group"><div class="cfg-group-header" style="cursor:default;">
+      <span class="toggle">🔗</span> Clock Path
+    </div><div class="cfg-group-body" style="display:block;">`;
+
+    html += `<div class="clkcfg-tree-diagram">`;
+
+    // Upstream column
+    if (upstreamIds.length) {
+      html += `<div class="clkcfg-tree-column">
+        <div class="clkcfg-tree-column-label">Upstream</div>`;
+      upstreamIds.forEach(uid => {
+        const un = nodeMap[uid];
+        if (!un) return;
+        const uf = clkFreqs[uid] || 0;
+        html += `<div class="clkcfg-tree-node" onclick="clkSelectNode('${uid}')">
+          <div class="tn-name">${un.icon} ${un.name}</div>
+          <div class="tn-freq">${clkFormatFreq(uf)}</div>
+        </div>`;
+      });
+      html += `</div>`;
+    }
+
+    // Current node column
+    html += `<div class="clkcfg-tree-column">
+      <div class="clkcfg-tree-column-label">Current</div>
+      <div class="clkcfg-tree-node active">
+        <div class="tn-name">${node.icon} ${node.name}</div>
+        <div class="tn-freq">${clkFormatFreq(freq)}</div>
+      </div>
+    </div>`;
+
+    // Downstream column
+    if (downstreamIds.length) {
+      html += `<div class="clkcfg-tree-column">
+        <div class="clkcfg-tree-column-label">Downstream</div>`;
+      downstreamIds.forEach(did => {
+        const dn = nodeMap[did];
+        if (!dn) return;
+        const df = clkFreqs[did] || 0;
+        html += `<div class="clkcfg-tree-node" onclick="clkSelectNode('${did}')">
+          <div class="tn-name">${dn.icon} ${dn.name}</div>
+          <div class="tn-freq">${clkFormatFreq(df)}</div>
+        </div>`;
+      });
+      html += `</div>`;
+    }
+
+    html += `</div></div></div>`;
+  }
+
+  // ── Properties group ──
+  if (props.length) {
+    html += `<div class="cfg-group"><div class="cfg-group-header" style="cursor:default;">
+      <span class="toggle">⚙</span> Configuration
+    </div><div class="cfg-group-body" style="display:block;">`;
+
+    for (const prop of props) {
+      const val = clkValues[prop.key] ?? prop.default;
+      html += `<div class="cfg-row">`;
+      html += `<div class="cfg-label">
+        <span class="cfg-name">${prop.label}</span>
+        <span class="cfg-help">${prop.help || ""}</span>
+        <span class="cfg-default">Default: ${prop.default}</span>
+      </div>`;
+      html += `<div class="cfg-value">`;
+
+      if (prop.type === "bool") {
+        html += `<label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="checkbox" data-clk-key="${prop.key}" ${val ? "checked" : ""} style="accent-color:var(--accent);width:16px;height:16px;">
+          <span style="font-size:13px;">${val ? "Enabled" : "Disabled"}</span>
+        </label>`;
+      } else if (prop.type === "choice") {
+        html += `<select data-clk-key="${prop.key}" style="padding:5px 8px;font-size:13px;background:var(--bg);color:var(--fg);border:1px solid var(--border);border-radius:6px;">`;
+        for (const ch of prop.choices) {
+          const sel = (String(ch) === String(val)) ? " selected" : "";
+          let label = ch;
+          if (typeof ch === "number" && ch >= 1_000_000) label = `${(ch / 1_000_000).toFixed(1)} MHz`;
+          else if (typeof ch === "number" && ch >= 1_000) label = `${(ch / 1_000).toFixed(1)} kHz`;
+          html += `<option value="${ch}"${sel}>${label}</option>`;
+        }
+        html += `</select>`;
+      } else if (prop.type === "int") {
+        html += `<input type="number" data-clk-key="${prop.key}" value="${val}" style="width:120px;padding:5px 8px;font-size:13px;background:var(--bg);color:var(--fg);border:1px solid var(--border);border-radius:6px;">`;
+      }
+
+      html += `</div></div>`;
+    }
+
+    html += `</div></div>`;
+  } else {
+    html += `<div class="cfg-group"><div class="cfg-group-header" style="cursor:default;">
+      <span class="toggle">ℹ</span> Info
+    </div><div class="cfg-group-body" style="display:block;">
+      <div style="padding:12px;color:var(--fg-dim);font-size:13px;">
+        This node has no configurable properties. Its frequency is derived from upstream nodes.
+      </div>
+    </div></div>`;
+  }
+
+  // ── Peripheral clock assignments ──
+  if (node.type === "output" && clkCurrentTree.peripheral_clocks) {
+    const assignments = Object.entries(clkCurrentTree.peripheral_clocks)
+      .filter(([, clk]) => clk === node.id);
+    if (assignments.length) {
+      html += `<div class="cfg-group"><div class="cfg-group-header" style="cursor:default;">
+        <span class="toggle">🔌</span> Peripheral Assignments
+      </div><div class="cfg-group-body" style="display:block;">`;
+      html += `<div style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 0;">`;
+      for (const [periph] of assignments) {
+        html += `<span style="font-size:12px;background:var(--bg);color:var(--teal);padding:3px 10px;border-radius:8px;border:1px solid var(--border);">${periph}</span>`;
+      }
+      html += `</div></div></div>`;
+    }
+  }
+
+  html += `</div>`; // close clkcfg-body
+
+  // ── Actions ──
+  html += `
+    <div class="clkcfg-actions">
+      <button class="btn btn-accent" id="clkGenerateBtn" onclick="clkGenerate()">⚡ Generate Config</button>
+      <button class="btn" id="clkCopyBtn" style="display:none;" onclick="clkCopyOutput()">📋 Copy</button>
+      <span class="spacer"></span>
+      <span style="font-size:12px;color:var(--fg-dim);">
+        Max SoC freq: ${clkFormatFreq(clkCurrentTree.max_freq)}
+      </span>
+    </div>
+    <div class="clkcfg-output" id="clkOutput" style="display:none;">
+      <div class="clkcfg-output-tabs">
+        <div class="clkcfg-output-tab ${clkOutputTab === "overlay" ? "active" : ""}" data-clk-out="overlay">.overlay</div>
+        <div class="clkcfg-output-tab ${clkOutputTab === "prj_conf" ? "active" : ""}" data-clk-out="prj_conf">prj.conf</div>
+        <div class="clkcfg-output-tab ${clkOutputTab === "freq" ? "active" : ""}" data-clk-out="freq">Frequencies</div>
+      </div>
+      <pre id="clkOutputPre"></pre>
+    </div>
+  `;
+
+  main.innerHTML = html;
+
+  // ── Wire up change events ──
+  main.querySelectorAll("[data-clk-key]").forEach(el => {
+    const key = el.dataset.clkKey;
+    const evName = (el.type === "checkbox") ? "change" : "input";
+    el.addEventListener(evName, async () => {
+      if (el.type === "checkbox") {
+        clkValues[key] = el.checked;
+        const span = el.closest("label").querySelector("span:last-child");
+        if (span) span.textContent = el.checked ? "Enabled" : "Disabled";
+      } else if (el.type === "number") {
+        clkValues[key] = parseInt(el.value) || 0;
+      } else {
+        // select: try numeric parse
+        const num = Number(el.value);
+        clkValues[key] = isNaN(num) ? el.value : num;
+      }
+      await clkComputeFreqs();
+      clkRenderSidebar();
+      // Update freq badge inline
+      const badge = main.querySelector(".clkcfg-freq-badge");
+      if (badge) badge.textContent = clkFormatFreq(clkFreqs[clkSelectedNode] || 0);
+      // Update tree diagram freqs
+      main.querySelectorAll(".clkcfg-tree-node .tn-freq").forEach(tnf => {
+        // find node id from onclick
+        const parent = tnf.closest(".clkcfg-tree-node");
+        if (!parent) return;
+        const onclick = parent.getAttribute("onclick") || "";
+        const m = onclick.match(/clkSelectNode\('(.+?)'\)/);
+        if (m) tnf.textContent = clkFormatFreq(clkFreqs[m[1]] || 0);
+      });
+      // Update current node in diagram
+      const activeNode = main.querySelector(".clkcfg-tree-node.active .tn-freq");
+      if (activeNode) activeNode.textContent = clkFormatFreq(clkFreqs[clkSelectedNode] || 0);
+    });
+  });
+
+  // ── Wire up output tab switching ──
+  main.querySelectorAll("[data-clk-out]").forEach(tab => {
+    tab.addEventListener("click", () => {
+      clkOutputTab = tab.dataset.clkOut;
+      main.querySelectorAll("[data-clk-out]").forEach(t => t.classList.toggle("active", t.dataset.clkOut === clkOutputTab));
+      const preEl = $("#clkOutputPre");
+      if (preEl && preEl._data) {
+        if (clkOutputTab === "overlay") preEl.textContent = preEl._data.overlay;
+        else if (clkOutputTab === "prj_conf") preEl.textContent = preEl._data.prj_conf;
+        else if (clkOutputTab === "freq") preEl.textContent = clkFormatFreqTable(preEl._data.frequencies);
+      }
+    });
+  });
+}
+
+function clkFormatFreqTable(freqs) {
+  if (!freqs || !clkCurrentTree) return "";
+  const lines = ["Clock Node Frequencies", "═".repeat(50), ""];
+  const nodeMap = {};
+  clkCurrentTree.nodes.forEach(n => { nodeMap[n.id] = n; });
+  for (const [id, hz] of Object.entries(freqs)) {
+    const n = nodeMap[id];
+    if (!n) continue;
+    const pad = 25 - n.name.length;
+    lines.push(`  ${n.icon} ${n.name}${" ".repeat(Math.max(1, pad))}${clkFormatFreq(hz).padStart(14)}`);
+  }
+  // Peripheral assignments
+  if (clkCurrentTree.peripheral_clocks && Object.keys(clkCurrentTree.peripheral_clocks).length) {
+    lines.push("");
+    lines.push("Peripheral Clock Assignments");
+    lines.push("─".repeat(50));
+    for (const [periph, clk] of Object.entries(clkCurrentTree.peripheral_clocks)) {
+      const hz = freqs[clk] || 0;
+      const pad = 25 - periph.length;
+      lines.push(`  ${periph}${" ".repeat(Math.max(1, pad))}← ${clk} (${clkFormatFreq(hz)})`);
+    }
+  }
+  return lines.join("\n");
+}
+
+async function clkGenerate() {
+  if (!clkCurrentTree) return;
+  const btn = $("#clkGenerateBtn");
+  const outEl = $("#clkOutput");
+  const preEl = $("#clkOutputPre");
+  const copyBtn = $("#clkCopyBtn");
+
+  btn.textContent = "Generating...";
+  btn.disabled = true;
+
+  try {
+    const res = await fetch("/api/generate-clock-config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tree: clkCurrentTree.id, values: clkValues }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Generation failed");
+
+    preEl._data = data;
+    clkFreqs = data.frequencies || clkFreqs;
+
+    if (clkOutputTab === "overlay") preEl.textContent = data.overlay;
+    else if (clkOutputTab === "prj_conf") preEl.textContent = data.prj_conf;
+    else preEl.textContent = clkFormatFreqTable(data.frequencies);
+
+    outEl.style.display = "";
+    copyBtn.style.display = "";
+    clkRenderSidebar();
+    toast("Clock config generated");
+  } catch (err) {
+    preEl.textContent = `ERROR: ${err.message}`;
+    outEl.style.display = "";
+  } finally {
+    btn.textContent = "⚡ Generate Config";
+    btn.disabled = false;
+  }
+}
+
+function clkCopyOutput() {
+  const preEl = $("#clkOutputPre");
+  if (preEl && preEl.textContent) {
+    navigator.clipboard.writeText(preEl.textContent).then(() => toast("Copied to clipboard"));
   }
 }

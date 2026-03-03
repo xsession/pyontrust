@@ -971,6 +971,397 @@ svg.chip-svg .pin-func {
   width: calc(100% - 20px);
 }
 .modcfg-search::placeholder { color: var(--fg-dim); }
+
+/* ─── Peripheral Configurator ──────────────────────────────── */
+.pcfg {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+.pcfg-sidebar {
+  width: 280px;
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+.pcfg-sidebar h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  padding: 14px 14px 6px;
+  letter-spacing: .5px;
+}
+.pcfg-board-select {
+  padding: 6px 10px;
+  margin: 0 10px 10px;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 12px;
+  width: calc(100% - 20px);
+}
+.pcfg-search {
+  padding: 8px 10px;
+  margin: 0 10px 8px;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 12px;
+  width: calc(100% - 20px);
+}
+.pcfg-search::placeholder { color: var(--fg-dim); }
+.pcfg-instance-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 10px;
+}
+.pcfg-instance-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 13px;
+  transition: background .1s;
+  margin-bottom: 2px;
+}
+.pcfg-instance-item:hover { background: var(--bg3); }
+.pcfg-instance-item.active { background: var(--bg3); color: var(--accent); }
+.pcfg-instance-item .pcfg-icon {
+  width: 24px; height: 24px;
+  border-radius: 4px;
+  background: var(--bg3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.pcfg-instance-item.active .pcfg-icon { background: var(--accent); color: var(--bg); }
+.pcfg-instance-item .pcfg-inst-label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pcfg-instance-item .pcfg-inst-compat {
+  font-size: 10px;
+  color: var(--fg-dim);
+  white-space: nowrap;
+}
+.pcfg-instance-item .pcfg-status-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.pcfg-instance-item .pcfg-status-dot.enabled { background: var(--green); }
+.pcfg-instance-item .pcfg-status-dot.disabled { background: var(--fg-dim); }
+.pcfg-instance-item .pcfg-changed-dot {
+  color: var(--yellow);
+  font-size: 8px;
+  vertical-align: super;
+  margin-left: 2px;
+}
+.pcfg-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.pcfg-header {
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg2);
+}
+.pcfg-header h2 {
+  font-size: 18px;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pcfg-header h2 .pcfg-compat-badge {
+  font-size: 11px;
+  background: var(--mauve);
+  color: var(--bg);
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 700;
+}
+.pcfg-header .pcfg-desc {
+  font-size: 12px;
+  color: var(--fg-dim);
+  margin-top: 2px;
+}
+.pcfg-header .pcfg-signals {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.pcfg-header .pcfg-signals .signal-tag {
+  font-size: 11px;
+  background: var(--bg);
+  color: var(--teal);
+  padding: 2px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.pcfg-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+}
+.pcfg-actions {
+  padding: 12px 24px;
+  border-top: 1px solid var(--border);
+  background: var(--bg2);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pcfg-actions .spacer { flex: 1; }
+.pcfg-output {
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+  max-height: 300px;
+  overflow-y: auto;
+}
+.pcfg-output-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg2);
+  padding: 0 16px;
+}
+.pcfg-output-tab {
+  padding: 6px 14px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--fg-dim);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: all .15s;
+}
+.pcfg-output-tab:hover { color: var(--fg); }
+.pcfg-output-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.pcfg-output pre {
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre;
+  color: var(--fg);
+  padding: 12px 16px;
+}
+
+/* ─── Clock System Configurator ─────────────────────────────────── */
+.clkcfg {
+  display: flex;
+  height: 100%;
+  background: var(--bg);
+}
+.clkcfg-sidebar {
+  width: 260px;
+  min-width: 200px;
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 14px 12px;
+  gap: 6px;
+  overflow-y: auto;
+}
+.clkcfg-sidebar h3 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--fg-dim);
+  margin: 10px 0 4px;
+}
+.clkcfg-sidebar h3:first-child { margin-top: 0; }
+.clkcfg-tree-select {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 13px;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.clkcfg-node-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.clkcfg-node-item {
+  padding: 7px 10px;
+  font-size: 13px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background .12s;
+  color: var(--fg);
+}
+.clkcfg-node-item:hover { background: var(--bg3); }
+.clkcfg-node-item.active { background: var(--accent); color: #111; font-weight: 600; }
+.clkcfg-node-item .node-icon { font-size: 14px; flex-shrink: 0; }
+.clkcfg-node-item .node-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clkcfg-node-item .node-freq {
+  font-size: 11px;
+  color: var(--fg-dim);
+  font-family: Consolas, 'Courier New', monospace;
+  white-space: nowrap;
+}
+.clkcfg-node-item.active .node-freq { color: #222; }
+
+/* Colour-coded type badges */
+.clkcfg-node-item .node-type {
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+.clkcfg-node-item .node-type.t-source  { background: var(--teal);  color: #111; }
+.clkcfg-node-item .node-type.t-pll     { background: var(--yellow); color: #111; }
+.clkcfg-node-item .node-type.t-mux     { background: var(--mauve); color: #111; }
+.clkcfg-node-item .node-type.t-divider { background: var(--accent); color: #111; }
+.clkcfg-node-item .node-type.t-output  { background: var(--green); color: #111; }
+
+/* Main area */
+.clkcfg-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.clkcfg-header {
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg2);
+}
+.clkcfg-header .clkcfg-title {
+  font-size: 18px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.clkcfg-header .clkcfg-desc {
+  font-size: 13px;
+  color: var(--fg-dim);
+  margin-top: 4px;
+}
+.clkcfg-header .clkcfg-freq-badge {
+  font-size: 13px;
+  font-family: Consolas, 'Courier New', monospace;
+  background: var(--bg3);
+  padding: 3px 10px;
+  border-radius: 6px;
+  color: var(--green);
+  margin-top: 6px;
+  display: inline-block;
+}
+.clkcfg-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+}
+.clkcfg-actions {
+  padding: 12px 24px;
+  border-top: 1px solid var(--border);
+  background: var(--bg2);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.clkcfg-actions .spacer { flex: 1; }
+.clkcfg-output {
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+  max-height: 300px;
+  overflow-y: auto;
+}
+.clkcfg-output-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg2);
+  padding: 0 16px;
+}
+.clkcfg-output-tab {
+  padding: 6px 14px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--fg-dim);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: all .15s;
+}
+.clkcfg-output-tab:hover { color: var(--fg); }
+.clkcfg-output-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.clkcfg-output pre {
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre;
+  color: var(--fg);
+  padding: 12px 16px;
+}
+
+/* ── Clock Tree Visual Diagram ── */
+.clkcfg-tree-diagram {
+  display: flex;
+  gap: 32px;
+  padding: 16px;
+  overflow-x: auto;
+  align-items: flex-start;
+}
+.clkcfg-tree-column {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+}
+.clkcfg-tree-column-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--fg-dim);
+  margin-bottom: 4px;
+}
+.clkcfg-tree-node {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 12px;
+  text-align: center;
+  cursor: pointer;
+  transition: all .15s;
+  min-width: 100px;
+}
+.clkcfg-tree-node:hover { border-color: var(--accent); }
+.clkcfg-tree-node.active { border-color: var(--accent); background: var(--bg3); }
+.clkcfg-tree-node .tn-name { font-weight: 600; }
+.clkcfg-tree-node .tn-freq {
+  font-size: 11px;
+  color: var(--green);
+  font-family: Consolas, 'Courier New', monospace;
+  margin-top: 2px;
+}
 </style>
 </head>
 <body>
@@ -985,6 +1376,12 @@ svg.chip-svg .pin-func {
 <div class="app-tabs">
   <div class="app-tab active" data-app-tab="modules">
     <span class="tab-icon">&#9881;</span>Module Configurator
+  </div>
+  <div class="app-tab" data-app-tab="peripherals">
+    <span class="tab-icon">🔧</span>Peripheral Configurator
+  </div>
+  <div class="app-tab" data-app-tab="clock">
+    <span class="tab-icon">⏱</span>Clock Configurator
   </div>
   <div class="app-tab" data-app-tab="configurator">
     <span class="tab-icon">&#128204;</span>Pin Configurator
@@ -1021,7 +1418,67 @@ svg.chip-svg .pin-func {
 </div><!-- /tab modules -->
 
 <!-- ══════════════════════════════════════════════════════════════
-     TAB 1: Pin Configurator
+     TAB 1: Peripheral Configurator
+     ══════════════════════════════════════════════════════════ -->
+<div class="tab-content" data-app-content="peripherals">
+<div class="pcfg">
+
+  <!-- Sidebar: board select + peripheral instance list -->
+  <div class="pcfg-sidebar">
+    <h3>Board</h3>
+    <select class="pcfg-board-select" id="pcfgBoardSelect">
+      <option value="">Loading boards...</option>
+    </select>
+    <h3>Peripheral Instances</h3>
+    <input class="pcfg-search" id="pcfgSearch" type="text" placeholder="Search peripherals...">
+    <div class="pcfg-instance-list" id="pcfgInstanceList"></div>
+  </div>
+
+  <!-- Main config area -->
+  <div class="pcfg-main" id="pcfgMain">
+    <div class="pkg-empty">
+      <div class="icon">🔧</div>
+      <div>Peripheral Configurator</div>
+      <div class="hint">Select a board and peripheral instance to configure<br>
+        UART baud rates, SPI clock speeds, I2C addresses, and more.</div>
+    </div>
+  </div>
+
+</div>
+</div><!-- /tab peripherals -->
+
+<!-- ══════════════════════════════════════════════════════════════
+     TAB: Clock System Configurator
+     ══════════════════════════════════════════════════════════ -->
+<div class="tab-content" data-app-content="clock">
+<div class="clkcfg">
+
+  <!-- Sidebar: clock tree select + node list -->
+  <div class="clkcfg-sidebar">
+    <h3>Clock Tree</h3>
+    <select class="clkcfg-tree-select" id="clkTreeSelect">
+      <option value="">Loading...</option>
+    </select>
+
+    <h3>Clock Nodes</h3>
+    <div class="clkcfg-node-list" id="clkNodeList"></div>
+  </div>
+
+  <!-- Main config area -->
+  <div class="clkcfg-main" id="clkMain">
+    <div class="pkg-empty">
+      <div class="icon">⏱</div>
+      <div>Clock System Configurator</div>
+      <div class="hint">Select a clock tree and configure oscillators, PLLs,<br>
+        multiplexers, and dividers for your Zephyr project.</div>
+    </div>
+  </div>
+
+</div>
+</div><!-- /tab clock -->
+
+<!-- ══════════════════════════════════════════════════════════════
+     TAB 2: Pin Configurator
      ══════════════════════════════════════════════════════════ -->
 <div class="tab-content" data-app-content="configurator">
 
