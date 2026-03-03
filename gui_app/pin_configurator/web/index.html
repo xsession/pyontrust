@@ -446,6 +446,512 @@ svg.chip-svg .pin-func {
   gap: 8px;
   justify-content: flex-end;
 }
+
+/* ─── Top-level Tab Navigation ─────────────────────────────── */
+.app-tabs {
+  display: flex;
+  gap: 0;
+  background: var(--bg2);
+  border-bottom: 2px solid var(--border);
+  padding: 0 20px;
+  flex-shrink: 0;
+}
+.app-tab {
+  padding: 10px 24px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--fg-dim);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  transition: all .15s;
+  user-select: none;
+}
+.app-tab:hover { color: var(--fg); }
+.app-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.app-tab .tab-icon { margin-right: 6px; }
+
+.tab-content { display: none; flex: 1; overflow: hidden; flex-direction: column; }
+.tab-content.active { display: flex; }
+
+/* ─── Package Manager ──────────────────────────────────────── */
+.pkg-mgr {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+.pkg-sidebar {
+  width: 320px;
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+.pkg-sidebar h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  padding: 14px 14px 8px;
+  letter-spacing: .5px;
+}
+.pkg-upload-area {
+  margin: 0 14px 14px;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  text-align: center;
+  color: var(--fg-dim);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all .2s;
+}
+.pkg-upload-area:hover,
+.pkg-upload-area.dragover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(137, 180, 250, .05);
+}
+.pkg-upload-area .upload-icon { font-size: 28px; margin-bottom: 6px; }
+.pkg-upload-area .upload-hint { font-size: 11px; margin-top: 4px; }
+
+.pkg-job-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 14px;
+}
+.pkg-job-item {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: all .15s;
+}
+.pkg-job-item:hover { border-color: var(--accent); }
+.pkg-job-item.selected { border-color: var(--accent); background: rgba(137,180,250,.08); }
+.pkg-job-item .job-filename {
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pkg-job-item .job-filename .soc-badge {
+  background: var(--accent);
+  color: var(--bg);
+  padding: 1px 7px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.pkg-job-item .job-meta {
+  font-size: 11px;
+  color: var(--fg-dim);
+}
+
+.pkg-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.pkg-detail-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg2);
+}
+.pkg-detail-header h2 { font-size: 16px; margin-bottom: 6px; }
+.pkg-detail-header .device-specs {
+  font-size: 12px;
+  color: var(--fg-dim);
+  display: flex;
+  gap: 16px;
+}
+.pkg-detail-header .device-specs span { display: flex; align-items: center; gap: 4px; }
+
+.pkg-detail-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+.pkg-section { margin-bottom: 24px; }
+.pkg-section h3 {
+  font-size: 13px;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  letter-spacing: .5px;
+  margin-bottom: 10px;
+}
+
+.pkg-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+.pkg-card {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  transition: all .15s;
+}
+.pkg-card:hover { border-color: var(--accent); }
+.pkg-card.selected { border-color: var(--green); background: rgba(166,227,161,.06); }
+.pkg-card .pkg-card-name {
+  font-weight: 700;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+.pkg-card .pkg-card-meta {
+  font-size: 11px;
+  color: var(--fg-dim);
+}
+.pkg-card .pkg-card-check {
+  float: right;
+  width: 18px; height: 18px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 12px;
+  color: transparent;
+  transition: all .15s;
+}
+.pkg-card.selected .pkg-card-check {
+  border-color: var(--green);
+  background: var(--green);
+  color: var(--bg);
+}
+
+/* Overrides form */
+.pkg-overrides {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 8px 12px;
+  align-items: center;
+  font-size: 13px;
+}
+.pkg-overrides label {
+  color: var(--fg-dim);
+  font-size: 12px;
+  text-align: right;
+}
+.pkg-overrides input {
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 5px 8px;
+  font-size: 12px;
+  font-family: Consolas, monospace;
+}
+
+.pkg-actions {
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+  background: var(--bg2);
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.pkg-actions .spacer { flex: 1; }
+.pkg-status {
+  font-size: 12px;
+  color: var(--fg-dim);
+}
+
+/* Pin-mux sample table */
+.mux-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.mux-table th {
+  text-align: left;
+  padding: 6px 10px;
+  background: var(--bg3);
+  border-bottom: 1px solid var(--border);
+  color: var(--fg-dim);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: .3px;
+}
+.mux-table td {
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--bg3);
+}
+.mux-table tr:hover td { background: rgba(137,180,250,.04); }
+
+/* Existing packages list */
+.existing-pkg-list {
+  list-style: none;
+}
+.existing-pkg-list li {
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg-dim);
+}
+.existing-pkg-list li .file-icon { color: var(--green); }
+.existing-pkg-list li .file-size { margin-left: auto; font-size: 11px; }
+
+/* Spinner for loading */
+.spinner {
+  display: inline-block;
+  width: 16px; height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin .6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Package manager empty state */
+.pkg-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-dim);
+  gap: 8px;
+  font-size: 14px;
+}
+.pkg-empty .icon { font-size: 40px; opacity: .4; }
+.pkg-empty .hint { font-size: 12px; }
+
+/* ─── Module Configurator ──────────────────────────────────── */
+.modcfg {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+.modcfg-sidebar {
+  width: 260px;
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  overflow-y: auto;
+}
+.modcfg-sidebar h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  padding: 14px 14px 6px;
+  letter-spacing: .5px;
+}
+.modcfg-module-list {
+  padding: 0 10px;
+}
+.modcfg-module-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 13px;
+  transition: background .1s;
+  margin-bottom: 2px;
+}
+.modcfg-module-item:hover { background: var(--bg3); }
+.modcfg-module-item.active { background: var(--bg3); color: var(--accent); }
+.modcfg-module-item .mod-icon {
+  width: 24px; height: 24px;
+  border-radius: 4px;
+  background: var(--bg3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.modcfg-module-item.active .mod-icon { background: var(--accent); color: var(--bg); }
+.modcfg-module-item .mod-label { flex: 1; }
+.modcfg-module-item .mod-badge {
+  font-size: 10px;
+  background: var(--bg);
+  color: var(--fg-dim);
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+
+.modcfg-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.modcfg-header {
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg2);
+}
+.modcfg-header h2 {
+  font-size: 18px;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.modcfg-header h2 .version-badge {
+  font-size: 11px;
+  background: var(--accent);
+  color: var(--bg);
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 700;
+}
+.modcfg-header .mod-desc {
+  font-size: 12px;
+  color: var(--fg-dim);
+  margin-top: 2px;
+}
+
+.modcfg-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+}
+
+/* Config group = collapsible section */
+.cfg-group {
+  margin-bottom: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.cfg-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--bg3);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  user-select: none;
+  transition: background .1s;
+}
+.cfg-group-header:hover { background: var(--border); }
+.cfg-group-header .chevron {
+  font-size: 10px;
+  transition: transform .2s;
+  color: var(--fg-dim);
+}
+.cfg-group.collapsed .chevron { transform: rotate(-90deg); }
+.cfg-group.collapsed .cfg-group-body { display: none; }
+.cfg-group-header .group-count {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--fg-dim);
+  font-weight: 400;
+}
+.cfg-group-body {
+  padding: 6px 0;
+}
+
+/* Individual config row */
+.cfg-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 14px;
+  font-size: 13px;
+  transition: background .1s;
+}
+.cfg-row:hover { background: rgba(137,180,250,.03); }
+.cfg-row .cfg-label {
+  flex: 1;
+  min-width: 0;
+}
+.cfg-row .cfg-name {
+  font-weight: 600;
+  display: block;
+}
+.cfg-row .cfg-help {
+  font-size: 11px;
+  color: var(--fg-dim);
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cfg-row .cfg-value {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.cfg-row .cfg-value select,
+.cfg-row .cfg-value input[type="number"],
+.cfg-row .cfg-value input[type="text"] {
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px 8px;
+  font-size: 12px;
+  font-family: Consolas, monospace;
+  width: 120px;
+}
+.cfg-row .cfg-value input[type="number"] { width: 80px; }
+.cfg-row .cfg-value input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 16px; height: 16px;
+}
+.cfg-row .cfg-default {
+  font-size: 10px;
+  color: var(--fg-dim);
+}
+.cfg-row.changed .cfg-name { color: var(--yellow); }
+
+/* Output panel at bottom */
+.modcfg-actions {
+  padding: 12px 24px;
+  border-top: 1px solid var(--border);
+  background: var(--bg2);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.modcfg-actions .spacer { flex: 1; }
+.modcfg-output {
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 12px 16px;
+}
+.modcfg-output pre {
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre;
+  color: var(--fg);
+}
+.modcfg-search {
+  padding: 8px 10px;
+  margin: 0 10px 8px;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 12px;
+  width: calc(100% - 20px);
+}
+.modcfg-search::placeholder { color: var(--fg-dim); }
 </style>
 </head>
 <body>
@@ -453,6 +959,55 @@ svg.chip-svg .pin-func {
 <!-- ─── Header ──────────────────────────────────────────────── -->
 <div class="header">
   <h1>Zephyr Pin Configurator</h1>
+  <span class="spacer"></span>
+</div>
+
+<!-- ─── Tab Navigation ──────────────────────────────────────── -->
+<div class="app-tabs">
+  <div class="app-tab active" data-app-tab="modules">
+    <span class="tab-icon">&#9881;</span>Module Configurator
+  </div>
+  <div class="app-tab" data-app-tab="configurator">
+    <span class="tab-icon">&#128204;</span>Pin Configurator
+  </div>
+  <div class="app-tab" data-app-tab="packages">
+    <span class="tab-icon">&#128230;</span>Package Manager
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     TAB 0: Module Configurator (LVGL)
+     ══════════════════════════════════════════════════════════ -->
+<div class="tab-content active" data-app-content="modules">
+<div class="modcfg">
+
+  <!-- Sidebar: module list -->
+  <div class="modcfg-sidebar">
+    <h3>Zephyr Modules</h3>
+    <input class="modcfg-search" id="modSearch" type="text" placeholder="Search modules...">
+    <div class="modcfg-module-list" id="modModuleList"></div>
+  </div>
+
+  <!-- Main config area -->
+  <div class="modcfg-main" id="modMain">
+    <div class="pkg-empty">
+      <div class="icon">&#9881;</div>
+      <div>Module Configurator</div>
+      <div class="hint">Select a module from the sidebar to configure it.<br>
+        Configure LVGL, display drivers, and more for your Zephyr project.</div>
+    </div>
+  </div>
+
+</div>
+</div><!-- /tab modules -->
+
+<!-- ══════════════════════════════════════════════════════════════
+     TAB 1: Pin Configurator
+     ══════════════════════════════════════════════════════════ -->
+<div class="tab-content" data-app-content="configurator">
+
+<!-- Configurator sub-header -->
+<div class="header" style="border-top:none;">
   <select id="boardSelect"></select>
   <span class="chip-name" id="chipLabel">---</span>
   <span class="spacer"></span>
@@ -494,6 +1049,49 @@ svg.chip-svg .pin-func {
     <pre id="outputPre">Click "Generate" to see the DTS overlay.</pre>
   </div>
 </div>
+
+</div><!-- /tab configurator -->
+
+<!-- ══════════════════════════════════════════════════════════════
+     TAB 2: Package Manager
+     ══════════════════════════════════════════════════════════ -->
+<div class="tab-content" data-app-content="packages">
+<div class="pkg-mgr">
+
+  <!-- Left sidebar: upload + parsed jobs -->
+  <div class="pkg-sidebar">
+    <h3>Upload Datasheet</h3>
+    <div class="pkg-upload-area" id="pdfUploadArea">
+      <div class="upload-icon">&#128196;</div>
+      <div>Drop PDF here or click to browse</div>
+      <div class="upload-hint">Supports TI MSPM0 datasheets</div>
+      <input type="file" id="pdfFileInput" accept=".pdf" style="display:none;">
+    </div>
+
+    <h3>Parsed Datasheets</h3>
+    <div class="pkg-job-list" id="pkgJobList">
+      <div class="empty-state" style="padding:20px;">
+        <div>No datasheets parsed yet</div>
+        <div class="hint">Upload a PDF above</div>
+      </div>
+    </div>
+
+    <h3>Existing Board Files</h3>
+    <ul class="existing-pkg-list" id="existingPkgList"></ul>
+  </div>
+
+  <!-- Main area: detail view -->
+  <div class="pkg-main" id="pkgMain">
+    <div class="pkg-empty">
+      <div class="icon">&#128230;</div>
+      <div>MCU Package Generator</div>
+      <div class="hint">Upload an MCU datasheet PDF to extract pin-mux data<br>
+        and generate board definition files.</div>
+    </div>
+  </div>
+
+</div>
+</div><!-- /tab packages -->
 
 <!-- ─── Save dialog ─────────────────────────────────────────── -->
 <div class="modal-backdrop" id="saveModal">
