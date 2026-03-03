@@ -21,6 +21,13 @@ def render_histogram(app, selector, bottom_area, selected_columns: list[str]) ->
     except Exception:
         file_paths = []
 
+    # Prefer enabled overlay files only.
+    try:
+        if hasattr(selector, "is_file_enabled"):
+            file_paths = [p for p in (file_paths or []) if selector.is_file_enabled(str(p))]
+    except Exception:
+        pass
+
     if not file_paths:
         try:
             if isinstance(app.last_loaded_file, str) and app.last_loaded_file:
@@ -43,24 +50,28 @@ def render_histogram(app, selector, bottom_area, selected_columns: list[str]) ->
     multiple_files = len(file_paths) > 1
 
     for fp in file_paths:
-        df_i, scale_i = app._get_df_for_path(str(fp))
+        df_i, scale_i = app._get_df_for_path(str(fp), selector)
         if not isinstance(df_i, pd.DataFrame):
             continue
-        if "Timestamp" not in df_i.columns:
-            continue
 
-        try:
-            x_raw = app._to_numeric_cached(df_i, str(fp), "Timestamp")
-        except Exception:
-            x_raw = pd.to_numeric(df_i["Timestamp"], errors="coerce")
-        if x_align == "independent":
+        has_ts = "Timestamp" in df_i.columns
+
+        # Timestamp is only required for time-based x-window semantics; histogram itself can
+        # still be computed without it. When Timestamp is missing, use index-based x for masking.
+        x_plot = None
+        if has_ts:
             try:
-                x0 = float(x_raw.dropna().iloc[0])
+                x_raw = app._to_numeric_cached(df_i, str(fp), "Timestamp")
             except Exception:
-                x0 = 0.0
-            x_plot = x_raw - x0
-        else:
-            x_plot = x_raw
+                x_raw = pd.to_numeric(df_i["Timestamp"], errors="coerce")
+            if x_align == "independent":
+                try:
+                    x0 = float(x_raw.dropna().iloc[0])
+                except Exception:
+                    x0 = 0.0
+                x_plot = x_raw - x0
+            else:
+                x_plot = x_raw
 
         cfg = shifts.get(os.path.abspath(str(fp)), shifts.get(str(fp), {})) if isinstance(shifts, dict) else {}
 
@@ -74,20 +85,39 @@ def render_histogram(app, selector, bottom_area, selected_columns: list[str]) ->
         except Exception:
             denom = 1.0
 
-        x_shift_units = float(x_shift_s) / denom
-        try:
-            x_plot = x_plot + x_shift_units
-        except Exception:
-            pass
-
-        if xwin is not None:
+        mask = None
+        if x_plot is not None:
+            x_shift_units = float(x_shift_s) / denom
             try:
-                lo, hi = xwin
-                mask = (x_plot >= lo) & (x_plot <= hi)
+                x_plot = x_plot + x_shift_units
             except Exception:
-                mask = None
+                pass
+
+            if xwin is not None:
+                try:
+                    lo, hi = xwin
+                    mask = (x_plot >= lo) & (x_plot <= hi)
+                except Exception:
+                    mask = None
         else:
-            mask = None
+            # No Timestamp: still honor the highlighted segment if present by masking on index.
+            if xwin is not None:
+                try:
+                    lo, hi = xwin
+                    x_idx = pd.to_numeric(df_i.index, errors="coerce")
+                    # Keep existing (seconds-based) shift semantics for consistency with main plot behavior.
+                    try:
+                        x_shift_units = float(x_shift_s) / denom
+                    except Exception:
+                        x_shift_units = 0.0
+                    if x_shift_units:
+                        try:
+                            x_idx = x_idx + float(x_shift_units)
+                        except Exception:
+                            pass
+                    mask = (x_idx >= float(lo)) & (x_idx <= float(hi))
+                except Exception:
+                    mask = None
 
         base_name = os.path.basename(str(fp))
 

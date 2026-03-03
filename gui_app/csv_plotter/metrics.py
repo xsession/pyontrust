@@ -1,109 +1,216 @@
+"""Signal metrics computation for the CSV Plotter.
+
+This module is **pure-compute** — it has no GUI or Tk dependency and is
+fully unit-testable in isolation.  All public functions accept plain
+pandas / numpy objects and return plain Python values.
+
+Metrics returned by :func:`compute_signal_metrics`:
+    0. min
+    1. max
+    2. avg (mean)
+    3. med (median)
+    4. p2p (peak-to-peak)
+    5. std (population standard deviation)
+    6. rms (root-mean-square)
+    7. crest (crest factor = peak / rms)
+    8. freq (dominant frequency, FFT-based, Hz)
+    9. period (1/freq, seconds)
+"""
+
+from __future__ import annotations
+
+import logging
+import math
+from typing import Tuple
+
+import numpy as np
 import pandas as pd
 
+logger = logging.getLogger("csv_plotter.metrics")
 
-def compute_signal_metrics(x: pd.Series, y: pd.Series) -> tuple[str, str, str, str, str, str, str]:
-    """Return (min, max, avg, med, p2p, freq, period) as strings for display.
+# Type alias for the 10-string metrics tuple
+MetricsTuple = Tuple[str, str, str, str, str, str, str, str, str, str]
+
+_NA_10: MetricsTuple = ("n/a",) * 10
+
+# Maximum FFT length before decimation (keeps compute cost bounded)
+_FFT_MAX_SAMPLES = 20_000
+# Minimum samples for meaningful frequency estimation
+_MIN_FREQ_SAMPLES = 8
+
+
+def _fmt(val: float, decimals: int = 3) -> str:
+    """Format a float for display; returns ``"n/a"`` for NaN / ±Inf."""
+    if not math.isfinite(val):
+        return "n/a"
+    return f"{val:.{decimals}f}"
+
+
+def _estimate_frequency_fft(
+    xs: np.ndarray,
+    ys: np.ndarray,
+    dt: float,
+) -> tuple[float | None, float | None]:
+    """FFT-based dominant frequency estimation.
+
+    Returns ``(freq_hz, period_s)`` or ``(None, None)`` on failure.
     """
-    ys = pd.to_numeric(y, errors="coerce").dropna()
-    if len(ys) == 0:
-        return ("n/a", "n/a", "n/a", "n/a", "n/a", "n/a", "n/a")
+    t0, t1 = float(xs[0]), float(xs[-1])
+    t_uniform = np.arange(t0, t1, dt, dtype=float)
+    if t_uniform.size < _MIN_FREQ_SAMPLES:
+        return None, None
 
+    y_uniform = np.interp(t_uniform, xs, ys)
+    y_uniform -= np.nanmean(y_uniform)
+
+    # Decimate to keep FFT cost bounded
+    n_u = t_uniform.size
+    if n_u > _FFT_MAX_SAMPLES:
+        step = int(np.ceil(n_u / _FFT_MAX_SAMPLES))
+        if step > 1:
+            y_uniform = y_uniform[::step]
+            dt = dt * step
+
+    yf = np.fft.rfft(y_uniform)
+    freqs = np.fft.rfftfreq(len(y_uniform), d=dt)
+    if freqs.size <= 1:
+        return None, None
+
+    mag = np.abs(yf)
+    mag[0] = 0.0  # ignore DC component
+    k = int(np.argmax(mag))
+    f = float(freqs[k])
+    if f <= 0:
+        return None, None
+    return f, 1.0 / f
+
+
+def _estimate_frequency_zero_crossing(
+    ys: np.ndarray,
+    duration: float,
+) -> tuple[float | None, float | None]:
+    """Zero-crossing fallback when FFT fails.
+
+    Returns ``(freq_hz, period_s)`` or ``(None, None)`` on failure.
+    """
+    if len(ys) < _MIN_FREQ_SAMPLES or duration <= 0:
+        return None, None
+    signs = (ys >= 0).astype(np.int8)
+    crossings = int(np.sum(signs[1:] != signs[:-1]))
+    f = (crossings / 2.0) / duration
+    if f <= 0:
+        return None, None
+    return f, 1.0 / f
+
+
+def compute_signal_metrics(
+    x: pd.Series,
+    y: pd.Series,
+) -> MetricsTuple:
+    """Compute 10 signal metrics from *x* (time) and *y* (amplitude).
+
+    Returns a 10-tuple of human-readable strings.  Individual metrics
+    that cannot be computed are ``"n/a"``; the function never raises.
+
+    Parameters
+    ----------
+    x : pd.Series
+        Time / x-axis series (must be numeric or coercible).
+    y : pd.Series
+        Signal / y-axis series.
+
+    Returns
+    -------
+    MetricsTuple
+        ``(min, max, avg, med, p2p, std, rms, crest, freq, period)``
+    """
+    # -- Coerce y to numeric --
+    try:
+        ys = pd.to_numeric(y, errors="coerce").dropna()
+    except Exception:
+        logger.debug("Failed to coerce y to numeric", exc_info=True)
+        ys = pd.Series([], dtype=float)
+
+    if len(ys) == 0:
+        logger.debug("Empty series after numeric coercion — returning all n/a")
+        return _NA_10
+
+    # -- Basic statistics --
     try:
         mn = float(ys.min())
         mx = float(ys.max())
         avg = float(ys.mean())
         med = float(ys.median())
-        p2p = float(ys.max() - ys.min())
+        p2p = mx - mn
     except Exception:
-        return ("n/a", "n/a", "n/a", "n/a", "n/a", "n/a", "n/a")
+        logger.warning("Basic stats computation failed", exc_info=True)
+        return _NA_10
 
+    # -- Standard deviation (population) --
+    try:
+        std = float(ys.std(ddof=0))
+    except Exception:
+        logger.debug("std computation failed", exc_info=True)
+        std = float("nan")
+
+    # -- RMS --
+    try:
+        vals = ys.astype(float).values
+        rms_val = float(np.sqrt(np.mean(np.square(vals))))
+    except Exception:
+        logger.debug("RMS computation failed", exc_info=True)
+        rms_val = float("nan")
+
+    # -- Crest factor --
+    try:
+        if math.isfinite(rms_val) and rms_val > 0:
+            crest = float(max(abs(mn), abs(mx)) / rms_val)
+        else:
+            crest = float("nan")
+    except Exception:
+        logger.debug("Crest factor computation failed", exc_info=True)
+        crest = float("nan")
+
+    # -- Frequency / period estimation --
     freq_s = "n/a"
     period_s = "n/a"
 
-    # Frequency estimation: best-effort. Works best for roughly periodic signals.
     try:
         xs_raw = pd.to_numeric(x, errors="coerce")
         ys_raw = pd.to_numeric(y, errors="coerce")
-        d = pd.DataFrame({"x": xs_raw, "y": ys_raw}).dropna()
-        if len(d) >= 8:
-            # Sort by time (some sources are not strictly ordered after masking)
-            try:
-                d = d.sort_values("x")
-            except Exception:
-                pass
+        d = pd.DataFrame({"x": xs_raw, "y": ys_raw}).dropna().sort_values("x")
 
-            xs = d["x"].astype(float)
-            ys2 = d["y"].astype(float)
+        if len(d) >= _MIN_FREQ_SAMPLES:
+            xs_arr = d["x"].to_numpy(dtype=float)
+            ys_arr = d["y"].to_numpy(dtype=float)
 
-            dx = xs.diff().dropna()
-            try:
-                dx = dx[dx > 0]
-            except Exception:
-                pass
+            dx = np.diff(xs_arr)
+            dx_pos = dx[dx > 0]
+            dt = float(np.median(dx_pos)) if len(dx_pos) > 0 else 0.0
+            duration = float(xs_arr[-1] - xs_arr[0])
 
-            dt = float(dx.median()) if len(dx) else 0.0
-            duration = float(xs.iloc[-1] - xs.iloc[0]) if len(xs) else 0.0
+            if dt > 0 and duration > 0 and len(ys_arr) >= _MIN_FREQ_SAMPLES:
+                # Primary: FFT
+                freq, period = _estimate_frequency_fft(xs_arr, ys_arr, dt)
+                if freq is None:
+                    # Fallback: zero-crossing
+                    freq, period = _estimate_frequency_zero_crossing(ys_arr, duration)
 
-            if dt > 0 and duration > 0 and len(ys2) >= 8:
-                try:
-                    import numpy as np
-
-                    x_np = xs.to_numpy(dtype=float)
-                    y_np = ys2.to_numpy(dtype=float)
-
-                    # Interpolate to a uniform grid for FFT.
-                    t0 = float(x_np[0])
-                    t1 = float(x_np[-1])
-                    t_uniform = np.arange(t0, t1, dt, dtype=float)
-                    if t_uniform.size >= 8:
-                        y_uniform = np.interp(t_uniform, x_np, y_np)
-                        y_uniform = y_uniform - float(np.nanmean(y_uniform))
-
-                        # Keep FFT cost bounded for very long traces.
-                        # Decimate to ~20k samples max; adjust effective dt accordingly.
-                        try:
-                            max_n = 20000
-                            n_u = int(t_uniform.size)
-                            if n_u > max_n:
-                                step = int(np.ceil(n_u / max_n))
-                                if step > 1:
-                                    y_uniform = y_uniform[::step]
-                                    dt = float(dt) * float(step)
-                        except Exception:
-                            pass
-
-                        yf = np.fft.rfft(y_uniform)
-                        freqs = np.fft.rfftfreq(len(y_uniform), d=dt)
-                        if freqs.size > 1:
-                            mag = np.abs(yf)
-                            mag[0] = 0.0  # ignore DC
-                            k = int(np.argmax(mag))
-                            f = float(freqs[k])
-                            if f > 0:
-                                freq_s = f"{f:.3f}"
-                                period_s = f"{(1.0 / f):.3f}"
-                except Exception:
-                    # Fallback: zero-crossing based estimate on raw samples
-                    try:
-                        yv = ys2.to_numpy(dtype=float)
-                        if len(yv) >= 8 and duration > 0:
-                            signs = (yv >= 0).astype(int)
-                            crossings = int((signs[1:] != signs[:-1]).sum())
-                            f = (crossings / 2.0) / duration
-                            if f > 0:
-                                freq_s = f"{f:.3f}"
-                                period_s = f"{(1.0 / f):.3f}"
-                    except Exception:
-                        pass
+                if freq is not None and period is not None:
+                    freq_s = f"{freq:.3f}"
+                    period_s = f"{period:.3f}"
     except Exception:
-        pass
+        logger.debug("Frequency estimation failed", exc_info=True)
 
     return (
-        f"{mn:.3f}",
-        f"{mx:.3f}",
-        f"{avg:.3f}",
-        f"{med:.3f}",
-        f"{p2p:.3f}",
+        _fmt(mn),
+        _fmt(mx),
+        _fmt(avg),
+        _fmt(med),
+        _fmt(p2p),
+        _fmt(std),
+        _fmt(rms_val),
+        _fmt(crest, 2),
         freq_s,
         period_s,
     )

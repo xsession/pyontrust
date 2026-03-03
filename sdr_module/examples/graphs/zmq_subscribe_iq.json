@@ -1,0 +1,14 @@
+{
+  "name": "zmq_subscribe_iq",
+  "blocks": [
+    {"id": "src", "type": "zmq_iq_sub_source", "params": {"address": "tcp://127.0.0.1:5555", "bind": false, "topic": "", "timeout_ms": 250}},
+    {"id": "fft", "type": "fft_sink", "params": {"bins": 1024}},
+    {"id": "wf", "type": "waterfall_sink", "params": {"bins": 256, "rows": 200}},
+    {"id": "scope", "type": "iq_scope_sink", "params": {"max_points": 1024}}
+  ],
+  "edges": [
+    {"src_block": "src", "src_port": "iq", "dst_block": "fft", "dst_port": "iq"},
+    {"src_block": "src", "src_port": "iq", "dst_block": "wf", "dst_port": "iq"},
+    {"src_block": "src", "src_port": "iq", "dst_block": "scope", "dst_port": "iq"}
+  ]
+}

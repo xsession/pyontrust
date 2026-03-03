@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
+  <defs>
+    <style>
+      .box{fill:#fff;stroke:#111;stroke-width:2}
+      .title{font:700 18px sans-serif;fill:#111}
+      .label{font:14px sans-serif;fill:#111}
+      .muted{font:12px sans-serif;fill:#444}
+      .arrow{stroke:#111;stroke-width:2;fill:none;marker-end:url(#m)}
+    </style>
+    <marker id="m" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <path d="M0,0 L10,3 L0,6 Z" fill="#111"/>
+    </marker>
+  </defs>
+
+  <text x="24" y="40" class="title">Render Pipeline (Simplified)</text>
+
+  <rect x="60" y="90" width="280" height="80" rx="10" class="box"/>
+  <text x="200" y="135" class="label" text-anchor="middle">User changes selector</text>
+
+  <path class="arrow" d="M340 130 L420 130"/>
+
+  <rect x="420" y="90" width="480" height="80" rx="10" class="box"/>
+  <text x="660" y="135" class="label" text-anchor="middle">app.request_replot() (debounced)</text>
+
+  <path class="arrow" d="M660 170 L660 220"/>
+
+  <rect x="140" y="220" width="680" height="120" rx="10" class="box"/>
+  <text x="480" y="260" class="label" text-anchor="middle">plots/plotting.py</text>
+  <text x="480" y="290" class="muted" text-anchor="middle">renders main plot + bottom panels</text>
+
+  <path class="arrow" d="M480 340 L480 390"/>
+
+  <rect x="60" y="390" width="360" height="90" rx="10" class="box"/>
+  <text x="240" y="430" class="label" text-anchor="middle">Selector window affects</text>
+  <text x="240" y="455" class="muted" text-anchor="middle">Table/Histogram/Checks</text>
+
+  <rect x="540" y="390" width="360" height="90" rx="10" class="box"/>
+  <text x="720" y="430" class="label" text-anchor="middle">Autosave (debounced)</text>
+  <text x="720" y="455" class="muted" text-anchor="middle">writes layout.json</text>
+</svg>

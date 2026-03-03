@@ -1,62 +1,111 @@
-# csv_plotter
+# CSV Plotter
 
-This folder contains:
+Enterprise-grade CSV signal viewer built on **Tkinter + Matplotlib**.
 
-- **Legacy** Tkinter + Matplotlib CSV viewer (existing implementation)
-- **New** NiceGUI frontend + Rust backend (PyO3) implementation
+## Features
 
-## Structure
+- **Multi-subplot** layout with independent signal selection, Y-limits, and X-windows.
+- **Multi-file overlay** — compare signals across files with per-file time/amplitude shifts.
+- **Auto-detect delimiter** (comma, semicolon, tab, pipe) and timestamp units (s, ms, µs).
+- **10 signal metrics** per channel: min, max, avg, median, peak-to-peak, std, RMS, crest factor, frequency, period.
+- **FFT-based frequency estimation** with zero-crossing fallback.
+- **Custom-code plot** — define `transform(x, signals, df)` to add computed traces.
+- **Layout persistence** — save/load complete UI state to `layout.json`.
+- **Multi-backend I/O** — Polars → DuckDB → PyArrow → pandas (graceful fallback).
+- **Datashader** support for million-point traces.
+- **Structured logging** with rotating file output (see `core/logger.py`).
 
-- `csv_plotter.py`
-  - Legacy application entrypoint (`CSVPlotterApp`) and orchestration.
+## Quick Start
 
-- `nicegui_csv_plotter.py`
-  - NiceGUI app entrypoint (frontend).
+```bash
+# Install core dependencies
+pip install pandas numpy matplotlib
 
-- `rust_core/`
-  - PyO3 extension providing the CSV backend (parsing + stats + decimation).
+# Optional high-performance backends
+pip install polars duckdb pyarrow
 
-- `ui/`
-  - Tk/ttk UI building blocks.
-  - `ui/menu.py`: menubar wiring (Export, Layout, etc.)
-  - `ui/selector.py`: per-subplot selector panel widget
-  - `ui/help_content.py`: Help/About dialogs
+# Launch
+python csv_plotter.py
+```
 
-- `plots/`
-  - Plot rendering code (Matplotlib embedding + bottom diagnostics).
-  - `plots/plotting.py`: high-level plot layout (`plot_all`)
-  - `plots/plot_main.py`: main time-series plot
-  - `plots/plot_histogram.py`: histogram bottom plot
-  - `plots/plot_stats_table.py`: calculated-values table
-  - `plots/plot_abs_check.py`: absolute range check diagnostic
-  - `plots/plot_rel_change.py`: relative change diagnostic
-  - `plots/plot_checks_common.py`: shared helpers used by diagnostics
-  - `plots/plot_checks_legacy.py`: legacy module kept for compatibility
+## Architecture
 
-- `persistence/`
-  - Saving/loading user state.
-  - `persistence/layout.py`: `layout.json` save/load (including UI splitter sash positions)
+```
+csv_plotter/
+├── csv_plotter.py          # Main app class (CSVPlotterApp) + entrypoint
+├── data.py                 # Multi-backend CSV I/O with auto delimiter detection
+├── metrics.py              # Pure-compute signal metrics (no GUI dependency)
+├── lang.py                 # i18n string tables
+├── core/
+│   ├── __init__.py
+│   ├── interfaces.py       # Protocol types (PlotterApp, SubplotSelectorLike)
+│   ├── logger.py           # Structured logging with RotatingFileHandler
+│   ├── model.py            # PlotState dataclass
+│   ├── plotting.py         # Headless PNG render
+│   └── protocol.py         # CsvPlotterProtocol (legacy)
+├── ui/
+│   ├── __init__.py
+│   ├── menu.py             # Menubar wiring (Export, Layout, etc.)
+│   ├── selector.py         # Per-subplot selector panel widget
+│   └── help_content.py     # Help / About dialogs
+├── plots/
+│   ├── plotting.py         # High-level plot layout (plot_all)
+│   ├── plot_main.py        # Main time-series plot renderer
+│   ├── plot_histogram.py   # Histogram bottom plot
+│   ├── plot_stats_table.py # Calculated-values table
+│   ├── plot_custom_code.py # User-defined custom code plot (sandboxed exec)
+│   ├── plot_abs_check.py   # Absolute range check diagnostic
+│   ├── plot_rel_change.py  # Relative change diagnostic
+│   └── plot_checks_common.py  # Shared helpers
+├── persistence/
+│   ├── __init__.py
+│   └── layout.py           # layout.json save/load
+└── pyproject.toml          # Package metadata + tool config
+```
+
+## Testing
+
+```bash
+# From the repo root
+python -m pytest tests/csv_plotter_tests/ -v
+
+# With coverage
+python -m pytest tests/csv_plotter_tests/ --cov=gui_app/csv_plotter --cov-report=term-missing
+```
+
+### Test modules
+
+| Test file | Covers |
+|-----------|--------|
+| `test_metrics.py` | Signal metrics, FFT, zero-crossing, edge cases (34 tests) |
+| `test_data.py` | CSV I/O, sniffing, timestamp scale, SQL injection safety (30 tests) |
+| `test_custom_code.py` | Sandbox exec, security boundaries, output normalization (23 tests) |
+| `test_csv_plotter_core.py` | Rust core bridge (header + decimated read) |
+
+## Type Safety
+
+Modules that accept the main application object should type the parameter as:
+
+```python
+from core.interfaces import PlotterApp, SubplotSelectorLike
+
+def build_main_plot(app: PlotterApp, selector: SubplotSelectorLike, ...) -> ...:
+    ...
+```
+
+This enables `mypy` / `pyright` static analysis and mock-based testing without importing the 4000-line `CSVPlotterApp` class.
+
+## Security Model
+
+The **custom-code plot** executes user-supplied Python via `exec()` with:
+
+- Restricted built-ins (no `open`, `eval`, `exec`, `compile`).
+- Blocked source patterns (`__import__`, `__builtins__`, `__subclasses__`, `__globals__`).
+- Code length limit (50 KB).
+
+> **Warning:** This is **not** a hardened sandbox. It prevents accidents in a desktop app context. Never execute untrusted code from external sources.
 
 ## Compatibility shims
 
 Files like `menu.py`, `layout.py`, `plotting.py`, etc. still exist at the folder root as thin re-export shims.
 They are kept so older imports don’t break, but new code should import from `ui.*`, `plots.*`, and `persistence.*`.
-
-## NiceGUI version (recommended)
-
-1) Build/install the Rust backend:
-
-```powershell
-cd C:\GIT\pyontrust\gui_app\csv_plotter\rust_core
-python -m pip install -U maturin
-python -m maturin build --release -o dist
-python -m pip install --force-reinstall .\dist\pyontrust_csv_plotter_core-0.1.0-cp310-abi3-win_amd64.whl
-```
-
-2) Run the NiceGUI app:
-
-```powershell
-python C:\GIT\pyontrust\gui_app\csv_plotter\nicegui_csv_plotter.py
-```
-
-Then open `http://localhost:8080/csv_plotter`.

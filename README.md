@@ -1,10 +1,35 @@
 # pyontrust
 
+A flexible, hardware-agnostic **embedded test & measurement system** for automated power profiling, RF testing, flash programming, CAN bus capture, and visual inspection of embedded hardware designs.
+
+## Architecture
+
+```
+pyontrust_packages/power_test_framework/
+├── core.py              # PowerSample, PowerTrace, PowerTestRunner
+├── profiles.py          # JSON-driven test profiles + instrument factory
+├── lab_bench.py         # Lab bench hardware inventory (JSON)
+├── limits.py            # Pass/fail criteria + Verdict system
+├── reporting.py         # CSV, JSON, Markdown artifact writers
+├── instruments/
+│   ├── base.py          # PowerMeter Protocol
+│   ├── simulated.py     # Simulated meter (CI/dev)
+│   ├── ad3_dwf.py       # Single Analog Discovery 3 (polling)
+│   ├── ad3_cluster.py   # Multi-AD3 cluster (buffered acquisition)
+│   ├── ppk2.py          # Nordic PPK2 (ppk2-api)
+│   ├── sk120_psu.py     # SK120 programmable power supply (serial)
+│   ├── jlink_ctrl.py    # SEGGER J-Link (flash/reset/RTT)
+│   ├── hackrf_instrument.py  # HackRF One (IQ capture + sweep)
+│   └── webcam_instrument.py  # Webcam (snapshot + recording + vision)
+└── recorders/
+    ├── base.py          # Recorder Protocol
+    ├── pcan_can.py      # PEAK-CAN bus (python-can)
+    ├── hackrf_iq.py     # HackRF IQ recording
+    ├── ffmpeg_webcam.py # Video recording
+    └── ...
+```
+
 ## Getting started
-
-## Power consumption test framework
-
-This repo includes a small, hardware-friendly framework to run repeatable power-consumption tests (battery current/voltage over time) and generate artifacts (CSV + JSON summary + Markdown report).
 
 ### Quick start (no hardware)
 
@@ -14,26 +39,82 @@ Run the simulated example (creates an `artifacts/` folder):
 python scripts\power_tests\example_sleep_current.py
 ```
 
-Run unit tests:
+Run unit tests (148 tests):
 
 ```powershell
-python -m unittest discover -s tests -p "test_*.py"
+python -m pytest tests/ -v
 ```
 
-### Run profiles (repeatable lab runs)
+### Lab bench configuration
 
-Profiles are JSON files describing:
-- which power meter to use (simulated / CSV file / CSV-producing process)
-- which recorders to run (tshark/wireshark, ghidra headless, PCAN, ffmpeg, hackrf, etc.)
-- the timed steps and actions (markers, power-mode toggles, one-shot commands)
+Define your physical hardware setup once in `lab_bench.json`:
 
-Example (simulated + dummy recorder):
+```json
+{
+  "name": "my_lab_bench",
+  "instruments": {
+    "power_meter": {"type": "ppk2", "serial_port": "auto", "mode": "source", "source_voltage_mv": 3300},
+    "psu":         {"type": "sk120", "port": "COM5", "voltage_v": 3.3, "current_limit_a": 0.5},
+    "jlink":       {"type": "jlink", "device": "nRF9160_xxAA", "interface": "swd"},
+    "hackrf":      {"type": "hackrf", "freq_hz": 2402000000},
+    "webcam":      {"type": "webcam", "input_device": "HD USB Camera"}
+  }
+}
+```
+
+### Test profiles (repeatable lab runs)
+
+Profiles are JSON files describing timed steps with actions:
 
 ```powershell
-python scripts\power_tests\run_profile.py run scripts\power_tests\example_profile.json --repo-root=.
+python scripts\power_tests\run_profile.py run scripts\power_tests\example_full_bench.json --repo-root=.
 ```
 
-### GUI
+Available action types:
+- `flash` — program firmware via J-Link
+- `reset_target` — reset DUT via J-Link
+- `set_voltage` — change PSU output voltage
+- `enable_output` — turn PSU on/off
+- `snapshot` — capture webcam frame
+- `rf_sweep` — HackRF frequency sweep
+- `run` — execute any shell command
+- `mark` — insert a timestamp marker
+- `sleep` — wait a duration
+- `set_power_mode` — switch power meter mode
+
+### Pass/fail limits
+
+Add limits to your profile to get automatic PASS/FAIL/WARN verdicts:
+
+```json
+{
+  "limits": {
+    "steps": {
+      "idle_sleep": {
+        "avg_current_a": {"max": 10e-6, "warn_max": 7e-6},
+        "max_current_a": {"max": 50e-6}
+      }
+    }
+  }
+}
+```
+
+## Supported hardware
+
+| Instrument | Type | Driver | Optional Dependency |
+|------------|------|--------|-------------------|
+| Analog Discovery 3 (single) | Power meter | `ad3_dwf` | DWF SDK (Digilent WaveForms) |
+| Analog Discovery 3 (cluster) | Power meter | `ad3_cluster` | DWF SDK |
+| Nordic PPK2 | Power meter | `ppk2` | `ppk2-api` |
+| SK120 / Korad PSU | Power supply | `sk120` | `pyserial` |
+| SEGGER J-Link | Debug probe | `jlink` | J-Link Software |
+| HackRF One | RF analyzer | `hackrf` | `hackrf_transfer` / `hackrf_sweep` |
+| Webcam (no IR filter) | Visual inspection | `webcam` | `ffmpeg` |
+| PEAK-CAN | CAN bus recorder | `pcan_can` | `python-can` |
+| nRF52840 Dongle | Serial recorder | `nrf52840_dongle` | `pyserial` |
+| Simulated | CI testing | `simulated` | — (stdlib only) |
+
+## GUI
 
 Recommended (NiceGUI):
 
@@ -45,27 +126,21 @@ python -m venv .venv-nicegui
 .\.venv-nicegui\Scripts\python -m pyontrust_gui
 ```
 
-Legacy entrypoint (now launches NiceGUI):
+## CSV Plotter
+
+Interactive time-series viewer for power measurement CSV data:
 
 ```powershell
-python gui_app\power_test_gui\power_test_gui.py
+python gui_app\csv_plotter\csv_plotter.py
 ```
 
-### Hardware integration
-
-Adapters are designed to be optional and are safe to import even if the external tools/drivers are not installed.
-
-- PPK2: implemented as a CLI-backed adapter stub (hook up your preferred `nrfutil`/PPK2 tooling).
-- AD3: framework provides an AD3/DWF adapter stub (hook up Digilent WaveForms DWF on Windows).
-- J-Link: adapter stub (intended to call `JLink.exe` / `JLinkExe`).
-- Nordic BLE sniffer: adapter stub (intended to capture to PCAP).
-- HackRF: adapter stub (intended to call `hackrf_transfer`).
-- Webcam: adapter stub (intended to call `ffmpeg`).
+## Project structure
 
 The framework lives in `pyontrust_packages/power_test_framework/`.
 
-Integrations are *optional*:
-- Wireshark: use recorder type `wireshark_tshark` (requires `tshark` on PATH)
-- Ghidra: use recorder type `ghidra_headless` (requires `analyzeHeadless` on PATH)
-- PEAK-CAN: use recorder type `pcan_can` (requires `python-can` + PCAN drivers)
-
+Core design principles:
+- **Stdlib-only core** — no mandatory third-party dependencies
+- **Protocol-based** — instruments and recorders are duck-typed protocols
+- **JSON-driven** — lab bench + test profiles are plain JSON files
+- **Artifact-centric** — every run produces CSV trace, JSON summary, and Markdown report
+- **Hardware-optional** — all drivers skip gracefully when tools aren't installed

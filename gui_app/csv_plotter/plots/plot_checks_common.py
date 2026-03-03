@@ -3,6 +3,29 @@ import os
 import pandas as pd
 
 
+def downsample_series(x: pd.Series, y: pd.Series, *, max_points: int = 250_000) -> tuple[pd.Series, pd.Series]:
+    """Downsample x/y by uniform stride to cap point count.
+
+    Keeps original index alignment and avoids allocating large temporary arrays.
+    """
+    try:
+        n = int(len(y))
+    except Exception:
+        return x, y
+    if max_points <= 0 or n <= max_points:
+        return x, y
+    try:
+        step = int((n + max_points - 1) // max_points)
+    except Exception:
+        step = 1
+    if step <= 1:
+        return x, y
+    try:
+        return x.iloc[::step], y.iloc[::step]
+    except Exception:
+        return x, y
+
+
 def parse_limits_from_selector(selector):
     ymin = None
     ymax = None
@@ -112,6 +135,156 @@ def selected_data_columns(df, selected_columns: list[str]) -> list[str]:
     return cols
 
 
+def selected_data_columns_for_df(df, selected_columns: list[str]) -> list[str]:
+    """Like selected_data_columns, but against an arbitrary df."""
+    cols = []
+    try:
+        df_cols = set(df.columns)
+    except Exception:
+        df_cols = set()
+    for c in (selected_columns or []):
+        if c == "Timestamp":
+            continue
+        if c in df_cols:
+            cols.append(c)
+    return cols
+
+
+def enabled_file_paths(app, selector) -> list[str]:
+    """Return enabled overlay file paths for a selector, with fallback to loaded file."""
+    paths: list[str] = []
+    try:
+        paths = list(selector.get_files() or [])
+    except Exception:
+        paths = []
+
+    if not paths:
+        try:
+            if isinstance(getattr(app, "last_loaded_file", None), str) and app.last_loaded_file:
+                paths = [app.last_loaded_file]
+        except Exception:
+            paths = []
+
+    try:
+        if hasattr(selector, "is_file_enabled"):
+            paths = [p for p in paths if bool(selector.is_file_enabled(str(p)))]
+    except Exception:
+        pass
+
+    return [str(p) for p in paths if p]
+
+
+def selection_mask_for_df(app, selector, df, *, path: str, scale_to_seconds: float | None = None) -> pd.Series | None:
+    """Return boolean mask for df based on selector span window (Timestamp axis).
+
+    This mirrors selection_mask() but operates on an arbitrary dataframe/path.
+    """
+    try:
+        xwin = selector.get_x_window()
+    except Exception:
+        xwin = None
+    if xwin is None:
+        return None
+
+    try:
+        lo, hi = xwin
+        lo = float(lo)
+        hi = float(hi)
+    except Exception:
+        return None
+
+    if not isinstance(df, pd.DataFrame):
+        return None
+
+    try:
+        x_align = selector.get_x_alignment_mode()
+    except Exception:
+        x_align = "aligned"
+
+    try:
+        shifts = selector.get_file_shifts()
+    except Exception:
+        shifts = {}
+    cfg = shifts.get(os.path.abspath(str(path)), shifts.get(str(path), {})) if isinstance(shifts, dict) else {}
+    try:
+        x_shift_s = float(cfg.get("x_shift_s", 0.0))
+    except Exception:
+        x_shift_s = 0.0
+
+    try:
+        denom = float(scale_to_seconds) if scale_to_seconds and float(scale_to_seconds) != 0.0 else 1.0
+    except Exception:
+        denom = 1.0
+    x_shift_units = float(x_shift_s) / denom
+
+    # Build x in the same units as the plotted main axis:
+    # - Prefer Timestamp when available.
+    # - Otherwise fall back to a simple index-based x.
+    if "Timestamp" in df.columns:
+        try:
+            x_raw = app._to_numeric_cached(df, str(path), "Timestamp")
+        except Exception:
+            x_raw = pd.to_numeric(df["Timestamp"], errors="coerce")
+
+        if str(x_align or "") == "independent":
+            try:
+                x0 = float(x_raw.dropna().iloc[0])
+            except Exception:
+                x0 = 0.0
+            x_plot = x_raw - x0
+        else:
+            x_plot = x_raw
+    else:
+        try:
+            x_plot = pd.to_numeric(df.index, errors="coerce")
+        except Exception:
+            x_plot = pd.Series(range(len(df)))
+
+    if x_shift_units:
+        try:
+            x_plot = x_plot + float(x_shift_units)
+        except Exception:
+            pass
+
+    try:
+        return (x_plot >= lo) & (x_plot <= hi)
+    except Exception:
+        return None
+
+
+def numeric_series_for_col_for_df(app, selector, df, *, path: str, col: str, mask: pd.Series | None = None) -> pd.Series:
+    """Read df[col] as numeric series, applying per-file y_shift and optional mask."""
+    try:
+        y = app._to_numeric_cached(df, str(path), str(col))
+    except Exception:
+        try:
+            y = pd.to_numeric(df[str(col)], errors="coerce")
+        except Exception:
+            return pd.Series([], dtype=float)
+
+    try:
+        shifts = selector.get_file_shifts()
+    except Exception:
+        shifts = {}
+    cfg = shifts.get(os.path.abspath(str(path)), shifts.get(str(path), {})) if isinstance(shifts, dict) else {}
+    try:
+        y_shift = float(cfg.get("y_shift", 0.0))
+    except Exception:
+        y_shift = 0.0
+    if y_shift:
+        try:
+            y = y + float(y_shift)
+        except Exception:
+            pass
+
+    if mask is not None:
+        try:
+            y = y.where(mask)
+        except Exception:
+            pass
+    return y
+
+
 def selection_mask(app, selector) -> pd.Series | None:
     """Return boolean mask for current df based on selector span window (Timestamp axis).
 
@@ -160,7 +333,7 @@ def selection_mask(app, selector) -> pd.Series | None:
         x_shift_s = 0.0
 
     try:
-        _df_i, scale_i = app._get_df_for_path(str(base_path))
+        _df_i, scale_i = app._get_df_for_path(str(base_path), selector)
     except Exception:
         scale_i = 1.0
     try:

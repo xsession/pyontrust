@@ -8,7 +8,7 @@ def render_stats_table(app, bottom_area, stats_rows) -> None:
     stats_frame = ttk.Frame(bottom_area)
     stats_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True, pady=(4, 0))
 
-    cols = ("Signal", "Min", "Max", "Average", "Median", "P2P", "Freq", "Period")
+    cols = ("Signal", "Min", "Max", "Average", "Median", "P2P", "StdDev", "RMS", "Crest", "Freq", "Period")
     tree = ttk.Treeview(
         stats_frame,
         columns=cols,
@@ -186,14 +186,17 @@ def render_stats_table(app, bottom_area, stats_rows) -> None:
         except Exception:
             tree.heading(c, text=c)
 
-    tree.column("Signal", width=240, anchor="w")
-    tree.column("Min", width=80, anchor="e")
-    tree.column("Max", width=80, anchor="e")
-    tree.column("Average", width=80, anchor="e")
-    tree.column("Median", width=80, anchor="e")
-    tree.column("P2P", width=80, anchor="e")
-    tree.column("Freq", width=80, anchor="e")
-    tree.column("Period", width=80, anchor="e")
+    tree.column("Signal", width=200, anchor="w")
+    tree.column("Min", width=72, anchor="e")
+    tree.column("Max", width=72, anchor="e")
+    tree.column("Average", width=72, anchor="e")
+    tree.column("Median", width=72, anchor="e")
+    tree.column("P2P", width=72, anchor="e")
+    tree.column("StdDev", width=72, anchor="e")
+    tree.column("RMS", width=72, anchor="e")
+    tree.column("Crest", width=60, anchor="e")
+    tree.column("Freq", width=72, anchor="e")
+    tree.column("Period", width=72, anchor="e")
 
     try:
         pal = getattr(app, "_theme_palette", {}) if app is not None else {}
@@ -210,6 +213,55 @@ def render_stats_table(app, bottom_area, stats_rows) -> None:
     tree.configure(yscrollcommand=stats_scroll.set)
     tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
     stats_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+    # Context menu: Copy to clipboard
+    ctx_menu = tk.Menu(tree, tearoff=0)
+
+    def _copy_selected_to_clipboard() -> None:
+        try:
+            items = tree.selection()
+            if not items:
+                items = tree.get_children("")
+            lines = ["\t".join(cols)]
+            for item in items:
+                vals = tree.item(item, "values")
+                lines.append("\t".join(str(v) for v in (vals or [])))
+            text = "\n".join(lines)
+            tree.clipboard_clear()
+            tree.clipboard_append(text)
+            if app is not None and hasattr(app, "status_var"):
+                app.status_var.set(f"Copied {len(items)} row(s) to clipboard")
+        except Exception:
+            pass
+
+    def _copy_all_to_clipboard() -> None:
+        try:
+            items = tree.get_children("")
+            lines = ["\t".join(cols)]
+            for item in items:
+                vals = tree.item(item, "values")
+                lines.append("\t".join(str(v) for v in (vals or [])))
+            text = "\n".join(lines)
+            tree.clipboard_clear()
+            tree.clipboard_append(text)
+            if app is not None and hasattr(app, "status_var"):
+                app.status_var.set(f"Copied all {len(items)} row(s) to clipboard")
+        except Exception:
+            pass
+
+    ctx_menu.add_command(label="Copy selected rows", command=_copy_selected_to_clipboard)
+    ctx_menu.add_command(label="Copy all rows", command=_copy_all_to_clipboard)
+
+    def _show_context_menu(evt):
+        try:
+            ctx_menu.tk_popup(evt.x_root, evt.y_root)
+        finally:
+            ctx_menu.grab_release()
+
+    try:
+        tree.bind("<Button-3>", _show_context_menu)
+    except Exception:
+        pass
 
     highlights = set(getattr(app, "_highlighted_channels", set()) or set()) if app is not None else set()
     nrows = 0

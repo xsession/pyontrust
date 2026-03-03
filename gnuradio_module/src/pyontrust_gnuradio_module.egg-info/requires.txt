@@ -1,0 +1,4 @@
+nicegui>=1.4
+
+[zmq]
+pyzmq>=25

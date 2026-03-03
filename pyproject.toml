@@ -1,0 +1,86 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyontrust"
+version = "0.1.0"
+description = "Pyontrust — embedded systems testing & visualization infrastructure."
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Pyontrust Team"},
+]
+keywords = ["embedded", "testing", "iot", "power-measurement", "csv-plotter"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Testing",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = [
+    "docopt>=0.6.2",
+]
+
+[project.optional-dependencies]
+csv-plotter = [
+    "pandas>=1.5",
+    "numpy>=1.23",
+    "matplotlib>=3.6",
+]
+power-test = [
+    "docopt>=0.6.2",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "mypy>=1.0",
+    "ruff>=0.1",
+]
+
+# --- Testing ---------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers -q"
+markers = [
+    "slow: marks tests as slow",
+    "integration: marks tests needing external hardware",
+    "ad3: marks tests requiring Analog Discovery 3",
+]
+
+# --- Type checking ---------------------------------------------------------
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+check_untyped_defs = true
+ignore_missing_imports = true
+
+# --- Linting ---------------------------------------------------------------
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+select = ["E", "W", "F", "I", "N", "UP", "B", "SIM"]
+ignore = ["E501", "B904"]
+
+[tool.ruff.isort]
+known-first-party = ["pyontrust_packages", "gui_app", "sdr_module", "waveforms_module", "gnuradio_module"]
+
+# --- Coverage --------------------------------------------------------------
+[tool.coverage.run]
+source = [
+    "pyontrust_packages",
+    "gui_app/csv_plotter",
+]
+omit = ["tests/*", "*/test_*", "*/__pycache__/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true

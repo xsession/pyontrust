@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Zephyr Pin Configurator</title>
+<style>
+/* ─── Reset & Base ─────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:       #1e1e2e;
+  --bg2:      #252538;
+  --bg3:      #2d2d44;
+  --fg:       #cdd6f4;
+  --fg-dim:   #6c7086;
+  --accent:   #89b4fa;
+  --green:    #a6e3a1;
+  --red:      #f38ba8;
+  --yellow:   #f9e2af;
+  --peach:    #fab387;
+  --mauve:    #cba6f7;
+  --pink:     #f5c2e7;
+  --teal:     #94e2d5;
+  --border:   #45475a;
+  --radius:   6px;
+}
+body {
+  font-family: 'Segoe UI', Consolas, monospace;
+  background: var(--bg);
+  color: var(--fg);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ─── Header ───────────────────────────────────────────────── */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 20px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.header h1 { font-size: 16px; font-weight: 600; }
+.header .chip-name {
+  background: var(--accent);
+  color: var(--bg);
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 13px;
+}
+.header select {
+  background: var(--bg3);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  padding: 4px 8px;
+  border-radius: var(--radius);
+  font-size: 13px;
+}
+.header .spacer { flex: 1; }
+.header .info { font-size: 12px; color: var(--fg-dim); }
+.btn {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg3);
+  color: var(--fg);
+  cursor: pointer;
+  font-size: 13px;
+  transition: background .15s;
+}
+.btn:hover { background: var(--border); }
+.btn-accent {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.btn-accent:hover { opacity: .85; }
+
+/* ─── Main layout ──────────────────────────────────────────── */
+.main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ─── Left panel: Peripherals ──────────────────────────────── */
+.periph-panel {
+  width: 240px;
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  flex-shrink: 0;
+  padding: 10px;
+}
+.periph-panel h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  margin: 10px 0 6px;
+  letter-spacing: .5px;
+}
+.periph-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 13px;
+  transition: background .1s;
+}
+.periph-item:hover { background: var(--bg3); }
+.periph-item.enabled { color: var(--green); }
+.periph-item.enabled .dot { background: var(--green); }
+.periph-item .dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--fg-dim);
+  flex-shrink: 0;
+}
+.periph-item .periph-label { flex: 1; }
+.periph-toggle {
+  width: 34px; height: 18px;
+  border-radius: 9px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  position: relative;
+  cursor: pointer;
+  transition: background .2s;
+  flex-shrink: 0;
+}
+.periph-toggle.on { background: var(--green); border-color: var(--green); }
+.periph-toggle::after {
+  content: '';
+  position: absolute;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: var(--fg);
+  top: 1px; left: 1px;
+  transition: left .2s;
+}
+.periph-toggle.on::after { left: 17px; background: var(--bg); }
+
+/* ─── Center: Chip diagram ─────────────────────────────────── */
+.chip-area {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  padding: 20px;
+  position: relative;
+}
+.chip-container {
+  position: relative;
+}
+
+/* SVG chip styling */
+svg.chip-svg { display: block; }
+svg.chip-svg .chip-body {
+  fill: var(--bg3);
+  stroke: var(--border);
+  stroke-width: 2;
+}
+svg.chip-svg .chip-dot {
+  fill: var(--fg-dim);
+}
+svg.chip-svg .pin-pad {
+  fill: var(--bg);
+  stroke: var(--border);
+  stroke-width: 1.5;
+  cursor: pointer;
+  transition: fill .15s, stroke .15s;
+}
+svg.chip-svg .pin-pad:hover {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+svg.chip-svg .pin-pad.selected {
+  stroke: var(--accent);
+  fill: rgba(137, 180, 250, .15);
+}
+svg.chip-svg .pin-pad.assigned {
+  stroke: var(--green);
+  fill: rgba(166, 227, 161, .12);
+}
+svg.chip-svg .pin-pad.power {
+  fill: rgba(249, 226, 175, .1);
+  stroke: var(--yellow);
+}
+svg.chip-svg .pin-pad.ground {
+  fill: rgba(108, 112, 134, .1);
+  stroke: var(--fg-dim);
+}
+svg.chip-svg .pin-pad.special {
+  fill: rgba(203, 166, 247, .08);
+  stroke: var(--mauve);
+}
+svg.chip-svg .pin-num {
+  font-size: 9px;
+  fill: var(--fg-dim);
+  pointer-events: none;
+  font-family: Consolas, monospace;
+}
+svg.chip-svg .pin-name {
+  font-size: 10px;
+  fill: var(--fg);
+  pointer-events: none;
+  font-family: 'Segoe UI', sans-serif;
+  font-weight: 600;
+}
+svg.chip-svg .pin-func {
+  font-size: 9px;
+  fill: var(--green);
+  pointer-events: none;
+  font-family: Consolas, monospace;
+}
+
+/* Colour coding for peripheral types */
+.color-uart  { stroke: var(--green) !important; }
+.color-spi   { stroke: var(--accent) !important; }
+.color-i2c   { stroke: var(--mauve) !important; }
+.color-can   { stroke: var(--peach) !important; }
+.color-timer { stroke: var(--teal) !important; }
+.color-adc   { stroke: var(--yellow) !important; }
+.color-dac   { stroke: var(--pink) !important; }
+.color-gpio  { stroke: var(--fg-dim) !important; }
+.color-comp  { stroke: var(--red) !important; }
+
+/* ─── Right panel: Pin config ──────────────────────────────── */
+.config-panel {
+  width: 320px;
+  background: var(--bg2);
+  border-left: 1px solid var(--border);
+  overflow-y: auto;
+  flex-shrink: 0;
+  padding: 14px;
+}
+.config-panel h3 {
+  font-size: 14px;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.config-panel h3 .pin-badge {
+  background: var(--accent);
+  color: var(--bg);
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.config-section {
+  margin-bottom: 14px;
+}
+.config-section label {
+  display: block;
+  font-size: 12px;
+  color: var(--fg-dim);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: .3px;
+}
+.af-list {
+  list-style: none;
+}
+.af-list li {
+  padding: 7px 10px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 13px;
+  border: 1px solid transparent;
+  margin-bottom: 3px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all .12s;
+}
+.af-list li:hover { background: var(--bg3); }
+.af-list li.active {
+  border-color: var(--green);
+  background: rgba(166, 227, 161, .08);
+}
+.af-list li .af-id {
+  font-size: 10px;
+  color: var(--fg-dim);
+  background: var(--bg);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: Consolas, monospace;
+}
+.af-list li .af-dir {
+  font-size: 9px;
+  color: var(--fg-dim);
+  margin-left: auto;
+  text-transform: uppercase;
+}
+
+/* Pin properties checkboxes */
+.prop-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 13px;
+}
+.prop-row input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 16px;
+  height: 16px;
+}
+
+/* ─── Bottom bar: Output ───────────────────────────────────── */
+.output-bar {
+  border-top: 1px solid var(--border);
+  background: var(--bg2);
+  max-height: 50vh;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+.output-bar.collapsed { max-height: 36px; }
+.output-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  padding: 0 12px;
+  flex-shrink: 0;
+}
+.output-tab {
+  padding: 8px 16px;
+  font-size: 12px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  color: var(--fg-dim);
+  transition: all .15s;
+}
+.output-tab:hover { color: var(--fg); }
+.output-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.output-content {
+  flex: 1;
+  overflow: auto;
+  padding: 10px 16px;
+}
+.output-content pre {
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre;
+  color: var(--fg);
+}
+.output-toggle {
+  margin-left: auto;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--fg-dim);
+  padding: 8px 12px;
+}
+
+/* ─── Toast notification ───────────────────────────────────── */
+.toast {
+  position: fixed;
+  bottom: 60px;
+  right: 24px;
+  background: var(--green);
+  color: var(--bg);
+  padding: 8px 16px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-weight: 600;
+  z-index: 999;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: all .3s;
+  pointer-events: none;
+}
+.toast.show { opacity: 1; transform: translateY(0); }
+
+/* ─── Empty state ──────────────────────────────────────────── */
+.empty-state {
+  color: var(--fg-dim);
+  text-align: center;
+  padding: 30px 20px;
+  font-size: 13px;
+}
+.empty-state .hint {
+  font-size: 11px;
+  margin-top: 8px;
+}
+
+/* ─── Conflict highlight ──────────────────────────────────── */
+.conflict { color: var(--red) !important; }
+.conflict-badge {
+  font-size: 9px;
+  background: var(--red);
+  color: var(--bg);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+/* ─── Scrollbar ────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--fg-dim); }
+
+/* ─── Save Dialog ──────────────────────────────────────────── */
+.modal-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.55);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.modal-backdrop.show { display: flex; }
+.modal {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 24px;
+  width: 480px;
+  max-width: 90vw;
+}
+.modal h3 { margin-bottom: 16px; }
+.modal input[type="text"] {
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-family: Consolas, monospace;
+  margin-bottom: 12px;
+}
+.modal .modal-btns {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+</style>
+</head>
+<body>
+
+<!-- ─── Header ──────────────────────────────────────────────── -->
+<div class="header">
+  <h1>Zephyr Pin Configurator</h1>
+  <select id="boardSelect"></select>
+  <span class="chip-name" id="chipLabel">---</span>
+  <span class="spacer"></span>
+  <span class="info" id="statsLabel">Flash: - | SRAM: - | Clock: -</span>
+  <button class="btn" id="btnGenerate">Generate</button>
+  <button class="btn btn-accent" id="btnSave">Save to Project</button>
+</div>
+
+<!-- ─── Main ────────────────────────────────────────────────── -->
+<div class="main">
+
+  <!-- Peripherals panel -->
+  <div class="periph-panel" id="periphPanel">
+    <h3>Peripherals</h3>
+  </div>
+
+  <!-- Chip diagram -->
+  <div class="chip-area" id="chipArea">
+    <div class="chip-container" id="chipContainer"></div>
+  </div>
+
+  <!-- Pin configuration panel -->
+  <div class="config-panel" id="configPanel">
+    <div class="empty-state">
+      <div>Click a pin to configure</div>
+      <div class="hint">or enable a peripheral on the left</div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Output bar ──────────────────────────────────────────── -->
+<div class="output-bar collapsed" id="outputBar">
+  <div class="output-tabs">
+    <div class="output-tab active" data-tab="overlay">.overlay</div>
+    <div class="output-tab" data-tab="conf">prj.conf</div>
+    <div class="output-toggle" id="outputToggle">&#9650; Output</div>
+  </div>
+  <div class="output-content">
+    <pre id="outputPre">Click "Generate" to see the DTS overlay.</pre>
+  </div>
+</div>
+
+<!-- ─── Save dialog ─────────────────────────────────────────── -->
+<div class="modal-backdrop" id="saveModal">
+  <div class="modal">
+    <h3>Save to Zephyr Project</h3>
+    <label style="font-size:12px;color:var(--fg-dim);display:block;margin-bottom:4px;">
+      Project directory (absolute path)
+    </label>
+    <input type="text" id="projectPath" placeholder="C:\GIT\WORK\codelayer\locator_base\apps\locator_base">
+    <div class="modal-btns">
+      <button class="btn" id="btnCancelSave">Cancel</button>
+      <button class="btn btn-accent" id="btnConfirmSave">Save Files</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Toast ───────────────────────────────────────────────── -->
+<div class="toast" id="toast"></div>
+
+<script src="main.js"></script>
+</body>
+</html>

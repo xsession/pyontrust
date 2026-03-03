@@ -1,26 +1,28 @@
 {
   "version": 2,
-  "highlighted_channels": [
-    "Temp_1.Ctmh_5_Module",
-    "Temp_1.Ctmh_6_Module"
-  ],
-  "ui_theme": "dark",
-  "current_folder": "C:/temp_gui_reports/detector_curve_logs",
+  "highlighted_channels": [],
+  "ui_theme": "light",
+  "timebase": {
+    "mode": "fixed",
+    "unit": "ms",
+    "step": "0.01"
+  },
+  "current_folder": "",
   "auto_load_newest": false,
   "auto_reload_selected": false,
-  "auto_save_layout": true,
+  "auto_save_layout": false,
   "open_folder_recursive": false,
-  "last_loaded_file": "E:\\temp_gui_reports\\detector_curve_logs\\detector_curve_log_20251216_133929__000\\detector_curve_log_20251216_133929__000.csv",
+  "last_loaded_file": "C:\\Users\\livanyi\\Desktop\\WORK\\GIT\\mpython-worktree\\mp-worktree-rd-464\\app\\DetectorCurve\\temp_gui_reports\\detector_curve_logs\\detector_curve_log_20260126_095657__000\\detector_curve_log_20260126_095657__000.csv",
   "ui": {
     "sashes": {
       "main_pane": {
         "sashpos": [
-          711
+          928
         ]
       },
       "left_pane": {
         "sashpos": [
-          38
+          254
         ]
       },
       "selector_container": {
@@ -34,20 +36,7 @@
   "subplots": [
     {
       "selected_columns": [
-        "Temp_1.Ctmh_1_Module",
-        "Temp_1.Ctmh_20_Module",
-        "Temp_1.Ctmh_21_Module",
-        "Temp_1.Ctmh_22_Module",
-        "Temp_1.Ctmh_23_Module",
-        "Temp_1.Ctmh_24_Module",
-        "Temp_1.Ctmh_2_Module",
-        "Temp_1.Ctmh_3_Module",
-        "Temp_1.Ctmh_4_Module",
-        "Temp_1.Ctmh_5_Module",
-        "Temp_1.Ctmh_6_Module",
-        "Temp_1.Ctmh_7_Module",
-        "Temp_1.Ctmh_8_Module",
-        "Temp_1.Ctmh_9_Module"
+        "Current(uA)"
       ],
       "ylim": {
         "enabled": false,
@@ -56,62 +45,72 @@
       },
       "display": {
         "show_table": true,
-        "show_hist": true,
-        "show_abs_check": true,
-        "show_rel_change": true,
+        "show_hist": false,
+        "show_abs_check": false,
+        "show_rel_change": false,
         "show_custom": false,
         "hist_bins": "30"
       },
-      "x_window": [
-        1765888726.4044735,
-        1765893961.5266623
-      ],
+      "x_window": null,
       "barriers": {
         "abs": {
-          "enabled": true,
-          "target": "38",
+          "enabled": false,
+          "target": "45",
           "limit_in": "1",
           "limit_out": "5",
           "start_idx": "175",
-          "end_idx": "40000"
+          "end_idx": "1175"
         },
         "rel": {
-          "enabled": true,
-          "target": "38",
-          "limit_in": "3",
+          "enabled": false,
+          "target": "45",
+          "limit_in": "1",
           "limit_out": "5",
           "start_idx": "175",
-          "end_idx": "40000"
+          "end_idx": "1175"
         }
       },
       "plot_mode": "Time series",
       "files": [
-        "E:\\temp_gui_reports\\detector_curve_logs\\detector_curve_log_20251216_133929__000\\detector_curve_log_20251216_133929__000.csv"
+        "E:\\WORK\\Jira\\ED-3314\\20260218_direct_bc_mcu_current_measurement_f251\\ppk-20260218T073859.csv",
+        "E:\\WORK\\Jira\\ED-3314\\20260218_direct_bc_mcu_current_measurement_f251\\slave_ppk-20260218T074748.csv"
       ],
       "x_alignment": "aligned",
       "file_shifts": {
-        "E:\\temp_gui_reports\\detector_curve_logs\\detector_curve_log_20251216_133929__000\\detector_curve_log_20251216_133929__000.csv": {
+        "E:\\WORK\\Jira\\ED-3314\\20260218_direct_bc_mcu_current_measurement_f251\\ppk-20260218T073859.csv": {
           "x_shift_s": 0.0,
           "y_shift": 0.0
+        },
+        "E:\\WORK\\Jira\\ED-3314\\20260218_direct_bc_mcu_current_measurement_f251\\slave_ppk-20260218T074748.csv": {
+          "x_shift_s": 0.0,
+          "y_shift": 0.0
+        }
+      },
+      "file_enabled": {
+        "E:\\WORK\\Jira\\ED-3314\\20260218_direct_bc_mcu_current_measurement_f251\\ppk-20260218T073859.csv": true,
+        "E:\\WORK\\Jira\\ED-3314\\20260218_direct_bc_mcu_current_measurement_f251\\slave_ppk-20260218T074748.csv": true
+      },
+      "file_timebase": {
+        "E:\\WORK\\Jira\\ED-3314\\20260218_direct_bc_mcu_current_measurement_f251\\ppk-20260218T073859.csv": {
+          "mode": "global",
+          "unit": "ms",
+          "step": 0.01
+        },
+        "E:\\WORK\\Jira\\ED-3314\\20260218_direct_bc_mcu_current_measurement_f251\\slave_ppk-20260218T074748.csv": {
+          "mode": "global",
+          "unit": "ms",
+          "step": 0.01
         }
       },
       "ui": {
         "inner_split": {
           "x": 1,
-          "y": 111
+          "y": 502
         },
-        "plot_split": 260,
+        "plot_split": 901,
         "bottom_pane": {
           "order": [
-            "hist",
-            "abs",
-            "rel",
             "table"
-          ],
-          "sashpos": [
-            129,
-            264,
-            398
           ]
         }
       }

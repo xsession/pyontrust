@@ -3,6 +3,13 @@ from dataclasses import dataclass
 
 import pandas as pd
 
+try:
+    import datashader as ds
+    import datashader.transfer_functions as tf
+except Exception:
+    ds = None
+    tf = None
+
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 
@@ -11,7 +18,7 @@ from matplotlib.lines import Line2D
 class MainPlotResult:
     fig: Figure
     axes_for_events: list
-    stats_rows: list[tuple[str, str, str, str, str, str, str, str]]
+    stats_rows: list[tuple[str, str, str, str, str, str, str, str, str, str, str]]
     selected_columns: list[str]
     do_span: bool
     do_sync_xlim: bool
@@ -19,7 +26,7 @@ class MainPlotResult:
 
 def build_main_plot(app, selector, subplot_index: int) -> MainPlotResult:
     selected_columns = selector.get_selected_columns(app.df.columns)
-    stats_rows: list[tuple[str, str, str, str, str, str, str, str]] = []
+    stats_rows: list[tuple[str, str, str, str, str, str, str, str, str, str, str]] = []
 
     mode = selector.get_plot_mode()
     do_span = (mode == "Time series")
@@ -147,9 +154,29 @@ def build_main_plot(app, selector, subplot_index: int) -> MainPlotResult:
         except Exception:
             file_paths = []
 
+    # Per-file overlay enable/disable (supports toggling base/source file too).
+    try:
+        if hasattr(selector, "is_file_enabled"):
+            file_paths = [p for p in file_paths if bool(selector.is_file_enabled(str(p)))]
+    except Exception:
+        pass
+
     if mode == "Time series":
         ax = fig.add_subplot(111)
         axes_for_events = [ax]
+
+        if not file_paths:
+            ax.set_title("No enabled overlay files")
+            ax.grid(True)
+            selector.set_stats_text("")
+            return MainPlotResult(
+                fig=fig,
+                axes_for_events=axes_for_events,
+                stats_rows=stats_rows,
+                selected_columns=selected_columns,
+                do_span=do_span,
+                do_sync_xlim=do_sync_xlim,
+            )
 
         x_align = "aligned"
         try:
@@ -165,8 +192,39 @@ def build_main_plot(app, selector, subplot_index: int) -> MainPlotResult:
         multiple_files = len(file_paths) > 1
         xwin = selector.get_x_window()
 
+        use_datashader = bool(getattr(app, "use_datashader", True))
+        max_points = int(getattr(app, "datashader_threshold", 1_000_000))
+
+        def _maybe_render_datashader(df_i: pd.DataFrame, x_raw, cols: list[str]) -> bool:
+            if ds is None or tf is None or not use_datashader:
+                return False
+            try:
+                if len(x_raw) < max_points:
+                    return False
+            except Exception:
+                return False
+            if not cols:
+                return False
+            try:
+                data = pd.DataFrame({"x": x_raw})
+                for c in cols:
+                    data[c] = pd.to_numeric(df_i[c], errors="coerce")
+                long_df = data.melt(id_vars=["x"], value_vars=cols, var_name="series", value_name="y").dropna()
+                if long_df.empty:
+                    return False
+                color_key = {c: col for c, col in zip(cols, ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd"])}
+                canvas = ds.Canvas(plot_width=1200, plot_height=400)
+                agg = canvas.line(long_df, "x", "y", agg=ds.count_cat("series"))
+                img = tf.shade(agg, color_key=color_key, how="eq_hist")
+                pil = img.to_pil()
+                ax.imshow(pil, extent=[long_df["x"].min(), long_df["x"].max(), long_df["y"].min(), long_df["y"].max()], aspect="auto")
+                ax.set_title(f"Subplot {subplot_index + 1} (Datashader)")
+                return True
+            except Exception:
+                return False
+
         for fp in file_paths:
-            df_i, scale_i = app._get_df_for_path(str(fp))
+            df_i, scale_i = app._get_df_for_path(str(fp), selector)
             if not isinstance(df_i, pd.DataFrame):
                 continue
 
@@ -177,7 +235,18 @@ def build_main_plot(app, selector, subplot_index: int) -> MainPlotResult:
                     x_raw = pd.to_numeric(df_i["Timestamp"], errors="coerce")
             else:
                 x_raw = pd.Series(range(len(df_i)))
-                scale_i = 1.0
+
+            if len(file_paths) == 1:
+                if _maybe_render_datashader(df_i, x_raw, selected_data_cols):
+                    selector.set_stats_text("Datashader rasterized view")
+                    return MainPlotResult(
+                        fig=fig,
+                        axes_for_events=axes_for_events,
+                        stats_rows=stats_rows,
+                        selected_columns=selected_columns,
+                        do_span=do_span,
+                        do_sync_xlim=do_sync_xlim,
+                    )
 
             if x_align == "independent" and "Timestamp" in df_i.columns:
                 try:
@@ -206,16 +275,22 @@ def build_main_plot(app, selector, subplot_index: int) -> MainPlotResult:
             except Exception:
                 pass
 
-            if xwin is not None and "Timestamp" in df_i.columns:
+            mask_i = None
+            if xwin is not None:
                 try:
                     lo, hi = xwin
-                    mask_i = (x_plot >= lo) & (x_plot <= hi)
+                    mask_i = (x_plot >= float(lo)) & (x_plot <= float(hi))
                 except Exception:
                     mask_i = None
-            else:
-                mask_i = None
 
             base_name = os.path.basename(str(fp))
+
+            # Matplotlib becomes very slow / memory-hungry with huge lines.
+            # Downsample plotted points to keep UI responsive.
+            try:
+                max_mpl_points = int(getattr(app, "mpl_max_points", 250_000) or 250_000)
+            except Exception:
+                max_mpl_points = 250_000
 
             for col in selected_columns:
                 if col == "Timestamp":
@@ -239,23 +314,74 @@ def build_main_plot(app, selector, subplot_index: int) -> MainPlotResult:
                     except Exception:
                         pass
 
+                # Downsample plot series when extremely large.
+                try:
+                    npts = int(len(y))
+                except Exception:
+                    npts = 0
+                if max_mpl_points > 0 and npts > max_mpl_points:
+                    try:
+                        step = int((npts + max_mpl_points - 1) // max_mpl_points)
+                    except Exception:
+                        step = 1
+                    if step > 1:
+                        try:
+                            x_plot_ds = x_plot.iloc[::step]
+                            y_ds = y.iloc[::step]
+                        except Exception:
+                            x_plot_ds, y_ds = x_plot, y
+                    else:
+                        x_plot_ds, y_ds = x_plot, y
+                else:
+                    x_plot_ds, y_ds = x_plot, y
+
                 y_stats = y
                 x_stats = x_plot
                 if mask_i is not None:
                     try:
-                        y_stats = y.where(mask_i)
-                        x_stats = x_plot.where(mask_i)
+                        y_masked = y.where(mask_i)
+                        x_masked = x_plot.where(mask_i)
+                        # If the window doesn't overlap the data at all,
+                        # fall back to the full series so metrics aren't all n/a.
+                        if y_masked.dropna().empty:
+                            pass  # keep y_stats = y, x_stats = x_plot
+                        else:
+                            y_stats = y_masked
+                            x_stats = x_masked
                     except Exception:
                         pass
 
+                # Metrics need a time axis in seconds.
+                # For fixed timebase, treat the trace as uniformly sampled (sample-index * dt),
+                # even if a 'Timestamp' column exists (it may be a sample counter).
                 x_metrics = x_stats
-                if "Timestamp" in df_i.columns:
-                    try:
-                        x_metrics = x_stats * float(scale_i)
-                    except Exception:
-                        x_metrics = x_stats
+                try:
+                    tb_mode = str(getattr(app, "_effective_timebase_mode_for_path")(str(fp), selector=selector) or "auto")
+                except Exception:
+                    tb_mode = "auto"
 
-                min_s, max_s, avg_s, med_s, p2p_s, freq_s, period_s = app._compute_signal_metrics_cached(
+                if tb_mode == "fixed":
+                    try:
+                        import numpy as np
+
+                        t = pd.Series(np.arange(len(df_i), dtype=float), index=df_i.index) * float(scale_i)
+                    except Exception:
+                        t = pd.Series(range(len(df_i)), index=df_i.index) * float(scale_i)
+                    x_metrics = t
+                    if mask_i is not None:
+                        try:
+                            x_metrics = x_metrics.where(mask_i)
+                        except Exception:
+                            pass
+                else:
+                    # Auto timebase: Timestamp axis scaled to seconds (if Timestamp exists).
+                    if "Timestamp" in df_i.columns:
+                        try:
+                            x_metrics = x_stats * float(scale_i)
+                        except Exception:
+                            x_metrics = x_stats
+
+                min_s, max_s, avg_s, med_s, p2p_s, std_s, rms_s, crest_s, freq_s, period_s = app._compute_signal_metrics_cached(
                     path=str(fp),
                     col=str(col),
                     x=x_metrics,
@@ -271,10 +397,38 @@ def build_main_plot(app, selector, subplot_index: int) -> MainPlotResult:
                 if multiple_files:
                     sig_name = f"{base_name}:{col}"
 
-                stats_rows.append((sig_name, min_s, max_s, avg_s, med_s, p2p_s, freq_s, period_s))
+                stats_rows.append((sig_name, min_s, max_s, avg_s, med_s, p2p_s, std_s, rms_s, crest_s, freq_s, period_s))
 
-                ln, = ax.plot(x_plot, y, label=sig_name)
+                ln, = ax.plot(x_plot_ds, y_ds, label=sig_name)
                 _tag_line(ln, str(col))
+
+        # Keep the axis zoomed to the analysis window across replots.
+        # (The window is set via span-select and/or toolbar zoom.)
+        try:
+            xwin_apply = selector.get_x_window()
+        except Exception:
+            xwin_apply = None
+        if xwin_apply is not None:
+            try:
+                lo, hi = xwin_apply
+                ax.set_xlim(float(lo), float(hi))
+            except Exception:
+                pass
+        else:
+            # If there is no persisted window, ensure X autoscale is enabled.
+            # Matplotlib zoom/pan can leave the axis in manual-limits mode.
+            try:
+                ax.relim()
+            except Exception:
+                pass
+            try:
+                ax.autoscale(enable=True, axis="x")
+            except Exception:
+                pass
+            try:
+                ax.autoscale_view()
+            except Exception:
+                pass
 
         selector.set_stats_text("")
         ax.set_title(f"Subplot {subplot_index + 1}")
@@ -342,17 +496,47 @@ def build_main_plot(app, selector, subplot_index: int) -> MainPlotResult:
             x_stats = x
             if mask is not None:
                 try:
-                    y_stats = y.where(mask)
-                    x_stats = x.where(mask)
+                    y_masked = y.where(mask)
+                    x_masked = x.where(mask)
+                    if y_masked.dropna().empty:
+                        pass  # window doesn't overlap data; use full series
+                    else:
+                        y_stats = y_masked
+                        x_stats = x_masked
                 except Exception:
                     pass
 
             try:
-                x_metrics = x_stats * float(getattr(app, "_timestamp_scale_to_seconds", 1.0) or 1.0)
+                _df_tmp, eff_scale = app._get_df_for_path(str(base_path), selector)
             except Exception:
-                x_metrics = x_stats
+                eff_scale = float(getattr(app, "_timestamp_scale_to_seconds", 1.0) or 1.0)
 
-            min_s, max_s, avg_s, med_s, p2p_s, freq_s, period_s = app._compute_signal_metrics_cached(
+            x_metrics = x_stats
+            try:
+                tb_mode = str(getattr(app, "_effective_timebase_mode_for_path")(str(base_path), selector=selector) or "auto")
+            except Exception:
+                tb_mode = "auto"
+
+            if tb_mode == "fixed":
+                try:
+                    import numpy as np
+
+                    t = pd.Series(np.arange(len(app.df), dtype=float), index=app.df.index) * float(eff_scale)
+                except Exception:
+                    t = pd.Series(range(len(app.df)), index=app.df.index) * float(eff_scale)
+                x_metrics = t
+                if mask is not None:
+                    try:
+                        x_metrics = x_metrics.where(mask)
+                    except Exception:
+                        pass
+            else:
+                try:
+                    x_metrics = x_stats * float(eff_scale)
+                except Exception:
+                    x_metrics = x_stats
+
+            min_s, max_s, avg_s, med_s, p2p_s, std_s, rms_s, crest_s, freq_s, period_s = app._compute_signal_metrics_cached(
                 path=str(base_path),
                 col=str(tube_col),
                 x=x_metrics,
@@ -361,9 +545,9 @@ def build_main_plot(app, selector, subplot_index: int) -> MainPlotResult:
                 x_align=str(getattr(selector, "get_x_alignment_mode", lambda: "aligned")() or ""),
                 x_shift_s=0.0,
                 y_shift=0.0,
-                scale_to_seconds=float(getattr(app, "_timestamp_scale_to_seconds", 1.0) or 1.0),
+                    scale_to_seconds=float(eff_scale or 1.0),
             )
-            stats_rows.append((str(tube_col), min_s, max_s, avg_s, med_s, p2p_s, freq_s, period_s))
+            stats_rows.append((str(tube_col), min_s, max_s, avg_s, med_s, p2p_s, std_s, rms_s, crest_s, freq_s, period_s))
 
             ln, = ax.plot(x, y, label=str(tube_col))
             _tag_line(ln, tube_col)
@@ -474,6 +658,10 @@ def build_main_plot(app, selector, subplot_index: int) -> MainPlotResult:
                 except Exception:
                     base_path = ""
                 try:
+                    _df_tmp, eff_scale = app._get_df_for_path(str(base_path), selector)
+                except Exception:
+                    eff_scale = float(getattr(app, "_timestamp_scale_to_seconds", 1.0) or 1.0)
+                try:
                     y = app._to_numeric_cached(app.df, str(base_path), str(col))
                 except Exception:
                     y = pd.to_numeric(app.df[col], errors="coerce")
@@ -481,16 +669,41 @@ def build_main_plot(app, selector, subplot_index: int) -> MainPlotResult:
                 x_stats = x
                 if mask is not None:
                     try:
-                        y_stats = y.where(mask)
-                        x_stats = x.where(mask)
+                        y_masked = y.where(mask)
+                        x_masked = x.where(mask)
+                        if y_masked.dropna().empty:
+                            pass  # window doesn't overlap data; use full series
+                        else:
+                            y_stats = y_masked
+                            x_stats = x_masked
                     except Exception:
                         pass
-                try:
-                    x_metrics = x_stats * float(getattr(app, "_timestamp_scale_to_seconds", 1.0) or 1.0)
-                except Exception:
-                    x_metrics = x_stats
 
-                min_s, max_s, avg_s, med_s, p2p_s, freq_s, period_s = app._compute_signal_metrics_cached(
+                x_metrics = x_stats
+                try:
+                    tb_mode = str(getattr(app, "_effective_timebase_mode_for_path")(str(base_path), selector=selector) or "auto")
+                except Exception:
+                    tb_mode = "auto"
+                if tb_mode == "fixed":
+                    try:
+                        import numpy as np
+
+                        t = pd.Series(np.arange(len(app.df), dtype=float), index=app.df.index) * float(eff_scale)
+                    except Exception:
+                        t = pd.Series(range(len(app.df)), index=app.df.index) * float(eff_scale)
+                    x_metrics = t
+                    if mask is not None:
+                        try:
+                            x_metrics = x_metrics.where(mask)
+                        except Exception:
+                            pass
+                else:
+                    try:
+                        x_metrics = x_stats * float(eff_scale)
+                    except Exception:
+                        x_metrics = x_stats
+
+                min_s, max_s, avg_s, med_s, p2p_s, std_s, rms_s, crest_s, freq_s, period_s = app._compute_signal_metrics_cached(
                     path=str(base_path),
                     col=str(col),
                     x=x_metrics,
@@ -499,9 +712,9 @@ def build_main_plot(app, selector, subplot_index: int) -> MainPlotResult:
                     x_align=str(getattr(selector, "get_x_alignment_mode", lambda: "aligned")() or ""),
                     x_shift_s=0.0,
                     y_shift=0.0,
-                    scale_to_seconds=float(getattr(app, "_timestamp_scale_to_seconds", 1.0) or 1.0),
+                    scale_to_seconds=float(eff_scale or 1.0),
                 )
-                stats_rows.append((str(col), min_s, max_s, avg_s, med_s, p2p_s, freq_s, period_s))
+                stats_rows.append((str(col), min_s, max_s, avg_s, med_s, p2p_s, std_s, rms_s, crest_s, freq_s, period_s))
 
     else:
         candidate_cols = selected_data_cols
@@ -521,7 +734,25 @@ def build_main_plot(app, selector, subplot_index: int) -> MainPlotResult:
             try:
                 base_path = getattr(app, "last_loaded_file", None) or getattr(app, "file_path", "")
                 ts = app._to_numeric_cached(app.df, str(base_path), "Timestamp")
-                x_sec = (ts - float(ts.iloc[0])) * float(app._timestamp_scale_to_seconds)
+                try:
+                    _df_tmp, eff_scale = app._get_df_for_path(str(base_path), selector)
+                except Exception:
+                    eff_scale = float(getattr(app, "_timestamp_scale_to_seconds", 1.0) or 1.0)
+
+                try:
+                    tb_mode = str(getattr(app, "_effective_timebase_mode_for_path")(str(base_path), selector=selector) or "auto")
+                except Exception:
+                    tb_mode = "auto"
+
+                if tb_mode == "fixed":
+                    try:
+                        import numpy as np
+
+                        x_sec = pd.Series(np.arange(len(app.df), dtype=float), index=app.df.index) * float(eff_scale)
+                    except Exception:
+                        x_sec = pd.Series(range(len(app.df)), index=app.df.index) * float(eff_scale)
+                else:
+                    x_sec = (ts - float(ts.iloc[0])) * float(eff_scale)
             except Exception:
                 x_sec = pd.to_numeric(app.df["Timestamp"], errors="coerce")
 
@@ -585,6 +816,10 @@ def build_main_plot(app, selector, subplot_index: int) -> MainPlotResult:
                 except Exception:
                     base_path = ""
                 try:
+                    _df_tmp, eff_scale = app._get_df_for_path(str(base_path), selector)
+                except Exception:
+                    eff_scale = float(getattr(app, "_timestamp_scale_to_seconds", 1.0) or 1.0)
+                try:
                     y = app._to_numeric_cached(app.df, str(base_path), str(col))
                 except Exception:
                     y = pd.to_numeric(app.df[col], errors="coerce")
@@ -592,16 +827,40 @@ def build_main_plot(app, selector, subplot_index: int) -> MainPlotResult:
                 x_stats = x
                 if mask is not None:
                     try:
-                        y_stats = y.where(mask)
-                        x_stats = x.where(mask)
+                        y_masked = y.where(mask)
+                        x_masked = x.where(mask)
+                        if y_masked.dropna().empty:
+                            pass  # window doesn't overlap data; use full series
+                        else:
+                            y_stats = y_masked
+                            x_stats = x_masked
                     except Exception:
                         pass
+                x_metrics = x_stats
                 try:
-                    x_metrics = x_stats * float(getattr(app, "_timestamp_scale_to_seconds", 1.0) or 1.0)
+                    tb_mode = str(getattr(app, "_effective_timebase_mode_for_path")(str(base_path), selector=selector) or "auto")
                 except Exception:
-                    x_metrics = x_stats
+                    tb_mode = "auto"
+                if tb_mode == "fixed":
+                    try:
+                        import numpy as np
 
-                min_s, max_s, avg_s, med_s, p2p_s, freq_s, period_s = app._compute_signal_metrics_cached(
+                        t = pd.Series(np.arange(len(app.df), dtype=float), index=app.df.index) * float(eff_scale)
+                    except Exception:
+                        t = pd.Series(range(len(app.df)), index=app.df.index) * float(eff_scale)
+                    x_metrics = t
+                    if mask is not None:
+                        try:
+                            x_metrics = x_metrics.where(mask)
+                        except Exception:
+                            pass
+                else:
+                    try:
+                        x_metrics = x_stats * float(eff_scale)
+                    except Exception:
+                        x_metrics = x_stats
+
+                min_s, max_s, avg_s, med_s, p2p_s, std_s, rms_s, crest_s, freq_s, period_s = app._compute_signal_metrics_cached(
                     path=str(base_path),
                     col=str(col),
                     x=x_metrics,
@@ -610,9 +869,9 @@ def build_main_plot(app, selector, subplot_index: int) -> MainPlotResult:
                     x_align=str(getattr(selector, "get_x_alignment_mode", lambda: "aligned")() or ""),
                     x_shift_s=0.0,
                     y_shift=0.0,
-                    scale_to_seconds=float(getattr(app, "_timestamp_scale_to_seconds", 1.0) or 1.0),
+                    scale_to_seconds=float(eff_scale or 1.0),
                 )
-                stats_rows.append((str(col), min_s, max_s, avg_s, med_s, p2p_s, freq_s, period_s))
+                stats_rows.append((str(col), min_s, max_s, avg_s, med_s, p2p_s, std_s, rms_s, crest_s, freq_s, period_s))
 
         elif mode in ("AF-10047: ACQ ON", "AF-10047: ACQ OFF"):
             fig.set_size_inches(12, 7)

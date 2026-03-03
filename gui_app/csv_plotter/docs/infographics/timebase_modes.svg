@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
+  <defs>
+    <style>
+      .box{fill:#fff;stroke:#111;stroke-width:2}
+      .title{font:700 18px sans-serif;fill:#111}
+      .label{font:14px sans-serif;fill:#111}
+      .muted{font:12px sans-serif;fill:#444}
+      .arrow{stroke:#111;stroke-width:2;fill:none;marker-end:url(#m)}
+    </style>
+    <marker id="m" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <path d="M0,0 L10,3 L0,6 Z" fill="#111"/>
+    </marker>
+  </defs>
+
+  <text x="24" y="40" class="title">Timebase Modes (Effective Seconds per X)</text>
+
+  <rect x="60" y="90" width="360" height="160" rx="10" class="box"/>
+  <text x="80" y="128" class="label">Auto</text>
+  <text x="80" y="156" class="muted">Use file timestamp axis</text>
+  <text x="80" y="180" class="muted">Scale derived from data (heuristic)</text>
+
+  <rect x="540" y="90" width="360" height="160" rx="10" class="box"/>
+  <text x="560" y="128" class="label">Fixed</text>
+  <text x="560" y="156" class="muted">Seconds per x-unit = unit * step</text>
+  <text x="560" y="180" class="muted">Metrics use uniform sample time</text>
+
+  <path class="arrow" d="M420 170 L540 170"/>
+  <text x="480" y="156" class="muted" text-anchor="middle">override</text>
+
+  <rect x="60" y="290" width="840" height="180" rx="10" class="box"/>
+  <text x="80" y="330" class="label">Precedence</text>
+  <text x="80" y="360" class="muted">Per-file Custom (Fixed)  →  Global Fixed  →  Auto</text>
+  <text x="80" y="392" class="muted">Per-file Auto forces Auto for that file</text>
+
+  <text x="80" y="440" class="muted">Use Fixed for sample counters (dt known), Auto for true timestamps.</text>
+</svg>

@@ -1,0 +1,114 @@
+[build-system]
+requires = ["setuptools>=68.0", "setuptools-scm>=8.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyontrust-csv-plotter"
+version = "1.0.0"
+description = "Enterprise-grade CSV signal plotter with multi-subplot support, FFT analysis, and flexible I/O backends."
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Pyontrust Team"},
+]
+keywords = ["csv", "plotter", "signal-analysis", "matplotlib", "tkinter"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Visualization",
+]
+dependencies = [
+    "pandas>=1.5",
+    "numpy>=1.23",
+    "matplotlib>=3.6",
+]
+
+[project.optional-dependencies]
+# High-performance backends for large CSV files
+perf = [
+    "polars>=0.18",
+    "duckdb>=0.8",
+    "pyarrow>=12.0",
+]
+# Datashader for very large point clouds
+datashader = [
+    "datashader>=0.14",
+]
+# Development / testing tools
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "mypy>=1.0",
+    "ruff>=0.1",
+]
+# Everything
+all = [
+    "pyontrust-csv-plotter[perf,datashader,dev]",
+]
+
+[project.scripts]
+csv-plotter = "csv_plotter:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["csv_plotter*", "core*", "ui*", "plots*", "persistence*"]
+
+# --- Testing ---------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["../../tests/csv_plotter_tests"]
+pythonpath = ["."]
+addopts = "-ra --strict-markers"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests that need external resources",
+]
+
+# --- Type checking ---------------------------------------------------------
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false          # gradual adoption
+check_untyped_defs = true
+ignore_missing_imports = true
+
+# --- Linting ---------------------------------------------------------------
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+    "TCH",  # flake8-type-checking
+]
+ignore = [
+    "E501",    # line too long (handled by formatter)
+    "B904",    # raise from inside except (gradual adoption)
+]
+
+[tool.ruff.isort]
+known-first-party = ["csv_plotter", "core", "ui", "plots", "persistence", "data", "metrics", "lang"]
+
+# --- Coverage --------------------------------------------------------------
+[tool.coverage.run]
+source = ["."]
+omit = ["tests/*", "*/test_*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 40

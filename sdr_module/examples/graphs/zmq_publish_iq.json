@@ -1,0 +1,10 @@
+{
+  "name": "zmq_publish_iq",
+  "blocks": [
+    {"id": "src", "type": "sim_iq_source", "params": {"tone_hz": 100000.0, "amp": 0.7, "noise": 0.02}},
+    {"id": "pub", "type": "zmq_iq_pub_sink", "params": {"address": "tcp://*:5555", "bind": true, "topic": ""}}
+  ],
+  "edges": [
+    {"src_block": "src", "src_port": "iq", "dst_block": "pub", "dst_port": "iq"}
+  ]
+}

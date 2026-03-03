@@ -1,0 +1,109 @@
+{
+  "name": "pyontrust_lab_bench",
+  "description": "Lab bench configuration for embedded hardware testing. 2x AD3 cluster, PPK2, J-Link, PEAK-CAN, HackRF One (700MHz-11GHz), SK120 PSU, webcam (no IR filter).",
+  "instruments": {
+    "power_meter": {
+      "type": "ad3_cluster",
+      "enabled": true,
+      "params": {
+        "devices": [
+          {
+            "device_index": 0,
+            "role": "power",
+            "current_channel": 0,
+            "voltage_channel": 1,
+            "current_a_per_v": 10.0,
+            "current_range_v": 0.5,
+            "voltage_range_v": 5.0,
+            "sample_rate_hz": 100000
+          },
+          {
+            "device_index": 1,
+            "role": "aux",
+            "current_channel": 0,
+            "voltage_channel": 1,
+            "sample_rate_hz": 100000
+          }
+        ],
+        "buffer_size": 8192,
+        "trigger_source": "none"
+      },
+      "calibration": {
+        "current_offset_v": 0.0,
+        "voltage_offset_v": 0.0,
+        "current_gain": 1.0,
+        "voltage_gain": 1.0,
+        "calibrated_date": "2025-01-01"
+      }
+    },
+    "ppk2": {
+      "type": "ppk2",
+      "enabled": true,
+      "params": {
+        "port": "auto",
+        "sample_rate_hz": 100000,
+        "mode": "ampere",
+        "source_voltage_mv": 3300
+      }
+    },
+    "psu": {
+      "type": "sk120",
+      "enabled": true,
+      "params": {
+        "port": "COM5",
+        "baud": 9600,
+        "voltage_v": 3.3,
+        "current_limit_a": 0.5,
+        "channel": 1,
+        "output_on": true
+      }
+    },
+    "jlink": {
+      "type": "jlink",
+      "enabled": true,
+      "params": {
+        "device": "nRF9160_xxAA",
+        "interface": "swd",
+        "speed_khz": 4000,
+        "serial": "auto",
+        "jlink_path": "auto"
+      }
+    },
+    "hackrf": {
+      "type": "hackrf",
+      "enabled": true,
+      "params": {
+        "freq_hz": 2402000000,
+        "sample_rate_hz": 10000000,
+        "lna_gain_db": 16,
+        "vga_gain_db": 20,
+        "amp_enable": false,
+        "device_serial": "auto"
+      }
+    },
+    "webcam": {
+      "type": "webcam",
+      "enabled": true,
+      "params": {
+        "input_device": "HD USB Camera",
+        "ffmpeg_path": "ffmpeg",
+        "framerate": 30,
+        "video_size": "1280x720"
+      }
+    }
+  },
+  "wiring": {
+    "dut_power": "psu CH1 → DUT Vdd (3.3V)",
+    "current_sense": "AD3-0 CH1 across 0.1Ω shunt on Vdd rail",
+    "voltage_sense": "AD3-0 CH2 at DUT Vdd",
+    "debug_probe": "J-Link SWD → DUT debug header",
+    "can_bus": "PEAK-CAN → DUT CAN-H/CAN-L",
+    "rf_antenna": "HackRF + 700MHz-11GHz antenna near DUT",
+    "camera": "Webcam (no IR filter) pointed at DUT LEDs/display"
+  },
+  "metadata": {
+    "lab": "Embedded Test Lab",
+    "owner": "pyontrust",
+    "created": "2025-01-01"
+  }
+}

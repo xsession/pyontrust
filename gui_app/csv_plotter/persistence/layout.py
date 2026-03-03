@@ -1,6 +1,8 @@
 import json
 import os
+import shutil
 from pathlib import Path
+from datetime import datetime
 
 from tkinter import filedialog, messagebox
 
@@ -32,6 +34,11 @@ def build_layout_data(app) -> dict:
         "version": 2,
         "highlighted_channels": sorted([str(x) for x in (getattr(app, "_highlighted_channels", None) or [])]),
         "ui_theme": str(getattr(app, "ui_theme_var", None).get() if hasattr(app, "ui_theme_var") else "dark"),
+        "timebase": {
+            "mode": str(getattr(app, "global_timestep_mode_var", None).get() if hasattr(app, "global_timestep_mode_var") else "fixed"),
+            "unit": str(getattr(app, "global_timestep_unit_var", None).get() if hasattr(app, "global_timestep_unit_var") else "ms"),
+            "step": str(getattr(app, "global_timestep_step_var", None).get() if hasattr(app, "global_timestep_step_var") else "0.01"),
+        },
         "current_folder": app.current_folder,
         "auto_load_newest": bool(app.auto_check_enabled.get()),
         "auto_reload_selected": bool(app.auto_reload_selected_enabled.get()),
@@ -52,6 +59,8 @@ def build_layout_data(app) -> dict:
                 "files": s.get_files(),
                 "x_alignment": s.get_x_alignment_mode(),
                 "file_shifts": s.get_file_shifts(),
+                "file_enabled": s.get_file_enabled() if hasattr(s, "get_file_enabled") else {},
+                "file_timebase": s.get_file_timebase() if hasattr(s, "get_file_timebase") else {},
                 "ui": {
                     "inner_split": s.get_inner_split_sash() if hasattr(s, "get_inner_split_sash") else None,
                     "plot_split": s.get_plot_split_sashpos() if hasattr(s, "get_plot_split_sashpos") else None,
@@ -142,6 +151,18 @@ def apply_layout_subplots(app, data: dict) -> None:
         except Exception:
             pass
 
+        try:
+            if hasattr(app.subplots[-1], "set_file_enabled"):
+                app.subplots[-1].set_file_enabled(s.get("file_enabled"))
+        except Exception:
+            pass
+
+        try:
+            if hasattr(app.subplots[-1], "set_file_timebase"):
+                app.subplots[-1].set_file_timebase(s.get("file_timebase"))
+        except Exception:
+            pass
+
         # Per-subplot UI positions
         try:
             su = s.get("ui") if isinstance(s.get("ui"), dict) else {}
@@ -174,6 +195,24 @@ def apply_layout_subplots(app, data: dict) -> None:
 
 def write_layout_json_atomic(path: str, data: dict) -> None:
     p = Path(path)
+    # Create a timestamped backup before overwriting
+    try:
+        if p.exists():
+            backup_dir = p.parent / ".layout_backups"
+            backup_dir.mkdir(exist_ok=True)
+            stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_path = backup_dir / f"layout_{stamp}.json"
+            # Keep only the last 10 backups
+            try:
+                existing = sorted(backup_dir.glob("layout_*.json"), key=lambda f: f.stat().st_mtime, reverse=True)
+                for old_backup in existing[9:]:
+                    old_backup.unlink(missing_ok=True)
+            except Exception:
+                pass
+            shutil.copy2(str(p), str(backup_path))
+    except Exception:
+        pass
+
     tmp = p.with_suffix(p.suffix + ".tmp")
     tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
     try:
@@ -255,6 +294,18 @@ def load_layout_from_path(app, path: str, *, silent: bool) -> bool:
                 app.ui_theme_var.set(str(theme))
             if hasattr(app, "apply_theme"):
                 app.apply_theme(str(theme or getattr(app, "ui_theme_var", None).get() if hasattr(app, "ui_theme_var") else "dark"))
+        except Exception:
+            pass
+
+        # Global timebase settings
+        try:
+            tb = data.get("timebase") if isinstance(data.get("timebase"), dict) else {}
+            if hasattr(app, "global_timestep_mode_var") and "mode" in tb:
+                app.global_timestep_mode_var.set(str(tb.get("mode") or "fixed"))
+            if hasattr(app, "global_timestep_unit_var") and "unit" in tb:
+                app.global_timestep_unit_var.set(str(tb.get("unit") or "ms"))
+            if hasattr(app, "global_timestep_step_var") and "step" in tb:
+                app.global_timestep_step_var.set(str(tb.get("step") or "0.01"))
         except Exception:
             pass
 

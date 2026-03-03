@@ -1,0 +1,132 @@
+{
+  "name": "nrf9160_sleep_current_full",
+  "description": "Full-bench test: flash firmware, measure sleep current, verify RF output, capture LED state.",
+
+  "instruments": {
+    "power_meter": {
+      "type": "ppk2",
+      "port": "auto",
+      "sample_rate_hz": 100000,
+      "mode": "source",
+      "source_voltage_mv": 3300
+    },
+    "psu": {
+      "type": "sk120",
+      "port": "COM5",
+      "voltage_v": 3.3,
+      "current_limit_a": 0.5
+    },
+    "jlink": {
+      "type": "jlink",
+      "device": "nRF9160_xxAA",
+      "interface": "swd",
+      "speed_khz": 4000
+    },
+    "hackrf": {
+      "type": "hackrf",
+      "freq_hz": 2402000000,
+      "sample_rate_hz": 10000000,
+      "lna_gain_db": 16,
+      "vga_gain_db": 20
+    },
+    "webcam": {
+      "type": "webcam",
+      "input_device": "HD USB Camera",
+      "video_size": "1280x720"
+    }
+  },
+
+  "recorders": [
+    {
+      "type": "pcan_can",
+      "name": "can_bus",
+      "channel": "PCAN_USBBUS1",
+      "bitrate": 500000
+    }
+  ],
+
+  "steps": [
+    {
+      "name": "flash_firmware",
+      "duration_s": 15,
+      "actions": [
+        {"type": "snapshot", "instrument": "webcam", "filename": "pre_flash.jpg"},
+        {"type": "flash", "instrument": "jlink", "firmware": "firmware/app.hex", "erase": true}
+      ]
+    },
+    {
+      "name": "boot_active",
+      "duration_s": 5,
+      "actions": [
+        {"type": "mark", "label": "device_booting"},
+        {"type": "sleep", "seconds": 3}
+      ]
+    },
+    {
+      "name": "idle_sleep",
+      "duration_s": 30,
+      "actions": [
+        {"type": "mark", "label": "measuring_sleep_current"},
+        {"type": "snapshot", "instrument": "webcam", "filename": "sleep_mode.jpg"}
+      ]
+    },
+    {
+      "name": "rf_transmit",
+      "duration_s": 10,
+      "actions": [
+        {
+          "type": "run",
+          "command": ["nrfjprog", "--rtt", "write", "0", "tx_start"]
+        },
+        {
+          "type": "rf_sweep",
+          "instrument": "hackrf",
+          "freq_start_mhz": 2400,
+          "freq_stop_mhz": 2500
+        }
+      ]
+    },
+    {
+      "name": "voltage_sweep",
+      "duration_s": 20,
+      "actions": [
+        {"type": "set_voltage", "instrument": "psu", "voltage_v": 2.8},
+        {"type": "sleep", "seconds": 5},
+        {"type": "set_voltage", "instrument": "psu", "voltage_v": 3.3},
+        {"type": "sleep", "seconds": 5},
+        {"type": "set_voltage", "instrument": "psu", "voltage_v": 3.6},
+        {"type": "sleep", "seconds": 5}
+      ]
+    },
+    {
+      "name": "final_snapshot",
+      "duration_s": 3,
+      "actions": [
+        {"type": "snapshot", "instrument": "webcam", "filename": "final_state.jpg"},
+        {"type": "mark", "label": "test_complete"}
+      ]
+    }
+  ],
+
+  "limits": {
+    "steps": {
+      "idle_sleep": {
+        "avg_current_a": {"max": 10e-6, "warn_max": 7e-6},
+        "max_current_a": {"max": 50e-6}
+      },
+      "boot_active": {
+        "avg_current_a": {"max": 50e-3}
+      },
+      "rf_transmit": {
+        "avg_current_a": {"max": 100e-3},
+        "avg_power_w": {"max": 0.5}
+      }
+    }
+  },
+
+  "meta": {
+    "board": "nRF9160-DK",
+    "firmware_version": "1.0.0",
+    "operator": "auto"
+  }
+}

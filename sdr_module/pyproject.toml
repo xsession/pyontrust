@@ -19,6 +19,9 @@ dependencies = [
 soapy = [
   "SoapySDR>=0.8.1",
 ]
+zmq = [
+  "pyzmq>=25",
+]
 dev = [
   "ruff>=0.5",
 ]

@@ -5,11 +5,13 @@ from tkinter import ttk
 
 
 class SubplotSelector:
-    def __init__(self, parent, columns, subplot_id, *, on_change=None, on_close=None, on_add_files=None):
+    def __init__(self, parent, columns, subplot_id, *, on_change=None, on_close=None, on_add_files=None, on_duplicate=None):
         self.frame = ttk.LabelFrame(parent, text=f"Subplot {subplot_id}")
         self._on_change = on_change
         self._on_close = on_close
         self._on_add_files = on_add_files
+        self._on_duplicate = on_duplicate
+        self._all_columns: list[str] = list(columns or [])
 
         self._use_ylim_var = tk.BooleanVar(value=False)
         self._ymin_var = tk.StringVar(value="")
@@ -63,15 +65,29 @@ class SubplotSelector:
         self._file_paths: list[str] = []
         # Per-file shifts: path -> {x_shift_s: float, y_shift: float}
         self._file_shifts: dict[str, dict[str, float]] = {}
+        # Per-file enable: path -> bool (allows toggling base/source file too)
+        self._file_enabled: dict[str, bool] = {}
+        # Per-file timebase/timestep override:
+        # path -> {mode: 'global'|'auto'|'fixed', unit: 's'|'ms'|'us', step: float}
+        self._file_timebase: dict[str, dict[str, object]] = {}
         self._selected_file_path: str | None = None
         self._x_shift_var = tk.StringVar(value="0")
         self._y_shift_var = tk.StringVar(value="0")
 
+        # Per-file timebase edit controls (overlay UI)
+        self._tb_mode_var = tk.StringVar(value="Global")
+        self._tb_unit_var = tk.StringVar(value="ms")
+        self._tb_step_var = tk.StringVar(value="0.01")
+
         btn_row = ttk.Frame(self.frame)
         btn_row.pack(fill='x', padx=5, pady=(5, 0))
         ttk.Button(btn_row, text="Select All", command=self.select_all).pack(side=tk.LEFT, padx=2)
+        ttk.Button(btn_row, text="Invert", command=self.invert_selection).pack(side=tk.LEFT, padx=2)
         ttk.Button(btn_row, text="Clear", command=self.clear_selection).pack(side=tk.LEFT, padx=2)
+        ttk.Button(btn_row, text="Duplicate", command=self._duplicate_clicked).pack(side=tk.LEFT, padx=2)
         ttk.Button(btn_row, text="Close", command=self.close).pack(side=tk.RIGHT, padx=2)
+        self._signal_count_var = tk.StringVar(value="0 / 0 signals")
+        ttk.Label(btn_row, textvariable=self._signal_count_var, style="Muted.TLabel").pack(side=tk.RIGHT, padx=(8, 2))
 
         main_box = ttk.LabelFrame(self.frame, text="Main plot")
         main_box.pack(fill='x', padx=5, pady=(5, 0))
@@ -266,15 +282,18 @@ class SubplotSelector:
         self._x_align_combo.bind("<<ComboboxSelected>>", self._handle_change)
 
         ttk.Button(overlay_row, text="Add file(s)", command=self._add_files_clicked).pack(side=tk.LEFT, padx=2)
+        ttk.Button(overlay_row, text="Toggle on/off", command=self._toggle_selected_file_enabled).pack(side=tk.LEFT, padx=2)
         ttk.Button(overlay_row, text="Remove", command=self._remove_selected_file).pack(side=tk.LEFT, padx=2)
         ttk.Button(overlay_row, text="Clear", command=self._clear_extra_files).pack(side=tk.LEFT, padx=2)
+        ttk.Button(overlay_row, text="Remove all", command=self._clear_all_files).pack(side=tk.LEFT, padx=2)
 
         files_frame = ttk.Frame(overlay_box)
         files_frame.pack(fill='x', padx=5, pady=(2, 0))
 
-        self._files_listbox = tk.Listbox(files_frame, selectmode=tk.SINGLE, height=2, exportselection=False)
+        self._files_listbox = tk.Listbox(files_frame, selectmode=tk.SINGLE, height=3, exportselection=False)
         self._files_listbox.pack(side=tk.LEFT, fill='x', expand=True)
         self._files_listbox.bind("<<ListboxSelect>>", self._on_file_selected)
+        self._files_listbox.bind("<Double-Button-1>", self._toggle_file_enabled_at_click)
         files_scroll = ttk.Scrollbar(files_frame, orient=tk.VERTICAL, command=self._files_listbox.yview)
         self._files_listbox.configure(yscrollcommand=files_scroll.set)
         files_scroll.pack(side=tk.RIGHT, fill='y')
@@ -293,6 +312,47 @@ class SubplotSelector:
         xent.bind("<FocusOut>", lambda _e: self._apply_shifts_to_selected())
         yent.bind("<FocusOut>", lambda _e: self._apply_shifts_to_selected())
 
+        timebase_row = ttk.Frame(overlay_box)
+        timebase_row.pack(fill='x', padx=5, pady=(0, 6))
+        ttk.Label(timebase_row, text="Timestep:").pack(side=tk.LEFT)
+        self._tb_mode_combo = ttk.Combobox(
+            timebase_row,
+            textvariable=self._tb_mode_var,
+            state="readonly",
+            values=[
+                "Global",
+                "Auto",
+                "Custom",
+            ],
+            width=8,
+        )
+        self._tb_mode_combo.pack(side=tk.LEFT, padx=(6, 8))
+        self._tb_mode_combo.bind("<<ComboboxSelected>>", lambda _e: self._on_timebase_mode_changed())
+
+        ttk.Label(timebase_row, text="Unit:").pack(side=tk.LEFT)
+        self._tb_unit_combo = ttk.Combobox(
+            timebase_row,
+            textvariable=self._tb_unit_var,
+            state="readonly",
+            values=["s", "ms", "us"],
+            width=4,
+        )
+        self._tb_unit_combo.pack(side=tk.LEFT, padx=(6, 10))
+
+        ttk.Label(timebase_row, text="Step:").pack(side=tk.LEFT)
+        self._tb_step_entry = ttk.Entry(timebase_row, textvariable=self._tb_step_var, width=10)
+        self._tb_step_entry.pack(side=tk.LEFT, padx=(6, 10))
+
+        ttk.Button(timebase_row, text="Apply", command=self._apply_timebase_to_selected).pack(side=tk.LEFT)
+
+        try:
+            self._tb_step_entry.bind("<Return>", lambda _e: self._apply_timebase_to_selected())
+            self._tb_step_entry.bind("<FocusOut>", lambda _e: self._apply_timebase_to_selected())
+        except Exception:
+            pass
+
+        self._on_timebase_mode_changed()
+
         ttk.Separator(self.frame, orient=tk.HORIZONTAL).pack(fill='x', padx=5, pady=(6, 0))
 
         # Resizable selector internals: signal list vs stats area
@@ -308,23 +368,84 @@ class SubplotSelector:
         list_frame = ttk.LabelFrame(self._inner_split, text="Signals")
         stats_frame = ttk.Frame(self._inner_split)
 
+        # Search/filter entry for signals
+        self._search_var = tk.StringVar(value="")
+        search_row = ttk.Frame(list_frame)
+        search_row.pack(fill='x', padx=2, pady=(2, 0))
+        ttk.Label(search_row, text="\U0001F50D").pack(side=tk.LEFT, padx=(2, 0))
+        self._search_entry = ttk.Entry(search_row, textvariable=self._search_var)
+        self._search_entry.pack(side=tk.LEFT, fill='x', expand=True, padx=(4, 2))
+        self._search_var.trace_add("write", lambda *_a: self._apply_search_filter())
+
         # EXTENDED enables Shift-click range selection and Ctrl-click toggling
-        self.listbox = tk.Listbox(list_frame, selectmode=tk.EXTENDED, height=6, exportselection=False)
+        # Make Signals area roomier by default.
+        self.listbox = tk.Listbox(list_frame, selectmode=tk.EXTENDED, height=12, exportselection=False)
         for col in columns:
-            self.listbox.insert(tk.END, col)
+            self.listbox.insert(tk.END, str(col))
         self.listbox.pack(fill='both', expand=True)
-        self.listbox.bind("<<ListboxSelect>>", self._handle_change)
+        self.listbox.bind("<<ListboxSelect>>", self._on_listbox_select)
 
         self._stats_label = ttk.Label(stats_frame, textvariable=self._stats_var, justify='left', anchor='w')
         self._stats_label.pack(fill='both', expand=True)
 
         try:
-            self._inner_split.add(list_frame, minsize=140)
-            self._inner_split.add(stats_frame, minsize=40)
+            # User requested a large, friendly Signals area.
+            self._inner_split.add(list_frame, minsize=500)
+            self._inner_split.add(stats_frame, minsize=30)
         except Exception:
             # Last-resort: if add fails, fall back to stacking without a sash
             list_frame.pack(fill='both', expand=True)
             stats_frame.pack(fill='x')
+
+        # Default inner split: prefer Signals area unless a saved sash is restored.
+        self._inner_split_restored: bool = False
+        try:
+            paned = self._inner_split
+
+            def _clamp_inner_y(y: int) -> int:
+                try:
+                    self.frame.update_idletasks()
+                except Exception:
+                    pass
+                try:
+                    h = int(paned.winfo_height())
+                except Exception:
+                    h = 0
+                if h <= 220:
+                    return int(y)
+                # Keep both panes visible: signals gets most space, stats stays readable.
+                min_y = 140
+                max_y = max(min_y + 20, h - 80)
+                try:
+                    return int(max(min_y, min(int(y), int(max_y))))
+                except Exception:
+                    return int(y)
+
+            def _default_inner_split() -> None:
+                if bool(getattr(self, "_inner_split_restored", False)):
+                    return
+                try:
+                    self.frame.update_idletasks()
+                except Exception:
+                    pass
+                try:
+                    h = int(self.frame.winfo_height())
+                except Exception:
+                    h = 0
+                if h <= 200:
+                    return
+                # Leave a small area for stats at the bottom.
+                y = _clamp_inner_y(int(h * 0.82))
+                try:
+                    paned.sash_place(0, 0, y)
+                except Exception:
+                    pass
+
+            self.frame.after(0, _default_inner_split)
+            self.frame.after(120, _default_inner_split)
+            self.frame.after(250, _default_inner_split)
+        except Exception:
+            pass
 
         self.frame.bind("<Configure>", self._on_configure)
 
@@ -335,6 +456,48 @@ class SubplotSelector:
         # Bottom area internal splitter (between bottom plots)
         self._bottom_pane = None
         self._bottom_pane_state: dict | None = None
+        # When the user drags the bottom sash, keep their sizing.
+        self._bottom_pane_user_modified: bool = False
+
+    def set_columns(self, columns) -> None:
+        """Replace the available Signals list contents."""
+        lb = getattr(self, "listbox", None)
+        if lb is None:
+            return
+
+        self._all_columns = list(columns or [])
+        try:
+            old_sel = []
+            try:
+                old_sel = [lb.get(i) for i in lb.curselection()]
+            except Exception:
+                old_sel = []
+
+            lb.delete(0, tk.END)
+            cols = list(columns or [])
+            # Apply current search filter
+            query = str(getattr(self, "_search_var", tk.StringVar()).get() or "").strip().lower()
+            for c in cols:
+                if query and query not in str(c).lower():
+                    continue
+                lb.insert(tk.END, str(c))
+
+            if old_sel:
+                want = set(str(x) for x in old_sel)
+                try:
+                    lb.selection_clear(0, tk.END)
+                except Exception:
+                    pass
+                # Iterate over the *visible* listbox items (which may be filtered).
+                for i in range(lb.size()):
+                    try:
+                        if str(lb.get(i)) in want:
+                            lb.selection_set(i)
+                    except Exception:
+                        pass
+        except Exception:
+            # Keep UI resilient; a missing/misbehaving listbox should not crash loading.
+            pass
 
     def _snapshot_bottom_pane_state(self, order: list[str] | None = None) -> None:
         """Capture current bottom pane sash positions into _bottom_pane_state."""
@@ -361,6 +524,9 @@ class SubplotSelector:
             if isinstance(order, list):
                 self._bottom_pane_state["order"] = [str(x) for x in order]
             self._bottom_pane_state["sashpos"] = sashpos
+            # Called from drag bindings; mark as user-modified so future rerenders
+            # can respect custom sash positions.
+            self._bottom_pane_user_modified = True
         except Exception:
             pass
 
@@ -409,13 +575,34 @@ class SubplotSelector:
             y = int(coord.get("y"))
         except Exception:
             return
+        # Prevent default sash placement from overwriting restored layouts.
+        self._inner_split_restored = True
+
+        def _clamp_y(yv: int) -> int:
+            try:
+                self.frame.update_idletasks()
+            except Exception:
+                pass
+            try:
+                h = int(paned.winfo_height())
+            except Exception:
+                h = 0
+            if h <= 220:
+                return int(yv)
+            min_y = 140
+            max_y = max(min_y + 20, h - 80)
+            try:
+                return int(max(min_y, min(int(yv), int(max_y))))
+            except Exception:
+                return int(yv)
+
         def _apply():
             try:
                 self.frame.update_idletasks()
             except Exception:
                 pass
             try:
-                paned.sash_place(0, x, y)
+                paned.sash_place(0, x, _clamp_y(y))
             except Exception:
                 pass
 
@@ -586,15 +773,42 @@ class SubplotSelector:
         except Exception:
             return str(p)
 
+    def _parse_float(self, s: str, default: float = 0.0) -> float:
+        try:
+            txt = str(s or "").strip()
+            if "," in txt and "." not in txt:
+                txt = txt.replace(",", ".")
+            return float(txt)
+        except Exception:
+            return float(default)
+
     def set_files(self, paths: list[str] | None) -> None:
+        old_enabled = dict(self._file_enabled) if isinstance(getattr(self, "_file_enabled", None), dict) else {}
+        old_tb = dict(self._file_timebase) if isinstance(getattr(self, "_file_timebase", None), dict) else {}
         self._file_paths = []
         self._file_shifts = {}
+        self._file_enabled = {}
+        self._file_timebase = {}
         if isinstance(paths, list):
             for p in paths:
                 ap = self._normalize_path(p)
                 if ap and ap not in self._file_paths:
                     self._file_paths.append(ap)
                     self._file_shifts.setdefault(ap, {"x_shift_s": 0.0, "y_shift": 0.0})
+                    # Preserve previous enabled state when possible.
+                    try:
+                        self._file_enabled[ap] = bool(old_enabled.get(ap, True))
+                    except Exception:
+                        self._file_enabled[ap] = True
+                    # Preserve previous timebase config when possible.
+                    try:
+                        cfg = old_tb.get(ap)
+                        if isinstance(cfg, dict):
+                            self._file_timebase[ap] = dict(cfg)
+                        else:
+                            self._file_timebase[ap] = {"mode": "global"}
+                    except Exception:
+                        self._file_timebase[ap] = {"mode": "global"}
         self._refresh_files_listbox(select_index=0)
         self._handle_change()
 
@@ -609,11 +823,49 @@ class SubplotSelector:
                 continue
             self._file_paths.append(ap)
             self._file_shifts.setdefault(ap, {"x_shift_s": 0.0, "y_shift": 0.0})
+            try:
+                self._file_enabled.setdefault(ap, True)
+            except Exception:
+                self._file_enabled[ap] = True
+            try:
+                self._file_timebase.setdefault(ap, {"mode": "global"})
+            except Exception:
+                self._file_timebase[ap] = {"mode": "global"}
         self._refresh_files_listbox(select_index=0)
         self._handle_change()
 
     def get_files(self) -> list[str]:
         return list(self._file_paths)
+
+    def get_file_enabled(self) -> dict[str, bool]:
+        out: dict[str, bool] = {}
+        try:
+            for p in list(self._file_paths):
+                ap = self._normalize_path(p)
+                out[ap] = bool(self._file_enabled.get(ap, True))
+        except Exception:
+            pass
+        return out
+
+    def set_file_enabled(self, enabled: dict | None) -> None:
+        if not isinstance(enabled, dict):
+            return
+        for p, v in enabled.items():
+            ap = self._normalize_path(str(p))
+            if ap not in self._file_paths:
+                continue
+            try:
+                self._file_enabled[ap] = bool(v)
+            except Exception:
+                self._file_enabled[ap] = True
+        self._refresh_files_listbox(select_index=None)
+
+    def is_file_enabled(self, path: str) -> bool:
+        ap = self._normalize_path(path)
+        try:
+            return bool(self._file_enabled.get(ap, True))
+        except Exception:
+            return True
 
     def get_x_alignment_mode(self) -> str:
         # returns "aligned" or "independent"
@@ -638,6 +890,58 @@ class SubplotSelector:
             except Exception:
                 out[p] = {"x_shift_s": 0.0, "y_shift": 0.0}
         return out
+
+    def get_file_timebase(self) -> dict[str, dict[str, object]]:
+        out: dict[str, dict[str, object]] = {}
+        try:
+            for p in list(self._file_paths):
+                ap = self._normalize_path(p)
+                cfg = self._file_timebase.get(ap)
+                if not isinstance(cfg, dict):
+                    cfg = {"mode": "global"}
+                mode = str(cfg.get("mode", "global") or "global").lower().strip()
+                if mode not in ("global", "auto", "fixed"):
+                    mode = "global"
+                unit = str(cfg.get("unit", "ms") or "ms").lower().strip()
+                if unit not in ("s", "ms", "us"):
+                    unit = "ms"
+                step = cfg.get("step", 0.01)
+                try:
+                    step_f = float(step)
+                except Exception:
+                    step_f = 0.01
+                out[ap] = {"mode": mode, "unit": unit, "step": step_f}
+        except Exception:
+            pass
+        return out
+
+    def set_file_timebase(self, tb: dict | None) -> None:
+        if not isinstance(tb, dict):
+            return
+        for p, cfg in tb.items():
+            ap = self._normalize_path(str(p))
+            if ap not in self._file_paths:
+                continue
+            if not isinstance(cfg, dict):
+                continue
+            mode = str(cfg.get("mode", "global") or "global").lower().strip()
+            if mode not in ("global", "auto", "fixed"):
+                mode = "global"
+            unit = str(cfg.get("unit", "ms") or "ms").lower().strip()
+            if unit not in ("s", "ms", "us"):
+                unit = "ms"
+            step = cfg.get("step", 0.01)
+            try:
+                step_f = float(step)
+            except Exception:
+                step_f = 0.01
+            self._file_timebase[ap] = {"mode": mode, "unit": unit, "step": step_f}
+
+        # Refresh UI fields based on current selection
+        try:
+            self._on_file_selected()
+        except Exception:
+            pass
 
     def set_file_shifts(self, shifts: dict | None) -> None:
         if not isinstance(shifts, dict):
@@ -667,7 +971,13 @@ class SubplotSelector:
         for i, p in enumerate(self._file_paths):
             base = os.path.basename(p) if isinstance(p, str) else str(p)
             prefix = "* " if i == 0 else "  "
-            self._files_listbox.insert(tk.END, f"{prefix}{base}")
+            on = True
+            try:
+                on = bool(self._file_enabled.get(self._normalize_path(p), True))
+            except Exception:
+                on = True
+            mark = "[x]" if on else "[ ]"
+            self._files_listbox.insert(tk.END, f"{prefix}{mark} {base}")
         if select_index is None:
             select_index = 0 if self._file_paths else None
         if select_index is not None and self._file_paths:
@@ -701,6 +1011,70 @@ class SubplotSelector:
         except Exception:
             pass
 
+        # Update timebase editor for selected file.
+        try:
+            tbcfg = self._file_timebase.get(p)
+            if not isinstance(tbcfg, dict):
+                tbcfg = {"mode": "global"}
+            mode = str(tbcfg.get("mode", "global") or "global").lower().strip()
+            if mode == "auto":
+                self._tb_mode_var.set("Auto")
+            elif mode == "fixed":
+                self._tb_mode_var.set("Custom")
+            else:
+                self._tb_mode_var.set("Global")
+            unit = str(tbcfg.get("unit", "ms") or "ms").lower().strip()
+            if unit not in ("s", "ms", "us"):
+                unit = "ms"
+            self._tb_unit_var.set(unit)
+            try:
+                self._tb_step_var.set(str(tbcfg.get("step", 0.01)))
+            except Exception:
+                self._tb_step_var.set("0.01")
+            self._on_timebase_mode_changed()
+        except Exception:
+            pass
+
+    def _on_timebase_mode_changed(self) -> None:
+        try:
+            mode = str(self._tb_mode_var.get() or "Global").strip().lower()
+        except Exception:
+            mode = "global"
+        enable = bool(mode == "custom")
+        try:
+            self._tb_unit_combo.configure(state=("readonly" if enable else "disabled"))
+        except Exception:
+            pass
+        try:
+            self._tb_step_entry.configure(state=("normal" if enable else "disabled"))
+        except Exception:
+            pass
+
+    def _apply_timebase_to_selected(self) -> None:
+        p = self._selected_file_path
+        if not p:
+            return
+
+        try:
+            mode_ui = str(self._tb_mode_var.get() or "Global").strip().lower()
+        except Exception:
+            mode_ui = "global"
+
+        if mode_ui == "auto":
+            self._file_timebase[p] = {"mode": "auto"}
+        elif mode_ui == "custom":
+            unit = str(self._tb_unit_var.get() or "ms").strip().lower()
+            if unit not in ("s", "ms", "us"):
+                unit = "ms"
+            step = self._parse_float(str(self._tb_step_var.get() or "0.01"), default=0.01)
+            if step <= 0:
+                step = 0.01
+            self._file_timebase[p] = {"mode": "fixed", "unit": unit, "step": float(step)}
+        else:
+            self._file_timebase[p] = {"mode": "global"}
+
+        self._handle_change()
+
     def _apply_shifts_to_selected(self) -> None:
         p = self._selected_file_path
         if not p:
@@ -725,17 +1099,33 @@ class SubplotSelector:
         if not idxs:
             return
         i = int(idxs[0])
-        # Keep base file always present
-        if i == 0:
-            return
         if i < 0 or i >= len(self._file_paths):
             return
+
+        # Never allow removing the last remaining file.
+        if len(self._file_paths) <= 1:
+            return
+
         p = self._file_paths.pop(i)
         try:
             self._file_shifts.pop(p, None)
         except Exception:
             pass
-        self._refresh_files_listbox(select_index=0)
+        try:
+            self._file_enabled.pop(p, None)
+        except Exception:
+            pass
+        try:
+            self._file_timebase.pop(p, None)
+        except Exception:
+            pass
+
+        # Keep selection near where the user was.
+        try:
+            next_index = min(i, max(0, len(self._file_paths) - 1))
+        except Exception:
+            next_index = 0
+        self._refresh_files_listbox(select_index=next_index)
         self._handle_change()
 
     def _clear_extra_files(self) -> None:
@@ -744,8 +1134,72 @@ class SubplotSelector:
         base = self._file_paths[0]
         self._file_paths = [base]
         self._file_shifts = {base: self._file_shifts.get(base, {"x_shift_s": 0.0, "y_shift": 0.0})}
+        self._file_enabled = {base: bool(self._file_enabled.get(base, True))}
+        self._file_timebase = {base: self._file_timebase.get(base, {"mode": "global"})}
         self._refresh_files_listbox(select_index=0)
         self._handle_change()
+
+    def _clear_all_files(self) -> None:
+        """Remove all overlay file entries (including the base entry).
+
+        The plotter will fall back to the currently loaded CSV when the list is empty.
+        """
+        self._file_paths = []
+        self._file_shifts = {}
+        self._file_enabled = {}
+        self._file_timebase = {}
+        self._selected_file_path = None
+
+        # Also clear Signals list so the UI reflects that no source files are selected.
+        try:
+            self.listbox.selection_clear(0, tk.END)
+        except Exception:
+            pass
+        try:
+            self.listbox.delete(0, tk.END)
+        except Exception:
+            pass
+        try:
+            self._x_shift_var.set("0")
+            self._y_shift_var.set("0")
+        except Exception:
+            pass
+        self._refresh_files_listbox(select_index=None)
+        self._handle_change()
+
+    def _toggle_selected_file_enabled(self) -> None:
+        idxs = ()
+        try:
+            idxs = self._files_listbox.curselection()
+        except Exception:
+            idxs = ()
+        if not idxs:
+            return
+        i = int(idxs[0])
+        if i < 0 or i >= len(self._file_paths):
+            return
+        p = self._file_paths[i]
+        ap = self._normalize_path(p)
+        try:
+            self._file_enabled[ap] = not bool(self._file_enabled.get(ap, True))
+        except Exception:
+            self._file_enabled[ap] = True
+        self._refresh_files_listbox(select_index=i)
+        self._handle_change()
+
+    def _toggle_file_enabled_at_click(self, event) -> None:
+        try:
+            i = int(self._files_listbox.nearest(event.y))
+        except Exception:
+            return
+        if i < 0 or i >= len(self._file_paths):
+            return
+        try:
+            self._files_listbox.selection_clear(0, tk.END)
+            self._files_listbox.selection_set(i)
+        except Exception:
+            pass
+        self._toggle_selected_file_enabled()
 
     def _on_configure(self, event=None):
         try:
@@ -774,9 +1228,25 @@ class SubplotSelector:
         self.listbox.selection_clear(0, tk.END)
         self._handle_change()
 
-    def get_selected_columns(self, all_columns):
-        indices = self.listbox.curselection()
-        return [all_columns[i] for i in indices]
+    def get_selected_columns(self, all_columns=None):
+        """Return selected signal names.
+
+        Historically this mapped listbox indices into the provided `all_columns`.
+        The Signals list can now be rebuilt dynamically (e.g., from overlay files),
+        so the authoritative source is the listbox contents.
+        """
+        try:
+            indices = self.listbox.curselection()
+        except Exception:
+            indices = ()
+
+        out: list[str] = []
+        for i in indices:
+            try:
+                out.append(str(self.listbox.get(i)))
+            except Exception:
+                continue
+        return out
 
     def get_ylim_config(self) -> dict:
         return {
@@ -994,3 +1464,138 @@ class SubplotSelector:
                 self._handle_change()
                 return True
         return False
+
+    # ---- New helper methods ----
+
+    def _on_listbox_select(self, _event=None) -> None:
+        """Update signal count and forward change event."""
+        self._update_signal_count()
+        self._handle_change(_event)
+
+    def _update_signal_count(self) -> None:
+        """Refresh the 'N / M signals' label."""
+        try:
+            total = self.listbox.size()
+            selected = len(self.listbox.curselection())
+            self._signal_count_var.set(f"{selected} / {total} signals")
+        except Exception:
+            pass
+
+    def _apply_search_filter(self) -> None:
+        """Filter the Signals listbox to show only columns matching the search text."""
+        query = str(self._search_var.get() or "").strip().lower()
+        # Remember current selection by name
+        try:
+            old_sel = set(self.listbox.get(i) for i in self.listbox.curselection())
+        except Exception:
+            old_sel = set()
+
+        self.listbox.delete(0, tk.END)
+        for col in self._all_columns:
+            if query and query not in str(col).lower():
+                continue
+            self.listbox.insert(tk.END, str(col))
+
+        # Restore selection for items still visible
+        if old_sel:
+            for i in range(self.listbox.size()):
+                if self.listbox.get(i) in old_sel:
+                    self.listbox.selection_set(i)
+
+        self._update_signal_count()
+
+    def invert_selection(self) -> None:
+        """Toggle selection state for every item in the Signals listbox."""
+        try:
+            current = set(self.listbox.curselection())
+            self.listbox.selection_clear(0, tk.END)
+            for i in range(self.listbox.size()):
+                if i not in current:
+                    self.listbox.selection_set(i)
+        except Exception:
+            pass
+        self._update_signal_count()
+        self._handle_change()
+
+    def _duplicate_clicked(self) -> None:
+        """Request duplication of this subplot."""
+        if callable(self._on_duplicate):
+            self._on_duplicate(self)
+
+    def get_full_config(self) -> dict:
+        """Return a serializable snapshot of all selector settings (for duplication)."""
+        return {
+            "selected_columns": self.get_selected_columns(),
+            "ylim": self.get_ylim_config(),
+            "display": self.get_display_config(),
+            "x_window": self.get_x_window(),
+            "barriers": self.get_barrier_config(),
+            "plot_mode": self.get_plot_mode(),
+            "files": self.get_files(),
+            "x_alignment": self.get_x_alignment_mode(),
+            "file_shifts": self.get_file_shifts(),
+            "file_enabled": self.get_file_enabled() if hasattr(self, "get_file_enabled") else {},
+            "file_timebase": self.get_file_timebase() if hasattr(self, "get_file_timebase") else {},
+            "custom_code": self.get_custom_code(),
+        }
+
+    def apply_full_config(self, cfg: dict) -> None:
+        """Restore selector settings from a config dict (for duplication)."""
+        if not isinstance(cfg, dict):
+            return
+        try:
+            self.set_ylim_config(cfg.get("ylim"))
+        except Exception:
+            pass
+        try:
+            self.set_display_config(cfg.get("display"))
+        except Exception:
+            pass
+        try:
+            self.set_plot_mode(cfg.get("plot_mode"))
+        except Exception:
+            pass
+        try:
+            xwin = cfg.get("x_window")
+            if isinstance(xwin, (list, tuple)) and len(xwin) == 2:
+                self.set_x_window(float(xwin[0]), float(xwin[1]))
+        except Exception:
+            pass
+        try:
+            self.set_barrier_config(cfg.get("barriers"))
+        except Exception:
+            pass
+        try:
+            files = cfg.get("files")
+            if isinstance(files, list) and files:
+                self.set_files(files)
+        except Exception:
+            pass
+        try:
+            self.set_x_alignment_mode(cfg.get("x_alignment"))
+        except Exception:
+            pass
+        try:
+            self.set_file_shifts(cfg.get("file_shifts"))
+        except Exception:
+            pass
+        try:
+            if hasattr(self, "set_file_enabled"):
+                self.set_file_enabled(cfg.get("file_enabled"))
+        except Exception:
+            pass
+        try:
+            if hasattr(self, "set_file_timebase"):
+                self.set_file_timebase(cfg.get("file_timebase"))
+        except Exception:
+            pass
+        try:
+            self.set_custom_code(cfg.get("custom_code"))
+        except Exception:
+            pass
+        try:
+            selected = cfg.get("selected_columns", [])
+            if isinstance(selected, list):
+                self.set_selected_columns([str(x) for x in selected])
+        except Exception:
+            pass

@@ -1,0 +1,31 @@
+Metadata-Version: 2.4
+Name: pyontrust-gnuradio-module
+Version: 0.1.0
+Summary: Embeddable NiceGUI module to integrate GNU Radio (in-process and external runner).
+Author: pyontrust
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: nicegui>=1.4
+Provides-Extra: zmq
+Requires-Dist: pyzmq>=25; extra == "zmq"
+
+# GNU Radio Module (pyontrust)
+
+This is an **optional**, embeddable NiceGUI module that integrates GNU Radio in a multiplatform way:
+
+- **In-process** (if `gnuradio` is importable in the same Python interpreter)
+- **External runner** (run a `.grc` or Python flowgraph using another Python executable, e.g. a Conda env)
+
+## Dev install
+
+```powershell
+Set-Location C:\GIT\pyontrust
+.\.venv-nicegui\Scripts\python -m pip install -e gnuradio_module
+```
+
+## Run standalone
+
+```powershell
+Set-Location C:\GIT\pyontrust
+python gnuradio_module\examples\run_standalone.py
+```

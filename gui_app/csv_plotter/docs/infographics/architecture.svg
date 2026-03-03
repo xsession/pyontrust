@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
+  <defs>
+    <style>
+      .box{fill:#fff;stroke:#111;stroke-width:2}
+      .title{font:700 18px sans-serif;fill:#111}
+      .label{font:14px sans-serif;fill:#111}
+      .muted{font:12px sans-serif;fill:#444}
+      .arrow{stroke:#111;stroke-width:2;fill:none;marker-end:url(#m)}
+    </style>
+    <marker id="m" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <path d="M0,0 L10,3 L0,6 Z" fill="#111"/>
+    </marker>
+  </defs>
+
+  <text x="24" y="40" class="title">Module Architecture</text>
+
+  <rect x="60" y="90" width="280" height="90" rx="10" class="box"/>
+  <text x="200" y="128" class="label" text-anchor="middle">csv_plotter.py</text>
+  <text x="200" y="152" class="muted" text-anchor="middle">controller + UI shell</text>
+
+  <path class="arrow" d="M200 180 L200 230"/>
+
+  <rect x="60" y="230" width="280" height="90" rx="10" class="box"/>
+  <text x="200" y="268" class="label" text-anchor="middle">ui/selector.py</text>
+  <text x="200" y="292" class="muted" text-anchor="middle">per-subplot settings</text>
+
+  <path class="arrow" d="M340 135 L420 135"/>
+  <rect x="420" y="90" width="480" height="90" rx="10" class="box"/>
+  <text x="660" y="128" class="label" text-anchor="middle">plots/plotting.py</text>
+  <text x="660" y="152" class="muted" text-anchor="middle">render pipeline + toolbar wiring</text>
+
+  <path class="arrow" d="M660 180 L660 230"/>
+  <rect x="420" y="230" width="480" height="160" rx="10" class="box"/>
+  <text x="660" y="268" class="label" text-anchor="middle">plots/*</text>
+  <text x="660" y="298" class="muted" text-anchor="middle">plot_main, histogram, checks, etc.</text>
+  <text x="660" y="328" class="muted" text-anchor="middle">use app._get_df_for_path(path, selector)</text>
+
+  <path class="arrow" d="M660 390 L660 440"/>
+  <rect x="420" y="440" width="230" height="70" rx="10" class="box"/>
+  <text x="535" y="480" class="label" text-anchor="middle">metrics.py</text>
+
+  <rect x="670" y="440" width="230" height="70" rx="10" class="box"/>
+  <text x="785" y="480" class="label" text-anchor="middle">persistence/layout.py</text>
+</svg>

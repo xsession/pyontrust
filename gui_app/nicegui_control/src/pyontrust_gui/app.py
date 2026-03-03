@@ -512,7 +512,9 @@ def main() -> None:
             with ui.tabs().classes("w-full") as tabs:
                 ui.tab("Instrument Control")
                 ui.tab("Profile Runner")
+                ui.tab("Orchestrator")
                 ui.tab("SDR")
+                ui.tab("GNU Radio")
                 ui.tab("Waveforms")
                 ui.tab("CSV Plotter")
 
@@ -551,6 +553,15 @@ def main() -> None:
                         profile_button = ui.button("Run profile", on_click=_profile_clicked).props("color=primary")
                         ui.button("Clear log", on_click=lambda: log.clear()).props("outline")
 
+                with ui.tab_panel("Orchestrator"):
+                    try:
+                        from pyontrust_gui.orchestrator import mount as _mount_orchestrator
+                        _mount_orchestrator(ui.column().classes("w-full"))
+                    except Exception as exc:  # noqa: BLE001
+                        ui.label("Lab Bench Orchestrator").classes("text-subtitle2")
+                        ui.label("Failed to load orchestrator module").classes("text-sm text-gray-600")
+                        ui.label(repr(exc)).classes("text-xs text-gray-500")
+
                 with ui.tab_panel("SDR"):
                     with ui.card().classes("w-full"):
                         ui.label("SDR Flowgraph").classes("text-subtitle2")
@@ -565,7 +576,52 @@ def main() -> None:
                             ui.label("Install (dev):").classes("text-sm")
                             ui.code(
                                 "Set-Location C:\\GIT\\pyontrust\n"
+                                "# Use the Python you run pyontrust_gui with:\n"
+                                "python -m pip install -e sdr_module\n"
+                                "\n"
+                                "# Or create a dedicated venv:\n"
+                                "python -m venv .venv-nicegui\n"
+                                ".\\.venv-nicegui\\Scripts\\python -m pip install -U pip\n"
+                                ".\\.venv-nicegui\\Scripts\\python -m pip install -r scripts\\requirements.txt\n"
                                 ".\\.venv-nicegui\\Scripts\\python -m pip install -e sdr_module\n"
+                            ).classes("w-full")
+
+                with ui.tab_panel("GNU Radio"):
+                    with ui.card().classes("w-full"):
+                        ui.label("GNU Radio").classes("text-subtitle2")
+
+                        try:
+                            from pyontrust_gnuradio import GnuradioModule  # type: ignore
+
+                            GnuradioModule.mount(ui.column().classes("w-full"), config=None)
+                        except Exception as exc:  # noqa: BLE001
+                            ui.label("Optional module not installed: pyontrust_gnuradio").classes("text-sm text-gray-600")
+                            ui.label(repr(exc)).classes("text-xs text-gray-500")
+
+                            ui.label("Install (dev):").classes("text-sm")
+                            ui.code(
+                                "Set-Location C:\\GIT\\pyontrust\n"
+                                "# Use the Python you run pyontrust_gui with:\n"
+                                "python -m pip install -e gnuradio_module\n"
+                                "\n"
+                                "# Or create a dedicated venv:\n"
+                                "python -m venv .venv-nicegui\n"
+                                ".\\.venv-nicegui\\Scripts\\python -m pip install -U pip\n"
+                                ".\\.venv-nicegui\\Scripts\\python -m pip install -r scripts\\requirements.txt\n"
+                                ".\\.venv-nicegui\\Scripts\\python -m pip install -e gnuradio_module\n"
+                            ).classes("w-full")
+
+                            ui.separator()
+                            ui.label("Windows recommendation: install GNU Radio via Conda/Mamba (not pip).").classes(
+                                "text-sm"
+                            )
+                            ui.label("Example (PowerShell):").classes("text-sm")
+                            ui.code(
+                                "# 1) Install Miniforge/Mambaforge first\n"
+                                "# 2) Create an env with GNU Radio\n"
+                                "conda create -n gnuradio -c conda-forge python=3.11 gnuradio\n"
+                                "conda activate gnuradio\n"
+                                "python -c \"from gnuradio import gr; print('GNU Radio OK')\"\n"
                             ).classes("w-full")
 
                 with ui.tab_panel("Waveforms"):
@@ -582,6 +638,13 @@ def main() -> None:
                             ui.label("Install (dev):").classes("text-sm")
                             ui.code(
                                 "Set-Location C:\\GIT\\pyontrust\n"
+                                "# Use the Python you run pyontrust_gui with:\n"
+                                "python -m pip install -e waveforms_module\n"
+                                "\n"
+                                "# Or create a dedicated venv:\n"
+                                "python -m venv .venv-nicegui\n"
+                                ".\\.venv-nicegui\\Scripts\\python -m pip install -U pip\n"
+                                ".\\.venv-nicegui\\Scripts\\python -m pip install -r scripts\\requirements.txt\n"
                                 ".\\.venv-nicegui\\Scripts\\python -m pip install -e waveforms_module\n"
                             ).classes("w-full")
 

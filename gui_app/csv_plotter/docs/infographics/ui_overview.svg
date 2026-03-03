@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
+  <defs>
+    <style>
+      .box{fill:#fff;stroke:#111;stroke-width:2}
+      .title{font:700 18px sans-serif;fill:#111}
+      .label{font:14px sans-serif;fill:#111}
+      .muted{font:12px sans-serif;fill:#444}
+      .arrow{stroke:#111;stroke-width:2;fill:none;marker-end:url(#m)}
+    </style>
+    <marker id="m" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <path d="M0,0 L10,3 L0,6 Z" fill="#111"/>
+    </marker>
+  </defs>
+
+  <text x="24" y="40" class="title">UI Overview</text>
+
+  <rect x="24" y="64" width="320" height="452" rx="10" class="box"/>
+  <text x="44" y="100" class="label">Left: Subplot controls</text>
+  <text x="44" y="128" class="muted">- Signals list</text>
+  <text x="44" y="150" class="muted">- Overlay files + shifts + timebase</text>
+  <text x="44" y="172" class="muted">- Window (analysis range)</text>
+  <text x="44" y="194" class="muted">- Bottom panel toggles</text>
+
+  <rect x="376" y="64" width="560" height="452" rx="10" class="box"/>
+  <text x="396" y="100" class="label">Right: Plots</text>
+  <rect x="400" y="120" width="512" height="180" rx="8" class="box"/>
+  <text x="416" y="150" class="muted">Main plot (time series / special modes)</text>
+
+  <rect x="400" y="316" width="512" height="60" rx="8" class="box"/>
+  <text x="416" y="352" class="muted">Histogram / Abs / Rel / Custom</text>
+
+  <rect x="400" y="388" width="512" height="108" rx="8" class="box"/>
+  <text x="416" y="428" class="muted">Stats Table (Min/Max/Avg/Median/P2P/Freq/Period)</text>
+
+  <path class="arrow" d="M344 170 C360 170, 360 170, 376 170"/>
+  <text x="356" y="156" class="muted" text-anchor="middle">settings drive</text>
+</svg>

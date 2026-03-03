@@ -1,15 +1,29 @@
 
-# This repository's power-test framework (`pyontrust_packages/power_test_framework`) is
-# standard-library only by default.
+# ============================================================================
+# Pyontrust — Python dependencies
+# ============================================================================
 #
-# Optional tooling you may choose to install/use (NOT required by tests):
-# - ffmpeg (webcam recording)
-# - SEGGER J-Link tools (JLink.exe / JLinkExe)
-# - Nordic tooling for PPK2 / BLE sniffer capture
-# - hackrf tools (hackrf_transfer)
+# CORE (always required)
+# ---------------------------------------------------------------------------
+docopt>=0.6.2             # CLI parsing for profile runner
 
-# CLI parsing for profile runner
-docopt>=0.6.2
+# CSV PLOTTER (gui_app/csv_plotter)
+# ---------------------------------------------------------------------------
+pandas>=1.5               # Data manipulation
+numpy>=1.23               # Numeric computation
+matplotlib>=3.6           # Plotting engine
 
-# NOTE: The Reflex web GUI has its own dependency set.
-# Install it from `gui_app/reflex_control/requirements.txt` in a dedicated venv.
+# CSV PLOTTER — optional high-performance backends
+# ---------------------------------------------------------------------------
+# polars>=0.18            # Fast CSV I/O (recommended for large files)
+# duckdb>=0.8             # SQL-based CSV analysis
+# pyarrow>=12.0           # Columnar format / fast engine
+# datashader>=0.14        # Large point-cloud rendering
+
+# DEVELOPMENT / TESTING
+# ---------------------------------------------------------------------------
+pytest>=7.0
+pytest-cov>=4.0
+
+# NOTE: The NiceGUI web GUI has its own dependency set.
+# Install from gui_app/nicegui_control/ via pip install -e .[dev]

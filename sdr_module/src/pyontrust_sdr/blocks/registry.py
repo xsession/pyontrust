@@ -7,6 +7,7 @@ from .base import Block
 from .sources import HalRxSource, SimIqSource, SdrSource, SignalGeneratorSource, FileIqSource
 from .processing import DcBlocker, Agc, FrequencyTranslate, FirLowpass, Decimator, AmDemod, FmDemod
 from .sinks import FftSink, WaterfallSink, IqScopeSink
+from .zmq_bridge import ZmqIqPubSink, ZmqIqSubSource
 
 
 BlockFactory = Callable[[], Block]
@@ -30,6 +31,7 @@ def default_block_registry() -> BlockRegistry:
             "hal_rx_source": HalRxSource,
             "sim_iq_source": SimIqSource,
             "file_iq_source": FileIqSource,
+            "zmq_iq_sub_source": ZmqIqSubSource,
             # v0.1 compatibility
             "sdr_source": SdrSource,
             "signal_generator": SignalGeneratorSource,
@@ -45,5 +47,6 @@ def default_block_registry() -> BlockRegistry:
             "fft_sink": FftSink,
             "waterfall_sink": WaterfallSink,
             "iq_scope_sink": IqScopeSink,
+            "zmq_iq_pub_sink": ZmqIqPubSink,
         }
     )

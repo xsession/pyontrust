@@ -146,7 +146,7 @@ def _selection_mask(app, selector) -> pd.Series | None:
     except Exception:
         x_shift_s = 0.0
     try:
-        _df_i, scale_i = app._get_df_for_path(str(base_path))
+        _df_i, scale_i = app._get_df_for_path(str(base_path), selector)
     except Exception:
         scale_i = 1.0
     try:
