@@ -547,6 +547,7 @@ document.addEventListener("DOMContentLoaded", () => {
       renderChip();
       renderConfigPanel();
       $("#saveModal").classList.remove("show");
+      $("#importModal").classList.remove("show");
     }
     if ((e.ctrlKey || e.metaKey) && e.key === "g") {
       e.preventDefault();
@@ -585,6 +586,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // ── Clock System Configurator init ─────────────────────────────────
   clkInit();
+
+  // ── Import Configurator init ───────────────────────────────────────
+  impInit();
+
+  // ── MCU Lookup init ────────────────────────────────────────────────
+  mcuInit();
 });
 
 
@@ -2114,5 +2121,513 @@ function clkCopyOutput() {
   const preEl = $("#clkOutputPre");
   if (preEl && preEl.textContent) {
     navigator.clipboard.writeText(preEl.textContent).then(() => toast("Copied to clipboard"));
+  }
+}
+
+
+// ══════════════════════════════════════════════════════════════════════
+// Import Configuration module
+// ══════════════════════════════════════════════════════════════════════
+
+let impOverlayText = "";
+let impConfText = "";
+let impParsed = null;     // Last parsed result from the server
+let impScannedFiles = []; // Files found by project scan
+
+function impInit() {
+  if (!$("#btnImport") || !$("#importModal")) return;
+
+  // Open modal
+  $("#btnImport").addEventListener("click", () => {
+    impReset();
+    $("#importModal").classList.add("show");
+  });
+
+  // Close modal
+  $("#impBtnCancel").addEventListener("click", () => {
+    $("#importModal").classList.remove("show");
+  });
+  $("#importModal").addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) {
+      $("#importModal").classList.remove("show");
+    }
+  });
+
+  // Tab switching
+  $$("#importModal .imp-tab").forEach(tab => {
+    tab.addEventListener("click", () => {
+      const target = tab.dataset.impTab;
+      $$("#importModal .imp-tab").forEach(t => t.classList.toggle("active", t.dataset.impTab === target));
+      $$("#importModal .imp-panel").forEach(p => p.classList.toggle("active", p.dataset.impPanel === target));
+    });
+  });
+
+  // File upload: overlay
+  const dropOverlay = $("#impDropOverlay");
+  const overlayInput = $("#impOverlayFile");
+  dropOverlay.addEventListener("click", () => overlayInput.click());
+  overlayInput.addEventListener("change", () => {
+    if (overlayInput.files.length) {
+      impReadFile(overlayInput.files[0], "overlay");
+      overlayInput.value = "";
+    }
+  });
+  impSetupDragDrop(dropOverlay, "overlay");
+
+  // File upload: conf
+  const dropConf = $("#impDropConf");
+  const confInput = $("#impConfFile");
+  dropConf.addEventListener("click", () => confInput.click());
+  confInput.addEventListener("change", () => {
+    if (confInput.files.length) {
+      impReadFile(confInput.files[0], "conf");
+      confInput.value = "";
+    }
+  });
+  impSetupDragDrop(dropConf, "conf");
+
+  // Project scan
+  $("#impBtnScan").addEventListener("click", impScanProject);
+
+  // Paste text: auto-parse on input
+  $("#impPasteOverlay").addEventListener("input", impPasteChanged);
+  $("#impPasteConf").addEventListener("input", impPasteChanged);
+
+  // Apply
+  $("#impBtnApply").addEventListener("click", impApply);
+}
+
+function impReset() {
+  impOverlayText = "";
+  impConfText = "";
+  impParsed = null;
+  impScannedFiles = [];
+  $("#impOverlayName").textContent = "No file selected";
+  $("#impConfName").textContent = "No file selected";
+  $("#impPasteOverlay").value = "";
+  $("#impPasteConf").value = "";
+  $("#impFileList").innerHTML = "";
+  $("#impPreview").style.display = "none";
+  $("#impBtnApply").disabled = true;
+}
+
+function impSetupDragDrop(zone, type) {
+  zone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    zone.classList.add("drag-over");
+  });
+  zone.addEventListener("dragleave", () => {
+    zone.classList.remove("drag-over");
+  });
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zone.classList.remove("drag-over");
+    if (e.dataTransfer.files.length) {
+      impReadFile(e.dataTransfer.files[0], type);
+    }
+  });
+}
+
+function impReadFile(file, type) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    const text = reader.result;
+    if (type === "overlay") {
+      impOverlayText = text;
+      $("#impOverlayName").textContent = `${file.name} (${(file.size/1024).toFixed(1)} KB)`;
+    } else {
+      impConfText = text;
+      $("#impConfName").textContent = `${file.name} (${(file.size/1024).toFixed(1)} KB)`;
+    }
+    impParseAndPreview();
+  };
+  reader.readAsText(file);
+}
+
+function impPasteChanged() {
+  impOverlayText = $("#impPasteOverlay").value;
+  impConfText = $("#impPasteConf").value;
+  // Debounce parse
+  clearTimeout(impPasteChanged._timer);
+  impPasteChanged._timer = setTimeout(impParseAndPreview, 400);
+}
+
+async function impParseAndPreview() {
+  if (!impOverlayText && !impConfText) {
+    $("#impPreview").style.display = "none";
+    $("#impBtnApply").disabled = true;
+    return;
+  }
+
+  try {
+    const res = await fetch("/api/import-config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        overlay: impOverlayText,
+        conf: impConfText,
+        board_name: boardData?.board || "",
+      }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      toast(`Parse error: ${data.error}`);
+      return;
+    }
+
+    impParsed = data;
+    impRenderPreview(data);
+    $("#impBtnApply").disabled = false;
+  } catch (err) {
+    toast(`Parse failed: ${err.message}`);
+  }
+}
+
+function impRenderPreview(data) {
+  const el = $("#impPreviewContent");
+  const pinCount = data.pins?.length || 0;
+  const periphCount = data.peripherals?.length || 0;
+  const kconfigCount = data.kconfig?.length || 0;
+  const warnings = data.warnings || [];
+
+  let html = `<div style="margin-bottom:6px;"><b>Found:</b></div>`;
+  html += `<div>\u2022 <b>${pinCount}</b> pin assignment(s)`;
+  if (pinCount > 0) {
+    html += `: ` + data.pins.map(p =>
+      `<span style="color:var(--accent)">${p.pin_name || p.node_label}</span> = ${p.peripheral}.${p.signal}`
+    ).join(", ");
+  }
+  html += `</div>`;
+
+  html += `<div>\u2022 <b>${periphCount}</b> peripheral(s)`;
+  if (periphCount > 0) {
+    html += `: ` + data.peripherals.map(p =>
+      `<span style="color:${p.enabled ? 'var(--green)' : 'var(--fg-dim)'}">${p.name}</span>`
+    ).join(", ");
+  }
+  html += `</div>`;
+
+  html += `<div>\u2022 <b>${kconfigCount}</b> Kconfig option(s)</div>`;
+
+  if (warnings.length) {
+    html += `<div style="margin-top:6px;color:var(--yellow);">\u26A0 Warnings:</div>`;
+    warnings.forEach(w => { html += `<div style="font-size:10px;color:var(--yellow);">\u2022 ${w}</div>`; });
+  }
+
+  el.innerHTML = html;
+  $("#impPreview").style.display = "";
+}
+
+async function impScanProject() {
+  const path = $("#impProjectPath").value.trim();
+  if (!path) {
+    toast("Enter a project directory path");
+    return;
+  }
+
+  try {
+    const res = await fetch("/api/scan-project", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ project_path: path }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      toast(`Scan error: ${data.error}`);
+      return;
+    }
+
+    impScannedFiles = data.files || [];
+    impRenderFileList();
+
+    if (impScannedFiles.length === 0) {
+      toast("No .overlay or .conf files found");
+    } else {
+      toast(`Found ${impScannedFiles.length} file(s)`);
+      // Auto-select overlay + conf if we find them
+      impAutoSelectScanned();
+    }
+  } catch (err) {
+    toast(`Scan failed: ${err.message}`);
+  }
+}
+
+function impRenderFileList() {
+  const el = $("#impFileList");
+  if (impScannedFiles.length === 0) {
+    el.innerHTML = `<div style="padding:12px;text-align:center;color:var(--fg-dim);font-size:11px;">No files found</div>`;
+    return;
+  }
+
+  el.innerHTML = impScannedFiles.map((f, i) => {
+    const icon = f.type === "overlay" ? "&#128196;" : "&#9881;";
+    const sel = f._selected ? " selected" : "";
+    return `<div class="imp-file-item${sel}" data-idx="${i}">
+      <span class="file-icon">${icon}</span>
+      <span class="file-name">${f.relative}</span>
+      <span class="file-size">${(f.size/1024).toFixed(1)} KB</span>
+    </div>`;
+  }).join("");
+
+  el.querySelectorAll(".imp-file-item").forEach(item => {
+    item.addEventListener("click", () => {
+      const idx = parseInt(item.dataset.idx);
+      const f = impScannedFiles[idx];
+      f._selected = !f._selected;
+      impRenderFileList();
+      impUpdateFromScanned();
+    });
+  });
+}
+
+function impAutoSelectScanned() {
+  // Prefer board-specific overlay + conf, fall back to prj.conf
+  let overlayFile = null;
+  let confFile = null;
+
+  for (const f of impScannedFiles) {
+    if (f.type === "overlay" && !overlayFile) {
+      overlayFile = f;
+    }
+    if (f.type === "conf") {
+      if (f.name !== "prj.conf" && !confFile) {
+        confFile = f; // Board-specific conf
+      } else if (!confFile) {
+        confFile = f; // prj.conf as fallback
+      }
+    }
+  }
+
+  if (overlayFile) overlayFile._selected = true;
+  if (confFile) confFile._selected = true;
+
+  impRenderFileList();
+  impUpdateFromScanned();
+}
+
+function impUpdateFromScanned() {
+  impOverlayText = "";
+  impConfText = "";
+
+  for (const f of impScannedFiles) {
+    if (!f._selected) continue;
+    if (f.type === "overlay") {
+      impOverlayText += f.content + "\n";
+    } else {
+      impConfText += f.content + "\n";
+    }
+  }
+
+  impParseAndPreview();
+}
+
+function impApply() {
+  if (!impParsed || !boardData) {
+    toast("No parsed data to apply");
+    return;
+  }
+
+  // Apply pin assignments
+  const data = impParsed;
+  let applied = 0;
+
+  // Match parsed pins to board pins by pin_name + pincm + peripheral
+  for (const pp of (data.pins || [])) {
+    // Find the board pin by name
+    const boardPin = boardData.pins.find(p =>
+      p.name.toUpperCase() === (pp.pin_name || "").toUpperCase()
+    );
+    if (!boardPin) continue;
+
+    // Find matching alt function
+    const af = boardPin.alt_functions.find(a =>
+      a.pincm === pp.pincm && a.function_id === pp.function_id
+    ) || boardPin.alt_functions.find(a =>
+      a.peripheral === pp.peripheral && a.signal === pp.signal
+    );
+
+    if (af) {
+      pinStates[boardPin.number] = {
+        af: af,
+        props: {
+          bias_pull_up: pp.bias_pull_up || false,
+          bias_pull_down: pp.bias_pull_down || false,
+          drive_open_drain: pp.drive_open_drain || false,
+          input_enable: pp.input_enable || false,
+        }
+      };
+      applied++;
+    }
+  }
+
+  // Apply peripheral enables
+  for (const pp of (data.peripherals || [])) {
+    if (pp.name in periphStates) {
+      periphStates[pp.name] = pp.enabled;
+    }
+  }
+
+  // Re-render
+  renderPeripherals();
+  renderChip();
+  renderConfigPanel();
+
+  // Close modal
+  $("#importModal").classList.remove("show");
+  toast(`Imported ${applied} pin(s), ${(data.peripherals||[]).length} peripheral(s)`);
+}
+
+
+// ══════════════════════════════════════════════════════════════════════
+// MCU Lookup module (in Package Manager)
+// ══════════════════════════════════════════════════════════════════════
+
+function mcuInit() {
+  const input = $("#mcuPartInput");
+  const btn = $("#mcuBtnLookup");
+
+  if (!btn) return;
+
+  btn.addEventListener("click", mcuLookup);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") mcuLookup();
+  });
+}
+
+async function mcuLookup() {
+  const input = $("#mcuPartInput");
+  const resultEl = $("#mcuLookupResult");
+  const pn = input.value.trim();
+
+  if (!pn) {
+    toast("Enter an MCU part number");
+    return;
+  }
+
+  resultEl.innerHTML = `<div style="padding:8px;text-align:center;">Looking up ${pn}...</div>`;
+
+  try {
+    // Step 1: Identify the MCU
+    const idRes = await fetch("/api/identify-mcu", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ part_number: pn }),
+    });
+
+    const idData = await idRes.json();
+    if (!idRes.ok) {
+      resultEl.innerHTML = `<div style="color:var(--red);padding:4px;">${idData.error}</div>`;
+      return;
+    }
+
+    let html = "";
+
+    if (idData.existing_board) {
+      html += `<div style="padding:4px;color:var(--green);">\u2705 Board <b>${idData.existing_board}</b> already exists</div>`;
+    }
+
+    if (idData.known) {
+      html += `<div style="padding:4px;">\u2022 Vendor: <b>${idData.vendor_name}</b></div>`;
+      html += `<div style="padding:4px;">\u2022 Family: <b>${idData.family}</b></div>`;
+
+      if (idData.datasheet_urls.length) {
+        html += `<div style="padding:4px;">\u2022 Datasheet URLs:</div>`;
+        idData.datasheet_urls.forEach(url => {
+          html += `<div style="padding:2px 4px 2px 16px;">
+            <a href="${url}" target="_blank" style="color:var(--accent);font-size:10px;word-break:break-all;">${url}</a>
+          </div>`;
+        });
+      }
+
+      if (!idData.existing_board) {
+        html += `<div style="margin-top:8px;">
+          <button class="btn btn-accent" id="mcuBtnFetch" style="font-size:11px;padding:4px 12px;">
+            \u2B07 Fetch & Parse Datasheet
+          </button>
+          <div style="margin-top:4px;">
+            <label style="font-size:10px;color:var(--fg-dim);">Or enter a custom URL:</label>
+            <input type="text" id="mcuCustomUrl" style="width:100%;padding:4px 6px;margin-top:2px;font-size:10px;background:var(--bg);color:var(--fg);border:1px solid var(--border);border-radius:var(--radius);"
+                   placeholder="https://...datasheet.pdf">
+          </div>
+        </div>`;
+      }
+    } else {
+      html += `<div style="padding:4px;color:var(--yellow);">\u26A0 Unknown vendor for "${pn}"</div>`;
+      html += `<div style="margin-top:8px;">
+        <label style="font-size:10px;color:var(--fg-dim);">Provide a direct datasheet PDF URL:</label>
+        <input type="text" id="mcuCustomUrl" style="width:100%;padding:4px 6px;margin-top:2px;font-size:10px;background:var(--bg);color:var(--fg);border:1px solid var(--border);border-radius:var(--radius);"
+               placeholder="https://...datasheet.pdf">
+        <button class="btn btn-accent" id="mcuBtnFetch" style="font-size:11px;padding:4px 12px;margin-top:6px;">
+          \u2B07 Fetch & Parse Datasheet
+        </button>
+      </div>`;
+    }
+
+    resultEl.innerHTML = html;
+
+    // Wire up fetch button if present
+    const fetchBtn = $("#mcuBtnFetch");
+    if (fetchBtn) {
+      fetchBtn.addEventListener("click", () => mcuFetchDatasheet(pn));
+    }
+
+  } catch (err) {
+    resultEl.innerHTML = `<div style="color:var(--red);">Error: ${err.message}</div>`;
+  }
+}
+
+async function mcuFetchDatasheet(partNumber) {
+  const resultEl = $("#mcuLookupResult");
+  const customUrl = $("#mcuCustomUrl")?.value?.trim() || "";
+  const fetchBtn = $("#mcuBtnFetch");
+
+  if (fetchBtn) {
+    fetchBtn.disabled = true;
+    fetchBtn.textContent = "Downloading...";
+  }
+
+  try {
+    const body = { part_number: partNumber };
+    if (customUrl) body.url = customUrl;
+
+    const res = await fetch("/api/fetch-datasheet", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      resultEl.innerHTML += `<div style="color:var(--red);margin-top:8px;">\u274C ${data.error}</div>`;
+      return;
+    }
+
+    // Success! Add to parsed jobs list and select it
+    pkgJobs.push({
+      job_id: data.job_id,
+      filename: data.part_number + "_datasheet.pdf",
+      result: data.result,
+    });
+
+    pkgRenderJobList();
+    pkgSelectJob(data.job_id);
+
+    resultEl.innerHTML += `<div style="color:var(--green);margin-top:8px;">
+      \u2705 ${data.message}<br>
+      Found ${data.result.packages.length} package(s), ${data.result.pin_mux_count} PINCM entries
+    </div>`;
+
+    toast(`Fetched & parsed datasheet for ${partNumber}`);
+
+  } catch (err) {
+    resultEl.innerHTML += `<div style="color:var(--red);margin-top:8px;">Error: ${err.message}</div>`;
+  } finally {
+    if (fetchBtn) {
+      fetchBtn.disabled = false;
+      fetchBtn.textContent = "\u2B07 Fetch & Parse Datasheet";
+    }
   }
 }

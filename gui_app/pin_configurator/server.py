@@ -36,6 +36,8 @@ from boards import BOARDS
 from dts_generator import PinAssignment, PeripheralConfig, generate
 from pdf_parser import parse_datasheet, DatasheetInfo
 from package_generator import generate_board_files
+from overlay_parser import parse_import, import_result_to_json
+from datasheet_fetcher import identify_vendor, download_datasheet, fetch_and_parse
 
 
 app = Flask(
@@ -645,6 +647,183 @@ def api_generate_clock_config():
     if not result["overlay"] and not result["prj_conf"]:
         return jsonify({"error": f"Clock tree '{tree_id}' not found"}), 404
     return jsonify(result)
+
+
+# ── Import / Parse existing overlay + conf ────────────────────────────
+
+@app.route("/api/import-config", methods=["POST"])
+def import_config():
+    """
+    Parse existing .overlay and prj.conf files back into pin configurator state.
+
+    Accepts either JSON body:
+        { "overlay": "...", "conf": "...", "board_name": "lp_mspm0g3507" }
+    or multipart/form-data with files named 'overlay' and/or 'conf'.
+
+    Returns the parsed pin assignments, peripherals, and Kconfig entries.
+    """
+    overlay_text = ""
+    conf_text = ""
+    board_name = ""
+
+    if request.is_json:
+        body = request.get_json(force=True)
+        overlay_text = body.get("overlay", "")
+        conf_text = body.get("conf", "")
+        board_name = body.get("board_name", "")
+    else:
+        # Multipart file upload
+        if "overlay" in request.files:
+            overlay_text = request.files["overlay"].read().decode("utf-8", errors="replace")
+            if not board_name:
+                fname = request.files["overlay"].filename or ""
+                board_name = fname.replace(".overlay", "").split("/")[-1].split("\\")[-1]
+        if "conf" in request.files:
+            conf_text = request.files["conf"].read().decode("utf-8", errors="replace")
+        board_name = request.form.get("board_name", board_name)
+
+    if not overlay_text and not conf_text:
+        return jsonify({"error": "No overlay or conf content provided"}), 400
+
+    result = parse_import(overlay_text, conf_text, board_name)
+    return jsonify(import_result_to_json(result))
+
+
+@app.route("/api/scan-project", methods=["POST"])
+def scan_project():
+    """
+    Scan a Zephyr project directory for existing overlay and conf files.
+
+    JSON body:
+        { "project_path": "C:/path/to/app" }
+
+    Finds all .overlay and .conf files in the project and its boards/ subdir.
+    Returns a list of discovered files that can be imported.
+    """
+    body = request.get_json(force=True)
+    project = pathlib.Path(body.get("project_path", ""))
+
+    if not project.is_dir():
+        return jsonify({"error": f"Directory does not exist: {project}"}), 400
+
+    found = []
+
+    # Search project root and boards/ subdirectory
+    search_dirs = [project]
+    boards_dir = project / "boards"
+    if boards_dir.is_dir():
+        search_dirs.append(boards_dir)
+
+    for d in search_dirs:
+        for f in sorted(d.iterdir()):
+            if f.is_file() and f.suffix in (".overlay", ".conf"):
+                rel = f.relative_to(project)
+                found.append({
+                    "path": str(f),
+                    "relative": str(rel),
+                    "name": f.name,
+                    "type": f.suffix.lstrip("."),
+                    "size": f.stat().st_size,
+                    "content": f.read_text(encoding="utf-8", errors="replace"),
+                })
+
+    # Also check for prj.conf in root
+    prj_conf = project / "prj.conf"
+    if prj_conf.is_file() and not any(f["name"] == "prj.conf" for f in found):
+        found.append({
+            "path": str(prj_conf),
+            "relative": "prj.conf",
+            "name": "prj.conf",
+            "type": "conf",
+            "size": prj_conf.stat().st_size,
+            "content": prj_conf.read_text(encoding="utf-8", errors="replace"),
+        })
+
+    return jsonify({"files": found})
+
+
+# ── Datasheet auto-fetch for unknown MCUs ─────────────────────────────
+
+@app.route("/api/identify-mcu", methods=["POST"])
+def api_identify_mcu():
+    """
+    Identify vendor and get datasheet URLs for an MCU part number.
+
+    JSON body:
+        { "part_number": "MSPM0G3507" }
+
+    Returns vendor info and candidate datasheet URLs without downloading.
+    """
+    body = request.get_json(force=True)
+    pn = body.get("part_number", "").strip()
+
+    if not pn:
+        return jsonify({"error": "No part_number provided"}), 400
+
+    # First check if we already have this board
+    pn_lower = pn.lower().replace("-", "").replace("_", "")
+    existing = None
+    for bid in BOARDS:
+        if bid.lower().replace("-", "").replace("_", "") == pn_lower:
+            existing = bid
+            break
+
+    result = identify_vendor(pn)
+    return jsonify({
+        "part_number": pn,
+        "known": result is not None,
+        "existing_board": existing,
+        "vendor": result.vendor if result else None,
+        "vendor_name": result.vendor_name if result else None,
+        "family": result.family if result else None,
+        "datasheet_urls": result.datasheet_urls if result else [],
+    })
+
+
+@app.route("/api/fetch-datasheet", methods=["POST"])
+def api_fetch_datasheet():
+    """
+    Download and parse a datasheet PDF for an MCU part number.
+
+    JSON body:
+        { "part_number": "MSPM0G3507", "url": "..."/optional }
+
+    If url is provided, downloads from that URL directly.
+    Otherwise auto-detects vendor and tries known URL patterns.
+    After download, parses the PDF and stores the result as a parse job.
+    """
+    body = request.get_json(force=True)
+    pn = body.get("part_number", "").strip()
+    url = body.get("url", "").strip() or None
+
+    if not pn:
+        return jsonify({"error": "No part_number provided"}), 400
+
+    upload_dir = _UPLOAD_DIR
+
+    try:
+        info, message = fetch_and_parse(pn, output_dir=upload_dir, url=url)
+    except Exception as exc:
+        log.exception("Datasheet fetch/parse failed for %s", pn)
+        return jsonify({"error": f"Failed: {exc}"}), 500
+
+    if info is None:
+        return jsonify({"error": message}), 404
+
+    # Store as a parse job so it can be used for package generation
+    job_id = uuid.uuid4().hex[:12]
+    _PARSED_JOBS[job_id] = {
+        "filename": f"{pn}_datasheet.pdf",
+        "upload_path": "",
+        "info": info,
+    }
+
+    return jsonify({
+        "job_id": job_id,
+        "message": message,
+        "part_number": pn,
+        "result": _datasheet_to_json(info),
+    })
 
 
 # ── Entry point ──────────────────────────────────────────────────────

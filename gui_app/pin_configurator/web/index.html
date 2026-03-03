@@ -447,6 +447,46 @@ svg.chip-svg .pin-func {
   justify-content: flex-end;
 }
 
+/* ─── Import modal ───────────────────────────────────────────── */
+.imp-tabs {
+  display: flex; gap: 0; margin-bottom: 12px;
+  border-bottom: 2px solid var(--border);
+}
+.imp-tab {
+  padding: 6px 14px; cursor: pointer; font-size: 12px;
+  color: var(--fg-dim); border-bottom: 2px solid transparent;
+  margin-bottom: -2px; transition: all .15s;
+}
+.imp-tab:hover { color: var(--fg); }
+.imp-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.imp-panel { display: none; }
+.imp-panel.active { display: block; }
+.imp-drop-zone {
+  border: 2px dashed var(--border); border-radius: var(--radius);
+  padding: 18px; text-align: center; cursor: pointer;
+  color: var(--fg-dim); font-size: 12px; transition: all .15s;
+}
+.imp-drop-zone:hover, .imp-drop-zone.drag-over {
+  border-color: var(--accent); color: var(--fg); background: rgba(79,193,255,.06);
+}
+.imp-drop-zone .upload-icon { font-size: 24px; margin-bottom: 4px; }
+.imp-drop-zone .upload-hint { font-size: 10px; margin-top: 4px; opacity: .6; }
+.imp-file-list {
+  max-height: 200px; overflow-y: auto;
+}
+.imp-file-item {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  margin-bottom: 4px; font-size: 11px; cursor: pointer; transition: all .15s;
+}
+.imp-file-item:hover { background: var(--bg2); }
+.imp-file-item.selected { border-color: var(--accent); background: rgba(79,193,255,.08); }
+.imp-file-item .file-icon { font-size: 14px; }
+.imp-file-item .file-name { flex: 1; font-family: Consolas, monospace; }
+.imp-file-item .file-size { color: var(--fg-dim); }
+
+.pkg-mcu-lookup { margin-bottom: 16px; }
+
 /* ─── Top-level Tab Navigation ─────────────────────────────── */
 .app-tabs {
   display: flex;
@@ -1488,6 +1528,7 @@ svg.chip-svg .pin-func {
   <span class="chip-name" id="chipLabel">---</span>
   <span class="spacer"></span>
   <span class="info" id="statsLabel">Flash: - | SRAM: - | Clock: -</span>
+  <button class="btn" id="btnImport" title="Import existing overlay &amp; conf files">&#128229; Import</button>
   <button class="btn" id="btnGenerate">Generate</button>
   <button class="btn btn-accent" id="btnSave">Save to Project</button>
 </div>
@@ -1544,6 +1585,16 @@ svg.chip-svg .pin-func {
       <input type="file" id="pdfFileInput" accept=".pdf" style="display:none;">
     </div>
 
+    <h3>&#128270; MCU Lookup</h3>
+    <div class="pkg-mcu-lookup">
+      <div style="display:flex;gap:6px;margin-bottom:8px;">
+        <input type="text" id="mcuPartInput" placeholder="e.g. MSPM0G3507, STM32F401RE"
+               style="flex:1;padding:6px 8px;background:var(--bg);color:var(--fg);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;">
+        <button class="btn" id="mcuBtnLookup" style="font-size:12px;padding:4px 10px;">Lookup</button>
+      </div>
+      <div id="mcuLookupResult" style="font-size:11px;"></div>
+    </div>
+
     <h3>Parsed Datasheets</h3>
     <div class="pkg-job-list" id="pkgJobList">
       <div class="empty-state" style="padding:20px;">
@@ -1580,6 +1631,66 @@ svg.chip-svg .pin-func {
     <div class="modal-btns">
       <button class="btn" id="btnCancelSave">Cancel</button>
       <button class="btn btn-accent" id="btnConfirmSave">Save Files</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Import dialog ─────────────────────────────────────────── -->
+<div class="modal-backdrop" id="importModal">
+  <div class="modal" style="width:560px;">
+    <h3>&#128229; Import Existing Configuration</h3>
+    <p style="font-size:12px;color:var(--fg-dim);margin:-8px 0 16px;">Load .overlay and prj.conf from files or a project directory</p>
+
+    <!-- Tab switcher -->
+    <div class="imp-tabs">
+      <div class="imp-tab active" data-imp-tab="files">Upload Files</div>
+      <div class="imp-tab" data-imp-tab="project">Scan Project</div>
+      <div class="imp-tab" data-imp-tab="paste">Paste Text</div>
+    </div>
+
+    <!-- Upload files tab -->
+    <div class="imp-panel active" data-imp-panel="files">
+      <div class="imp-drop-zone" id="impDropOverlay">
+        <div class="upload-icon">&#128196;</div>
+        <div>Drop <b>.overlay</b> file or click to browse</div>
+        <div class="upload-hint" id="impOverlayName">No file selected</div>
+        <input type="file" id="impOverlayFile" accept=".overlay,.dts" style="display:none;">
+      </div>
+      <div class="imp-drop-zone" id="impDropConf" style="margin-top:8px;">
+        <div class="upload-icon">&#9881;</div>
+        <div>Drop <b>.conf</b> / <b>prj.conf</b> or click to browse</div>
+        <div class="upload-hint" id="impConfName">No file selected</div>
+        <input type="file" id="impConfFile" accept=".conf" style="display:none;">
+      </div>
+    </div>
+
+    <!-- Scan project tab -->
+    <div class="imp-panel" data-imp-panel="project">
+      <label style="font-size:12px;color:var(--fg-dim);display:block;margin-bottom:4px;">
+        Zephyr project directory (absolute path)
+      </label>
+      <input type="text" id="impProjectPath" placeholder="C:\GIT\WORK\codelayer\locator_base\apps\locator_base">
+      <button class="btn" id="impBtnScan" style="margin-bottom:12px;">Scan Directory</button>
+      <div class="imp-file-list" id="impFileList"></div>
+    </div>
+
+    <!-- Paste text tab -->
+    <div class="imp-panel" data-imp-panel="paste">
+      <label style="font-size:12px;color:var(--fg-dim);display:block;margin-bottom:4px;">Overlay content:</label>
+      <textarea id="impPasteOverlay" rows="6" style="width:100%;font-family:Consolas,monospace;font-size:11px;background:var(--bg);color:var(--fg);border:1px solid var(--border);border-radius:var(--radius);padding:8px;resize:vertical;" placeholder="Paste DTS overlay here..."></textarea>
+      <label style="font-size:12px;color:var(--fg-dim);display:block;margin:8px 0 4px;">prj.conf content:</label>
+      <textarea id="impPasteConf" rows="4" style="width:100%;font-family:Consolas,monospace;font-size:11px;background:var(--bg);color:var(--fg);border:1px solid var(--border);border-radius:var(--radius);padding:8px;resize:vertical;" placeholder="Paste prj.conf here..."></textarea>
+    </div>
+
+    <!-- Result preview -->
+    <div class="imp-preview" id="impPreview" style="display:none;">
+      <h4 style="margin:12px 0 6px;">Preview</h4>
+      <div id="impPreviewContent" style="font-size:11px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:8px;max-height:200px;overflow:auto;font-family:Consolas,monospace;"></div>
+    </div>
+
+    <div class="modal-btns" style="margin-top:16px;">
+      <button class="btn" id="impBtnCancel">Cancel</button>
+      <button class="btn btn-accent" id="impBtnApply" disabled>Apply Configuration</button>
     </div>
   </div>
 </div>
