@@ -406,6 +406,42 @@ body {
 .fluid-tree li.selected { background: var(--accent); color: var(--bg); font-weight: 600; }
 .fluid-tree .tree-group { font-weight: 700; color: var(--fg-dim); font-size: 12px; padding: 6px 10px 2px; cursor: default; }
 .fluid-tree .tree-group:hover { background: none; }
+
+/* ── Info box (FloEFD-style tips) ──────────────────────────────────── */
+.info-box {
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 10px 14px;
+  font-size: 13px; color: var(--fg);
+  border-left: 3px solid var(--accent);
+}
+
+/* ── Stat cards ────────────────────────────────────────────────────── */
+.stat-card {
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 12px 14px; text-align: center;
+}
+.stat-card .stat-value {
+  font-size: 20px; font-weight: 700; color: var(--fg);
+}
+.stat-card .stat-label {
+  font-size: 11px; color: var(--fg-dim); margin-top: 2px;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+
+/* ── Badge styles for BC types ─────────────────────────────────────── */
+[class*="badge-"] {
+  display: inline-block; padding: 1px 8px;
+  border-radius: 10px; font-size: 11px; font-weight: 600;
+}
+.badge-wall { background: var(--bg4); color: var(--yellow); }
+.badge-inlet { background: rgba(166,227,161,.15); color: var(--green); }
+.badge-outlet { background: rgba(243,139,168,.15); color: var(--red); }
+.badge-opening { background: rgba(137,180,250,.15); color: var(--accent); }
+.badge-symmetry { background: var(--bg4); color: var(--mauve); }
+.badge-periodic { background: var(--bg4); color: var(--teal); }
+
+/* ── Sidebar wider for FloEFD tree ─────────────────────────────────── */
+.sidebar-panel { width: 240px; min-width: 200px; }
   </style>
 </head>
 <body>
@@ -546,17 +582,36 @@ body {
   <div class="tab-content" data-app-content="results">
     <div class="main">
       <div class="sidebar-panel" id="resultsSidebar">
-        <div class="nav-section">Post-Processing</div>
-        <div class="nav-item active" data-page="field-view">Field View</div>
-        <div class="nav-item" data-page="export">Export Data</div>
+        <div class="nav-section">Post-Processing (L7)</div>
+        <div class="nav-item active" onclick="navSelect('post-processing')">🖼️ Cut / Surface Plots</div>
+        <div class="nav-item" onclick="navSelect('floefd-goals')">🎯 Goal Values</div>
+        <div class="nav-section">Parametric Study (L8)</div>
+        <div class="nav-item" onclick="navSelect('parametric-study')">🔬 Design Variants</div>
+        <div class="nav-section">Export</div>
+        <div class="nav-item">📄 Report (MS Office)</div>
+        <div class="nav-item">💾 Export Data</div>
       </div>
       <div class="center-area" id="resultsContent">
-        <div class="page-header">Results</div>
-        <p class="text-dim">Run the solver first to view results.</p>
+        <div class="page-header">📊 Results</div>
+        <p class="text-dim">Run the solver to view results. Use the sidebar to navigate post-processing options.</p>
+
+        <div class="info-box mt-16">
+          <strong>FloEFD Post Processing Capabilities:</strong>
+          <ul style="margin:8px 0 0 16px;font-size:12px;line-height:1.8">
+            <li>Cut plots — 2D slices through the domain</li>
+            <li>Surface plots — parameter distribution on surfaces</li>
+            <li>Flow trajectories — streamlines and pathlines</li>
+            <li>Surface parameters — tabulated values on selected surfaces</li>
+            <li>XY plots — variation along a line or curve</li>
+            <li>Isosurfaces — 3D surfaces at constant values</li>
+            <li>Point parameters — values at specific locations</li>
+          </ul>
+        </div>
       </div>
       <div class="detail-panel">
         <div class="render-canvas" id="resultsRenderCanvas">
-          Results 3D view placeholder
+          🖼️ Results 3D view placeholder<br>
+          <small>Cut plots, surface plots, and flow trajectories</small>
         </div>
       </div>
     </div>

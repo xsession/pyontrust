@@ -106,6 +106,7 @@ from domain.cfd_schema import (  # noqa: E402
     initialization_to_dict,
     run_conditions_to_dict,
 )
+from domain.floefd_features import floefd_project, FloEFDProject  # noqa: E402
 
 _solver_monitor = SolverMonitor()
 
@@ -755,6 +756,803 @@ def api_browse():
     # Parent directory for navigation
     parent = str(p.parent) if p.parent != p else None
     return jsonify({"path": str(p), "parent": parent, "entries": entries})
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  FloEFD-style API endpoints
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── FloEFD Project Summary ────────────────────────────────────────────
+
+@app.route("/api/floefd/summary")
+def api_floefd_summary():
+    return jsonify(floefd_project.summary())
+
+
+@app.route("/api/floefd/reset", methods=["POST"])
+def api_floefd_reset():
+    """Reset the FloEFD project state."""
+    global floefd_project
+    from domain.floefd_features import FloEFDProject as FP
+    floefd_project = FP()
+    # Update the module-level reference too
+    import domain.floefd_features as ff_mod
+    ff_mod.floefd_project = floefd_project
+    return jsonify({"success": True, "id": floefd_project.id})
+
+
+# ── L2: Geometry Preparation ─────────────────────────────────────────
+
+@app.route("/api/floefd/geometry")
+def api_floefd_geometry_list():
+    return jsonify([g.to_dict() for g in floefd_project.geometry_parts])
+
+
+@app.route("/api/floefd/geometry", methods=["POST"])
+def api_floefd_geometry_add():
+    body = request.get_json(force=True)
+    part = floefd_project.add_geometry(
+        name=body.get("name", "Part"),
+        file_path=body.get("file_path", ""),
+        file_type=body.get("file_type", ""),
+    )
+    # Update optional fields
+    for key in ("num_faces", "num_vertices", "is_fluid_region",
+                "is_solid_region", "color", "transparency",
+                "file_origin", "cad_source", "tags"):
+        if key in body:
+            setattr(part, key, body[key])
+    if "bounding_box" in body:
+        part.bounding_box = body["bounding_box"]
+    return jsonify(part.to_dict())
+
+
+@app.route("/api/floefd/geometry/<part_id>", methods=["DELETE"])
+def api_floefd_geometry_delete(part_id):
+    if floefd_project.remove_geometry(part_id):
+        return jsonify({"success": True})
+    return jsonify({"error": "Part not found"}), 404
+
+
+@app.route("/api/floefd/geometry/<part_id>", methods=["PUT"])
+def api_floefd_geometry_update(part_id):
+    body = request.get_json(force=True)
+    part = floefd_project.update_geometry(part_id, body)
+    if part:
+        return jsonify(part.to_dict())
+    return jsonify({"error": "Part not found"}), 404
+
+
+@app.route("/api/floefd/geometry/<part_id>/suppress", methods=["POST"])
+def api_floefd_geometry_suppress(part_id):
+    body = request.get_json(force=True)
+    part = floefd_project.suppress_geometry(part_id, body.get("suppress", True))
+    if part:
+        return jsonify(part.to_dict())
+    return jsonify({"error": "Part not found"}), 404
+
+
+@app.route("/api/floefd/geometry/<part_id>/disable", methods=["POST"])
+def api_floefd_geometry_disable(part_id):
+    body = request.get_json(force=True)
+    part = floefd_project.disable_geometry(part_id, body.get("disabled", True))
+    if part:
+        return jsonify(part.to_dict())
+    return jsonify({"error": "Part not found"}), 404
+
+
+@app.route("/api/floefd/geometry/<part_id>/replace", methods=["POST"])
+def api_floefd_geometry_replace(part_id):
+    body = request.get_json(force=True)
+    part = floefd_project.replace_geometry(part_id, body.get("replacement_note", ""))
+    if part:
+        return jsonify(part.to_dict())
+    return jsonify({"error": "Part not found"}), 404
+
+
+@app.route("/api/floefd/geometry/<part_id>/diagnostics", methods=["POST"])
+def api_floefd_geometry_diagnostics(part_id):
+    result = floefd_project.run_import_diagnostics(part_id)
+    if result:
+        return jsonify(result.to_dict())
+    return jsonify({"error": "Part not found"}), 404
+
+
+@app.route("/api/floefd/geometry/<part_id>/heal", methods=["POST"])
+def api_floefd_geometry_heal(part_id):
+    result = floefd_project.heal_geometry(part_id)
+    return jsonify(result)
+
+
+@app.route("/api/floefd/geometry/<part_id>/lid", methods=["POST"])
+def api_floefd_geometry_lid_add(part_id):
+    body = request.get_json(force=True)
+    lid = floefd_project.add_lid(
+        part_id,
+        name=body.get("name", "Lid"),
+        opening_type=body.get("opening_type", "inlet"),
+    )
+    if lid:
+        return jsonify(lid)
+    return jsonify({"error": "Part not found"}), 404
+
+
+@app.route("/api/floefd/geometry/<part_id>/lid/<lid_id>", methods=["DELETE"])
+def api_floefd_geometry_lid_delete(part_id, lid_id):
+    if floefd_project.remove_lid(part_id, lid_id):
+        return jsonify({"success": True})
+    return jsonify({"error": "Not found"}), 404
+
+
+@app.route("/api/floefd/geometry/check-all", methods=["POST"])
+def api_floefd_geometry_check_all():
+    result = floefd_project.check_all_geometry()
+    return jsonify(result)
+
+
+# ── L3: Analysis Setup ───────────────────────────────────────────────
+
+@app.route("/api/floefd/analysis-setup")
+def api_floefd_analysis_setup():
+    return jsonify({
+        "analysis_type": floefd_project.analysis_type,
+        "heat_transfer": floefd_project.heat_transfer.to_dict(),
+        "computational_domain": floefd_project.computational_domain.to_dict(),
+        "config": floefd_project.analysis_config.to_dict(),
+    })
+
+
+@app.route("/api/floefd/analysis-setup", methods=["PUT"])
+def api_floefd_analysis_setup_save():
+    body = request.get_json(force=True)
+    if "analysis_type" in body:
+        floefd_project.analysis_type = body["analysis_type"]
+        floefd_project.analysis_config.analysis_type = body["analysis_type"]
+
+    ht = body.get("heat_transfer", {})
+    for key in ("conduction_enabled", "convection_enabled", "radiation_enabled",
+                "radiation_model", "default_solid_conductivity", "default_htc",
+                "default_emissivity", "heat_conduction_in_solids",
+                "heat_conduction_solids_only", "radiation_environment",
+                "radiation_solar", "radiation_absorption", "radiation_spectrum"):
+        if key in ht:
+            setattr(floefd_project.heat_transfer, key, ht[key])
+
+    cd = body.get("computational_domain", {})
+    for key in ("x_min", "x_max", "y_min", "y_max", "z_min", "z_max",
+                "symmetry_x", "symmetry_y", "symmetry_z"):
+        if key in cd:
+            setattr(floefd_project.computational_domain, key, cd[key])
+
+    cfg = body.get("config", {})
+    ac = floefd_project.analysis_config
+    for key in ("exclude_cavities", "exclude_internal_space", "reference_axis",
+                "time_dependent", "gravity_enabled", "gravity_x", "gravity_y",
+                "gravity_z", "rotation_enabled", "rotation_rpm", "rotation_axis",
+                "unit_system", "temperature_unit", "fluid_type", "selected_fluids",
+                "selected_solids", "flow_options_cavitation", "flow_options_humidity",
+                "wall_thermal_condition", "wall_radiative_surface",
+                "wall_outer_radiative", "wall_roughness",
+                "ic_pressure", "ic_temperature", "ic_velocity_x", "ic_velocity_y",
+                "ic_velocity_z", "ic_turbulence_intensity", "ic_turbulence_length",
+                "ic_solid_temperature", "ic_definition",
+                "result_resolution_level", "manual_gap_size", "min_gap_size",
+                "manual_wall_thickness", "min_wall_thickness",
+                "narrow_channel_refinement", "optimize_thin_walls",
+                "project_name", "project_comments", "configuration_name"):
+        if key in cfg:
+            setattr(ac, key, cfg[key])
+
+    return jsonify({"success": True})
+
+
+# ── L4: Boundary Conditions (FloEFD-style) ───────────────────────────
+
+@app.route("/api/floefd/boundary-conditions")
+def api_floefd_bc_list():
+    return jsonify([bc.to_dict() for bc in floefd_project.boundary_conditions])
+
+
+@app.route("/api/floefd/boundary-conditions", methods=["POST"])
+def api_floefd_bc_add():
+    body = request.get_json(force=True)
+    bc = floefd_project.add_bc(
+        name=body.get("name", "BC"),
+        bc_type=body.get("bc_type", "wall"),
+    )
+    # Set optional fields
+    for key in ("velocity", "mass_flow_rate", "volume_flow_rate",
+                "pressure", "temperature", "wall_thermal", "wall_heat_flux",
+                "wall_htc", "wall_temperature", "wall_roughness", "emissivity"):
+        if key in body:
+            setattr(bc, key, body[key])
+    return jsonify(bc.to_dict())
+
+
+@app.route("/api/floefd/boundary-conditions/<bc_id>", methods=["PUT"])
+def api_floefd_bc_update(bc_id):
+    body = request.get_json(force=True)
+    bc = floefd_project.update_bc(bc_id, body)
+    if bc:
+        return jsonify(bc.to_dict())
+    return jsonify({"error": "BC not found"}), 404
+
+
+@app.route("/api/floefd/boundary-conditions/<bc_id>", methods=["DELETE"])
+def api_floefd_bc_delete(bc_id):
+    if floefd_project.remove_bc(bc_id):
+        return jsonify({"success": True})
+    return jsonify({"error": "BC not found"}), 404
+
+
+# ── L5: Meshing ──────────────────────────────────────────────────────
+
+from domain.floefd_features import LocalMeshRegion, MeshStudyEntry
+
+@app.route("/api/floefd/mesh")
+def api_floefd_mesh_settings():
+    return jsonify(floefd_project.mesh_settings.to_dict())
+
+
+@app.route("/api/floefd/mesh", methods=["PUT"])
+def api_floefd_mesh_save():
+    body = request.get_json(force=True)
+    ms = floefd_project.mesh_settings
+    # Accept ALL mesh setting fields dynamically
+    for k, v in body.items():
+        if hasattr(ms, k) and k not in ("local_meshes", "mesh_study_entries",
+                                         "control_planes", "display_selected_components"):
+            setattr(ms, k, v)
+    # Handle nested lists specially
+    if "control_planes" in body:
+        ms.control_planes = body["control_planes"]
+    if "display_selected_components" in body:
+        ms.display_selected_components = body["display_selected_components"]
+    return jsonify({"success": True})
+
+
+@app.route("/api/floefd/mesh/generate", methods=["POST"])
+def api_floefd_mesh_generate():
+    result = floefd_project.generate_mesh()
+    return jsonify(result)
+
+
+# ── L5: Local Initial Meshes ─────────────────────────────────────────
+
+@app.route("/api/floefd/mesh/local-meshes")
+def api_floefd_local_meshes_list():
+    return jsonify([lm if isinstance(lm, dict) else lm.to_dict()
+                    for lm in floefd_project.mesh_settings.local_meshes])
+
+
+@app.route("/api/floefd/mesh/local-meshes", methods=["POST"])
+def api_floefd_local_meshes_add():
+    body = request.get_json(force=True)
+    import uuid
+    lm = LocalMeshRegion(id=uuid.uuid4().hex[:8])
+    for k, v in body.items():
+        if hasattr(lm, k) and k != "id":
+            setattr(lm, k, v)
+    floefd_project.mesh_settings.local_meshes.append(lm)
+    return jsonify(lm.to_dict())
+
+
+@app.route("/api/floefd/mesh/local-meshes/<lm_id>", methods=["PUT"])
+def api_floefd_local_meshes_update(lm_id):
+    body = request.get_json(force=True)
+    for lm in floefd_project.mesh_settings.local_meshes:
+        obj = lm if not isinstance(lm, dict) else None
+        if obj and obj.id == lm_id:
+            for k, v in body.items():
+                if hasattr(obj, k) and k != "id":
+                    setattr(obj, k, v)
+            return jsonify(obj.to_dict())
+    return jsonify({"error": "Not found"}), 404
+
+
+@app.route("/api/floefd/mesh/local-meshes/<lm_id>", methods=["DELETE"])
+def api_floefd_local_meshes_delete(lm_id):
+    ms = floefd_project.mesh_settings
+    before = len(ms.local_meshes)
+    ms.local_meshes = [lm for lm in ms.local_meshes
+                       if (lm.id if not isinstance(lm, dict) else lm.get("id")) != lm_id]
+    if len(ms.local_meshes) < before:
+        return jsonify({"success": True})
+    return jsonify({"error": "Not found"}), 404
+
+
+@app.route("/api/floefd/mesh/local-meshes/delete-all", methods=["POST"])
+def api_floefd_local_meshes_delete_all():
+    floefd_project.mesh_settings.local_meshes = []
+    return jsonify({"success": True})
+
+
+# ── L5: Control Planes ───────────────────────────────────────────────
+
+@app.route("/api/floefd/mesh/control-planes")
+def api_floefd_control_planes_list():
+    return jsonify(floefd_project.mesh_settings.control_planes)
+
+
+@app.route("/api/floefd/mesh/control-planes", methods=["PUT"])
+def api_floefd_control_planes_save():
+    body = request.get_json(force=True)
+    floefd_project.mesh_settings.control_planes = body.get("planes", [])
+    return jsonify({"success": True})
+
+
+# ── L5: Mesh Study / Sensitivity ─────────────────────────────────────
+
+@app.route("/api/floefd/mesh/study")
+def api_floefd_mesh_study_list():
+    return jsonify([e if isinstance(e, dict) else e.to_dict()
+                    for e in floefd_project.mesh_settings.mesh_study_entries])
+
+
+@app.route("/api/floefd/mesh/study", methods=["POST"])
+def api_floefd_mesh_study_add():
+    body = request.get_json(force=True)
+    entry = MeshStudyEntry(
+        mesh_count=body.get("mesh_count", 0),
+        dp_value=body.get("dp_value", 0.0),
+        percent_delta=body.get("percent_delta", 0.0),
+    )
+    floefd_project.mesh_settings.mesh_study_entries.append(entry)
+    return jsonify(entry.to_dict())
+
+
+@app.route("/api/floefd/mesh/study/run", methods=["POST"])
+def api_floefd_mesh_study_run():
+    """Simulate a mesh sensitivity study — run 4-5 refinement levels."""
+    import math
+    ms = floefd_project.mesh_settings
+    ms.mesh_study_entries = []
+    base_dp = 420000.0
+    base_cells = 145000
+    for i, mult in enumerate([1, 2.6, 6.8, 10.0, 15.0]):
+        cells = int(base_cells * mult)
+        dp = base_dp * (0.85 ** i) + (5000 * math.sin(i * 0.5))
+        pct = 0.0 if i == 0 else abs(dp - prev_dp) / prev_dp * 100
+        ms.mesh_study_entries.append(MeshStudyEntry(
+            mesh_count=cells, dp_value=round(dp, 1), percent_delta=round(pct, 1)
+        ))
+        prev_dp = dp
+    return jsonify([e.to_dict() for e in ms.mesh_study_entries])
+
+
+# ── L5: Mesh Summary ─────────────────────────────────────────────────
+
+@app.route("/api/floefd/mesh/summary")
+def api_floefd_mesh_summary():
+    ms = floefd_project.mesh_settings
+    return jsonify({
+        "settings": ms.to_dict(),
+        "local_mesh_count": len(ms.local_meshes),
+        "control_plane_count": len(ms.control_planes),
+        "study_entries": len(ms.mesh_study_entries),
+        "has_mesh": ms.total_cells > 0,
+    })
+
+
+# ── L4b / L6: Goals ──────────────────────────────────────────────────
+
+@app.route("/api/floefd/goals")
+def api_floefd_goals_list():
+    return jsonify([g.to_dict() for g in floefd_project.goals])
+
+
+@app.route("/api/floefd/goals", methods=["POST"])
+def api_floefd_goals_add():
+    body = request.get_json(force=True)
+    goal = floefd_project.add_goal(
+        name=body.get("name", "Goal"),
+        goal_type=body.get("goal_type", "surface"),
+        parameter=body.get("parameter", "temperature"),
+    )
+    # Set ALL optional L4b fields from body
+    _GOAL_FIELDS = (
+        "component", "use_for_convergence", "target_value", "delta_criteria",
+        "faces", "bodies", "point_x", "point_y", "point_z", "point_method",
+        "use_min", "use_av", "use_max", "use_bulk_av",
+        "name_template", "convergence_mode", "tolerance_value",
+        "expression", "dimensionality", "equation_parameters",
+        "filter_out_of_domain", "filter_outer_faces", "filter_fluid_contacting",
+        "keep_outer_and_fluid", "is_associated", "source_feature_type", "source_feature_id",
+    )
+    for key in _GOAL_FIELDS:
+        if key in body:
+            setattr(goal, key, body[key])
+    return jsonify(goal.to_dict())
+
+
+@app.route("/api/floefd/goals/<goal_id>", methods=["PUT"])
+def api_floefd_goals_update(goal_id):
+    body = request.get_json(force=True)
+    for g in floefd_project.goals:
+        if g.id == goal_id:
+            for k, v in body.items():
+                if hasattr(g, k) and k != "id":
+                    setattr(g, k, v)
+            return jsonify(g.to_dict())
+    return jsonify({"error": "Goal not found"}), 404
+
+
+@app.route("/api/floefd/goals/<goal_id>", methods=["DELETE"])
+def api_floefd_goals_delete(goal_id):
+    if floefd_project.remove_goal(goal_id):
+        return jsonify({"success": True})
+    return jsonify({"error": "Goal not found"}), 404
+
+
+# ── L4b: Goals Summary (grouped by type) ─────────────────────────────
+
+@app.route("/api/floefd/goals/summary")
+def api_floefd_goals_summary():
+    goals = floefd_project.goals
+    by_type = {}
+    for gt in ("global", "point", "surface", "volume", "equation"):
+        by_type[gt] = [g.to_dict() for g in goals if g.goal_type == gt]
+    return jsonify({
+        "goals": [g.to_dict() for g in goals],
+        "by_type": by_type,
+        "total": len(goals),
+        "converged": sum(1 for g in goals if g.is_converged),
+        "for_convergence": sum(1 for g in goals if g.use_for_convergence),
+        "finish_conditions": floefd_project.finish_conditions.to_dict(),
+        "associated_goals_config": floefd_project.associated_goals_config.to_dict(),
+    })
+
+
+# ── L4b: Finish Conditions ───────────────────────────────────────────
+
+@app.route("/api/floefd/goals/finish-conditions")
+def api_floefd_finish_conditions_get():
+    return jsonify(floefd_project.finish_conditions.to_dict())
+
+
+@app.route("/api/floefd/goals/finish-conditions", methods=["PUT"])
+def api_floefd_finish_conditions_put():
+    body = request.get_json(force=True)
+    fc = floefd_project.finish_conditions
+    for k, v in body.items():
+        if hasattr(fc, k):
+            setattr(fc, k, v)
+    return jsonify(fc.to_dict())
+
+
+# ── L4b: Associated Goals Config ─────────────────────────────────────
+
+@app.route("/api/floefd/goals/associated-config")
+def api_floefd_associated_goals_get():
+    return jsonify(floefd_project.associated_goals_config.to_dict())
+
+
+@app.route("/api/floefd/goals/associated-config", methods=["PUT"])
+def api_floefd_associated_goals_put():
+    body = request.get_json(force=True)
+    ag = floefd_project.associated_goals_config
+    for k, v in body.items():
+        if hasattr(ag, k):
+            setattr(ag, k, v)
+    return jsonify(ag.to_dict())
+
+
+# ── L4b: Goal Parameters List (reference data) ───────────────────────
+
+GOAL_PARAMETERS = [
+    # Left column from slide
+    {"name": "Static Pressure",        "global": True, "surface": True, "volume": True, "point": True},
+    {"name": "Total Pressure",         "global": True, "surface": True, "volume": True, "point": True},
+    {"name": "Dynamic Pressure",       "global": True, "surface": True, "volume": True, "point": True},
+    {"name": "Temperature (Fluid)",    "global": True, "surface": True, "volume": True, "point": True},
+    {"name": "Mean Radiant Temperature","global": True, "surface": True, "volume": True, "point": True},
+    {"name": "Operative Temperature",  "global": True, "surface": True, "volume": True, "point": True},
+    {"name": "Draught Rate",           "global": True, "surface": True, "volume": True, "point": True},
+    {"name": "Density (Fluid)",        "global": True, "surface": True, "volume": True, "point": True},
+    {"name": "Mass (Fluid)",           "global": False, "surface": False, "volume": True, "point": False},
+    {"name": "Mass Flow Rate",         "global": False, "surface": True, "volume": False, "point": False},
+    {"name": "Velocity",               "global": True, "surface": True, "volume": True, "point": True},
+    {"name": "Velocity (X)",           "global": True, "surface": True, "volume": True, "point": True},
+    {"name": "Velocity (Y)",           "global": True, "surface": True, "volume": True, "point": True},
+    {"name": "Velocity (Z)",           "global": True, "surface": True, "volume": True, "point": True},
+    {"name": "Mach Number",            "global": True, "surface": True, "volume": True, "point": True},
+    {"name": "Turbulent Viscosity",    "global": True, "surface": True, "volume": True, "point": True},
+    {"name": "Turbulent Time",         "global": True, "surface": True, "volume": True, "point": True},
+    {"name": "Turbulence Length",      "global": True, "surface": True, "volume": True, "point": True},
+    {"name": "Turbulence Intensity",   "global": True, "surface": True, "volume": True, "point": True},
+    {"name": "Turbulent Energy",       "global": True, "surface": True, "volume": True, "point": True},
+    {"name": "Turbulent Dissipation",  "global": True, "surface": True, "volume": True, "point": True},
+    {"name": "Heat Flux",              "global": True, "surface": True, "volume": True, "point": True},
+    # Right column from slide
+    {"name": "Heat Flux (X)",          "global": True, "surface": True, "volume": True, "point": True},
+    {"name": "Heat Flux (Y)",          "global": True, "surface": True, "volume": True, "point": True},
+    {"name": "Heat Flux (Z)",          "global": True, "surface": True, "volume": True, "point": True},
+    {"name": "Heat Transfer Rate",     "global": False, "surface": True, "volume": False, "point": False},
+    {"name": "Total Enthalpy Rate",    "global": False, "surface": True, "volume": False, "point": False},
+    {"name": "Normal Force",           "global": False, "surface": True, "volume": False, "point": False},
+    {"name": "Normal Force (X)",       "global": False, "surface": True, "volume": False, "point": False},
+    {"name": "Normal Force (Y)",       "global": False, "surface": True, "volume": False, "point": False},
+    {"name": "Normal Force (Z)",       "global": False, "surface": True, "volume": False, "point": False},
+    {"name": "Force",                  "global": False, "surface": True, "volume": False, "point": False},
+    {"name": "Force (X)",              "global": False, "surface": True, "volume": True, "point": False},
+    {"name": "Force (Y)",              "global": False, "surface": True, "volume": True, "point": False},
+    {"name": "Force (Z)",              "global": False, "surface": True, "volume": True, "point": False},
+    {"name": "Friction Force",         "global": False, "surface": True, "volume": False, "point": False},
+    {"name": "Friction Force (X)",     "global": False, "surface": True, "volume": False, "point": False},
+    {"name": "Friction Force (Y)",     "global": False, "surface": True, "volume": False, "point": False},
+    {"name": "Friction Force (Z)",     "global": False, "surface": True, "volume": False, "point": False},
+    {"name": "Torque (X)",             "global": False, "surface": True, "volume": True, "point": False},
+    {"name": "Torque (Y)",             "global": False, "surface": True, "volume": True, "point": False},
+    {"name": "Torque (Z)",             "global": False, "surface": True, "volume": True, "point": False},
+    {"name": "Temperature (Solid)",    "global": True, "surface": True, "volume": True, "point": True},
+    {"name": "Mass (Solid)",           "global": False, "surface": False, "volume": True, "point": False},
+]
+
+@app.route("/api/floefd/goals/parameters")
+def api_floefd_goal_parameters():
+    """Return the full parameter matrix from the Goals/Parameters slide."""
+    return jsonify(GOAL_PARAMETERS)
+
+
+# ── L6: Solver ───────────────────────────────────────────────────────
+
+@app.route("/api/floefd/solver")
+def api_floefd_solver_config():
+    return jsonify(floefd_project.solver_config.to_dict())
+
+
+@app.route("/api/floefd/solver", methods=["PUT"])
+def api_floefd_solver_save():
+    body = request.get_json(force=True)
+    sc = floefd_project.solver_config
+    for key in ("max_iterations", "auto_convergence", "convergence_criterion",
+                "finish_conditions", "turbulence_model", "wall_function",
+                "velocity_relaxation", "pressure_relaxation", "temperature_relaxation"):
+        if key in body:
+            setattr(sc, key, body[key])
+    return jsonify({"success": True})
+
+
+@app.route("/api/floefd/solver/run", methods=["POST"])
+def api_floefd_solver_run():
+    """Run N iterations of the mock solver."""
+    body = request.get_json(force=True)
+    n = min(body.get("iterations", 10), 200)
+    floefd_project.solver_config.convergence_status = "converging"
+
+    results = []
+    for _ in range(n):
+        entry = floefd_project.simulate_iteration()
+        results.append(entry)
+        if floefd_project.solver_config.convergence_status in ("converged", "diverging"):
+            break
+
+    return jsonify({
+        "iterations_run": len(results),
+        "status": floefd_project.solver_config.convergence_status,
+        "current_iteration": floefd_project.solver_config.current_iteration,
+        "latest": results[-1] if results else None,
+    })
+
+
+@app.route("/api/floefd/solver/reset", methods=["POST"])
+def api_floefd_solver_reset():
+    floefd_project.reset_solver()
+    return jsonify({"success": True})
+
+
+@app.route("/api/floefd/solver/history")
+def api_floefd_solver_history():
+    return jsonify(floefd_project.iteration_history)
+
+
+# ── L7: Post Processing ──────────────────────────────────────────────
+
+@app.route("/api/floefd/post/cut-plots")
+def api_floefd_cut_plots():
+    return jsonify([p.to_dict() for p in floefd_project.cut_plots])
+
+
+@app.route("/api/floefd/post/cut-plots", methods=["POST"])
+def api_floefd_cut_plot_add():
+    body = request.get_json(force=True)
+    plot = floefd_project.add_cut_plot(
+        name=body.get("name", "Cut Plot"),
+        parameter=body.get("parameter", "temperature"),
+        plane=body.get("plane", "XY"),
+    )
+    for key in ("offset", "show_contours", "show_isolines", "show_vectors",
+                "min_value", "max_value", "num_levels", "color_map"):
+        if key in body:
+            setattr(plot, key, body[key])
+    return jsonify(plot.to_dict())
+
+
+@app.route("/api/floefd/post/surface-plots")
+def api_floefd_surface_plots():
+    return jsonify([p.to_dict() for p in floefd_project.surface_plots])
+
+
+@app.route("/api/floefd/post/surface-plots", methods=["POST"])
+def api_floefd_surface_plot_add():
+    body = request.get_json(force=True)
+    plot = floefd_project.add_surface_plot(
+        name=body.get("name", "Surface Plot"),
+        parameter=body.get("parameter", "temperature"),
+        surface_name=body.get("surface_name", ""),
+    )
+    return jsonify(plot.to_dict())
+
+
+# ── L8: Parametric Study ─────────────────────────────────────────────
+
+@app.route("/api/floefd/parametric")
+def api_floefd_parametric_list():
+    return jsonify([s.to_dict() for s in floefd_project.parametric_studies])
+
+
+@app.route("/api/floefd/parametric", methods=["POST"])
+def api_floefd_parametric_create():
+    body = request.get_json(force=True)
+    study = floefd_project.create_parametric_study(
+        name=body.get("name", "Parametric Study"),
+    )
+    if "parameters" in body:
+        study.parameters = body["parameters"]
+    return jsonify(study.to_dict())
+
+
+@app.route("/api/floefd/parametric/<study_id>/variant", methods=["POST"])
+def api_floefd_parametric_add_variant(study_id):
+    body = request.get_json(force=True)
+    variant = floefd_project.add_variant(
+        study_id=study_id,
+        name=body.get("name", "Variant"),
+        parameters=body.get("parameters", {}),
+    )
+    if variant:
+        return jsonify(variant.to_dict())
+    return jsonify({"error": "Study not found"}), 404
+
+
+@app.route("/api/floefd/parametric/<study_id>/clone", methods=["POST"])
+def api_floefd_parametric_clone(study_id):
+    body = request.get_json(force=True)
+    variant = floefd_project.clone_variant(
+        study_id=study_id,
+        variant_id=body.get("variant_id", ""),
+        new_name=body.get("name", "Clone"),
+    )
+    if variant:
+        return jsonify(variant.to_dict())
+    return jsonify({"error": "Study or variant not found"}), 404
+
+
+@app.route("/api/floefd/parametric/<study_id>/run", methods=["POST"])
+def api_floefd_parametric_run(study_id):
+    """Simulate running all variants in a parametric study."""
+    import time as _time
+    for study in floefd_project.parametric_studies:
+        if study.id == study_id:
+            for v in study.variants:
+                obj = v if not isinstance(v, dict) else None
+                if obj:
+                    obj.status = "running"
+                    # Reset and run a short simulation for each variant
+                    floefd_project.reset_solver()
+                    for _ in range(30):
+                        floefd_project.simulate_iteration()
+                    obj.status = floefd_project.solver_config.convergence_status
+                    obj.mesh_cells = floefd_project.mesh_settings.total_cells
+                    # Collect goal results
+                    for g in floefd_project.goals:
+                        obj.goals_results[g.name] = round(g.current_value, 4)
+            return jsonify(study.to_dict())
+    return jsonify({"error": "Study not found"}), 404
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  L4a: Standard FloEFD Features — CRUD endpoints
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Helper: import all feature classes
+from domain.floefd_features import (
+    ComponentControl, FluidSubdomain, RotatingRegion, SolidMaterial,
+    FanFeature, HeatSourceFeature, RadiativeSurface, RadiationSource,
+    ContactResistance, ThermoelectricCooler, HeatSinkSimulation,
+    PorousMedia, PerforatedPlate, ThermalJoint, InitialConditionLocal,
+)
+
+# Feature registry: (url_segment, collection_name, dataclass)
+_FEATURE_REGISTRY = [
+    ("component-controls",     "component_controls",      ComponentControl),
+    ("fluid-subdomains",       "fluid_subdomains",        FluidSubdomain),
+    ("rotating-regions",       "rotating_regions",        RotatingRegion),
+    ("solid-materials",        "solid_materials",         SolidMaterial),
+    ("fan-features",           "fan_features",            FanFeature),
+    ("heat-source-features",   "heat_source_features",    HeatSourceFeature),
+    ("radiative-surfaces",     "radiative_surfaces",      RadiativeSurface),
+    ("radiation-sources",      "radiation_sources",       RadiationSource),
+    ("contact-resistances",    "contact_resistances",     ContactResistance),
+    ("thermoelectric-coolers", "thermoelectric_coolers",  ThermoelectricCooler),
+    ("heatsink-simulations",   "heatsink_simulations",    HeatSinkSimulation),
+    ("porous-media",           "porous_media",            PorousMedia),
+    ("perforated-plates",      "perforated_plates",       PerforatedPlate),
+    ("thermal-joints",         "thermal_joints",          ThermalJoint),
+    ("initial-conditions-local","initial_conditions_local", InitialConditionLocal),
+]
+
+def _register_feature_routes():
+    """Dynamically register GET/POST/PUT/DELETE for each L4a feature type."""
+    for url_seg, col_name, cls in _FEATURE_REGISTRY:
+        base = f"/api/floefd/features/{url_seg}"
+
+        # LIST
+        def make_list(cn=col_name):
+            def handler():
+                return jsonify([o.to_dict() for o in getattr(floefd_project, cn)])
+            return handler
+
+        # ADD
+        def make_add(cn=col_name, c=cls):
+            def handler():
+                body = request.get_json(force=True)
+                obj = floefd_project._add_feature(cn, c, body)
+                return jsonify(obj.to_dict())
+            return handler
+
+        # UPDATE
+        def make_update(cn=col_name):
+            def handler(fid):
+                body = request.get_json(force=True)
+                obj = floefd_project._update_feature(cn, fid, body)
+                if obj:
+                    return jsonify(obj.to_dict())
+                return jsonify({"error": "Not found"}), 404
+            return handler
+
+        # DELETE
+        def make_delete(cn=col_name):
+            def handler(fid):
+                if floefd_project._remove_feature(cn, fid):
+                    return jsonify({"success": True})
+                return jsonify({"error": "Not found"}), 404
+            return handler
+
+        # Register routes
+        app.add_url_rule(base, f"feat_list_{url_seg}", make_list(), methods=["GET"])
+        app.add_url_rule(base, f"feat_add_{url_seg}", make_add(), methods=["POST"])
+        app.add_url_rule(f"{base}/<fid>", f"feat_update_{url_seg}", make_update(), methods=["PUT"])
+        app.add_url_rule(f"{base}/<fid>", f"feat_delete_{url_seg}", make_delete(), methods=["DELETE"])
+
+
+_register_feature_routes()
+
+
+# ── Engineering Database endpoint ─────────────────────────────────────
+
+@app.route("/api/floefd/features/engineering-database")
+def api_floefd_eng_db():
+    return jsonify(floefd_project.engineering_database.to_dict())
+
+
+# ── L4a: Features summary (all feature counts + items) ───────────────
+
+@app.route("/api/floefd/features/summary")
+def api_floefd_features_summary():
+    data = {}
+    total = 0
+    for url_seg, col_name, cls in _FEATURE_REGISTRY:
+        items = [o.to_dict() for o in getattr(floefd_project, col_name)]
+        data[col_name] = items
+        total += len(items)
+    # Also include BCs (existing routes) and engineering DB
+    bc_items = [o.to_dict() for o in floefd_project.boundary_conditions]
+    data["boundary_conditions"] = bc_items
+    total += len(bc_items)
+    data["engineering_database"] = floefd_project.engineering_database.to_dict()
+    data["total_count"] = total
+    return jsonify(data)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
