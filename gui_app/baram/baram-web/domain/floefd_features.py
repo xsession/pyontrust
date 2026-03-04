@@ -903,15 +903,115 @@ class AssociatedGoalsConfig:
 
 
 @dataclass
+class RunConfig:
+    """L6: Run dialog configuration."""
+    mesh_enabled: bool = True
+    solve_enabled: bool = True
+    new_calculation: bool = True          # True=new, False=continue
+    take_previous_results: bool = False
+    run_at: str = "this_computer"         # this_computer, network
+    close_cad: bool = False
+    cpu_count: int = 4
+    load_results: bool = True
+    batch_results: bool = False
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
+class PreviewPlot:
+    """L6: Preview plot settings — view results during solving."""
+    id: str = ""
+    name: str = "Preview 1"
+    # Definition tab
+    plane_name: str = "Right Plane"       # Right Plane, Front Plane, Top Plane, custom
+    plane_offset: float = 0.005
+    min_max_mode: str = "auto"            # auto, manual
+    mode: str = "contours"                # contours, isolines, velocity_vectors
+    # Settings tab
+    parameter: str = "Velocity"
+    settings_min: float = 0.0
+    settings_max: float = 100.0
+    max_velocity: float = 100.0
+    vector_spacing: float = 0.5           # 0=min, 1=max
+    # Image Attributes tab
+    image_size: str = "640x480"           # 400x300, 640x480, 800x600, 1000x1000, 2000x2000, user_defined
+    x_size: int = 640
+    y_size: int = 480
+    flip_horizontal: bool = False
+    flip_vertical: bool = False
+    rotate_90: bool = False
+    # Options tab
+    auto_update: bool = True
+    auto_caption: bool = True
+    auto_save: bool = False
+    show_box: bool = True
+    display_mesh: bool = False
+    interpolate_results: bool = True
+    caption: str = ""
+    auto_name_prefix: str = ""
+    auto_save_step: int = 1               # iterations
+    # Region tab
+    region_x_min: float = -0.001
+    region_x_max: float = 0.616
+    region_y_min: float = -0.415
+    region_y_max: float = 0.415
+    region_z_min: float = -0.415
+    region_z_max: float = 0.415
+    enabled: bool = True
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
+class GoalPlotConfig:
+    """L6: Goal Plot settings — monitor goal convergence during solving."""
+    id: str = ""
+    name: str = "Goal plot 1"
+    selected_goals: list = field(default_factory=list)  # list of goal ids
+    # Options
+    x_axis_units: str = "iterations"      # iterations, physical_time
+    scale_mode: str = "absolute"          # absolute, normalised
+    display_value: str = "current"        # current, minimum, maximum, average
+    logarithmic_scale: bool = False
+    show_titles: bool = True
+    show_analysis_interval: bool = False
+    show_convergence_history: bool = False
+    # Numerical settings
+    manual_min_enabled: bool = False
+    manual_min: float = 0.0
+    manual_max_enabled: bool = False
+    manual_max: float = 100.0
+    plot_length: float = 0.5              # min..max slider
+    length_scale: float = 1.51356
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
+class SolverLogEntry:
+    """L6: Solver log entry."""
+    event: str = ""
+    iteration: int = 0
+    time: str = ""
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
 class SolverConfig:
     """L6: Solving configuration (FloEFD-style)."""
     max_iterations: int = 200
     auto_convergence: bool = True
     convergence_criterion: float = 1e-4
-    finish_conditions: str = "goals"  # goals, iterations, both
+    finish_conditions: str = "goals"      # goals, iterations, both
     # Navier-Stokes solver settings
-    turbulence_model: str = "k-epsilon"  # k-epsilon, k-omega, laminar
-    wall_function: str = "modified"  # standard, modified (FloEFD-unique)
+    turbulence_model: str = "k-epsilon"   # k-epsilon, k-omega, laminar
+    wall_function: str = "modified"       # standard, modified (FloEFD-unique)
     # Relaxation
     velocity_relaxation: float = 0.7
     pressure_relaxation: float = 0.3
@@ -920,26 +1020,72 @@ class SolverConfig:
     current_iteration: int = 0
     convergence_status: str = ConvergenceStatus.NOT_STARTED.value
     residuals: dict = field(default_factory=dict)
+    # Run config
+    run_config: RunConfig = field(default_factory=RunConfig)
+    # Preview plots
+    preview_plots: list = field(default_factory=list)
+    # Goal plots
+    goal_plots: list = field(default_factory=list)
+    # Solver log
+    solver_log: list = field(default_factory=list)
+    # Solver info window fields
+    status_text: str = "Not started"
+    fluid_cells_info: int = 0
+    partial_cells_info: int = 0
+    last_iteration_finished: str = ""
+    cpu_time_per_iteration: str = ""
+    travels: float = 0.0
+    iterations_per_travel: int = 0
+    cpu_time: str = ""
+    calculation_time_left: str = ""
+    # Warnings
+    warnings: list = field(default_factory=list)
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        d = asdict(self)
+        return d
 
 
 @dataclass
 class PostProcessingCutPlot:
-    """L7: Post Processing — cut plot definition."""
+    """L7: Post Processing — cut plot definition (enhanced)."""
     id: str = ""
     name: str = ""
-    parameter: str = "temperature"  # temperature, pressure, velocity, etc.
+    parameter: str = "temperature"  # temperature, pressure, velocity, density, mach, total_pressure, etc.
     plane: str = "XY"  # XY, XZ, YZ, custom
     offset: float = 0.0
+    # Display modes
     show_contours: bool = True
     show_isolines: bool = False
     show_vectors: bool = False
+    show_streamlines: bool = False
+    show_mesh: bool = False
+    # Contour settings
     min_value: float = 0.0
     max_value: float = 100.0
     num_levels: int = 20
-    color_map: str = "rainbow"  # rainbow, thermal, blue-red
+    color_map: str = "rainbow"  # rainbow, thermal, blue-red, grayscale, diverging
+    use_cad_geometry: bool = True
+    # Isoline settings
+    isoline_count: int = 10
+    isoline_color: str = "#000000"
+    isoline_width: float = 1.0
+    # Vector settings
+    vector_spacing: float = 5.0
+    vector_size: float = 1.0
+    vector_color_by_parameter: bool = True
+    # Streamline settings
+    streamline_density: int = 20
+    streamline_thickness: float = 1.0
+    # Advanced display
+    display_3d_profile: bool = False
+    profile_direction: str = "normal"  # normal, X, Y, Z
+    profile_offset: float = 0.0
+    display_boundary_layer: bool = False
+    display_outlines: bool = True
+    interpolate: bool = True
+    dynamic_drag: bool = False
+    transparency: float = 0.0
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -947,15 +1093,400 @@ class PostProcessingCutPlot:
 
 @dataclass
 class SurfacePlot:
-    """L7: Post Processing — surface plot."""
+    """L7: Post Processing — surface plot (enhanced)."""
     id: str = ""
     name: str = ""
     parameter: str = "temperature"
     surface_name: str = ""
+    # Display modes
+    show_contours: bool = True
+    show_isolines: bool = False
+    show_vectors: bool = False
+    show_streamlines: bool = False
     show_mesh: bool = False
+    # Contour settings
     min_value: float = 0.0
     max_value: float = 100.0
+    num_levels: int = 20
     color_map: str = "rainbow"
+    use_cad_geometry: bool = True
+    # Isoline settings
+    isoline_count: int = 10
+    isoline_color: str = "#000000"
+    # Vector settings
+    vector_spacing: float = 5.0
+    vector_size: float = 1.0
+    # Offset/Tip
+    offset: float = 0.0
+    offset_tip: bool = False
+    transparency: float = 0.0
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
+class Isosurface:
+    """L7: Post Processing — isosurface."""
+    id: str = ""
+    name: str = ""
+    parameter: str = "temperature"
+    # Up to 3 iso-values
+    value1: float = 0.0
+    value1_enabled: bool = True
+    value2: float = 0.0
+    value2_enabled: bool = False
+    value3: float = 0.0
+    value3_enabled: bool = False
+    # Appearance
+    color_map: str = "rainbow"
+    min_value: float = 0.0
+    max_value: float = 100.0
+    show_mesh: bool = False
+    transparency: float = 0.0
+    use_cad_geometry: bool = True
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
+class FlowTrajectory:
+    """L7: Post Processing — flow trajectory / particle trace."""
+    id: str = ""
+    name: str = ""
+    parameter: str = "velocity"  # color-by parameter
+    # Starting points
+    start_mode: str = "surface"  # surface, pick_point, coordinates
+    start_surface: str = ""
+    start_x: float = 0.0
+    start_y: float = 0.0
+    start_z: float = 0.0
+    # Trajectory settings
+    number: int = 20
+    in_plane: bool = False
+    constraints: str = "both"  # ahead, behind, both
+    max_length: float = 1000.0
+    time_limit: float = 100.0
+    # Appearance
+    appearance: str = "lines"  # pipes, lines, lines_arrows, bands, spheres, arrows, arrows_flat
+    thickness: float = 1.0
+    color_map: str = "rainbow"
+    min_value: float = 0.0
+    max_value: float = 100.0
+    use_cad_geometry: bool = True
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
+class ParticleStudy:
+    """L7: Post Processing — particle study visualization."""
+    id: str = ""
+    name: str = ""
+    visualize: str = "erosion"  # erosion, accretion, absorption
+    statistical_study: bool = False
+    # Display
+    parameter: str = "velocity"
+    appearance: str = "spheres"  # spheres, lines, points
+    color_map: str = "rainbow"
+    min_value: float = 0.0
+    max_value: float = 100.0
+    show_mesh: bool = False
+    # Wizard state
+    wizard_step: int = 1  # 1=type, 2=settings, 3=display
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
+class PointParameter:
+    """L7: Post Processing — point parameter extraction."""
+    id: str = ""
+    name: str = ""
+    selection_mode: str = "coordinates"  # reference, pattern, pick, coordinates
+    # Points
+    points: list = field(default_factory=list)  # [{x,y,z,label}]
+    # Parameters to extract
+    parameters: list = field(default_factory=lambda: ["temperature", "pressure", "velocity"])
+    coordinate_system: str = "global"  # global, local
+    export_to_excel: bool = False
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
+class SurfaceParameter:
+    """L7: Post Processing — surface parameter extraction."""
+    id: str = ""
+    name: str = ""
+    surfaces: list = field(default_factory=list)  # surface names
+    # Parameters to extract
+    parameters: list = field(default_factory=lambda: ["temperature", "heat_flux", "htc"])
+    # HTC determination
+    htc_determination: str = "default"  # default, manual_ref_temp
+    htc_reference_temp: float = 293.15
+    export_to_excel: bool = False
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
+class VolumeParameter:
+    """L7: Post Processing — volume parameter extraction."""
+    id: str = ""
+    name: str = ""
+    volumes: list = field(default_factory=list)  # component/volume names
+    # Parameters to extract
+    parameters: list = field(default_factory=lambda: ["temperature", "pressure", "velocity"])
+    export_to_excel: bool = False
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
+class PPXYPlot:
+    """L7: Post Processing — XY plot from sketch or probe line."""
+    id: str = ""
+    name: str = ""
+    sketch: str = ""  # sketch or line selection
+    # Abscissa (X-axis)
+    abscissa: str = "length"  # length, model_x, model_y, model_z, sketch_x, sketch_y, sketch_z
+    # Parameters (Y-axis)
+    parameters: list = field(default_factory=lambda: ["temperature"])
+    resolution: int = 100
+    coordinate_system: str = "global"
+    export_to_excel: bool = False
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
+class PPGoalPlot:
+    """L7: Post Processing — goal plot (post-processing version)."""
+    id: str = ""
+    name: str = ""
+    goals: list = field(default_factory=list)  # goal names/ids to plot
+    # Abscissa
+    abscissa: str = "iterations"  # iterations, physical_time, cpu_time, travels
+    group_by_parameter: bool = False
+    template: str = "default"  # default, custom
+    export_to_excel: bool = False
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
+class PPReport:
+    """L7: Post Processing — report generation."""
+    id: str = ""
+    name: str = "Report 1"
+    template: str = "default"  # default, custom
+    format: str = "html"  # html, word, pdf
+    # Documents tab
+    include_model_info: bool = True
+    include_mesh_info: bool = True
+    include_solver_info: bool = True
+    include_goals: bool = True
+    include_boundary_conditions: bool = True
+    # Pictures & Charts tab
+    include_cut_plots: bool = True
+    include_surface_plots: bool = True
+    include_xy_plots: bool = True
+    include_goal_plots: bool = True
+    include_convergence: bool = True
+    chart_resolution: str = "medium"  # low, medium, high
+    # IDs tab
+    include_geometry_ids: bool = True
+    include_material_ids: bool = True
+    include_bc_ids: bool = True
+    include_goal_ids: bool = True
+    generated: bool = False
+    generated_at: str = ""
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
+class PPAnimation:
+    """L7: Post Processing — animation settings."""
+    id: str = ""
+    name: str = ""
+    # Video settings
+    video_resolution: str = "800x600"  # 640x480, 800x600, 1024x768, 1280x720, 1920x1080
+    frame_rate: int = 30
+    duration_sec: float = 10.0
+    output_format: str = "avi"  # avi, gif, mp4
+    # Timeline
+    start_iteration: int = 1
+    end_iteration: int = 100
+    step: int = 1
+    # Parts to animate
+    animate_cut_plots: bool = True
+    animate_surface_plots: bool = False
+    animate_isosurfaces: bool = False
+    animate_trajectories: bool = False
+    # Camera
+    rotate_camera: bool = False
+    rotation_axis: str = "Y"  # X, Y, Z
+    rotation_angle: float = 360.0
+    # Wizard state
+    wizard_step: int = 1  # 1=options, 2=parts, 3=export
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
+class ResultsSummary:
+    """L7: Post Processing — results summary / overview."""
+    # Model info
+    project_name: str = ""
+    configuration: str = "Default"
+    analysis_type: str = "Internal"
+    # Mesh info
+    total_cells: int = 0
+    fluid_cells: int = 0
+    solid_cells: int = 0
+    partial_cells: int = 0
+    # Domain
+    domain_x_min: float = 0.0
+    domain_x_max: float = 0.0
+    domain_y_min: float = 0.0
+    domain_y_max: float = 0.0
+    domain_z_min: float = 0.0
+    domain_z_max: float = 0.0
+    # Physics flags
+    heat_conduction_in_solids: bool = True
+    radiation: bool = False
+    gravity: bool = False
+    time_dependent: bool = False
+    # Solution info
+    total_iterations: int = 0
+    solution_time_sec: float = 0.0
+    cpu_time_sec: float = 0.0
+    # Warnings
+    warnings: list = field(default_factory=list)
+    # Status
+    solver_status: str = ""  # converged, diverged, etc.
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
+class InputVariable:
+    """L8: Parametric Study — one input variable to vary."""
+    id: str = ""
+    name: str = ""
+    source: str = "simulation"  # simulation, dimension, design_table
+    # Source details
+    category: str = ""  # general_settings, mesh_settings, boundary_conditions, extrusion, assembly_mate, pattern
+    bc_name: str = ""  # BC name if source=boundary_conditions
+    property_name: str = ""  # e.g. mass_flow_rate, temperature, pressure
+    current_value: float = 0.0
+    unit: str = ""
+    # Variation type
+    variation_type: str = "discrete_values"  # discrete_values, range_with_number, range_with_step, step_around
+    # Discrete Values
+    discrete_values: list = field(default_factory=list)  # [val1, val2, ...]
+    # Range with Number
+    range_min: float = 0.0
+    range_max: float = 100.0
+    range_number: int = 5
+    # Range with Step
+    step_min: float = 0.0
+    step_max: float = 100.0
+    step_size: float = 10.0
+    # Step Around
+    step_around_center: float = 50.0
+    step_around_n_minus: int = 2
+    step_around_n_plus: int = 2
+    step_around_size: float = 10.0
+
+    def get_values(self) -> list:
+        """Generate the list of values based on variation type."""
+        if self.variation_type == "discrete_values":
+            return self.discrete_values if self.discrete_values else [self.current_value]
+        elif self.variation_type == "range_with_number":
+            n = max(self.range_number, 1)
+            if n == 1:
+                return [self.range_min]
+            step = (self.range_max - self.range_min) / (n - 1)
+            return [round(self.range_min + i * step, 6) for i in range(n)]
+        elif self.variation_type == "range_with_step":
+            if self.step_size <= 0:
+                return [self.step_min]
+            vals = []
+            v = self.step_min
+            while v <= self.step_max + 1e-9:
+                vals.append(round(v, 6))
+                v += self.step_size
+            return vals
+        elif self.variation_type == "step_around":
+            vals = []
+            for i in range(-self.step_around_n_minus, self.step_around_n_plus + 1):
+                vals.append(round(self.step_around_center + i * self.step_around_size, 6))
+            return vals
+        return [self.current_value]
+
+    def to_dict(self) -> dict:
+        d = asdict(self)
+        d["computed_values"] = self.get_values()
+        return d
+
+
+@dataclass
+class OutputVariable:
+    """L8: Parametric Study — output variable (goal to track)."""
+    id: str = ""
+    name: str = ""  # goal name
+    goal_id: str = ""
+    # Goal Optimization only
+    use_for_optimization: bool = False
+    target_value: float = 0.0
+    target_unit: str = ""
+    tolerance: float = 0.0
+    # Initial values (optimization hints)
+    at_variable_minimum: bool = False
+    at_var_min_value: float = 0.0
+    at_variable_maximum: bool = False
+    at_var_max_value: float = 0.0
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
+class DesignPoint:
+    """L8: Parametric Study — one design point (scenario row)."""
+    id: str = ""
+    name: str = "Design Point 1"
+    # Input values: {input_var_id: value}
+    input_values: dict = field(default_factory=dict)
+    # Output results: {output_var_name: value}
+    output_results: dict = field(default_factory=dict)
+    # Execution
+    status: str = "not_calculated"  # not_calculated, running, finished, failed
+    run_at: str = "auto"  # auto, this_computer, network
+    number_of_cores: str = "use_all"  # use_all, 1, 2, 4, 8
+    close_monitor: bool = True
+    create_and_save_project: bool = True
+    # Results
+    mesh_cells: int = 0
+    solve_time_sec: float = 0.0
+    iterations: int = 0
+    # Optimization
+    target_value: float = 0.0
+    discrepancy: float = 0.0
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -963,7 +1494,7 @@ class SurfacePlot:
 
 @dataclass
 class ParametricVariant:
-    """L8: Parametric Study — one design variant."""
+    """L8: Parametric Study — one design variant (legacy compat)."""
     id: str = ""
     name: str = ""
     description: str = ""
@@ -980,23 +1511,67 @@ class ParametricVariant:
 
 @dataclass
 class ParametricStudy:
-    """L8: Parametric Study — "what-if" analysis."""
+    """L8: Parametric Study — full study (What If or Goal Optimization)."""
     id: str = ""
     name: str = ""
+    study_type: str = "what_if"  # what_if, goal_optimization
+    # Input Variables
+    input_variables: list = field(default_factory=list)  # [InputVariable]
+    # Output Variables (goals)
+    output_variables: list = field(default_factory=list)  # [OutputVariable]
+    # Design Points / Scenario Table
+    design_points: list = field(default_factory=list)  # [DesignPoint]
+    # Legacy variants (backward compat)
+    variants: list = field(default_factory=list)
     base_variant_id: str = ""
     parameters: list = field(default_factory=list)  # [{name, min, max, steps}]
-    variants: list = field(default_factory=list)
     auto_mesh: bool = True
+    # Execution settings
+    run_on_network: bool = False
+    excel_output: bool = False
+    save_format: str = "fwps"  # fwps file
+    # Compare results
+    compare_active_scene: bool = True
+    compare_surface_params: bool = True
+    compare_goal_plots: bool = True
 
     def to_dict(self) -> dict:
         return {
             "id": self.id,
             "name": self.name,
+            "study_type": self.study_type,
+            "input_variables": [v.to_dict() if hasattr(v, 'to_dict') else v for v in self.input_variables],
+            "output_variables": [v.to_dict() if hasattr(v, 'to_dict') else v for v in self.output_variables],
+            "design_points": [d.to_dict() if hasattr(d, 'to_dict') else d for d in self.design_points],
+            "variants": [v.to_dict() if hasattr(v, 'to_dict') else v for v in self.variants],
             "base_variant_id": self.base_variant_id,
             "parameters": self.parameters,
-            "variants": [v.to_dict() if hasattr(v, 'to_dict') else v for v in self.variants],
             "auto_mesh": self.auto_mesh,
+            "run_on_network": self.run_on_network,
+            "excel_output": self.excel_output,
+            "save_format": self.save_format,
+            "compare_active_scene": self.compare_active_scene,
+            "compare_surface_params": self.compare_surface_params,
+            "compare_goal_plots": self.compare_goal_plots,
         }
+
+
+@dataclass
+class CompareDefinition:
+    """L8: Compare Results — definition of what to compare."""
+    id: str = ""
+    name: str = "Compare 1"
+    # Data to compare
+    compare_active_scene: bool = True
+    compare_surface_parameters: list = field(default_factory=list)  # surface param names
+    compare_goal_plots: list = field(default_factory=list)  # goal names
+    # Projects to compare
+    project_configs: list = field(default_factory=list)  # [{name, variant_id, selected}]
+    # Display
+    side_by_side: bool = True
+
+    def to_dict(self) -> dict:
+        return asdict(self)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1044,8 +1619,20 @@ class FloEFDProject:
         # L7: Post Processing
         self.cut_plots: list[PostProcessingCutPlot] = []
         self.surface_plots: list[SurfacePlot] = []
+        self.isosurfaces: list[Isosurface] = []
+        self.flow_trajectories: list[FlowTrajectory] = []
+        self.particle_studies: list[ParticleStudy] = []
+        self.point_parameters: list[PointParameter] = []
+        self.surface_parameters: list[SurfaceParameter] = []
+        self.volume_parameters: list[VolumeParameter] = []
+        self.xy_plots: list[PPXYPlot] = []
+        self.pp_goal_plots: list[PPGoalPlot] = []
+        self.pp_reports: list[PPReport] = []
+        self.pp_animations: list[PPAnimation] = []
+        self.results_summary = ResultsSummary()
         # L8: Parametric Study
         self.parametric_studies: list[ParametricStudy] = []
+        self.compare_definitions: list[CompareDefinition] = []
         # Iteration history for convergence chart
         self.iteration_history: list[dict] = []  # [{iter, goals: {name: val}, residuals: {name: val}}]
 
@@ -1389,14 +1976,161 @@ class FloEFDProject:
         self.surface_plots.append(plot)
         return plot
 
+    # ── L7: Generic post-processing CRUD helpers ──────────────────────
+
+    def _pp_add(self, collection_name: str, cls, body: dict):
+        """Generic add for any L7 post-processing item."""
+        obj = cls(id=uuid.uuid4().hex[:8])
+        for k, v in body.items():
+            if hasattr(obj, k) and k != "id":
+                setattr(obj, k, v)
+        getattr(self, collection_name).append(obj)
+        return obj
+
+    def _pp_update(self, collection_name: str, item_id: str, body: dict):
+        for obj in getattr(self, collection_name):
+            if obj.id == item_id:
+                for k, v in body.items():
+                    if hasattr(obj, k) and k != "id":
+                        setattr(obj, k, v)
+                return obj
+        return None
+
+    def _pp_remove(self, collection_name: str, item_id: str) -> bool:
+        col = getattr(self, collection_name)
+        before = len(col)
+        setattr(self, collection_name, [o for o in col if o.id != item_id])
+        return len(getattr(self, collection_name)) < before
+
+    def build_results_summary(self) -> ResultsSummary:
+        """Populate results summary from current project state."""
+        rs = self.results_summary
+        rs.analysis_type = self.analysis_type
+        rs.total_cells = self.mesh_settings.total_cells
+        rs.fluid_cells = self.mesh_settings.fluid_cells
+        rs.solid_cells = self.mesh_settings.solid_cells
+        rs.partial_cells = self.mesh_settings.partial_cells
+        rs.domain_x_min = self.computational_domain.x_min
+        rs.domain_x_max = self.computational_domain.x_max
+        rs.domain_y_min = self.computational_domain.y_min
+        rs.domain_y_max = self.computational_domain.y_max
+        rs.domain_z_min = self.computational_domain.z_min
+        rs.domain_z_max = self.computational_domain.z_max
+        rs.heat_conduction_in_solids = self.heat_transfer.heat_conduction_in_solids
+        rs.radiation = self.heat_transfer.radiation_enabled
+        rs.gravity = self.analysis_config.gravity_enabled
+        rs.time_dependent = self.analysis_config.time_dependent
+        rs.total_iterations = self.solver_config.current_iteration
+        rs.solver_status = self.solver_config.convergence_status
+        return rs
+
     # ── Parametric Study ──────────────────────────────────────────────
 
-    def create_parametric_study(self, name: str) -> ParametricStudy:
+    def create_parametric_study(self, name: str, study_type: str = "what_if") -> ParametricStudy:
         study = ParametricStudy(
             id=uuid.uuid4().hex[:8],
             name=name,
+            study_type=study_type,
         )
         self.parametric_studies.append(study)
+        return study
+
+    def _find_study(self, study_id: str):
+        for s in self.parametric_studies:
+            if s.id == study_id:
+                return s
+        return None
+
+    def add_input_variable(self, study_id: str, body: dict) -> Optional[InputVariable]:
+        study = self._find_study(study_id)
+        if not study:
+            return None
+        iv = InputVariable(id=uuid.uuid4().hex[:8])
+        for k, v in body.items():
+            if hasattr(iv, k) and k != "id":
+                setattr(iv, k, v)
+        study.input_variables.append(iv)
+        return iv
+
+    def remove_input_variable(self, study_id: str, var_id: str) -> bool:
+        study = self._find_study(study_id)
+        if not study:
+            return False
+        before = len(study.input_variables)
+        study.input_variables = [v for v in study.input_variables if v.id != var_id]
+        return len(study.input_variables) < before
+
+    def add_output_variable(self, study_id: str, body: dict) -> Optional[OutputVariable]:
+        study = self._find_study(study_id)
+        if not study:
+            return None
+        ov = OutputVariable(id=uuid.uuid4().hex[:8])
+        for k, v in body.items():
+            if hasattr(ov, k) and k != "id":
+                setattr(ov, k, v)
+        study.output_variables.append(ov)
+        return ov
+
+    def remove_output_variable(self, study_id: str, var_id: str) -> bool:
+        study = self._find_study(study_id)
+        if not study:
+            return False
+        before = len(study.output_variables)
+        study.output_variables = [v for v in study.output_variables if v.id != var_id]
+        return len(study.output_variables) < before
+
+    def generate_design_points(self, study_id: str) -> list:
+        """Generate design points from input variable variations (cartesian product)."""
+        import itertools
+        study = self._find_study(study_id)
+        if not study or not study.input_variables:
+            return []
+        # Clear existing
+        study.design_points = []
+        # Build value lists per input variable
+        var_values = []
+        var_ids = []
+        for iv in study.input_variables:
+            vals = iv.get_values() if hasattr(iv, 'get_values') else [iv.current_value]
+            var_values.append(vals)
+            var_ids.append(iv.id)
+        # Cartesian product
+        for idx, combo in enumerate(itertools.product(*var_values)):
+            dp = DesignPoint(
+                id=uuid.uuid4().hex[:8],
+                name=f"Design Point {idx + 1}",
+                input_values={var_ids[i]: combo[i] for i in range(len(var_ids))},
+            )
+            study.design_points.append(dp)
+        return study.design_points
+
+    def run_design_point(self, study_id: str, dp_id: str) -> Optional[DesignPoint]:
+        """Simulate running one design point."""
+        study = self._find_study(study_id)
+        if not study:
+            return None
+        for dp in study.design_points:
+            if dp.id == dp_id:
+                dp.status = "running"
+                self.reset_solver()
+                for _ in range(30):
+                    self.simulate_iteration()
+                dp.status = "finished"
+                dp.mesh_cells = self.mesh_settings.total_cells
+                dp.iterations = self.solver_config.current_iteration
+                # Collect goal results
+                for g in self.goals:
+                    dp.output_results[g.name] = round(g.current_value, 4)
+                return dp
+        return None
+
+    def run_all_design_points(self, study_id: str) -> Optional[ParametricStudy]:
+        """Run all design points in a study."""
+        study = self._find_study(study_id)
+        if not study:
+            return None
+        for dp in study.design_points:
+            self.run_design_point(study_id, dp.id)
         return study
 
     def add_variant(self, study_id: str, name: str,
@@ -1429,6 +2163,13 @@ class FloEFDProject:
                         study.variants.append(new_variant)
                         return new_variant
         return None
+
+    # ── Compare ───────────────────────────────────────────────────────
+
+    def create_compare(self, name: str = "Compare 1") -> CompareDefinition:
+        cd = CompareDefinition(id=uuid.uuid4().hex[:8], name=name)
+        self.compare_definitions.append(cd)
+        return cd
 
     # ── Simulate mesh generation (mock) ───────────────────────────────
 

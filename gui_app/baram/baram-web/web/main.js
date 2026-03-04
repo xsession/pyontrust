@@ -52,6 +52,10 @@ async function apiPut(url, body) {
   });
 }
 
+async function apiDel(url) {
+  return apiFetch(url, { method: "DELETE" });
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 //  prj* — Project Manager  (replaces start_window.py + App singleton)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -193,7 +197,7 @@ const NAV_TREE = [
   { id: "solution-group", label: "Solution", icon: "▶️", page: null, expanded: true, children: [
     { id: "initialization", label: "Initialization", icon: "🎯", page: "initialization" },
     { id: "run-conditions", label: "Run Conditions", icon: "⏱️", page: "run-conditions" },
-    { id: "floefd-solve", label: "Solve & Monitor", icon: "📈", page: "floefd-solve" },
+    { id: "floefd-solve", label: "Solving & Monitoring (L6)", icon: "📈", page: "floefd-solve" },
     { id: "run", label: "Run (OpenFOAM)", icon: "▶️", page: "run" },
   ]},
   { id: "results-group", label: "Results", icon: "📊", page: null, expanded: true, children: [
@@ -5225,7 +5229,7 @@ async function fglAdd() { fglAddTyped("surface"); }
 
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  fslv* — L6: FloEFD Solve & Monitor
+//  fslv* — L6: FloEFD Solving & Monitoring (comprehensive)
 // ═══════════════════════════════════════════════════════════════════════════
 
 let fslvConfig = {};
@@ -5233,140 +5237,497 @@ let fslvHistory = [];
 let fslvChart = null;
 let fslvGoalChart = null;
 let fslvPollingId = null;
+let fslvRunConfig = {};
+let fslvPreviewPlots = [];
+let fslvGoalPlots = [];
+let fslvSolverLog = [];
+let fslvTermination = {};
+let fslvTab = 0;
+
+const FSLV_TABS = [
+  "Run Dialog", "Solver Window", "Goal Plot", "Preview Plots",
+  "Finish Conditions", "Termination", "Residuals", "Goal Convergence"
+];
 
 async function fslvLoad() {
-  fslvConfig = await apiFetch("/api/floefd/solver") || {};
-  fslvHistory = await apiFetch("/api/floefd/solver/history") || [];
+  const [cfg, hist, rc, pp, gp, log, term] = await Promise.all([
+    apiFetch("/api/floefd/solver"),
+    apiFetch("/api/floefd/solver/history"),
+    apiFetch("/api/floefd/solver/run-config"),
+    apiFetch("/api/floefd/solver/preview-plots"),
+    apiFetch("/api/floefd/solver/goal-plots"),
+    apiFetch("/api/floefd/solver/log"),
+    apiFetch("/api/floefd/solver/termination"),
+  ]);
+  fslvConfig = cfg || {};
+  fslvHistory = hist || [];
+  fslvRunConfig = rc || {};
+  fslvPreviewPlots = pp || [];
+  fslvGoalPlots = gp || [];
+  fslvSolverLog = log || [];
+  fslvTermination = term || {};
 }
 
 function fslvRender() {
-  const sc = fslvConfig;
-  const statusClass = sc.convergence_status === "converged" ? "text-green" :
-                      sc.convergence_status === "diverging" ? "text-red" :
-                      sc.convergence_status === "converging" ? "text-yellow" : "text-dim";
+  const tabs = FSLV_TABS.map((t, i) =>
+    `<button class="${i === fslvTab ? 'tab active' : 'tab'}" onclick="fslvTab=${i};fslvRender()">${t}</button>`
+  ).join("");
+
+  let body = "";
+  switch (fslvTab) {
+    case 0: body = _fslvRunDialog(); break;
+    case 1: body = _fslvSolverWindow(); break;
+    case 2: body = _fslvGoalPlot(); break;
+    case 3: body = _fslvPreviewPlots(); break;
+    case 4: body = _fslvFinishCond(); break;
+    case 5: body = _fslvTermination(); break;
+    case 6: body = _fslvResiduals(); break;
+    case 7: body = _fslvGoalConv(); break;
+  }
 
   $("#pageContent").innerHTML = `
-    <div class="page-header">📈 Solve & Monitor</div>
+    <div class="page-header">📈 Solving & Monitoring (L6)</div>
+    <p class="text-dim mb-8">
+      Full Navier-Stokes equations solved — Conservation of Mass, Momentum & Energy.
+      FloEFD uses goal-based termination criteria. Goals determined after <strong>1 travel</strong>.
+    </p>
+    <div class="tab-bar" style="flex-wrap:wrap">${tabs}</div>
+    <div style="margin-top:16px">${body}</div>
+  `;
 
+  // Init charts if on chart tabs
+  if (fslvTab === 6) { setTimeout(() => { _fslvInitResidualChart(); _fslvUpdateResidualChart(); }, 50); }
+  if (fslvTab === 7) { setTimeout(() => { _fslvInitGoalChart(); _fslvUpdateGoalChart(); }, 50); }
+}
+
+/* ─── 0. Run Dialog ───────────────────────────────────────────────── */
+function _fslvRunDialog() {
+  const rc = fslvRunConfig;
+  const sc = fslvConfig;
+  const statusColor = sc.convergence_status === "converged" ? "#10b981" :
+                      sc.convergence_status === "diverging" ? "#ef4444" :
+                      sc.convergence_status === "converging" ? "#f59e0b" : "#6c7086";
+  return `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
       <div>
-        <h3 style="margin:0 0 12px;font-size:14px;color:var(--accent)">Solver Configuration</h3>
-        <div class="form-section">
-          <label>Turbulence Model</label>
-          <select id="fslvTurbModel">
-            <option value="k-epsilon" ${sc.turbulence_model === "k-epsilon" ? "selected" : ""}>k-ε (FloEFD Modified)</option>
-            <option value="k-omega" ${sc.turbulence_model === "k-omega" ? "selected" : ""}>k-ω SST</option>
-            <option value="laminar" ${sc.turbulence_model === "laminar" ? "selected" : ""}>Laminar Only</option>
-          </select>
+        <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:16px">
+          <h3 style="margin:0 0 12px;color:var(--accent)">Run Configuration</h3>
+          <div style="border:1px solid var(--border);border-radius:4px;padding:12px;margin-bottom:12px">
+            <div style="font-weight:600;margin-bottom:8px;font-size:13px">Startup</div>
+            <div class="checkbox-row mb-8"><input type="checkbox" id="fslvMeshEn" ${rc.mesh_enabled!==false?"checked":""}><span>Mesh</span></div>
+            <div class="checkbox-row mb-8"><input type="checkbox" id="fslvSolveEn" ${rc.solve_enabled!==false?"checked":""}><span>Solve</span></div>
+            <div style="margin-left:24px;margin-bottom:8px">
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
+                <input type="radio" name="fslvCalcType" value="new" ${rc.new_calculation!==false?"checked":""}> New calculation
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
+                <input type="radio" name="fslvCalcType" value="continue" ${rc.new_calculation===false?"checked":""}> Continue calculation
+              </label>
+            </div>
+            <div class="checkbox-row"><input type="checkbox" id="fslvPrevRes" ${rc.take_previous_results?"checked":""}><span>Take previous results</span></div>
+          </div>
+          <div style="border:1px solid var(--border);border-radius:4px;padding:12px;margin-bottom:12px">
+            <div style="font-weight:600;margin-bottom:8px;font-size:13px">CPU and memory usage</div>
+            <div class="form-section" style="margin-bottom:8px">
+              <label>Run at:</label>
+              <select id="fslvRunAt"><option ${rc.run_at==="this_computer"?"selected":""}>This computer</option><option ${rc.run_at==="network"?"selected":""}>Network</option></select>
+            </div>
+            <div class="checkbox-row mb-8"><input type="checkbox" id="fslvCloseCAD" ${rc.close_cad?"checked":""}><span>Close CAD</span></div>
+            <div class="form-section"><label>Use</label>
+              <div style="display:flex;gap:8px;align-items:center">
+                <select id="fslvCPU" style="width:80px">${[1,2,4,8,12,16].map(n=>`<option ${rc.cpu_count===n?"selected":""}>${n}</option>`).join("")}</select>
+                <span class="text-dim" style="font-size:12px">CPU(s)</span>
+              </div>
+            </div>
+          </div>
+          <div style="border:1px solid var(--border);border-radius:4px;padding:12px">
+            <div style="font-weight:600;margin-bottom:8px;font-size:13px">Results processing after finishing</div>
+            <div class="checkbox-row mb-8"><input type="checkbox" id="fslvLoadRes" ${rc.load_results!==false?"checked":""}><span>Load results</span></div>
+            <button class="btn" style="font-size:11px" disabled>Batch Results…</button>
+          </div>
         </div>
-        <div class="form-section">
-          <label>Wall Function</label>
-          <select id="fslvWallFunc">
-            <option value="modified" ${sc.wall_function === "modified" ? "selected" : ""}>Modified (FloEFD)</option>
-            <option value="standard" ${sc.wall_function === "standard" ? "selected" : ""}>Standard</option>
-          </select>
+      </div>
+      <div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+          <div class="stat-card"><div class="stat-value">${sc.current_iteration||0}</div><div class="stat-label">Iteration</div></div>
+          <div class="stat-card"><div class="stat-value" style="color:${statusColor}">${(sc.convergence_status||'not_started').replace(/_/g,' ')}</div><div class="stat-label">Status</div></div>
         </div>
-        <div class="form-section">
-          <label>Max Iterations</label>
-          <input type="number" id="fslvMaxIter" value="${sc.max_iterations || 200}" min="1" max="10000">
+        <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:16px">
+          <h3 style="margin:0 0 8px;color:var(--accent)">Solver Settings</h3>
+          <div class="form-section"><label>Turbulence Model</label>
+            <select id="fslvTurbModel">
+              <option value="k-epsilon" ${sc.turbulence_model==="k-epsilon"?"selected":""}>k-ε (FloEFD Modified)</option>
+              <option value="k-omega" ${sc.turbulence_model==="k-omega"?"selected":""}>k-ω SST</option>
+              <option value="laminar" ${sc.turbulence_model==="laminar"?"selected":""}>Laminar Only</option>
+            </select>
+          </div>
+          <div class="form-section"><label>Wall Function</label>
+            <select id="fslvWallFunc">
+              <option value="modified" ${sc.wall_function==="modified"?"selected":""}>Modified (FloEFD)</option>
+              <option value="standard" ${sc.wall_function==="standard"?"selected":""}>Standard</option>
+            </select>
+          </div>
+          <div class="form-section"><label>Max Iterations</label><input type="number" id="fslvMaxIter" value="${sc.max_iterations||200}" min="1" max="10000"></div>
+          <div class="form-section"><label>Convergence Criterion</label><input type="number" id="fslvConvCrit" value="${sc.convergence_criterion||0.0001}" step="0.0001" min="0"></div>
+          <div class="checkbox-row"><input type="checkbox" id="fslvAutoConv" ${sc.auto_convergence!==false?"checked":""}><span>Automatic convergence control</span></div>
         </div>
-        <div class="form-section">
-          <label>Finish Condition</label>
-          <select id="fslvFinish">
-            <option value="goals" ${sc.finish_conditions === "goals" ? "selected" : ""}>Goals Converged</option>
-            <option value="iterations" ${sc.finish_conditions === "iterations" ? "selected" : ""}>Max Iterations</option>
-            <option value="both" ${sc.finish_conditions === "both" ? "selected" : ""}>Goals OR Iterations</option>
-          </select>
-        </div>
-        <div class="checkbox-row mb-8">
-          <input type="checkbox" id="fslvAutoConv" ${sc.auto_convergence !== false ? "checked" : ""}>
-          <span>Automatic convergence control</span>
-        </div>
-
         <div class="btn-row">
-          <button class="btn btn-accent" onclick="fslvSaveConfig()">💾 Save</button>
-          <button class="btn btn-green" onclick="fslvRun(50)">▶ Run 50 Iterations</button>
+          <button class="btn btn-accent" onclick="fslvSaveAll()">💾 Save</button>
+          <button class="btn btn-green" onclick="fslvRun(50)">▶ Run 50</button>
           <button class="btn btn-green" onclick="fslvRun(200)">▶ Run All</button>
           <button class="btn btn-red" onclick="fslvReset()">⏹ Reset</button>
         </div>
       </div>
-
-      <div>
-        <h3 style="margin:0 0 12px;font-size:14px;color:var(--accent)">Status</h3>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
-          <div class="stat-card"><div class="stat-value">${sc.current_iteration || 0}</div><div class="stat-label">Iteration</div></div>
-          <div class="stat-card"><div class="stat-value ${statusClass}">${(sc.convergence_status || 'not_started').replace('_', ' ')}</div><div class="stat-label">Status</div></div>
-        </div>
-
-        <h3 style="margin:12px 0 8px;font-size:14px;color:var(--fg-dim)">Goal Values</h3>
-        <div id="fslvGoalTable"></div>
-      </div>
-    </div>
-
-    <h3 style="margin:20px 0 12px;font-size:14px;color:var(--accent)">Residual Plot</h3>
-    <div style="height:250px;position:relative;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:8px">
-      <canvas id="fslvResidualChart"></canvas>
-    </div>
-
-    <h3 style="margin:20px 0 12px;font-size:14px;color:var(--accent)">Goal Convergence Plot</h3>
-    <div style="height:220px;position:relative;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:8px">
-      <canvas id="fslvGoalChart"></canvas>
     </div>
   `;
-
-  fslvInitCharts();
-  fslvUpdateFromHistory();
-  fslvRenderGoalTable();
 }
 
-function fslvInitCharts() {
-  const rc = $("#fslvResidualChart");
-  if (rc && typeof Chart !== "undefined") {
-    fslvChart = new Chart(rc, {
-      type: "line",
-      data: { labels: [], datasets: [] },
-      options: {
-        responsive: true, maintainAspectRatio: false, animation: false,
-        scales: {
-          y: { type: "logarithmic", title: { display: true, text: "Residual", color: "#6c7086" },
-               ticks: { color: "#6c7086" }, grid: { color: "#313244" } },
-          x: { title: { display: true, text: "Iteration", color: "#6c7086" },
-               ticks: { color: "#6c7086" }, grid: { color: "#313244" } },
-        },
-        plugins: { legend: { labels: { color: "#cdd6f4", font: { size: 11 } } } },
-      },
-    });
-  }
-
-  const gc = $("#fslvGoalChart");
-  if (gc && typeof Chart !== "undefined") {
-    fslvGoalChart = new Chart(gc, {
-      type: "line",
-      data: { labels: [], datasets: [] },
-      options: {
-        responsive: true, maintainAspectRatio: false, animation: false,
-        scales: {
-          y: { title: { display: true, text: "Goal Value", color: "#6c7086" },
-               ticks: { color: "#6c7086" }, grid: { color: "#313244" } },
-          x: { title: { display: true, text: "Iteration", color: "#6c7086" },
-               ticks: { color: "#6c7086" }, grid: { color: "#313244" } },
-        },
-        plugins: { legend: { labels: { color: "#cdd6f4", font: { size: 11 } } } },
-      },
-    });
-  }
+/* ─── 1. Solver Window ────────────────────────────────────────────── */
+function _fslvSolverWindow() {
+  const sc = fslvConfig;
+  const rc = sc.run_config || {};
+  const infoRows = [
+    ["Status", sc.status_text || "Not started"],
+    ["Fluid cells", (sc.fluid_cells_info||0).toLocaleString()],
+    ["Partial cells", (sc.partial_cells_info||0).toLocaleString()],
+    ["Iterations", sc.current_iteration || 0],
+    ["Last iteration finished", sc.last_iteration_finished || "—"],
+    ["CPU time per last iteration", sc.cpu_time_per_iteration || "—"],
+    ["Travels", sc.travels || 0],
+    ["Iterations per 1 travel", sc.iterations_per_travel || 0],
+    ["Cpu time", sc.cpu_time || "—"],
+    ["Calculation time left", sc.calculation_time_left || "—"],
+  ];
+  const logRows = fslvSolverLog.map(e => `<tr><td>${e.event}</td><td style="text-align:center">${e.iteration}</td><td>${e.time}</td></tr>`).join("")
+    || '<tr><td colspan="3" class="text-dim">No log entries yet.</td></tr>';
+  const warnRows = (sc.warnings||[]).map(w => `<tr><td style="color:#f59e0b">${w.warning||w}</td><td>${w.comment||""}</td></tr>`).join("")
+    || '<tr><td colspan="2" class="text-dim">No warnings.</td></tr>';
+  return `
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:16px">
+      <h3 style="margin:0 0 8px;color:var(--accent)">Solver Window — Default Windows</h3>
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <button class="btn" style="font-size:11px" title="Stop">⏹</button>
+        <button class="btn" style="font-size:11px" title="Pause">⏸</button>
+        <button class="btn" style="font-size:11px" title="Manual Refinement">🔄</button>
+        <button class="btn" style="font-size:11px" title="Preview refresh">🔃</button>
+        <button class="btn" style="font-size:11px" title="Pin Preview">📌</button>
+        <span style="border-left:1px solid var(--border);margin:0 4px"></span>
+        <button class="btn" style="font-size:11px" title="Calculation Control">📋</button>
+        <button class="btn" style="font-size:11px" title="Info">ℹ️</button>
+        <button class="btn" style="font-size:11px" title="Warnings">⚠️</button>
+        <span style="border-left:1px solid var(--border);margin:0 4px"></span>
+        <button class="btn btn-accent" style="font-size:11px" onclick="fslvTab=2;fslvRender()">📊 Insert Goal Plot</button>
+        <button class="btn btn-accent" style="font-size:11px" onclick="fslvTab=3;fslvRender()">🖼 Insert Preview Plot</button>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div>
+        <h4 style="margin:0 0 8px;font-size:13px">ℹ️ Info Window</h4>
+        <table class="data-table" style="font-size:12px"><thead><tr><th>Parameter</th><th>Value</th></tr></thead>
+          <tbody>${infoRows.map(r => `<tr><td>${r[0]}</td><td style="font-weight:600">${r[1]}</td></tr>`).join("")}</tbody>
+        </table>
+        <h4 style="margin:12px 0 8px;font-size:13px">⚠️ Warnings</h4>
+        <table class="data-table" style="font-size:12px"><thead><tr><th>Warning</th><th>Comment</th></tr></thead>
+          <tbody>${warnRows}</tbody>
+        </table>
+      </div>
+      <div>
+        <h4 style="margin:0 0 8px;font-size:13px">📋 Log Window</h4>
+        <table class="data-table" style="font-size:12px"><thead><tr><th>Event</th><th>Iteration</th><th>Time</th></tr></thead>
+          <tbody>${logRows}</tbody>
+        </table>
+      </div>
+    </div>
+    <div class="btn-row mt-16">
+      <button class="btn btn-green" onclick="fslvRun(50)">▶ Run 50 Iterations</button>
+      <button class="btn btn-green" onclick="fslvRun(200)">▶ Run All</button>
+      <button class="btn btn-red" onclick="fslvReset()">⏹ Reset</button>
+    </div>
+  `;
 }
 
-function fslvUpdateFromHistory() {
+/* ─── 2. Goal Plot ────────────────────────────────────────────────── */
+function _fslvGoalPlot() {
+  const gpRows = fslvGoalPlots.map(gp => `<tr>
+    <td>${gp.name}</td><td>${gp.x_axis_units}</td><td>${gp.scale_mode}</td>
+    <td>${gp.display_value}</td><td>${gp.logarithmic_scale?"✅":"❌"}</td>
+    <td><button class="btn" style="padding:2px 6px;font-size:11px;color:var(--red)" onclick="fslvDeleteGP('${gp.id}')">✕</button></td>
+  </tr>`).join("") || '<tr><td colspan="6" class="text-dim">No goal plots. Add one below.</td></tr>';
+
+  return `
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:16px">
+      <h3 style="margin:0 0 8px;color:var(--accent)">Goal Plot Settings</h3>
+      <ul class="text-dim" style="font-size:13px;padding-left:20px;margin:0">
+        <li><strong>Add/Remove Goals</strong> — select which goals to monitor</li>
+        <li><strong>Display Value:</strong> Current, Minimum, Maximum, Average</li>
+        <li><strong>Scale:</strong> Absolute or Normalised</li>
+        <li><strong>X-axis:</strong> Iterations or Physical Time</li>
+        <li>Show analysis interval (default 0.5 Travels)</li>
+        <li>Manual Min/Max numerical settings</li>
+      </ul>
+    </div>
+    <table class="data-table" style="font-size:12px"><thead><tr>
+      <th>Name</th><th>X-Axis</th><th>Scale</th><th>Display</th><th>Log</th><th></th>
+    </tr></thead><tbody>${gpRows}</tbody></table>
+    <h4 style="margin:12px 0 8px;font-size:13px">Add Goal Plot</h4>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;align-items:flex-end">
+      <div class="form-section" style="margin:0"><label>Name</label><input type="text" id="fslvGPName" value="Goal plot ${fslvGoalPlots.length+1}"></div>
+      <div class="form-section" style="margin:0"><label>X-axis</label><select id="fslvGPXAxis"><option value="iterations">Iterations</option><option value="physical_time">Physical Time</option></select></div>
+      <div class="form-section" style="margin:0"><label>Scale</label><select id="fslvGPScale"><option value="absolute">Absolute Scale</option><option value="normalised">Normalised</option></select></div>
+      <div class="form-section" style="margin:0"><label>Display Value</label><select id="fslvGPDisp"><option value="current">Current Value</option><option value="minimum">Minimum</option><option value="maximum">Maximum</option><option value="average">Average</option></select></div>
+      <div class="form-section" style="margin:0"><label style="visibility:hidden">_</label>
+        <div style="display:flex;gap:4px">
+          <div class="checkbox-row"><input type="checkbox" id="fslvGPLog"><span style="font-size:11px">Log scale</span></div>
+          <div class="checkbox-row"><input type="checkbox" id="fslvGPInterval"><span style="font-size:11px">Show interval</span></div>
+        </div>
+      </div>
+      <button class="btn btn-accent" onclick="fslvAddGP()" style="height:34px">➕ Add</button>
+    </div>
+    <div class="info-box" style="margin-top:16px;font-size:12px">
+      <strong>Display Value options:</strong> Current Value, Minimum, Maximum, Average.<br>
+      Values monitored over the <strong>analysis interval</strong> (default = 0.5 Travels). Show Analysis Interval option displays the monitoring window on the chart.
+    </div>
+  `;
+}
+
+/* ─── 3. Preview Plots ────────────────────────────────────────────── */
+function _fslvPreviewPlots() {
+  const ppRows = fslvPreviewPlots.map(pp => `<tr>
+    <td>${pp.name}</td><td>${pp.plane_name}</td><td>${pp.mode}</td>
+    <td>${pp.parameter}</td><td>${pp.image_size}</td><td>${pp.auto_update?"✅":"❌"}</td>
+    <td><button class="btn" style="padding:2px 6px;font-size:11px;color:var(--red)" onclick="fslvDeletePP('${pp.id}')">✕</button></td>
+  </tr>`).join("") || '<tr><td colspan="7" class="text-dim">No preview plots. Add one below.</td></tr>';
+
+  return `
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:16px">
+      <h3 style="margin:0 0 8px;color:var(--accent)">Preview Plots — View Results During Solving</h3>
+      <ul class="text-dim" style="font-size:13px;padding-left:20px;margin:0">
+        <li>Select <strong>Plane</strong> and offset</li>
+        <li><strong>Mode:</strong> Contours, Isolines, Velocity Vectors</li>
+        <li><strong>Legend Min/Max:</strong> Manual or Auto</li>
+        <li>Image size options (400×300 to 2000×2000)</li>
+        <li>Options: Auto Update, Auto Caption, Auto Save, Show Box, Display Mesh, Interpolate</li>
+        <li>Region: Define CD bounding box (Xmin/Xmax, Ymin/Ymax, Zmin/Zmax)</li>
+      </ul>
+    </div>
+    <table class="data-table" style="font-size:12px"><thead><tr>
+      <th>Name</th><th>Plane</th><th>Mode</th><th>Parameter</th><th>Size</th><th>Auto</th><th></th>
+    </tr></thead><tbody>${ppRows}</tbody></table>
+    <h4 style="margin:12px 0 8px;font-size:13px">Add Preview Plot</h4>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;align-items:flex-end">
+      <div class="form-section" style="margin:0"><label>Name</label><input type="text" id="fslvPPName" value="Preview ${fslvPreviewPlots.length+1}"></div>
+      <div class="form-section" style="margin:0"><label>Plane</label><select id="fslvPPPlane"><option>Right Plane</option><option>Front Plane</option><option>Top Plane</option></select></div>
+      <div class="form-section" style="margin:0"><label>Offset (m)</label><input type="number" id="fslvPPOffset" value="0.005" step="0.001"></div>
+      <div class="form-section" style="margin:0"><label>Mode</label><select id="fslvPPMode"><option value="contours">Contours</option><option value="isolines">Isolines</option><option value="velocity_vectors">Velocity Vectors</option></select></div>
+      <div class="form-section" style="margin:0"><label>Parameter</label><select id="fslvPPParam"><option>Velocity</option><option>Pressure</option><option>Temperature</option><option>Density</option></select></div>
+      <div class="form-section" style="margin:0"><label>Image Size</label><select id="fslvPPSize"><option>400x300</option><option selected>640x480</option><option>800x600</option><option>1000x1000</option><option>2000x2000</option></select></div>
+      <button class="btn btn-accent" onclick="fslvAddPP()" style="height:34px">➕ Add</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px">
+      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:16px">
+        <h4 style="margin:0 0 8px;font-size:13px;color:var(--accent)">Options (per plot)</h4>
+        <div class="checkbox-row mb-8"><input type="checkbox" checked disabled><span>Auto update</span></div>
+        <div class="checkbox-row mb-8"><input type="checkbox" checked disabled><span>Auto caption</span></div>
+        <div class="checkbox-row mb-8"><input type="checkbox" disabled><span>Auto save</span></div>
+        <div class="checkbox-row mb-8"><input type="checkbox" checked disabled><span>Show box</span></div>
+        <div class="checkbox-row mb-8"><input type="checkbox" disabled><span>Display mesh</span></div>
+        <div class="checkbox-row"><input type="checkbox" checked disabled><span>Interpolate results</span></div>
+      </div>
+      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:16px">
+        <h4 style="margin:0 0 8px;font-size:13px;color:var(--accent)">Region (CD bounding box)</h4>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px">
+          <div class="form-section" style="margin:0"><label>Xmin (m)</label><input type="number" value="-0.000615" step="0.001" disabled></div>
+          <div class="form-section" style="margin:0"><label>Xmax (m)</label><input type="number" value="0.615615" step="0.001" disabled></div>
+          <div class="form-section" style="margin:0"><label>Ymin (m)</label><input type="number" value="-0.414828" step="0.001" disabled></div>
+          <div class="form-section" style="margin:0"><label>Ymax (m)</label><input type="number" value="0.414828" step="0.001" disabled></div>
+          <div class="form-section" style="margin:0"><label>Zmin (m)</label><input type="number" value="-0.414828" step="0.001" disabled></div>
+          <div class="form-section" style="margin:0"><label>Zmax (m)</label><input type="number" value="0.414828" step="0.001" disabled></div>
+        </div>
+        <button class="btn" style="margin-top:8px;font-size:11px" disabled>Reset</button>
+      </div>
+    </div>
+  `;
+}
+
+/* ─── 4. Finish Conditions ────────────────────────────────────────── */
+function _fslvFinishCond() {
+  const fc = fslvTermination;
+  return `
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:16px">
+      <h3 style="margin:0 0 8px;color:var(--accent)">Calculation Control Options — Finish Conditions</h3>
+      <p class="text-dim" style="font-size:13px;margin:0">
+        <strong>Finish Conditions:</strong> All or One must be satisfied. 6 options + Goals Convergence with Auto/Manual criteria.
+      </p>
+    </div>
+    <div style="max-width:700px">
+      <table class="data-table" style="font-size:12px">
+        <thead><tr><th>Parameter</th><th style="width:60px;text-align:center">On/Off</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr style="background:var(--bg-card)"><td colspan="3" style="font-weight:700">Finish Conditions <span class="text-dim" style="font-weight:400;margin-left:12px">${fc.finish_mode||"if_all_satisfied"}</span></td></tr>
+          <tr><td style="padding-left:24px">Minimum refinement number</td><td style="text-align:center"><input type="checkbox" checked disabled></td><td>0</td></tr>
+          <tr><td style="padding-left:24px">Maximum iterations</td><td style="text-align:center"><input type="checkbox" ${fc.max_iterations_enabled?"checked":""} disabled></td><td>${fc.max_iterations||100}</td></tr>
+          <tr><td style="padding-left:24px">Maximum calculation time</td><td style="text-align:center"><input type="checkbox" disabled></td><td>36000 s</td></tr>
+          <tr><td style="padding-left:24px">Maximum physical time</td><td style="text-align:center"><input type="checkbox" disabled></td><td>—</td></tr>
+          <tr><td style="padding-left:24px">Maximum travels</td><td style="text-align:center"><input type="checkbox" ${fc.max_travels_enabled?"checked":""} disabled></td><td>${fc.max_travels||"Auto"} ${typeof fc.max_travels==='number'?'':'4'}</td></tr>
+          <tr style="background:var(--bg-card)"><td style="padding-left:24px;font-weight:600">Goals Convergence</td><td style="text-align:center"><input type="checkbox" ${fc.goals_convergence_enabled!==false?"checked":""} disabled></td><td></td></tr>
+          <tr><td style="padding-left:48px">Analysis interval [travels]</td><td style="text-align:center"></td><td>Auto &nbsp; ${fc.analysis_interval||0.5}</td></tr>
+        </tbody>
+      </table>
+      <h4 style="margin:16px 0 8px;font-size:13px">Goals Criteria</h4>
+      <table class="data-table" style="font-size:12px">
+        <thead><tr><th>Goal</th><th style="width:60px;text-align:center">On/Off</th><th>Criteria</th><th>Value</th></tr></thead>
+        <tbody>
+          ${(fc.goals||[]).map(g => `<tr>
+            <td style="padding-left:24px">${g.name}</td>
+            <td style="text-align:center"><input type="checkbox" ${g.converged?"checked":""} disabled></td>
+            <td>${g.criterion==="Auto"?"Auto":"Manual"}</td>
+            <td>${g.criterion}</td>
+          </tr>`).join("") || '<tr><td colspan="4" class="text-dim">No goals defined.</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+    <div class="info-box" style="margin-top:16px;font-size:12px">
+      <strong>Tip:</strong> Go to <strong>Goals (L4b)</strong> → Finish Conditions tab to edit these settings directly.
+      The Calculation Control Options dialog in FloEFD has 4 tabs: Finish, Refinement, Saving, Advanced.
+    </div>
+  `;
+}
+
+/* ─── 5. Termination Criteria ─────────────────────────────────────── */
+function _fslvTermination() {
+  const t = fslvTermination;
+  const goalRows = (t.goals||[]).map(g => {
+    const bg = g.converged ? "background:#10b981;color:#fff;padding:2px 8px;border-radius:4px;font-size:11px" : "color:var(--fg-dim);font-size:11px";
+    return `<tr>
+      <td><span style="${bg}">${g.progress}</span></td>
+      <td>${g.criterion} ${g.unit}</td>
+      <td>${g.delta} ${g.unit}</td>
+    </tr>`;
+  }).join("") || '<tr><td colspan="3" class="text-dim">No goals.</td></tr>';
+
+  return `
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:16px">
+      <h3 style="margin:0 0 8px;color:var(--accent)">Termination Criteria</h3>
+      <ul class="text-dim" style="font-size:13px;padding-left:20px;margin:0">
+        <li>Full Navier-Stokes equations solved — Conservation of <strong>Mass / Momentum / Energy</strong></li>
+        <li>FloEFD uses additionally <strong>Goal based</strong> termination criteria</li>
+        <li>Goals Criteria determined after <strong>1 travel</strong></li>
+        <li>Looks at goal swing over analysis interval and assigns <strong>0.5% of difference</strong></li>
+        <li>Goal converged if delta is below convergence criteria</li>
+      </ul>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+      <div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+          <div class="stat-card"><div class="stat-value">${t.current_iteration||0}</div><div class="stat-label">Iteration</div></div>
+          <div class="stat-card"><div class="stat-value" style="color:${t.status==='converged'?'#10b981':t.status==='converging'?'#f59e0b':'#6c7086'}">${(t.status||'not_started').replace(/_/g,' ')}</div><div class="stat-label">Status</div></div>
+        </div>
+        <table class="data-table" style="font-size:12px">
+          <thead><tr><th>Progress</th><th>Criterion</th><th>Delta</th></tr></thead>
+          <tbody>${goalRows}</tbody>
+        </table>
+      </div>
+      <div>
+        <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:16px">
+          <h4 style="margin:0 0 8px;font-size:13px;color:var(--accent)">Finish Mode</h4>
+          <div style="font-size:13px;margin-bottom:8px"><strong>${t.finish_mode||"if_all_satisfied"}</strong></div>
+          <div style="font-size:12px" class="text-dim">
+            <div>Max Iterations: ${t.max_iterations||100} ${t.max_iterations_enabled?"✅":"❌"}</div>
+            <div>Max Travels: ${t.max_travels||"Auto"} ${t.max_travels_enabled?"✅":"❌"}</div>
+            <div>Goals Convergence: ${t.goals_convergence_enabled!==false?"✅ Enabled":"❌ Disabled"}</div>
+            <div>Analysis Interval: ${t.analysis_interval||0.5} travels</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+/* ─── 6. Residuals ────────────────────────────────────────────────── */
+function _fslvResiduals() {
+  return `
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:16px">
+      <h3 style="margin:0 0 8px;color:var(--accent)">Residual Plot (Log Scale)</h3>
+      <p class="text-dim" style="font-size:12px;margin:0">
+        Monitors Ux, Uy, Uz, P, k, ε (and T if heat transfer enabled). Logarithmic Y-axis.
+      </p>
+    </div>
+    <div style="height:350px;position:relative;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:8px">
+      <canvas id="fslvResidualChart"></canvas>
+    </div>
+    ${!fslvHistory.length ? '<p class="text-dim" style="margin-top:12px">No solver data yet. Run the solver from the Run Dialog tab.</p>' : ''}
+    <div class="btn-row mt-16">
+      <button class="btn btn-green" onclick="fslvRun(50)">▶ Run 50</button>
+      <button class="btn btn-green" onclick="fslvRun(200)">▶ Run All</button>
+    </div>
+  `;
+}
+
+/* ─── 7. Goal Convergence ─────────────────────────────────────────── */
+function _fslvGoalConv() {
+  return `
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:16px">
+      <h3 style="margin:0 0 8px;color:var(--accent)">Goal Convergence Plot</h3>
+      <p class="text-dim" style="font-size:12px;margin:0">
+        Monitors goal values over iterations. Shows current, min, max, avg.
+      </p>
+    </div>
+    <div style="height:300px;position:relative;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:8px">
+      <canvas id="fslvGoalChart"></canvas>
+    </div>
+    ${!fslvHistory.length ? '<p class="text-dim" style="margin-top:12px">No solver data yet.</p>' : ''}
+    <h3 style="margin:20px 0 8px;font-size:14px;color:var(--fg-dim)">Goal Values</h3>
+    <div id="fslvGoalTable"></div>
+  `;
+}
+
+/* ─── Chart init helpers ──────────────────────────────────────────── */
+function _fslvInitResidualChart() {
+  const rc = document.getElementById("fslvResidualChart");
+  if (!rc || typeof Chart === "undefined") return;
+  if (fslvChart) { fslvChart.destroy(); fslvChart = null; }
+  fslvChart = new Chart(rc, {
+    type: "line",
+    data: { labels: [], datasets: [] },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      scales: {
+        y: { type: "logarithmic", title: { display: true, text: "Residual", color: "#6c7086" },
+             ticks: { color: "#6c7086" }, grid: { color: "#313244" } },
+        x: { title: { display: true, text: "Iteration", color: "#6c7086" },
+             ticks: { color: "#6c7086" }, grid: { color: "#313244" } },
+      },
+      plugins: { legend: { labels: { color: "#cdd6f4", font: { size: 11 } } } },
+    },
+  });
+}
+
+function _fslvInitGoalChart() {
+  const gc = document.getElementById("fslvGoalChart");
+  if (!gc || typeof Chart === "undefined") return;
+  if (fslvGoalChart) { fslvGoalChart.destroy(); fslvGoalChart = null; }
+  fslvGoalChart = new Chart(gc, {
+    type: "line",
+    data: { labels: [], datasets: [] },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      scales: {
+        y: { title: { display: true, text: "Goal Value", color: "#6c7086" },
+             ticks: { color: "#6c7086" }, grid: { color: "#313244" } },
+        x: { title: { display: true, text: "Iteration", color: "#6c7086" },
+             ticks: { color: "#6c7086" }, grid: { color: "#313244" } },
+      },
+      plugins: { legend: { labels: { color: "#cdd6f4", font: { size: 11 } } } },
+    },
+  });
+}
+
+function _fslvUpdateResidualChart() {
   if (!fslvChart || !fslvHistory.length) return;
-
   const labels = fslvHistory.map(h => h.iteration);
-  const residualFields = Object.keys(fslvHistory[0]?.residuals || {});
-  const goalFields = Object.keys(fslvHistory[0]?.goals || {});
-
-  // Update residual chart
+  const fields = Object.keys(fslvHistory[0]?.residuals || {});
   fslvChart.data.labels = labels;
-  fslvChart.data.datasets = residualFields.map((f, i) => ({
+  fslvChart.data.datasets = fields.map((f, i) => ({
     label: f,
     data: fslvHistory.map(h => h.residuals[f]),
     borderColor: _CHART_COLORS[i % _CHART_COLORS.length],
@@ -5374,67 +5735,85 @@ function fslvUpdateFromHistory() {
     borderWidth: 1.5, pointRadius: 0,
   }));
   fslvChart.update();
-
-  // Update goal chart
-  if (fslvGoalChart && goalFields.length) {
-    fslvGoalChart.data.labels = labels;
-    fslvGoalChart.data.datasets = goalFields.map((f, i) => ({
-      label: f,
-      data: fslvHistory.map(h => h.goals[f]),
-      borderColor: _CHART_COLORS[(i + 3) % _CHART_COLORS.length],
-      backgroundColor: "transparent",
-      borderWidth: 2, pointRadius: 0,
-    }));
-    fslvGoalChart.update();
-  }
 }
 
-async function fslvRenderGoalTable() {
-  const goals = await apiFetch("/api/floefd/goals") || [];
-  const el = $("#fslvGoalTable");
+function _fslvUpdateGoalChart() {
+  if (!fslvGoalChart || !fslvHistory.length) return;
+  const labels = fslvHistory.map(h => h.iteration);
+  const fields = Object.keys(fslvHistory[0]?.goals || {});
+  fslvGoalChart.data.labels = labels;
+  fslvGoalChart.data.datasets = fields.map((f, i) => ({
+    label: f,
+    data: fslvHistory.map(h => h.goals[f]),
+    borderColor: _CHART_COLORS[(i + 3) % _CHART_COLORS.length],
+    backgroundColor: "transparent",
+    borderWidth: 2, pointRadius: 0,
+  }));
+  fslvGoalChart.update();
+  // Also render goal table if present
+  _fslvRenderGoalTableInline();
+}
+
+async function _fslvRenderGoalTableInline() {
+  const el = document.getElementById("fslvGoalTable");
   if (!el) return;
+  const goals = await apiFetch("/api/floefd/goals") || [];
   if (!goals.length) {
     el.innerHTML = '<div class="text-dim" style="font-size:12px">No goals defined. Add them in the Goals page.</div>';
     return;
   }
-  const rows = goals.map(g => `
-    <tr>
-      <td>${g.name}</td>
-      <td>${g.parameter}</td>
-      <td>${g.current_value ? g.current_value.toFixed(4) : '—'}</td>
-      <td>${g.min_value ? g.min_value.toFixed(4) : '—'}</td>
-      <td>${g.max_value ? g.max_value.toFixed(4) : '—'}</td>
-      <td>${g.averaged_value ? g.averaged_value.toFixed(4) : '—'}</td>
-      <td style="text-align:center">${g.is_converged ? '✅' : '⏳'}</td>
-    </tr>
-  `).join("");
+  const rows = goals.map(g => `<tr>
+    <td>${g.name}</td><td>${g.parameter}</td>
+    <td>${g.current_value ? g.current_value.toFixed(4) : '—'}</td>
+    <td>${g.min_value ? g.min_value.toFixed(4) : '—'}</td>
+    <td>${g.max_value ? g.max_value.toFixed(4) : '—'}</td>
+    <td>${g.averaged_value ? g.averaged_value.toFixed(4) : '—'}</td>
+    <td style="text-align:center">${g.is_converged ? '✅' : '⏳'}</td>
+  </tr>`).join("");
   el.innerHTML = `<table class="data-table" style="font-size:12px">
     <thead><tr><th>Goal</th><th>Param</th><th>Current</th><th>Min</th><th>Max</th><th>Avg</th><th>Conv</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
 }
 
-async function fslvSaveConfig() {
-  const body = {
+/* ─── Actions ─────────────────────────────────────────────────────── */
+async function fslvSaveAll() {
+  // Save solver config
+  const scBody = {
     turbulence_model: $("#fslvTurbModel")?.value || "k-epsilon",
     wall_function: $("#fslvWallFunc")?.value || "modified",
     max_iterations: parseInt($("#fslvMaxIter")?.value || 200),
-    finish_conditions: $("#fslvFinish")?.value || "goals",
+    convergence_criterion: parseFloat($("#fslvConvCrit")?.value || 0.0001),
     auto_convergence: !!$("#fslvAutoConv")?.checked,
   };
-  const d = await apiPut("/api/floefd/solver", body);
-  if (d && d.success) toast("✅ Solver config saved");
+  await apiPut("/api/floefd/solver", scBody);
+
+  // Save run config
+  const calcRadio = document.querySelector('input[name="fslvCalcType"]:checked');
+  const rcBody = {
+    mesh_enabled: !!$("#fslvMeshEn")?.checked,
+    solve_enabled: !!$("#fslvSolveEn")?.checked,
+    new_calculation: calcRadio ? calcRadio.value === "new" : true,
+    take_previous_results: !!$("#fslvPrevRes")?.checked,
+    run_at: ($("#fslvRunAt")?.value || "This computer").toLowerCase().replace(" ", "_"),
+    close_cad: !!$("#fslvCloseCAD")?.checked,
+    cpu_count: parseInt($("#fslvCPU")?.value || 4),
+    load_results: !!$("#fslvLoadRes")?.checked,
+  };
+  await apiPut("/api/floefd/solver/run-config", rcBody);
+  toast("✅ Solver & run config saved");
 }
+
+// Legacy compat
+async function fslvSaveConfig() { await fslvSaveAll(); }
 
 async function fslvRun(n) {
   toast(`⏳ Running ${n} iterations…`);
-  await fslvSaveConfig();
+  if (fslvTab === 0) await fslvSaveAll();
   const d = await apiPost("/api/floefd/solver/run", { iterations: n });
   if (d) {
     toast(`✅ Completed ${d.iterations_run} iterations — ${d.status}`);
-    fslvConfig.current_iteration = d.current_iteration;
-    fslvConfig.convergence_status = d.status;
-    fslvHistory = await apiFetch("/api/floefd/solver/history") || [];
+    await fslvLoad();
     fslvRender();
   }
 }
@@ -5444,283 +5823,2128 @@ async function fslvReset() {
   fslvConfig.current_iteration = 0;
   fslvConfig.convergence_status = "not_started";
   fslvHistory = [];
+  fslvSolverLog = [];
   toast("⏹ Solver reset");
   fslvRender();
 }
 
+async function fslvAddPP() {
+  const body = {
+    name: ($("#fslvPPName")?.value || "").trim() || "Preview",
+    plane_name: $("#fslvPPPlane")?.value || "Right Plane",
+    plane_offset: parseFloat($("#fslvPPOffset")?.value || 0.005),
+    mode: $("#fslvPPMode")?.value || "contours",
+    parameter: $("#fslvPPParam")?.value || "Velocity",
+    image_size: $("#fslvPPSize")?.value || "640x480",
+  };
+  const d = await apiPost("/api/floefd/solver/preview-plots", body);
+  if (d) { toast("✅ Preview plot added"); await fslvLoad(); fslvRender(); }
+}
+
+async function fslvDeletePP(id) {
+  const d = await apiFetch(`/api/floefd/solver/preview-plots/${id}`, { method: "DELETE" });
+  if (d && d.success) { toast("🗑 Removed"); await fslvLoad(); fslvRender(); }
+}
+
+async function fslvAddGP() {
+  const body = {
+    name: ($("#fslvGPName")?.value || "").trim() || "Goal plot",
+    x_axis_units: $("#fslvGPXAxis")?.value || "iterations",
+    scale_mode: $("#fslvGPScale")?.value || "absolute",
+    display_value: $("#fslvGPDisp")?.value || "current",
+    logarithmic_scale: !!$("#fslvGPLog")?.checked,
+    show_analysis_interval: !!$("#fslvGPInterval")?.checked,
+  };
+  const d = await apiPost("/api/floefd/solver/goal-plots", body);
+  if (d) { toast("✅ Goal plot added"); await fslvLoad(); fslvRender(); }
+}
+
+async function fslvDeleteGP(id) {
+  const d = await apiFetch(`/api/floefd/solver/goal-plots/${id}`, { method: "DELETE" });
+  if (d && d.success) { toast("🗑 Removed"); await fslvLoad(); fslvRender(); }
+}
+
+// Legacy compat
+async function fslvRenderGoalTable() { await _fslvRenderGoalTableInline(); }
+function fslvInitCharts() {}
+function fslvUpdateFromHistory() {}
+
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  pp* — L7: Post Processing
+//  pp* — L7: Post Processing  (14 tabs)
 // ═══════════════════════════════════════════════════════════════════════════
 
-let ppCutPlots = [];
-let ppSurfPlots = [];
+let ppCutPlots = [], ppSurfPlots = [], ppIsosurfaces = [], ppTrajectories = [];
+let ppParticleStudies = [], ppPointParams = [], ppSurfParams = [], ppVolParams = [];
+let ppXYPlots = [], ppGoalPlots = [], ppReports = [], ppAnimations = [];
+let ppResultsSummary = {};
+let ppTab = "overview";
 
 async function ppLoad() {
-  ppCutPlots = await apiFetch("/api/floefd/post/cut-plots") || [];
-  ppSurfPlots = await apiFetch("/api/floefd/post/surface-plots") || [];
+  const [cp, sp, iso, traj, part, ptp, sfp, vp, xyp, gp, rp, an, rs] = await Promise.all([
+    apiFetch("/api/floefd/post/cut-plots"),
+    apiFetch("/api/floefd/post/surface-plots"),
+    apiFetch("/api/floefd/post/isosurfaces"),
+    apiFetch("/api/floefd/post/flow-trajectories"),
+    apiFetch("/api/floefd/post/particle-studies"),
+    apiFetch("/api/floefd/post/point-parameters"),
+    apiFetch("/api/floefd/post/surface-parameters"),
+    apiFetch("/api/floefd/post/volume-parameters"),
+    apiFetch("/api/floefd/post/xy-plots"),
+    apiFetch("/api/floefd/post/goal-plots"),
+    apiFetch("/api/floefd/post/reports"),
+    apiFetch("/api/floefd/post/animations"),
+    apiFetch("/api/floefd/post/results-summary"),
+  ]);
+  ppCutPlots = cp || []; ppSurfPlots = sp || []; ppIsosurfaces = iso || [];
+  ppTrajectories = traj || []; ppParticleStudies = part || [];
+  ppPointParams = ptp || []; ppSurfParams = sfp || []; ppVolParams = vp || [];
+  ppXYPlots = xyp || []; ppGoalPlots = gp || []; ppReports = rp || [];
+  ppAnimations = an || []; ppResultsSummary = rs || {};
 }
 
 function ppRender() {
-  const cutRows = ppCutPlots.map(p => `
-    <tr><td>${p.name}</td><td>${p.parameter}</td><td>${p.plane}</td><td>${p.offset} m</td><td>${p.color_map}</td></tr>
-  `).join("") || '<tr><td colspan="5" class="text-dim">No cut plots.</td></tr>';
+  const tabs = [
+    ["overview","📊 Overview"],["results-summary","📋 Results Summary"],
+    ["cut-plots","✂️ Cut Plots"],["surface-plots","🎨 Surface Plots"],
+    ["isosurfaces","🔮 Isosurfaces"],["flow-trajectories","💨 Flow Trajectories"],
+    ["particle-studies","⚪ Particle Studies"],["point-params","📍 Point Parameters"],
+    ["surface-params","📐 Surface Parameters"],["volume-params","📦 Volume Parameters"],
+    ["xy-plots","📈 XY Plots"],["goal-plots","🎯 Goal Plots"],
+    ["reports","📄 Reports"],["animations","🎬 Animations"],
+  ];
+  const tabBar = tabs.map(([k,l])=>`<button class="tab-btn ${ppTab===k?"active":""}" onclick="ppTab='${k}';ppRender()">${l}</button>`).join("");
 
-  const surfRows = ppSurfPlots.map(p => `
-    <tr><td>${p.name}</td><td>${p.parameter}</td><td>${p.surface_name || '—'}</td><td>${p.color_map}</td></tr>
-  `).join("") || '<tr><td colspan="4" class="text-dim">No surface plots.</td></tr>';
+  let body = "";
+  if (ppTab === "overview") body = ppRenderOverview();
+  else if (ppTab === "results-summary") body = ppRenderResultsSummary();
+  else if (ppTab === "cut-plots") body = ppRenderCutPlots();
+  else if (ppTab === "surface-plots") body = ppRenderSurfacePlots();
+  else if (ppTab === "isosurfaces") body = ppRenderIsosurfaces();
+  else if (ppTab === "flow-trajectories") body = ppRenderFlowTrajectories();
+  else if (ppTab === "particle-studies") body = ppRenderParticleStudies();
+  else if (ppTab === "point-params") body = ppRenderPointParams();
+  else if (ppTab === "surface-params") body = ppRenderSurfaceParams();
+  else if (ppTab === "volume-params") body = ppRenderVolumeParams();
+  else if (ppTab === "xy-plots") body = ppRenderXYPlots();
+  else if (ppTab === "goal-plots") body = ppRenderGoalPlots();
+  else if (ppTab === "reports") body = ppRenderReports();
+  else if (ppTab === "animations") body = ppRenderAnimations();
 
   $("#pageContent").innerHTML = `
     <div class="page-header">🖼️ Post Processing</div>
-    <p class="text-dim mb-8">
-      Visualize simulation results with cut plots, surface plots, flow trajectories, and XY plots.
-      Export results to MS Office or standalone reports.
-    </p>
+    <div class="tab-bar" style="flex-wrap:wrap;gap:4px;margin-bottom:16px">${tabBar}</div>
+    ${body}`;
+}
 
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
-      <div>
-        <h3 style="margin:0 0 12px;font-size:14px;color:var(--accent)">Cut Plots</h3>
-        <table class="data-table mb-8">
-          <thead><tr><th>Name</th><th>Parameter</th><th>Plane</th><th>Offset</th><th>Colors</th></tr></thead>
-          <tbody>${cutRows}</tbody>
-        </table>
-
-        <h3 style="margin:12px 0 8px;font-size:13px;color:var(--fg-dim)">Add Cut Plot</h3>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end">
-          <div class="form-section" style="flex:1;min-width:140px;margin:0">
-            <label>Name</label>
-            <input type="text" id="ppCutName" value="Cut Plot ${ppCutPlots.length + 1}">
-          </div>
-          <div class="form-section" style="width:130px;margin:0">
-            <label>Parameter</label>
-            <select id="ppCutParam">
-              <option value="temperature">Temperature</option>
-              <option value="pressure">Pressure</option>
-              <option value="velocity">Velocity</option>
-              <option value="density">Density</option>
-            </select>
-          </div>
-          <div class="form-section" style="width:80px;margin:0">
-            <label>Plane</label>
-            <select id="ppCutPlane">
-              <option value="XY">XY</option>
-              <option value="XZ">XZ</option>
-              <option value="YZ">YZ</option>
-            </select>
-          </div>
-          <div class="form-section" style="width:90px;margin:0">
-            <label>Offset (m)</label>
-            <input type="number" id="ppCutOffset" value="0" step="0.01">
-          </div>
-          <button class="btn btn-accent" onclick="ppAddCut()" style="height:34px">➕</button>
-        </div>
-      </div>
-
-      <div>
-        <h3 style="margin:0 0 12px;font-size:14px;color:var(--accent)">Surface Plots</h3>
-        <table class="data-table mb-8">
-          <thead><tr><th>Name</th><th>Parameter</th><th>Surface</th><th>Colors</th></tr></thead>
-          <tbody>${surfRows}</tbody>
-        </table>
-
-        <h3 style="margin:12px 0 8px;font-size:13px;color:var(--fg-dim)">Add Surface Plot</h3>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end">
-          <div class="form-section" style="flex:1;min-width:140px;margin:0">
-            <label>Name</label>
-            <input type="text" id="ppSurfName" value="Surface Plot ${ppSurfPlots.length + 1}">
-          </div>
-          <div class="form-section" style="width:130px;margin:0">
-            <label>Parameter</label>
-            <select id="ppSurfParam">
-              <option value="temperature">Temperature</option>
-              <option value="pressure">Pressure</option>
-              <option value="heat_flux">Heat Flux</option>
-            </select>
-          </div>
-          <button class="btn btn-accent" onclick="ppAddSurf()" style="height:34px">➕</button>
-        </div>
-
-        <h3 style="margin:20px 0 12px;font-size:14px;color:var(--accent)">Visualization Options</h3>
-        <div class="checkbox-row"><input type="checkbox" checked><span>Show contours</span></div>
-        <div class="checkbox-row"><input type="checkbox"><span>Show isolines</span></div>
-        <div class="checkbox-row"><input type="checkbox"><span>Show flow vectors</span></div>
-        <div class="checkbox-row"><input type="checkbox"><span>Show streamlines</span></div>
-        <div class="form-section mt-8">
-          <label>Color Map</label>
-          <select>
-            <option value="rainbow">Rainbow</option>
-            <option value="thermal">Thermal (blue→red)</option>
-            <option value="grayscale">Grayscale</option>
-            <option value="diverging">Diverging</option>
-          </select>
-        </div>
-      </div>
+/* ── Tab 1: Overview ─────────────────────────────────────────────── */
+function ppRenderOverview() {
+  const items = [
+    ["Cut Plots", ppCutPlots.length, "✂️"],
+    ["Surface Plots", ppSurfPlots.length, "🎨"],
+    ["Isosurfaces", ppIsosurfaces.length, "🔮"],
+    ["Flow Trajectories", ppTrajectories.length, "💨"],
+    ["Particle Studies", ppParticleStudies.length, "⚪"],
+    ["Point Parameters", ppPointParams.length, "📍"],
+    ["Surface Parameters", ppSurfParams.length, "📐"],
+    ["Volume Parameters", ppVolParams.length, "📦"],
+    ["XY Plots", ppXYPlots.length, "📈"],
+    ["Goal Plots", ppGoalPlots.length, "🎯"],
+    ["Reports", ppReports.length, "📄"],
+    ["Animations", ppAnimations.length, "🎬"],
+  ];
+  const total = items.reduce((s,i) => s + i[1], 0);
+  const cards = items.map(([n,c,ic]) => `
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:12px;text-align:center">
+      <div style="font-size:22px">${ic}</div>
+      <div style="font-size:20px;font-weight:700;color:var(--accent)">${c}</div>
+      <div style="font-size:12px;color:var(--fg-dim)">${n}</div>
+    </div>`).join("");
+  return `
+    <p class="text-dim mb-8">Visualize simulation results with cut plots, surface plots, flow trajectories, and XY plots.
+      Export results to MS Office or standalone reports.</p>
+    <div class="kpi-row" style="margin-bottom:16px">
+      <div class="kpi-card"><div class="kpi-value">${total}</div><div class="kpi-label">Total Items</div></div>
+      <div class="kpi-card"><div class="kpi-value">${ppCutPlots.length + ppSurfPlots.length + ppIsosurfaces.length}</div><div class="kpi-label">Visualizations</div></div>
+      <div class="kpi-card"><div class="kpi-value">${ppXYPlots.length + ppGoalPlots.length}</div><div class="kpi-label">Plots</div></div>
+      <div class="kpi-card"><div class="kpi-value">${ppReports.length}</div><div class="kpi-label">Reports</div></div>
     </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px">${cards}</div>
 
     <h3 style="margin:20px 0 12px;font-size:14px;color:var(--accent)">3D Visualization Preview</h3>
     <div style="height:200px;background:#181825;border:1px solid var(--border);border-radius:var(--radius);
                 display:flex;align-items:center;justify-content:center;color:var(--fg-dim)">
-      <div style="text-align:center">
-        🖼️ 3D Result Visualization<br>
-        <small>(WebGL / Three.js — coming soon)</small>
+      <div style="text-align:center">🖼️ 3D Result Visualization<br><small>(WebGL / Three.js — coming soon)</small></div>
+    </div>`;
+}
+
+/* ── Tab 2: Results Summary ──────────────────────────────────────── */
+function ppRenderResultsSummary() {
+  const rs = ppResultsSummary;
+  return `
+    <h3 class="section-title">Model Information</h3>
+    <div class="two-col">
+      <div>
+        <div class="form-section"><label>Project Name</label><input type="text" value="${rs.project_name||''}" readonly></div>
+        <div class="form-section"><label>Configuration</label><input type="text" value="${rs.configuration||'Default'}" readonly></div>
+        <div class="form-section"><label>Analysis Type</label><input type="text" value="${rs.analysis_type||''}" readonly></div>
+      </div>
+      <div>
+        <div class="form-section"><label>Solver Status</label><input type="text" value="${rs.solver_status||'N/A'}" readonly></div>
+        <div class="form-section"><label>Total Iterations</label><input type="text" value="${rs.total_iterations||0}" readonly></div>
+        <div class="form-section"><label>CPU Time (s)</label><input type="text" value="${(rs.cpu_time_sec||0).toFixed(1)}" readonly></div>
       </div>
     </div>
-  `;
+
+    <h3 class="section-title" style="margin-top:16px">Mesh Information</h3>
+    <table class="data-table mb-8">
+      <thead><tr><th>Total Cells</th><th>Fluid Cells</th><th>Solid Cells</th><th>Partial Cells</th></tr></thead>
+      <tbody><tr>
+        <td>${rs.total_cells||0}</td><td>${rs.fluid_cells||0}</td>
+        <td>${rs.solid_cells||0}</td><td>${rs.partial_cells||0}</td>
+      </tr></tbody>
+    </table>
+
+    <h3 class="section-title">Computational Domain</h3>
+    <table class="data-table mb-8">
+      <thead><tr><th>Axis</th><th>Min</th><th>Max</th><th>Size</th></tr></thead>
+      <tbody>
+        <tr><td>X</td><td>${(rs.domain_x_min||0).toFixed(4)}</td><td>${(rs.domain_x_max||0).toFixed(4)}</td><td>${((rs.domain_x_max||0)-(rs.domain_x_min||0)).toFixed(4)}</td></tr>
+        <tr><td>Y</td><td>${(rs.domain_y_min||0).toFixed(4)}</td><td>${(rs.domain_y_max||0).toFixed(4)}</td><td>${((rs.domain_y_max||0)-(rs.domain_y_min||0)).toFixed(4)}</td></tr>
+        <tr><td>Z</td><td>${(rs.domain_z_min||0).toFixed(4)}</td><td>${(rs.domain_z_max||0).toFixed(4)}</td><td>${((rs.domain_z_max||0)-(rs.domain_z_min||0)).toFixed(4)}</td></tr>
+      </tbody>
+    </table>
+
+    <h3 class="section-title">Physics Flags</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="checkbox-row"><input type="checkbox" ${rs.heat_conduction_in_solids?"checked":""} disabled><span>Heat Conduction in Solids</span></div>
+      <div class="checkbox-row"><input type="checkbox" ${rs.radiation?"checked":""} disabled><span>Radiation</span></div>
+      <div class="checkbox-row"><input type="checkbox" ${rs.gravity?"checked":""} disabled><span>Gravity</span></div>
+      <div class="checkbox-row"><input type="checkbox" ${rs.time_dependent?"checked":""} disabled><span>Time Dependent</span></div>
+    </div>
+
+    ${(rs.warnings||[]).length ? `<h3 class="section-title" style="margin-top:16px">⚠️ Warnings</h3>
+      <ul style="color:var(--warning)">${(rs.warnings||[]).map(w => '<li>'+w+'</li>').join('')}</ul>` : ''}`;
+}
+
+/* ── helpers for parameter/plane/colormap selects ────────────────── */
+const _ppParams = ["temperature","pressure","velocity","density","mach","total_pressure","heat_flux","turbulent_energy","turbulent_intensity","vorticity","htc","mass_fraction","species_concentration"];
+const _ppColorMaps = ["rainbow","thermal","blue-red","grayscale","diverging"];
+const _ppPlanes = ["XY","XZ","YZ","custom"];
+function ppParamOpts(sel) { return _ppParams.map(p => `<option value="${p}" ${p===sel?"selected":""}>${p.replace(/_/g," ")}</option>`).join(""); }
+function ppColorOpts(sel) { return _ppColorMaps.map(c => `<option value="${c}" ${c===sel?"selected":""}>${c}</option>`).join(""); }
+function ppPlaneOpts(sel) { return _ppPlanes.map(p => `<option value="${p}" ${p===sel?"selected":""}>${p}</option>`).join(""); }
+
+/* ── Tab 3: Cut Plots ────────────────────────────────────────────── */
+function ppRenderCutPlots() {
+  const rows = ppCutPlots.map(p => `
+    <tr>
+      <td>${p.name}</td><td>${p.parameter}</td><td>${p.plane}</td>
+      <td>${p.offset} m</td><td>${p.color_map}</td>
+      <td>
+        ${p.show_contours?'<span class="badge">Contours</span>':''}
+        ${p.show_isolines?'<span class="badge">Isolines</span>':''}
+        ${p.show_vectors?'<span class="badge">Vectors</span>':''}
+        ${p.show_streamlines?'<span class="badge">Streamlines</span>':''}
+        ${p.show_mesh?'<span class="badge">Mesh</span>':''}
+      </td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-sm" onclick="ppEditCut('${p.id}')">✏️</button>
+        <button class="btn btn-sm btn-danger" onclick="ppDelCut('${p.id}')">🗑</button>
+      </td>
+    </tr>`).join("") || '<tr><td colspan="7" class="text-dim">No cut plots defined.</td></tr>';
+
+  return `
+    <h3 class="section-title">Cut Plots (${ppCutPlots.length})</h3>
+    <p class="text-dim mb-8">Cut plots display result parameters on a planar cross-section through the model.
+      Options include contours, isolines, vectors, streamlines, and mesh display. 3D profile extrusion available.</p>
+    <table class="data-table mb-8">
+      <thead><tr><th>Name</th><th>Parameter</th><th>Plane</th><th>Offset</th><th>Colors</th><th>Display</th><th>Actions</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+
+    <h3 style="margin:12px 0 8px;font-size:13px;color:var(--fg-dim)">Add Cut Plot</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div>
+        <div class="form-section"><label>Name</label><input type="text" id="ppCutName" value="Cut Plot ${ppCutPlots.length+1}"></div>
+        <div class="form-section"><label>Parameter</label><select id="ppCutParam">${ppParamOpts("temperature")}</select></div>
+        <div class="form-section"><label>Plane</label><select id="ppCutPlane">${ppPlaneOpts("XY")}</select></div>
+        <div class="form-section"><label>Offset (m)</label><input type="number" id="ppCutOffset" value="0" step="0.01"></div>
+        <div class="form-section"><label>Color Map</label><select id="ppCutCM">${ppColorOpts("rainbow")}</select></div>
+      </div>
+      <div>
+        <div class="form-section"><label>Levels</label><input type="number" id="ppCutLevels" value="20" min="2" max="256"></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppCutContours" checked><span>Show Contours</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppCutIsolines"><span>Show Isolines</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppCutVectors"><span>Show Vectors</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppCutStreamlines"><span>Show Streamlines</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppCutMesh"><span>Show Mesh</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppCutCAD" checked><span>Use CAD Geometry</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppCut3D"><span>3D Profile</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppCutDrag"><span>Dynamic Drag</span></div>
+      </div>
+    </div>
+    <button class="btn btn-accent mt-8" onclick="ppAddCut()">➕ Add Cut Plot</button>`;
 }
 
 async function ppAddCut() {
   const body = {
-    name: ($("#ppCutName")?.value || "").trim() || "Cut Plot",
-    parameter: $("#ppCutParam")?.value || "temperature",
-    plane: $("#ppCutPlane")?.value || "XY",
-    offset: parseFloat($("#ppCutOffset")?.value || 0),
+    name: ($("#ppCutName")?.value||"").trim()||"Cut Plot",
+    parameter: $("#ppCutParam")?.value||"temperature",
+    plane: $("#ppCutPlane")?.value||"XY",
+    offset: parseFloat($("#ppCutOffset")?.value||0),
+    color_map: $("#ppCutCM")?.value||"rainbow",
+    num_levels: parseInt($("#ppCutLevels")?.value||20),
+    show_contours: $("#ppCutContours")?.checked??true,
+    show_isolines: $("#ppCutIsolines")?.checked??false,
+    show_vectors: $("#ppCutVectors")?.checked??false,
+    show_streamlines: $("#ppCutStreamlines")?.checked??false,
+    show_mesh: $("#ppCutMesh")?.checked??false,
+    use_cad_geometry: $("#ppCutCAD")?.checked??true,
+    display_3d_profile: $("#ppCut3D")?.checked??false,
+    dynamic_drag: $("#ppCutDrag")?.checked??false,
   };
   const d = await apiPost("/api/floefd/post/cut-plots", body);
   if (d) { toast("✅ Cut plot added"); await ppLoad(); ppRender(); }
 }
+async function ppDelCut(id) {
+  const d = await apiDel(`/api/floefd/post/cut-plots/${id}`);
+  if (d&&d.success) { toast("🗑 Removed"); await ppLoad(); ppRender(); }
+}
+async function ppEditCut(id) {
+  const p = ppCutPlots.find(x=>x.id===id); if (!p) return;
+  const name = prompt("Cut Plot name:", p.name); if (name===null) return;
+  await apiPut(`/api/floefd/post/cut-plots/${id}`, {...p, name});
+  await ppLoad(); ppRender(); toast("✏️ Updated");
+}
+
+/* ── Tab 4: Surface Plots ────────────────────────────────────────── */
+function ppRenderSurfacePlots() {
+  const rows = ppSurfPlots.map(p => `
+    <tr>
+      <td>${p.name}</td><td>${p.parameter}</td><td>${p.surface_name||'—'}</td>
+      <td>${p.color_map}</td>
+      <td>
+        ${p.show_contours?'<span class="badge">Contours</span>':''}
+        ${p.show_isolines?'<span class="badge">Isolines</span>':''}
+        ${p.show_vectors?'<span class="badge">Vectors</span>':''}
+        ${p.show_mesh?'<span class="badge">Mesh</span>':''}
+      </td>
+      <td>
+        <button class="btn btn-sm" onclick="ppEditSurf('${p.id}')">✏️</button>
+        <button class="btn btn-sm btn-danger" onclick="ppDelSurf('${p.id}')">🗑</button>
+      </td>
+    </tr>`).join("") || '<tr><td colspan="6" class="text-dim">No surface plots.</td></tr>';
+
+  return `
+    <h3 class="section-title">Surface Plots (${ppSurfPlots.length})</h3>
+    <p class="text-dim mb-8">Surface plots show result parameters mapped onto selected geometry surfaces.
+      Display modes: contours, isolines, vectors, streamlines. Offset tip for probe display.</p>
+    <table class="data-table mb-8">
+      <thead><tr><th>Name</th><th>Parameter</th><th>Surface</th><th>Colors</th><th>Display</th><th>Actions</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+
+    <h3 style="margin:12px 0 8px;font-size:13px;color:var(--fg-dim)">Add Surface Plot</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div>
+        <div class="form-section"><label>Name</label><input type="text" id="ppSurfName" value="Surface Plot ${ppSurfPlots.length+1}"></div>
+        <div class="form-section"><label>Parameter</label><select id="ppSurfParam">${ppParamOpts("temperature")}</select></div>
+        <div class="form-section"><label>Surface Name</label><input type="text" id="ppSurfSurf" placeholder="e.g. Inlet, Wall-1"></div>
+        <div class="form-section"><label>Color Map</label><select id="ppSurfCM">${ppColorOpts("rainbow")}</select></div>
+      </div>
+      <div>
+        <div class="checkbox-row"><input type="checkbox" id="ppSurfContours" checked><span>Show Contours</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppSurfIsolines"><span>Show Isolines</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppSurfVectors"><span>Show Vectors</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppSurfStreamlines"><span>Show Streamlines</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppSurfMeshCB"><span>Show Mesh</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppSurfCAD" checked><span>Use CAD Geometry</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppSurfTip"><span>Offset Tip</span></div>
+        <div class="form-section"><label>Offset (m)</label><input type="number" id="ppSurfOffset" value="0" step="0.001"></div>
+      </div>
+    </div>
+    <button class="btn btn-accent mt-8" onclick="ppAddSurf()">➕ Add Surface Plot</button>`;
+}
 
 async function ppAddSurf() {
   const body = {
-    name: ($("#ppSurfName")?.value || "").trim() || "Surface Plot",
-    parameter: $("#ppSurfParam")?.value || "temperature",
+    name: ($("#ppSurfName")?.value||"").trim()||"Surface Plot",
+    parameter: $("#ppSurfParam")?.value||"temperature",
+    surface_name: ($("#ppSurfSurf")?.value||"").trim(),
+    color_map: $("#ppSurfCM")?.value||"rainbow",
+    show_contours: $("#ppSurfContours")?.checked??true,
+    show_isolines: $("#ppSurfIsolines")?.checked??false,
+    show_vectors: $("#ppSurfVectors")?.checked??false,
+    show_streamlines: $("#ppSurfStreamlines")?.checked??false,
+    show_mesh: $("#ppSurfMeshCB")?.checked??false,
+    use_cad_geometry: $("#ppSurfCAD")?.checked??true,
+    offset_tip: $("#ppSurfTip")?.checked??false,
+    offset: parseFloat($("#ppSurfOffset")?.value||0),
   };
   const d = await apiPost("/api/floefd/post/surface-plots", body);
   if (d) { toast("✅ Surface plot added"); await ppLoad(); ppRender(); }
 }
+async function ppDelSurf(id) {
+  const d = await apiDel(`/api/floefd/post/surface-plots/${id}`);
+  if (d&&d.success) { toast("🗑 Removed"); await ppLoad(); ppRender(); }
+}
+async function ppEditSurf(id) {
+  const p = ppSurfPlots.find(x=>x.id===id); if (!p) return;
+  const name = prompt("Surface Plot name:", p.name); if (name===null) return;
+  await apiPut(`/api/floefd/post/surface-plots/${id}`, {...p, name});
+  await ppLoad(); ppRender(); toast("✏️ Updated");
+}
+
+/* ── Tab 5: Isosurfaces ──────────────────────────────────────────── */
+function ppRenderIsosurfaces() {
+  const rows = ppIsosurfaces.map(p => {
+    const vals = [p.value1_enabled?p.value1:null, p.value2_enabled?p.value2:null, p.value3_enabled?p.value3:null].filter(v=>v!==null).join(", ");
+    return `<tr>
+      <td>${p.name}</td><td>${p.parameter}</td><td>${vals||'—'}</td><td>${p.color_map}</td>
+      <td>${p.show_mesh?'<span class="badge">Mesh</span>':''}</td>
+      <td>
+        <button class="btn btn-sm" onclick="ppEditIso('${p.id}')">✏️</button>
+        <button class="btn btn-sm btn-danger" onclick="ppDelPP('isosurfaces','${p.id}')">🗑</button>
+      </td>
+    </tr>`;
+  }).join("") || '<tr><td colspan="6" class="text-dim">No isosurfaces.</td></tr>';
+
+  return `
+    <h3 class="section-title">Isosurfaces (${ppIsosurfaces.length})</h3>
+    <p class="text-dim mb-8">Isosurfaces show 3D surfaces of constant parameter value within the flow field.
+      Up to 3 iso-values can be specified per isosurface.</p>
+    <table class="data-table mb-8">
+      <thead><tr><th>Name</th><th>Parameter</th><th>Values</th><th>Colors</th><th>Display</th><th>Actions</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+
+    <h3 style="margin:12px 0 8px;font-size:13px;color:var(--fg-dim)">Add Isosurface</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div>
+        <div class="form-section"><label>Name</label><input type="text" id="ppIsoName" value="Isosurface ${ppIsosurfaces.length+1}"></div>
+        <div class="form-section"><label>Parameter</label><select id="ppIsoParam">${ppParamOpts("temperature")}</select></div>
+        <div class="form-section"><label>Color Map</label><select id="ppIsoCM">${ppColorOpts("rainbow")}</select></div>
+      </div>
+      <div>
+        <div class="form-section"><label>Value 1</label>
+          <div style="display:flex;gap:6px;align-items:center">
+            <input type="checkbox" id="ppIsoV1E" checked> <input type="number" id="ppIsoV1" value="50" step="0.1" style="flex:1">
+          </div>
+        </div>
+        <div class="form-section"><label>Value 2</label>
+          <div style="display:flex;gap:6px;align-items:center">
+            <input type="checkbox" id="ppIsoV2E"> <input type="number" id="ppIsoV2" value="75" step="0.1" style="flex:1">
+          </div>
+        </div>
+        <div class="form-section"><label>Value 3</label>
+          <div style="display:flex;gap:6px;align-items:center">
+            <input type="checkbox" id="ppIsoV3E"> <input type="number" id="ppIsoV3" value="100" step="0.1" style="flex:1">
+          </div>
+        </div>
+        <div class="checkbox-row"><input type="checkbox" id="ppIsoMesh"><span>Show Mesh</span></div>
+      </div>
+    </div>
+    <button class="btn btn-accent mt-8" onclick="ppAddIso()">➕ Add Isosurface</button>`;
+}
+
+async function ppAddIso() {
+  const body = {
+    name: ($("#ppIsoName")?.value||"").trim()||"Isosurface",
+    parameter: $("#ppIsoParam")?.value||"temperature",
+    color_map: $("#ppIsoCM")?.value||"rainbow",
+    value1: parseFloat($("#ppIsoV1")?.value||0), value1_enabled: $("#ppIsoV1E")?.checked??true,
+    value2: parseFloat($("#ppIsoV2")?.value||0), value2_enabled: $("#ppIsoV2E")?.checked??false,
+    value3: parseFloat($("#ppIsoV3")?.value||0), value3_enabled: $("#ppIsoV3E")?.checked??false,
+    show_mesh: $("#ppIsoMesh")?.checked??false,
+  };
+  const d = await apiPost("/api/floefd/post/isosurfaces", body);
+  if (d) { toast("✅ Isosurface added"); await ppLoad(); ppRender(); }
+}
+async function ppEditIso(id) {
+  const p = ppIsosurfaces.find(x=>x.id===id); if (!p) return;
+  const name = prompt("Isosurface name:", p.name); if (name===null) return;
+  await apiPut(`/api/floefd/post/isosurfaces/${id}`, {...p, name});
+  await ppLoad(); ppRender(); toast("✏️ Updated");
+}
+
+/* ── Tab 6: Flow Trajectories ────────────────────────────────────── */
+function ppRenderFlowTrajectories() {
+  const appearances = {"pipes":"Pipes","lines":"Lines","lines_arrows":"Lines+Arrows","bands":"Bands","spheres":"Spheres","arrows":"Arrows","arrows_flat":"Arrows (Flat)"};
+  const rows = ppTrajectories.map(p => `
+    <tr>
+      <td>${p.name}</td><td>${p.parameter}</td><td>${p.start_mode}</td>
+      <td>${p.number}</td><td>${appearances[p.appearance]||p.appearance}</td><td>${p.constraints}</td>
+      <td>
+        <button class="btn btn-sm" onclick="ppEditTraj('${p.id}')">✏️</button>
+        <button class="btn btn-sm btn-danger" onclick="ppDelPP('flow-trajectories','${p.id}')">🗑</button>
+      </td>
+    </tr>`).join("") || '<tr><td colspan="7" class="text-dim">No flow trajectories.</td></tr>';
+
+  return `
+    <h3 class="section-title">Flow Trajectories (${ppTrajectories.length})</h3>
+    <p class="text-dim mb-8">Flow trajectories visualize fluid streamlines from selected starting points.
+      Configure appearance (pipes, lines, arrows, bands, spheres), direction constraints, and color-by parameter.</p>
+    <table class="data-table mb-8">
+      <thead><tr><th>Name</th><th>Color By</th><th>Start</th><th>Count</th><th>Appearance</th><th>Direction</th><th>Actions</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+
+    <h3 style="margin:12px 0 8px;font-size:13px;color:var(--fg-dim)">Add Flow Trajectory</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div>
+        <div class="form-section"><label>Name</label><input type="text" id="ppTrajName" value="Trajectory ${ppTrajectories.length+1}"></div>
+        <div class="form-section"><label>Color By Parameter</label><select id="ppTrajParam">${ppParamOpts("velocity")}</select></div>
+        <div class="form-section"><label>Starting Points</label>
+          <select id="ppTrajStart">
+            <option value="surface">From Surface</option>
+            <option value="pick_point">Pick Point</option>
+            <option value="coordinates">Coordinates</option>
+          </select>
+        </div>
+        <div class="form-section"><label>Start Surface</label><input type="text" id="ppTrajSurf" placeholder="e.g. Inlet"></div>
+        <div class="form-section"><label>Number of Trajectories</label><input type="number" id="ppTrajNum" value="20" min="1" max="1000"></div>
+      </div>
+      <div>
+        <div class="form-section"><label>Appearance</label>
+          <select id="ppTrajApp">
+            <option value="lines">Lines</option>
+            <option value="lines_arrows">Lines + Arrows</option>
+            <option value="pipes">Pipes</option>
+            <option value="bands">Bands</option>
+            <option value="spheres">Spheres</option>
+            <option value="arrows">Arrows</option>
+            <option value="arrows_flat">Arrows (Flat)</option>
+          </select>
+        </div>
+        <div class="form-section"><label>Thickness</label><input type="number" id="ppTrajThick" value="1.0" step="0.1"></div>
+        <div class="form-section"><label>Direction Constraint</label>
+          <select id="ppTrajDir">
+            <option value="both">Both (Ahead + Behind)</option>
+            <option value="ahead">Ahead Only</option>
+            <option value="behind">Behind Only</option>
+          </select>
+        </div>
+        <div class="form-section"><label>Max Length (m)</label><input type="number" id="ppTrajMaxL" value="1000" step="10"></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppTrajPlane"><span>In-Plane Trajectories</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppTrajCAD" checked><span>Use CAD Geometry</span></div>
+      </div>
+    </div>
+    <button class="btn btn-accent mt-8" onclick="ppAddTraj()">➕ Add Trajectory</button>`;
+}
+
+async function ppAddTraj() {
+  const body = {
+    name: ($("#ppTrajName")?.value||"").trim()||"Trajectory",
+    parameter: $("#ppTrajParam")?.value||"velocity",
+    start_mode: $("#ppTrajStart")?.value||"surface",
+    start_surface: ($("#ppTrajSurf")?.value||"").trim(),
+    number: parseInt($("#ppTrajNum")?.value||20),
+    appearance: $("#ppTrajApp")?.value||"lines",
+    thickness: parseFloat($("#ppTrajThick")?.value||1),
+    constraints: $("#ppTrajDir")?.value||"both",
+    max_length: parseFloat($("#ppTrajMaxL")?.value||1000),
+    in_plane: $("#ppTrajPlane")?.checked??false,
+    use_cad_geometry: $("#ppTrajCAD")?.checked??true,
+  };
+  const d = await apiPost("/api/floefd/post/flow-trajectories", body);
+  if (d) { toast("✅ Trajectory added"); await ppLoad(); ppRender(); }
+}
+async function ppEditTraj(id) {
+  const p = ppTrajectories.find(x=>x.id===id); if (!p) return;
+  const name = prompt("Trajectory name:", p.name); if (name===null) return;
+  await apiPut(`/api/floefd/post/flow-trajectories/${id}`, {...p, name});
+  await ppLoad(); ppRender(); toast("✏️ Updated");
+}
+
+/* ── Tab 7: Particle Studies ─────────────────────────────────────── */
+function ppRenderParticleStudies() {
+  const rows = ppParticleStudies.map(p => `
+    <tr>
+      <td>${p.name}</td><td>${p.visualize}</td><td>${p.parameter}</td>
+      <td>${p.appearance}</td><td>${p.statistical_study?'Yes':'No'}</td>
+      <td>
+        <button class="btn btn-sm btn-danger" onclick="ppDelPP('particle-studies','${p.id}')">🗑</button>
+      </td>
+    </tr>`).join("") || '<tr><td colspan="6" class="text-dim">No particle studies.</td></tr>';
+
+  return `
+    <h3 class="section-title">Particle Studies (${ppParticleStudies.length})</h3>
+    <p class="text-dim mb-8">Particle studies visualize erosion, accretion, or absorption effects.
+      A wizard guides through type selection, settings, and display options. Statistical studies available.</p>
+    <table class="data-table mb-8">
+      <thead><tr><th>Name</th><th>Visualize</th><th>Parameter</th><th>Appearance</th><th>Statistical</th><th>Actions</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+
+    <h3 style="margin:12px 0 8px;font-size:13px;color:var(--fg-dim)">Add Particle Study (Wizard)</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div>
+        <div class="form-section"><label>Name</label><input type="text" id="ppPartName" value="Particle Study ${ppParticleStudies.length+1}"></div>
+        <div class="form-section"><label>Visualization Type</label>
+          <select id="ppPartVis">
+            <option value="erosion">Erosion</option>
+            <option value="accretion">Accretion</option>
+            <option value="absorption">Absorption</option>
+          </select>
+        </div>
+        <div class="form-section"><label>Color By</label><select id="ppPartParam">${ppParamOpts("velocity")}</select></div>
+      </div>
+      <div>
+        <div class="form-section"><label>Appearance</label>
+          <select id="ppPartApp">
+            <option value="spheres">Spheres</option>
+            <option value="lines">Lines</option>
+            <option value="points">Points</option>
+          </select>
+        </div>
+        <div class="checkbox-row"><input type="checkbox" id="ppPartStat"><span>Statistical Study</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppPartMesh"><span>Show Mesh</span></div>
+      </div>
+    </div>
+    <button class="btn btn-accent mt-8" onclick="ppAddPart()">➕ Add Particle Study</button>`;
+}
+
+async function ppAddPart() {
+  const body = {
+    name: ($("#ppPartName")?.value||"").trim()||"Particle Study",
+    visualize: $("#ppPartVis")?.value||"erosion",
+    parameter: $("#ppPartParam")?.value||"velocity",
+    appearance: $("#ppPartApp")?.value||"spheres",
+    statistical_study: $("#ppPartStat")?.checked??false,
+    show_mesh: $("#ppPartMesh")?.checked??false,
+  };
+  const d = await apiPost("/api/floefd/post/particle-studies", body);
+  if (d) { toast("✅ Particle study added"); await ppLoad(); ppRender(); }
+}
+
+/* ── Tab 8: Point Parameters ─────────────────────────────────────── */
+function ppRenderPointParams() {
+  const rows = ppPointParams.map(p => `
+    <tr>
+      <td>${p.name}</td><td>${p.selection_mode}</td>
+      <td>${(p.points||[]).length}</td><td>${(p.parameters||[]).join(", ")}</td>
+      <td>
+        <button class="btn btn-sm" onclick="ppEditPtParam('${p.id}')">✏️</button>
+        <button class="btn btn-sm btn-danger" onclick="ppDelPP('point-parameters','${p.id}')">🗑</button>
+      </td>
+    </tr>`).join("") || '<tr><td colspan="5" class="text-dim">No point parameters.</td></tr>';
+
+  return `
+    <h3 class="section-title">Point Parameters (${ppPointParams.length})</h3>
+    <p class="text-dim mb-8">Extract parameter values at specific points in the model.
+      Selection modes: reference geometry, pattern, pick interactively, or enter coordinates.
+      Results can be exported to Excel.</p>
+    <table class="data-table mb-8">
+      <thead><tr><th>Name</th><th>Selection</th><th>Points</th><th>Parameters</th><th>Actions</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+
+    <h3 style="margin:12px 0 8px;font-size:13px;color:var(--fg-dim)">Add Point Parameter</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div>
+        <div class="form-section"><label>Name</label><input type="text" id="ppPtName" value="Point Param ${ppPointParams.length+1}"></div>
+        <div class="form-section"><label>Selection Mode</label>
+          <select id="ppPtMode">
+            <option value="coordinates">Coordinates</option>
+            <option value="reference">Reference Geometry</option>
+            <option value="pattern">Pattern</option>
+            <option value="pick">Pick Interactively</option>
+          </select>
+        </div>
+        <div class="form-section"><label>Coordinate System</label>
+          <select id="ppPtCS"><option value="global">Global</option><option value="local">Local</option></select>
+        </div>
+      </div>
+      <div>
+        <h4 style="margin:0 0 8px;font-size:12px;color:var(--fg-dim)">Point Coordinates</h4>
+        <div style="display:flex;gap:6px">
+          <div class="form-section" style="flex:1;margin:0"><label>X</label><input type="number" id="ppPtX" value="0" step="0.01"></div>
+          <div class="form-section" style="flex:1;margin:0"><label>Y</label><input type="number" id="ppPtY" value="0" step="0.01"></div>
+          <div class="form-section" style="flex:1;margin:0"><label>Z</label><input type="number" id="ppPtZ" value="0" step="0.01"></div>
+        </div>
+        <h4 style="margin:8px 0;font-size:12px;color:var(--fg-dim)">Parameters to Extract</h4>
+        <div class="checkbox-row"><input type="checkbox" id="ppPtTemp" checked><span>Temperature</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppPtPres" checked><span>Pressure</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppPtVel" checked><span>Velocity</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppPtDens"><span>Density</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppPtExport"><span>Export to Excel</span></div>
+      </div>
+    </div>
+    <button class="btn btn-accent mt-8" onclick="ppAddPtParam()">➕ Add Point Parameter</button>`;
+}
+
+async function ppAddPtParam() {
+  const params = [];
+  if ($("#ppPtTemp")?.checked) params.push("temperature");
+  if ($("#ppPtPres")?.checked) params.push("pressure");
+  if ($("#ppPtVel")?.checked) params.push("velocity");
+  if ($("#ppPtDens")?.checked) params.push("density");
+  const body = {
+    name: ($("#ppPtName")?.value||"").trim()||"Point Param",
+    selection_mode: $("#ppPtMode")?.value||"coordinates",
+    coordinate_system: $("#ppPtCS")?.value||"global",
+    points: [{x:parseFloat($("#ppPtX")?.value||0), y:parseFloat($("#ppPtY")?.value||0), z:parseFloat($("#ppPtZ")?.value||0), label:"P1"}],
+    parameters: params.length ? params : ["temperature","pressure","velocity"],
+    export_to_excel: $("#ppPtExport")?.checked??false,
+  };
+  const d = await apiPost("/api/floefd/post/point-parameters", body);
+  if (d) { toast("✅ Point parameter added"); await ppLoad(); ppRender(); }
+}
+async function ppEditPtParam(id) {
+  const p = ppPointParams.find(x=>x.id===id); if (!p) return;
+  const name = prompt("Point Parameter name:", p.name); if (name===null) return;
+  await apiPut(`/api/floefd/post/point-parameters/${id}`, {...p, name});
+  await ppLoad(); ppRender(); toast("✏️ Updated");
+}
+
+/* ── Tab 9: Surface Parameters ───────────────────────────────────── */
+function ppRenderSurfaceParams() {
+  const rows = ppSurfParams.map(p => `
+    <tr>
+      <td>${p.name}</td><td>${(p.surfaces||[]).join(", ")||'—'}</td>
+      <td>${(p.parameters||[]).join(", ")}</td><td>${p.htc_determination}</td>
+      <td>
+        <button class="btn btn-sm" onclick="ppEditSfParam('${p.id}')">✏️</button>
+        <button class="btn btn-sm btn-danger" onclick="ppDelPP('surface-parameters','${p.id}')">🗑</button>
+      </td>
+    </tr>`).join("") || '<tr><td colspan="5" class="text-dim">No surface parameters.</td></tr>';
+
+  return `
+    <h3 class="section-title">Surface Parameters (${ppSurfParams.length})</h3>
+    <p class="text-dim mb-8">Extract average/min/max parameter values over selected surfaces.
+      Includes HTC (Heat Transfer Coefficient) determination options. Export to Excel.</p>
+    <table class="data-table mb-8">
+      <thead><tr><th>Name</th><th>Surfaces</th><th>Parameters</th><th>HTC</th><th>Actions</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+
+    <h3 style="margin:12px 0 8px;font-size:13px;color:var(--fg-dim)">Add Surface Parameter</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div>
+        <div class="form-section"><label>Name</label><input type="text" id="ppSfPName" value="Surface Param ${ppSurfParams.length+1}"></div>
+        <div class="form-section"><label>Surfaces (comma separated)</label><input type="text" id="ppSfPSurf" placeholder="e.g. Inlet, Outlet, Wall-1"></div>
+        <div class="form-section"><label>HTC Determination</label>
+          <select id="ppSfPHTC">
+            <option value="default">Default</option>
+            <option value="manual_ref_temp">Manual Reference Temperature</option>
+          </select>
+        </div>
+        <div class="form-section"><label>Reference Temp (K)</label><input type="number" id="ppSfPRefT" value="293.15" step="0.1"></div>
+      </div>
+      <div>
+        <h4 style="margin:0 0 8px;font-size:12px;color:var(--fg-dim)">Parameters to Extract</h4>
+        <div class="checkbox-row"><input type="checkbox" id="ppSfPTemp" checked><span>Temperature</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppSfPHF" checked><span>Heat Flux</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppSfPHtc" checked><span>HTC</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppSfPPres"><span>Pressure</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppSfPVel"><span>Velocity</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppSfPExport"><span>Export to Excel</span></div>
+      </div>
+    </div>
+    <button class="btn btn-accent mt-8" onclick="ppAddSfParam()">➕ Add Surface Parameter</button>`;
+}
+
+async function ppAddSfParam() {
+  const params = [];
+  if ($("#ppSfPTemp")?.checked) params.push("temperature");
+  if ($("#ppSfPHF")?.checked) params.push("heat_flux");
+  if ($("#ppSfPHtc")?.checked) params.push("htc");
+  if ($("#ppSfPPres")?.checked) params.push("pressure");
+  if ($("#ppSfPVel")?.checked) params.push("velocity");
+  const body = {
+    name: ($("#ppSfPName")?.value||"").trim()||"Surface Param",
+    surfaces: ($("#ppSfPSurf")?.value||"").split(",").map(s=>s.trim()).filter(Boolean),
+    parameters: params.length ? params : ["temperature","heat_flux","htc"],
+    htc_determination: $("#ppSfPHTC")?.value||"default",
+    htc_reference_temp: parseFloat($("#ppSfPRefT")?.value||293.15),
+    export_to_excel: $("#ppSfPExport")?.checked??false,
+  };
+  const d = await apiPost("/api/floefd/post/surface-parameters", body);
+  if (d) { toast("✅ Surface parameter added"); await ppLoad(); ppRender(); }
+}
+async function ppEditSfParam(id) {
+  const p = ppSurfParams.find(x=>x.id===id); if (!p) return;
+  const name = prompt("Surface Parameter name:", p.name); if (name===null) return;
+  await apiPut(`/api/floefd/post/surface-parameters/${id}`, {...p, name});
+  await ppLoad(); ppRender(); toast("✏️ Updated");
+}
+
+/* ── Tab 10: Volume Parameters ───────────────────────────────────── */
+function ppRenderVolumeParams() {
+  const rows = ppVolParams.map(p => `
+    <tr>
+      <td>${p.name}</td><td>${(p.volumes||[]).join(", ")||'—'}</td>
+      <td>${(p.parameters||[]).join(", ")}</td>
+      <td>
+        <button class="btn btn-sm" onclick="ppEditVolParam('${p.id}')">✏️</button>
+        <button class="btn btn-sm btn-danger" onclick="ppDelPP('volume-parameters','${p.id}')">🗑</button>
+      </td>
+    </tr>`).join("") || '<tr><td colspan="4" class="text-dim">No volume parameters.</td></tr>';
+
+  return `
+    <h3 class="section-title">Volume Parameters (${ppVolParams.length})</h3>
+    <p class="text-dim mb-8">Extract average parameter values over selected volumes or components.
+      Useful for bulk temperature, average velocity, etc. Export to Excel.</p>
+    <table class="data-table mb-8">
+      <thead><tr><th>Name</th><th>Volumes</th><th>Parameters</th><th>Actions</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+
+    <h3 style="margin:12px 0 8px;font-size:13px;color:var(--fg-dim)">Add Volume Parameter</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div>
+        <div class="form-section"><label>Name</label><input type="text" id="ppVolName" value="Volume Param ${ppVolParams.length+1}"></div>
+        <div class="form-section"><label>Volumes (comma separated)</label><input type="text" id="ppVolVols" placeholder="e.g. Fluid Region, Solid Body"></div>
+      </div>
+      <div>
+        <h4 style="margin:0 0 8px;font-size:12px;color:var(--fg-dim)">Parameters</h4>
+        <div class="checkbox-row"><input type="checkbox" id="ppVolTemp" checked><span>Temperature</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppVolPres" checked><span>Pressure</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppVolVel" checked><span>Velocity</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppVolDens"><span>Density</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppVolExport"><span>Export to Excel</span></div>
+      </div>
+    </div>
+    <button class="btn btn-accent mt-8" onclick="ppAddVolParam()">➕ Add Volume Parameter</button>`;
+}
+
+async function ppAddVolParam() {
+  const params = [];
+  if ($("#ppVolTemp")?.checked) params.push("temperature");
+  if ($("#ppVolPres")?.checked) params.push("pressure");
+  if ($("#ppVolVel")?.checked) params.push("velocity");
+  if ($("#ppVolDens")?.checked) params.push("density");
+  const body = {
+    name: ($("#ppVolName")?.value||"").trim()||"Volume Param",
+    volumes: ($("#ppVolVols")?.value||"").split(",").map(s=>s.trim()).filter(Boolean),
+    parameters: params.length ? params : ["temperature","pressure","velocity"],
+    export_to_excel: $("#ppVolExport")?.checked??false,
+  };
+  const d = await apiPost("/api/floefd/post/volume-parameters", body);
+  if (d) { toast("✅ Volume parameter added"); await ppLoad(); ppRender(); }
+}
+async function ppEditVolParam(id) {
+  const p = ppVolParams.find(x=>x.id===id); if (!p) return;
+  const name = prompt("Volume Parameter name:", p.name); if (name===null) return;
+  await apiPut(`/api/floefd/post/volume-parameters/${id}`, {...p, name});
+  await ppLoad(); ppRender(); toast("✏️ Updated");
+}
+
+/* ── Tab 11: XY Plots ────────────────────────────────────────────── */
+function ppRenderXYPlots() {
+  const rows = ppXYPlots.map(p => `
+    <tr>
+      <td>${p.name}</td><td>${p.sketch||'—'}</td><td>${p.abscissa}</td>
+      <td>${(p.parameters||[]).join(", ")}</td><td>${p.resolution}</td>
+      <td>
+        <button class="btn btn-sm" onclick="ppEditXY('${p.id}')">✏️</button>
+        <button class="btn btn-sm btn-danger" onclick="ppDelPP('xy-plots','${p.id}')">🗑</button>
+      </td>
+    </tr>`).join("") || '<tr><td colspan="6" class="text-dim">No XY plots.</td></tr>';
+
+  return `
+    <h3 class="section-title">XY Plots (${ppXYPlots.length})</h3>
+    <p class="text-dim mb-8">XY Plots extract parameter profiles along sketches or probe lines.
+      Abscissa can be length, model coordinates (X/Y/Z), or sketch coordinates. Export to Excel.</p>
+    <table class="data-table mb-8">
+      <thead><tr><th>Name</th><th>Sketch</th><th>Abscissa</th><th>Parameters</th><th>Resolution</th><th>Actions</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+
+    <h3 style="margin:12px 0 8px;font-size:13px;color:var(--fg-dim)">Add XY Plot</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div>
+        <div class="form-section"><label>Name</label><input type="text" id="ppXYName" value="XY Plot ${ppXYPlots.length+1}"></div>
+        <div class="form-section"><label>Sketch / Line</label><input type="text" id="ppXYSketch" placeholder="e.g. Sketch1, Probe-Line-1"></div>
+        <div class="form-section"><label>Abscissa (X-axis)</label>
+          <select id="ppXYAbs">
+            <option value="length">Length (along line)</option>
+            <option value="model_x">Model X</option>
+            <option value="model_y">Model Y</option>
+            <option value="model_z">Model Z</option>
+            <option value="sketch_x">Sketch X</option>
+            <option value="sketch_y">Sketch Y</option>
+            <option value="sketch_z">Sketch Z</option>
+          </select>
+        </div>
+        <div class="form-section"><label>Resolution (points)</label><input type="number" id="ppXYRes" value="100" min="10" max="10000"></div>
+      </div>
+      <div>
+        <h4 style="margin:0 0 8px;font-size:12px;color:var(--fg-dim)">Parameters (Y-axis)</h4>
+        <div class="checkbox-row"><input type="checkbox" id="ppXYTemp" checked><span>Temperature</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppXYPres"><span>Pressure</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppXYVel"><span>Velocity</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppXYDens"><span>Density</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppXYMach"><span>Mach Number</span></div>
+        <div class="form-section"><label>Coordinate System</label>
+          <select id="ppXYCS"><option value="global">Global</option><option value="local">Local</option></select>
+        </div>
+        <div class="checkbox-row"><input type="checkbox" id="ppXYExport"><span>Export to Excel</span></div>
+      </div>
+    </div>
+    <button class="btn btn-accent mt-8" onclick="ppAddXY()">➕ Add XY Plot</button>`;
+}
+
+async function ppAddXY() {
+  const params = [];
+  if ($("#ppXYTemp")?.checked) params.push("temperature");
+  if ($("#ppXYPres")?.checked) params.push("pressure");
+  if ($("#ppXYVel")?.checked) params.push("velocity");
+  if ($("#ppXYDens")?.checked) params.push("density");
+  if ($("#ppXYMach")?.checked) params.push("mach");
+  const body = {
+    name: ($("#ppXYName")?.value||"").trim()||"XY Plot",
+    sketch: ($("#ppXYSketch")?.value||"").trim(),
+    abscissa: $("#ppXYAbs")?.value||"length",
+    parameters: params.length ? params : ["temperature"],
+    resolution: parseInt($("#ppXYRes")?.value||100),
+    coordinate_system: $("#ppXYCS")?.value||"global",
+    export_to_excel: $("#ppXYExport")?.checked??false,
+  };
+  const d = await apiPost("/api/floefd/post/xy-plots", body);
+  if (d) { toast("✅ XY Plot added"); await ppLoad(); ppRender(); }
+}
+async function ppEditXY(id) {
+  const p = ppXYPlots.find(x=>x.id===id); if (!p) return;
+  const name = prompt("XY Plot name:", p.name); if (name===null) return;
+  await apiPut(`/api/floefd/post/xy-plots/${id}`, {...p, name});
+  await ppLoad(); ppRender(); toast("✏️ Updated");
+}
+
+/* ── Tab 12: Goal Plots ──────────────────────────────────────────── */
+function ppRenderGoalPlots() {
+  const rows = ppGoalPlots.map(p => `
+    <tr>
+      <td>${p.name}</td><td>${(p.goals||[]).join(", ")||'All'}</td>
+      <td>${p.abscissa}</td><td>${p.group_by_parameter?'Yes':'No'}</td>
+      <td>
+        <button class="btn btn-sm" onclick="ppEditGP('${p.id}')">✏️</button>
+        <button class="btn btn-sm btn-danger" onclick="ppDelPP('goal-plots','${p.id}')">🗑</button>
+      </td>
+    </tr>`).join("") || '<tr><td colspan="5" class="text-dim">No goal plots.</td></tr>';
+
+  return `
+    <h3 class="section-title">Goal Plots — Post Processing (${ppGoalPlots.length})</h3>
+    <p class="text-dim mb-8">Goal plots show convergence history of selected goals.
+      Abscissa: iterations, physical time, CPU time, or travels.
+      Group by parameter type for cleaner visualization. Export to Excel.</p>
+    <table class="data-table mb-8">
+      <thead><tr><th>Name</th><th>Goals</th><th>Abscissa</th><th>Grouped</th><th>Actions</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+
+    <h3 style="margin:12px 0 8px;font-size:13px;color:var(--fg-dim)">Add Goal Plot</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div>
+        <div class="form-section"><label>Name</label><input type="text" id="ppGPName" value="Goal Plot ${ppGoalPlots.length+1}"></div>
+        <div class="form-section"><label>Goals (comma separated, empty = all)</label><input type="text" id="ppGPGoals" placeholder="e.g. Avg Temp, Max Pressure"></div>
+        <div class="form-section"><label>Template</label>
+          <select id="ppGPTmpl"><option value="default">Default</option><option value="custom">Custom</option></select>
+        </div>
+      </div>
+      <div>
+        <div class="form-section"><label>Abscissa (X-axis)</label>
+          <select id="ppGPAbs">
+            <option value="iterations">Iterations</option>
+            <option value="physical_time">Physical Time</option>
+            <option value="cpu_time">CPU Time</option>
+            <option value="travels">Travels</option>
+          </select>
+        </div>
+        <div class="checkbox-row"><input type="checkbox" id="ppGPGroup"><span>Group by Parameter</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppGPExport"><span>Export to Excel</span></div>
+      </div>
+    </div>
+    <button class="btn btn-accent mt-8" onclick="ppAddGP()">➕ Add Goal Plot</button>`;
+}
+
+async function ppAddGP() {
+  const body = {
+    name: ($("#ppGPName")?.value||"").trim()||"Goal Plot",
+    goals: ($("#ppGPGoals")?.value||"").split(",").map(s=>s.trim()).filter(Boolean),
+    abscissa: $("#ppGPAbs")?.value||"iterations",
+    group_by_parameter: $("#ppGPGroup")?.checked??false,
+    template: $("#ppGPTmpl")?.value||"default",
+    export_to_excel: $("#ppGPExport")?.checked??false,
+  };
+  const d = await apiPost("/api/floefd/post/goal-plots", body);
+  if (d) { toast("✅ Goal plot added"); await ppLoad(); ppRender(); }
+}
+async function ppEditGP(id) {
+  const p = ppGoalPlots.find(x=>x.id===id); if (!p) return;
+  const name = prompt("Goal Plot name:", p.name); if (name===null) return;
+  await apiPut(`/api/floefd/post/goal-plots/${id}`, {...p, name});
+  await ppLoad(); ppRender(); toast("✏️ Updated");
+}
+
+/* ── Tab 13: Reports ─────────────────────────────────────────────── */
+function ppRenderReports() {
+  const rows = ppReports.map(p => `
+    <tr>
+      <td>${p.name}</td><td>${p.format.toUpperCase()}</td><td>${p.template}</td>
+      <td>${p.generated?'✅ '+p.generated_at:'⏳ Not generated'}</td>
+      <td>
+        <button class="btn btn-sm" onclick="ppEditReport('${p.id}')">✏️</button>
+        <button class="btn btn-sm btn-danger" onclick="ppDelPP('reports','${p.id}')">🗑</button>
+      </td>
+    </tr>`).join("") || '<tr><td colspan="5" class="text-dim">No reports.</td></tr>';
+
+  return `
+    <h3 class="section-title">Reports (${ppReports.length})</h3>
+    <p class="text-dim mb-8">Generate comprehensive simulation reports. Choose template, select content
+      (documents, pictures & charts, component IDs). Export to HTML, Word, or PDF format.</p>
+    <table class="data-table mb-8">
+      <thead><tr><th>Name</th><th>Format</th><th>Template</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+
+    <h3 style="margin:12px 0 8px;font-size:13px;color:var(--fg-dim)">Add Report</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+      <div>
+        <h4 style="margin:0 0 8px;font-size:12px;color:var(--accent)">General</h4>
+        <div class="form-section"><label>Name</label><input type="text" id="ppRptName" value="Report ${ppReports.length+1}"></div>
+        <div class="form-section"><label>Template</label>
+          <select id="ppRptTmpl"><option value="default">Default</option><option value="custom">Custom</option></select>
+        </div>
+        <div class="form-section"><label>Format</label>
+          <select id="ppRptFmt">
+            <option value="html">HTML</option>
+            <option value="word">Word (.docx)</option>
+            <option value="pdf">PDF</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <h4 style="margin:0 0 8px;font-size:12px;color:var(--accent)">📄 Documents</h4>
+        <div class="checkbox-row"><input type="checkbox" id="ppRptModel" checked><span>Model Information</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppRptMesh" checked><span>Mesh Information</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppRptSolver" checked><span>Solver Information</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppRptGoals" checked><span>Goals</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppRptBC" checked><span>Boundary Conditions</span></div>
+      </div>
+      <div>
+        <h4 style="margin:0 0 8px;font-size:12px;color:var(--accent)">📊 Pictures & Charts</h4>
+        <div class="checkbox-row"><input type="checkbox" id="ppRptCuts" checked><span>Cut Plots</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppRptSurfs" checked><span>Surface Plots</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppRptXY" checked><span>XY Plots</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppRptGP" checked><span>Goal Plots</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppRptConv" checked><span>Convergence</span></div>
+        <div class="form-section"><label>Chart Resolution</label>
+          <select id="ppRptChartRes"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select>
+        </div>
+        <h4 style="margin:8px 0;font-size:12px;color:var(--accent)">🆔 IDs</h4>
+        <div class="checkbox-row"><input type="checkbox" id="ppRptGeoID" checked><span>Geometry IDs</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppRptMatID" checked><span>Material IDs</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppRptBCID" checked><span>BC IDs</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppRptGoalID" checked><span>Goal IDs</span></div>
+      </div>
+    </div>
+    <button class="btn btn-accent mt-8" onclick="ppAddReport()">➕ Add Report</button>`;
+}
+
+async function ppAddReport() {
+  const body = {
+    name: ($("#ppRptName")?.value||"").trim()||"Report",
+    template: $("#ppRptTmpl")?.value||"default",
+    format: $("#ppRptFmt")?.value||"html",
+    include_model_info: $("#ppRptModel")?.checked??true,
+    include_mesh_info: $("#ppRptMesh")?.checked??true,
+    include_solver_info: $("#ppRptSolver")?.checked??true,
+    include_goals: $("#ppRptGoals")?.checked??true,
+    include_boundary_conditions: $("#ppRptBC")?.checked??true,
+    include_cut_plots: $("#ppRptCuts")?.checked??true,
+    include_surface_plots: $("#ppRptSurfs")?.checked??true,
+    include_xy_plots: $("#ppRptXY")?.checked??true,
+    include_goal_plots: $("#ppRptGP")?.checked??true,
+    include_convergence: $("#ppRptConv")?.checked??true,
+    chart_resolution: $("#ppRptChartRes")?.value||"medium",
+    include_geometry_ids: $("#ppRptGeoID")?.checked??true,
+    include_material_ids: $("#ppRptMatID")?.checked??true,
+    include_bc_ids: $("#ppRptBCID")?.checked??true,
+    include_goal_ids: $("#ppRptGoalID")?.checked??true,
+  };
+  const d = await apiPost("/api/floefd/post/reports", body);
+  if (d) { toast("✅ Report added"); await ppLoad(); ppRender(); }
+}
+async function ppEditReport(id) {
+  const p = ppReports.find(x=>x.id===id); if (!p) return;
+  const name = prompt("Report name:", p.name); if (name===null) return;
+  await apiPut(`/api/floefd/post/reports/${id}`, {...p, name});
+  await ppLoad(); ppRender(); toast("✏️ Updated");
+}
+
+/* ── Tab 14: Animations ──────────────────────────────────────────── */
+function ppRenderAnimations() {
+  const rows = ppAnimations.map(p => `
+    <tr>
+      <td>${p.name}</td><td>${p.video_resolution}</td><td>${p.output_format.toUpperCase()}</td>
+      <td>${p.duration_sec}s @ ${p.frame_rate}fps</td>
+      <td>${p.rotate_camera?'Rotate '+p.rotation_axis:'Static'}</td>
+      <td>
+        <button class="btn btn-sm" onclick="ppEditAnim('${p.id}')">✏️</button>
+        <button class="btn btn-sm btn-danger" onclick="ppDelPP('animations','${p.id}')">🗑</button>
+      </td>
+    </tr>`).join("") || '<tr><td colspan="6" class="text-dim">No animations.</td></tr>';
+
+  return `
+    <h3 class="section-title">Animations (${ppAnimations.length})</h3>
+    <p class="text-dim mb-8">Create animated videos from simulation results. Configure video resolution,
+      frame rate, timeline range, animated parts, and camera rotation. 3-step wizard available.</p>
+    <table class="data-table mb-8">
+      <thead><tr><th>Name</th><th>Resolution</th><th>Format</th><th>Duration</th><th>Camera</th><th>Actions</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+
+    <h3 style="margin:12px 0 8px;font-size:13px;color:var(--fg-dim)">Add Animation (Wizard)</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+      <div>
+        <h4 style="margin:0 0 8px;font-size:12px;color:var(--accent)">Step 1: Video Options</h4>
+        <div class="form-section"><label>Name</label><input type="text" id="ppAnimName" value="Animation ${ppAnimations.length+1}"></div>
+        <div class="form-section"><label>Resolution</label>
+          <select id="ppAnimRes">
+            <option value="640x480">640×480</option>
+            <option value="800x600" selected>800×600</option>
+            <option value="1024x768">1024×768</option>
+            <option value="1280x720">1280×720 (HD)</option>
+            <option value="1920x1080">1920×1080 (Full HD)</option>
+          </select>
+        </div>
+        <div class="form-section"><label>Frame Rate</label><input type="number" id="ppAnimFPS" value="30" min="1" max="60"></div>
+        <div class="form-section"><label>Duration (s)</label><input type="number" id="ppAnimDur" value="10" step="0.5"></div>
+        <div class="form-section"><label>Output Format</label>
+          <select id="ppAnimFmt">
+            <option value="avi">AVI</option>
+            <option value="gif">GIF</option>
+            <option value="mp4">MP4</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <h4 style="margin:0 0 8px;font-size:12px;color:var(--accent)">Step 2: Parts & Timeline</h4>
+        <div class="form-section"><label>Start Iteration</label><input type="number" id="ppAnimStart" value="1" min="1"></div>
+        <div class="form-section"><label>End Iteration</label><input type="number" id="ppAnimEnd" value="100" min="1"></div>
+        <div class="form-section"><label>Step</label><input type="number" id="ppAnimStep" value="1" min="1"></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppAnimCuts" checked><span>Animate Cut Plots</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppAnimSurfs"><span>Animate Surface Plots</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppAnimIsos"><span>Animate Isosurfaces</span></div>
+        <div class="checkbox-row"><input type="checkbox" id="ppAnimTrajs"><span>Animate Trajectories</span></div>
+      </div>
+      <div>
+        <h4 style="margin:0 0 8px;font-size:12px;color:var(--accent)">Step 3: Camera</h4>
+        <div class="checkbox-row"><input type="checkbox" id="ppAnimRotate"><span>Rotate Camera</span></div>
+        <div class="form-section"><label>Rotation Axis</label>
+          <select id="ppAnimAxis"><option value="X">X</option><option value="Y" selected>Y</option><option value="Z">Z</option></select>
+        </div>
+        <div class="form-section"><label>Rotation Angle (°)</label><input type="number" id="ppAnimAngle" value="360" step="10"></div>
+        <div style="margin-top:16px;padding:12px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius)">
+          <div style="text-align:center;color:var(--fg-dim)">
+            🎬 Preview<br><small>Camera path visualization</small>
+          </div>
+        </div>
+      </div>
+    </div>
+    <button class="btn btn-accent mt-8" onclick="ppAddAnim()">➕ Add Animation</button>`;
+}
+
+async function ppAddAnim() {
+  const body = {
+    name: ($("#ppAnimName")?.value||"").trim()||"Animation",
+    video_resolution: $("#ppAnimRes")?.value||"800x600",
+    frame_rate: parseInt($("#ppAnimFPS")?.value||30),
+    duration_sec: parseFloat($("#ppAnimDur")?.value||10),
+    output_format: $("#ppAnimFmt")?.value||"avi",
+    start_iteration: parseInt($("#ppAnimStart")?.value||1),
+    end_iteration: parseInt($("#ppAnimEnd")?.value||100),
+    step: parseInt($("#ppAnimStep")?.value||1),
+    animate_cut_plots: $("#ppAnimCuts")?.checked??true,
+    animate_surface_plots: $("#ppAnimSurfs")?.checked??false,
+    animate_isosurfaces: $("#ppAnimIsos")?.checked??false,
+    animate_trajectories: $("#ppAnimTrajs")?.checked??false,
+    rotate_camera: $("#ppAnimRotate")?.checked??false,
+    rotation_axis: $("#ppAnimAxis")?.value||"Y",
+    rotation_angle: parseFloat($("#ppAnimAngle")?.value||360),
+  };
+  const d = await apiPost("/api/floefd/post/animations", body);
+  if (d) { toast("✅ Animation added"); await ppLoad(); ppRender(); }
+}
+async function ppEditAnim(id) {
+  const p = ppAnimations.find(x=>x.id===id); if (!p) return;
+  const name = prompt("Animation name:", p.name); if (name===null) return;
+  await apiPut(`/api/floefd/post/animations/${id}`, {...p, name});
+  await ppLoad(); ppRender(); toast("✏️ Updated");
+}
+
+/* ── Generic delete helper for registry-based PP items ───────────── */
+async function ppDelPP(urlSeg, id) {
+  const d = await apiDel(`/api/floefd/post/${urlSeg}/${id}`);
+  if (d&&d.success) { toast("🗑 Removed"); await ppLoad(); ppRender(); }
+}
 
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  pst* — L8: Parametric Study ("What-if" Analysis)
+//  pst* — L8: Parametric Study ("What-if" Analysis & Goal Optimization)
 // ═══════════════════════════════════════════════════════════════════════════
 
 let pstStudies = [];
+let pstCompares = [];
+let pstActiveStudy = null;   // currently selected study object
+let pstTab = "overview";     // active sub-tab
+
+const PST_TABS = [
+  { id:"overview",      label:"📊 Overview" },
+  { id:"setup",         label:"⚙️ Study Setup" },
+  { id:"input-vars",    label:"📥 Input Variables" },
+  { id:"output-vars",   label:"📤 Output Variables" },
+  { id:"scenario",      label:"📋 Scenario Table" },
+  { id:"run",           label:"▶️ Run Control" },
+  { id:"compare",       label:"🔍 Compare Results" },
+  { id:"active-scene",  label:"🖼️ Active Scene" },
+  { id:"surface-params",label:"📐 Surface Params" },
+  { id:"goal-plot",     label:"📈 Goal Plot" },
+  { id:"export",        label:"💾 Export" },
+];
+
+/* ── helpers ─────────────────────────────────────────────────────────── */
+
+function pstBadge(status) {
+  const m = {
+    not_calculated:"background:#555;color:#ccc", pending:"background:#555;color:#ccc",
+    meshing:"background:#b8860b;color:#fff", running:"background:#2196f3;color:#fff",
+    finished:"background:#4caf50;color:#fff", converged:"background:#4caf50;color:#fff",
+    failed:"background:#f44336;color:#fff", excluded:"background:#888;color:#fff"
+  };
+  return '<span style="padding:2px 8px;border-radius:10px;font-size:11px;' +
+    (m[status]||"background:#555;color:#ccc") + '">' + status + '</span>';
+}
+
+function pstStudyById(id) { return pstStudies.find(s=>s.id===id); }
+
+/* ── data loading ────────────────────────────────────────────────────── */
 
 async function pstLoad() {
-  pstStudies = await apiFetch("/api/floefd/parametric") || [];
+  pstStudies  = await apiFetch("/api/floefd/parametric") || [];
+  pstCompares = await apiFetch("/api/floefd/compare") || [];
+  // keep active study reference fresh
+  if (pstActiveStudy) {
+    pstActiveStudy = pstStudyById(pstActiveStudy.id) || null;
+  }
 }
+
+/* ── master render ───────────────────────────────────────────────────── */
 
 function pstRender() {
-  let studyHtml = "";
-  if (pstStudies.length === 0) {
-    studyHtml = '<div class="text-dim mb-8">No parametric studies. Create one below.</div>';
-  } else {
-    for (const study of pstStudies) {
-      const variantRows = (study.variants || []).map(v => `
-        <tr>
-          <td>${v.name}</td>
-          <td>${Object.entries(v.parameters || {}).map(([k,val]) => `${k}=${val}`).join(', ') || '—'}</td>
-          <td><span class="${v.status === 'converged' ? 'text-green' : v.status === 'running' ? 'text-yellow' : ''}">${v.status}</span></td>
-          <td>${Object.entries(v.goals_results || {}).map(([k,val]) => `${k}: ${val}`).join(', ') || '—'}</td>
-          <td>
-            <button class="btn" style="padding:2px 6px;font-size:11px" onclick="pstClone('${study.id}','${v.id}')">📋 Clone</button>
-          </td>
-        </tr>
-      `).join("") || '<tr><td colspan="5" class="text-dim">No variants</td></tr>';
+  const tabs = PST_TABS.map(t =>
+    '<button class="btn ' + (pstTab===t.id?"btn-accent":"") +
+    '" style="padding:4px 10px;font-size:12px;white-space:nowrap" onclick="pstSwitchTab(\'' +
+    t.id + '\')">' + t.label + '</button>'
+  ).join("");
 
-      studyHtml += `
-        <div style="border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:12px">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-            <h3 style="margin:0;font-size:14px;color:var(--accent)">${study.name}</h3>
-            <div style="display:flex;gap:6px">
-              <button class="btn" style="padding:3px 10px;font-size:11px" onclick="pstAddVariant('${study.id}')">➕ Variant</button>
-              <button class="btn btn-green" style="padding:3px 10px;font-size:11px" onclick="pstRunStudy('${study.id}')">▶ Run All</button>
-            </div>
-          </div>
-          <div style="font-size:12px;color:var(--fg-dim);margin-bottom:8px">
-            Parameters: ${(study.parameters || []).map(p => p.name).join(', ') || 'None defined'}
-          </div>
-          <table class="data-table">
-            <thead><tr><th>Variant</th><th>Parameters</th><th>Status</th><th>Goal Results</th><th></th></tr></thead>
-            <tbody>${variantRows}</tbody>
-          </table>
-        </div>
-      `;
-    }
+  const header = `
+    <div class="page-header" style="display:flex;justify-content:space-between;align-items:center">
+      <span>🔬 Parametric Study</span>
+      <span style="font-size:12px;color:var(--fg-dim)">${pstStudies.length} studies | ${pstCompares.length} compare configs</span>
+    </div>
+    <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border)">
+      ${tabs}
+    </div>`;
+
+  let body = "";
+  switch (pstTab) {
+    case "overview":       body = pstRenderOverview();      break;
+    case "setup":          body = pstRenderSetup();         break;
+    case "input-vars":     body = pstRenderInputVars();     break;
+    case "output-vars":    body = pstRenderOutputVars();    break;
+    case "scenario":       body = pstRenderScenario();      break;
+    case "run":            body = pstRenderRun();           break;
+    case "compare":        body = pstRenderCompare();       break;
+    case "active-scene":   body = pstRenderActiveScene();   break;
+    case "surface-params": body = pstRenderSurfaceParams(); break;
+    case "goal-plot":      body = pstRenderGoalPlot();      break;
+    case "export":         body = pstRenderExport();        break;
+    default:               body = pstRenderOverview();
+  }
+  $("#pageContent").innerHTML = header + body;
+  // post-render hooks
+  if (pstTab === "goal-plot") pstDrawGoalChart();
+}
+
+function pstSwitchTab(t) { pstTab = t; pstRender(); }
+
+/* ── 1. Overview ─────────────────────────────────────────────────────── */
+
+function pstRenderOverview() {
+  // study type cards
+  const typeCards = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+      <div style="border:2px solid var(--accent);border-radius:var(--radius);padding:16px;cursor:pointer"
+           onclick="pstCreateStudy('what_if')">
+        <div style="font-size:18px;margin-bottom:4px">🔬 What-If Study</div>
+        <div style="font-size:12px;color:var(--fg-dim)">Modify design → auto-mesh → execute. Vary parameters and compare results
+        across multiple design variants to find the optimum configuration.</div>
+      </div>
+      <div style="border:2px solid #ff9800;border-radius:var(--radius);padding:16px;cursor:pointer"
+           onclick="pstCreateStudy('goal_optimization')">
+        <div style="font-size:18px;margin-bottom:4px">🎯 Goal Optimization</div>
+        <div style="font-size:12px;color:var(--fg-dim)">Define target goals with tolerances and weights. The system
+        automatically explores the design space to meet optimization targets.</div>
+      </div>
+    </div>`;
+
+  // study list
+  let listHtml = "";
+  if (pstStudies.length === 0) {
+    listHtml = '<div class="text-dim" style="padding:20px;text-align:center">No parametric studies yet. Click a card above to create one.</div>';
+  } else {
+    const rows = pstStudies.map(s => {
+      const dpCount = (s.design_points||[]).length;
+      const converged = (s.design_points||[]).filter(d=>d.status==="finished"||d.status==="converged").length;
+      const ivCount = (s.input_variables||[]).length;
+      const ovCount = (s.output_variables||[]).length;
+      return '<tr onclick="pstSelectStudy(\'' + s.id + '\')" style="cursor:pointer;' +
+        (pstActiveStudy && pstActiveStudy.id===s.id ? "background:var(--sidebar-hover)" : "") + '">' +
+        '<td><strong>' + s.name + '</strong></td>' +
+        '<td>' + (s.study_type==="goal_optimization"?"🎯 Goal Opt":"🔬 What-If") + '</td>' +
+        '<td>' + ivCount + ' in / ' + ovCount + ' out</td>' +
+        '<td>' + converged + ' / ' + dpCount + '</td>' +
+        '<td>' + pstBadge(converged===dpCount && dpCount>0?"finished":"not_calculated") + '</td>' +
+        '<td><button class="btn" style="padding:2px 8px;font-size:11px" onclick="event.stopPropagation();pstDeleteStudy(\'' + s.id + '\')">🗑</button></td>' +
+        '</tr>';
+    }).join("");
+    listHtml = `
+      <table class="data-table"><thead>
+        <tr><th>Name</th><th>Type</th><th>Variables</th><th>Design Points</th><th>Status</th><th></th></tr>
+      </thead><tbody>${rows}</tbody></table>`;
   }
 
-  $("#pageContent").innerHTML = `
-    <div class="page-header">🔬 Parametric Study</div>
-    <p class="text-dim mb-8">
-      Run multiple "what-if" design variants to find the optimum design. FloEFD supports cloning,
-      auto-mesh, and batch execution of design variants. Modify design → auto-mesh → execute!
-    </p>
+  const activeInfo = pstActiveStudy ? `
+    <div class="info-box" style="margin-top:12px">
+      <strong>Active Study:</strong> ${pstActiveStudy.name}
+      (${(pstActiveStudy.input_variables||[]).length} inputs,
+       ${(pstActiveStudy.output_variables||[]).length} outputs,
+       ${(pstActiveStudy.design_points||[]).length} design points)
+       — Use tabs above to configure.
+    </div>` : `
+    <div class="info-box" style="margin-top:12px">
+      Select a study from the list or create a new one to begin configuring.
+    </div>`;
 
-    ${studyHtml}
+  return typeCards + listHtml + activeInfo;
+}
 
-    <h3 style="margin:16px 0 12px;font-size:14px;color:var(--accent)">Create New Study</h3>
-    <div style="display:flex;gap:8px;align-items:flex-end">
-      <div class="form-section" style="flex:1;margin:0">
+/* ── 2. Study Setup ──────────────────────────────────────────────────── */
+
+function pstRenderSetup() {
+  if (!pstActiveStudy) return '<div class="info-box">Select a study from the Overview tab first.</div>';
+  const s = pstActiveStudy;
+  return `
+    <h3 style="color:var(--accent);margin-bottom:12px">Study Configuration — ${s.name}</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div class="form-section">
         <label>Study Name</label>
-        <input type="text" id="pstName" value="Parametric Study ${pstStudies.length + 1}">
+        <input type="text" id="pstSetupName" value="${s.name}">
       </div>
-      <button class="btn btn-accent" onclick="pstCreate()" style="height:34px">➕ Create Study</button>
+      <div class="form-section">
+        <label>Study Type</label>
+        <select id="pstSetupType">
+          <option value="what_if" ${s.study_type==="what_if"?"selected":""}>🔬 What-If</option>
+          <option value="goal_optimization" ${s.study_type==="goal_optimization"?"selected":""}>🎯 Goal Optimization</option>
+        </select>
+      </div>
+      <div class="form-section">
+        <label>Auto-mesh</label>
+        <select id="pstSetupAutoMesh">
+          <option value="true" ${s.auto_mesh!==false?"selected":""}>Enabled — rebuild mesh for each variant</option>
+          <option value="false" ${s.auto_mesh===false?"selected":""}>Disabled — reuse base mesh</option>
+        </select>
+      </div>
+      <div class="form-section">
+        <label>Save Format</label>
+        <select id="pstSetupSaveFormat">
+          <option value="fwps" ${s.save_format==="fwps"?"selected":""}>.fwps (FloEFD Parametric Study)</option>
+          <option value="xlsx" ${s.save_format==="xlsx"?"selected":""}>.xlsx (Excel Spreadsheet)</option>
+        </select>
+      </div>
     </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-top:12px">
+      <div class="form-section">
+        <label><input type="checkbox" id="pstSetupNetwork" ${s.run_on_network?"checked":""}> Run on Network Computers</label>
+      </div>
+      <div class="form-section">
+        <label><input type="checkbox" id="pstSetupExcel" ${s.excel_output?"checked":""}> Export to Excel</label>
+      </div>
+      <div class="form-section">
+        <label><input type="checkbox" id="pstSetupCompareScene" ${s.compare_active_scene?"checked":""}> Compare Active Scene</label>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:4px">
+      <div class="form-section">
+        <label><input type="checkbox" id="pstSetupCompareSurface" ${s.compare_surface_params?"checked":""}> Compare Surface Parameters</label>
+      </div>
+      <div class="form-section">
+        <label><input type="checkbox" id="pstSetupCompareGoals" ${s.compare_goal_plots?"checked":""}> Compare Goal Plots</label>
+      </div>
+    </div>
+    <button class="btn btn-accent" style="margin-top:12px" onclick="pstSaveSetup()">💾 Save Setup</button>
+    <div class="info-box" style="margin-top:16px">
+      <strong>Workflow:</strong> Modify Design → Auto-mesh → Execute (Batch Solve) → Compare Results<br>
+      Each design variant is automatically meshed and solved. Results can be compared visually and numerically.
+    </div>`;
+}
 
-    <h3 style="margin:20px 0 12px;font-size:14px;color:var(--accent)">Study Parameters</h3>
-    <p class="text-dim" style="font-size:12px;margin-bottom:8px">
-      Define which parameters to vary across design variants (e.g., inlet velocity, heat source power, fan flow rate).
+async function pstSaveSetup() {
+  if (!pstActiveStudy) return;
+  const body = {
+    name: $("#pstSetupName")?.value || pstActiveStudy.name,
+    study_type: $("#pstSetupType")?.value || "what_if",
+    auto_mesh: $("#pstSetupAutoMesh")?.value === "true",
+    save_format: $("#pstSetupSaveFormat")?.value || "fwps",
+    run_on_network: !!$("#pstSetupNetwork")?.checked,
+    excel_output: !!$("#pstSetupExcel")?.checked,
+    compare_active_scene: !!$("#pstSetupCompareScene")?.checked,
+    compare_surface_params: !!$("#pstSetupCompareSurface")?.checked,
+    compare_goal_plots: !!$("#pstSetupCompareGoals")?.checked,
+  };
+  const d = await apiPut("/api/floefd/parametric/" + pstActiveStudy.id, body);
+  if (d) { toast("💾 Study setup saved"); await pstLoad(); pstRender(); }
+}
+
+/* ── 3. Input Variables ──────────────────────────────────────────────── */
+
+function pstRenderInputVars() {
+  if (!pstActiveStudy) return '<div class="info-box">Select a study from the Overview tab first.</div>';
+  const ivs = pstActiveStudy.input_variables || [];
+
+  const rows = ivs.map(iv => {
+    let valStr = "";
+    if (iv.computed_values && iv.computed_values.length) {
+      valStr = iv.computed_values.join(", ");
+    } else if (iv.variation_type === "discrete_values") {
+      valStr = (iv.discrete_values||[]).join(", ");
+    } else if (iv.variation_type === "range_with_number") {
+      valStr = iv.range_min + " → " + iv.range_max + " (" + (iv.range_number||5) + " pts)";
+    } else if (iv.variation_type === "range_with_step") {
+      valStr = iv.step_min + " → " + iv.step_max + " (step " + (iv.step_size||1) + ")";
+    } else if (iv.variation_type === "step_around") {
+      valStr = (iv.step_around_center||0) + " ± " + (iv.step_around_size||1);
+    }
+    return '<tr>' +
+      '<td><strong>' + iv.name + '</strong></td>' +
+      '<td>' + (iv.source==="dimension"?"📏 Dimension":"⚙️ Simulation") + '</td>' +
+      '<td>' + (iv.category||"general_settings").replace(/_/g," ") + '</td>' +
+      '<td>' + (iv.variation_type||"discrete_values").replace(/_/g," ") + '</td>' +
+      '<td style="font-family:monospace;font-size:11px">' + valStr + '</td>' +
+      '<td>' + (iv.unit||"—") + '</td>' +
+      '<td><button class="btn" style="padding:2px 6px;font-size:11px" onclick="pstRemoveInputVar(\'' + iv.id + '\')">🗑</button></td>' +
+      '</tr>';
+  }).join("") || '<tr><td colspan="7" class="text-dim">No input variables defined</td></tr>';
+
+  return `
+    <h3 style="color:var(--accent);margin-bottom:12px">Input Variables — ${pstActiveStudy.name}</h3>
+    <p class="text-dim" style="font-size:12px;margin-bottom:12px">
+      Define which simulation or dimension parameters to vary. Variation types control how values are generated
+      for the design points (discrete list, range with count, range with step, or step around a center value).
     </p>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
-      <div class="form-section" style="width:160px;margin:0">
-        <label>Parameter Name</label>
-        <input type="text" id="pstParamName" value="inlet_velocity">
+    <table class="data-table"><thead>
+      <tr><th>Name</th><th>Type</th><th>Category</th><th>Variation</th><th>Values</th><th>Unit</th><th></th></tr>
+    </thead><tbody>${rows}</tbody></table>
+
+    <div style="border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-top:16px">
+      <h4 style="margin:0 0 10px;font-size:13px;color:var(--accent)">Add Input Variable</h4>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+        <div class="form-section" style="margin:0">
+          <label>Variable Name</label>
+          <input type="text" id="pstIvName" value="inlet_velocity" placeholder="e.g. inlet_velocity">
+        </div>
+        <div class="form-section" style="margin:0">
+          <label>Source</label>
+          <select id="pstIvSource">
+            <option value="simulation">⚙️ Simulation Parameter</option>
+            <option value="dimension">📏 Dimension Parameter</option>
+            <option value="design_table">📊 Design Table</option>
+          </select>
+        </div>
+        <div class="form-section" style="margin:0">
+          <label>Category</label>
+          <select id="pstIvCategory">
+            <option value="general_settings">General Settings</option>
+            <option value="mesh_settings">Mesh Settings</option>
+            <option value="boundary_conditions">Boundary Conditions</option>
+            <option value="features">Features</option>
+          </select>
+        </div>
       </div>
-      <div class="form-section" style="width:100px;margin:0">
-        <label>Min</label>
-        <input type="number" id="pstParamMin" value="1" step="any">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px">
+        <div class="form-section" style="margin:0">
+          <label>Property Name</label>
+          <input type="text" id="pstIvProperty" value="velocity" placeholder="e.g. velocity, temperature, mass_flow_rate">
+        </div>
+        <div class="form-section" style="margin:0">
+          <label>Unit</label>
+          <input type="text" id="pstIvUnit" value="m/s" placeholder="e.g. m/s, W, mm">
+        </div>
+        <div class="form-section" style="margin:0">
+          <label>Current Value</label>
+          <input type="number" id="pstIvCurrent" value="5" step="any">
+        </div>
       </div>
-      <div class="form-section" style="width:100px;margin:0">
-        <label>Max</label>
-        <input type="number" id="pstParamMax" value="10" step="any">
+      <div style="display:grid;grid-template-columns:1fr 2fr;gap:8px;margin-top:8px">
+        <div class="form-section" style="margin:0">
+          <label>Variation Type</label>
+          <select id="pstIvVariation" onchange="pstUpdateIvForm()">
+            <option value="discrete_values">Discrete Values</option>
+            <option value="range_with_number">Range + Number of Points</option>
+            <option value="range_with_step">Range + Step Size</option>
+            <option value="step_around">Step Around Value</option>
+          </select>
+        </div>
+        <div id="pstIvVariationFields" class="form-section" style="margin:0"></div>
       </div>
-      <div class="form-section" style="width:80px;margin:0">
-        <label>Steps</label>
-        <input type="number" id="pstParamSteps" value="5" min="2">
+      <button class="btn btn-accent" style="margin-top:10px" onclick="pstAddInputVar()">➕ Add Input Variable</button>
+    </div>`;
+}
+
+function pstUpdateIvForm() {
+  const vt = $("#pstIvVariation")?.value || "discrete_values";
+  const el = $("#pstIvVariationFields");
+  if (!el) return;
+  if (vt === "discrete_values") {
+    el.innerHTML = '<label>Values (comma-separated)</label><input type="text" id="pstIvValues" value="1, 3, 5, 7, 10" placeholder="1, 2, 3, 5, 10">';
+  } else if (vt === "range_with_number") {
+    el.innerHTML = '<div style="display:flex;gap:8px"><div style="flex:1"><label>Min</label><input type="number" id="pstIvRangeMin" value="1" step="any"></div>' +
+      '<div style="flex:1"><label>Max</label><input type="number" id="pstIvRangeMax" value="10" step="any"></div>' +
+      '<div style="flex:1"><label># Points</label><input type="number" id="pstIvRangeNumber" value="5" min="2"></div></div>';
+  } else if (vt === "range_with_step") {
+    el.innerHTML = '<div style="display:flex;gap:8px"><div style="flex:1"><label>Min</label><input type="number" id="pstIvStepMin" value="1" step="any"></div>' +
+      '<div style="flex:1"><label>Max</label><input type="number" id="pstIvStepMax" value="10" step="any"></div>' +
+      '<div style="flex:1"><label>Step</label><input type="number" id="pstIvStepSize" value="2" step="any"></div></div>';
+  } else if (vt === "step_around") {
+    el.innerHTML = '<div style="display:flex;gap:8px"><div style="flex:1"><label>Center</label><input type="number" id="pstIvStepCenter" value="5" step="any"></div>' +
+      '<div style="flex:1"><label>Step Size</label><input type="number" id="pstIvStepAroundSize" value="1" step="any"></div>' +
+      '<div style="flex:1"><label>-N</label><input type="number" id="pstIvStepNMinus" value="2" min="0"></div>' +
+      '<div style="flex:1"><label>+N</label><input type="number" id="pstIvStepNPlus" value="2" min="0"></div></div>';
+  }
+}
+
+async function pstAddInputVar() {
+  if (!pstActiveStudy) return;
+  const vt = $("#pstIvVariation")?.value || "discrete_values";
+  const body = {
+    name: $("#pstIvName")?.value || "param",
+    source: $("#pstIvSource")?.value || "simulation",
+    category: $("#pstIvCategory")?.value || "general_settings",
+    property_name: $("#pstIvProperty")?.value || "",
+    unit: $("#pstIvUnit")?.value || "",
+    current_value: parseFloat($("#pstIvCurrent")?.value) || 0,
+    variation_type: vt,
+  };
+  if (vt === "discrete_values") {
+    body.discrete_values = ($("#pstIvValues")?.value || "1,3,5").split(",").map(v => parseFloat(v.trim())).filter(v => !isNaN(v));
+  } else if (vt === "range_with_number") {
+    body.range_min = parseFloat($("#pstIvRangeMin")?.value) || 0;
+    body.range_max = parseFloat($("#pstIvRangeMax")?.value) || 10;
+    body.range_number = parseInt($("#pstIvRangeNumber")?.value) || 5;
+  } else if (vt === "range_with_step") {
+    body.step_min = parseFloat($("#pstIvStepMin")?.value) || 0;
+    body.step_max = parseFloat($("#pstIvStepMax")?.value) || 10;
+    body.step_size = parseFloat($("#pstIvStepSize")?.value) || 1;
+  } else if (vt === "step_around") {
+    body.step_around_center = parseFloat($("#pstIvStepCenter")?.value) || 5;
+    body.step_around_size   = parseFloat($("#pstIvStepAroundSize")?.value) || 1;
+    body.step_around_n_minus = parseInt($("#pstIvStepNMinus")?.value) || 2;
+    body.step_around_n_plus  = parseInt($("#pstIvStepNPlus")?.value) || 2;
+  }
+  const d = await apiPost("/api/floefd/parametric/" + pstActiveStudy.id + "/input-variables", body);
+  if (d) { toast("✅ Input variable added"); await pstLoad(); pstRender(); }
+}
+
+async function pstRemoveInputVar(vid) {
+  if (!pstActiveStudy) return;
+  const d = await apiDel("/api/floefd/parametric/" + pstActiveStudy.id + "/input-variables/" + vid);
+  if (d && d.success) { toast("🗑 Input variable removed"); await pstLoad(); pstRender(); }
+}
+
+/* ── 4. Output Variables ─────────────────────────────────────────────── */
+
+function pstRenderOutputVars() {
+  if (!pstActiveStudy) return '<div class="info-box">Select a study from the Overview tab first.</div>';
+  const ovs = pstActiveStudy.output_variables || [];
+
+  const rows = ovs.map(ov =>
+    '<tr>' +
+    '<td><strong>' + ov.name + '</strong></td>' +
+    '<td>' + (ov.goal_id||"—") + '</td>' +
+    '<td>' + (ov.use_for_optimization?"✅ Yes":"—") + '</td>' +
+    '<td>' + (ov.target_value!=null?ov.target_value:"—") + '</td>' +
+    '<td>' + (ov.tolerance!=null?"±"+ov.tolerance:"—") + '</td>' +
+    '<td>' + (ov.target_unit||"—") + '</td>' +
+    '<td><button class="btn" style="padding:2px 6px;font-size:11px" onclick="pstRemoveOutputVar(\'' + ov.id + '\')">🗑</button></td>' +
+    '</tr>'
+  ).join("") || '<tr><td colspan="7" class="text-dim">No output variables defined</td></tr>';
+
+  return `
+    <h3 style="color:var(--accent);margin-bottom:12px">Output Variables (Goals) — ${pstActiveStudy.name}</h3>
+    <p class="text-dim" style="font-size:12px;margin-bottom:12px">
+      Define which goals to monitor. For Goal Optimization, specify target values, tolerances, and weights.
+    </p>
+    <table class="data-table"><thead>
+      <tr><th>Name</th><th>Goal ID</th><th>Optimize</th><th>Target</th><th>Tolerance</th><th>Unit</th><th></th></tr>
+    </thead><tbody>${rows}</tbody></table>
+
+    <div style="border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-top:16px">
+      <h4 style="margin:0 0 10px;font-size:13px;color:var(--accent)">Add Output Variable</h4>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+        <div class="form-section" style="margin:0">
+          <label>Display Name</label>
+          <input type="text" id="pstOvName" value="Max Temperature" placeholder="e.g. Max Temperature">
+        </div>
+        <div class="form-section" style="margin:0">
+          <label>Goal ID</label>
+          <input type="text" id="pstOvGoalId" value="gg_max_temp_1" placeholder="e.g. gg_max_temp_1">
+        </div>
+        <div class="form-section" style="margin:0">
+          <label>Target Unit</label>
+          <input type="text" id="pstOvUnit" value="K" placeholder="e.g. K, Pa, m/s">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px">
+        <div class="form-section" style="margin:0">
+          <label><input type="checkbox" id="pstOvOptimize"> Use for Optimization</label>
+        </div>
+        <div class="form-section" style="margin:0">
+          <label>Target Value</label>
+          <input type="number" id="pstOvTarget" value="" step="any" placeholder="e.g. 350">
+        </div>
+        <div class="form-section" style="margin:0">
+          <label>Tolerance (±)</label>
+          <input type="number" id="pstOvTolerance" value="" step="any" placeholder="e.g. 5">
+        </div>
+      </div>
+      <button class="btn btn-accent" style="margin-top:10px" onclick="pstAddOutputVar()">➕ Add Output Variable</button>
+    </div>`;
+}
+
+async function pstAddOutputVar() {
+  if (!pstActiveStudy) return;
+  const body = {
+    name: $("#pstOvName")?.value || "Output",
+    goal_id: $("#pstOvGoalId")?.value || "",
+    target_unit: $("#pstOvUnit")?.value || "",
+    use_for_optimization: !!$("#pstOvOptimize")?.checked,
+    target_value: $("#pstOvTarget")?.value ? parseFloat($("#pstOvTarget").value) : 0,
+    tolerance: $("#pstOvTolerance")?.value ? parseFloat($("#pstOvTolerance").value) : 0,
+  };
+  const d = await apiPost("/api/floefd/parametric/" + pstActiveStudy.id + "/output-variables", body);
+  if (d) { toast("✅ Output variable added"); await pstLoad(); pstRender(); }
+}
+
+async function pstRemoveOutputVar(vid) {
+  if (!pstActiveStudy) return;
+  const d = await apiDel("/api/floefd/parametric/" + pstActiveStudy.id + "/output-variables/" + vid);
+  if (d && d.success) { toast("🗑 Output variable removed"); await pstLoad(); pstRender(); }
+}
+
+/* ── 5. Scenario Table ───────────────────────────────────────────────── */
+
+function pstRenderScenario() {
+  if (!pstActiveStudy) return '<div class="info-box">Select a study from the Overview tab first.</div>';
+  const dps = pstActiveStudy.design_points || [];
+  const ivs = pstActiveStudy.input_variables || [];
+  const ovs = pstActiveStudy.output_variables || [];
+
+  if (dps.length === 0 && ivs.length === 0) {
+    return `
+      <h3 style="color:var(--accent);margin-bottom:12px">Scenario Table — ${pstActiveStudy.name}</h3>
+      <div class="info-box">Add Input Variables first, then click "Generate Design Points" to build the scenario table.</div>
+      <button class="btn btn-accent" style="margin-top:8px" onclick="pstSwitchTab('input-vars')">📥 Go to Input Variables</button>`;
+  }
+
+  // column headers: inputs + outputs
+  const inputHeaders = ivs.map(iv => '<th style="background:#1a3a5c">' + iv.name + '<br><span style="font-size:10px;color:#aaa">' + (iv.unit||"") + '</span></th>').join("");
+  const outputHeaders = ovs.map(ov => '<th style="background:#3a1a1a">' + ov.name + '</th>').join("");
+
+  const dpRows = dps.map(dp => {
+    const inputCells = ivs.map(iv => {
+      const val = dp.input_values && dp.input_values[iv.name] != null ? dp.input_values[iv.name] : "—";
+      return '<td style="font-family:monospace">' + val + '</td>';
+    }).join("");
+    const outputCells = ovs.map(ov => {
+      const val = dp.output_results && dp.output_results[ov.name] != null
+        ? (typeof dp.output_results[ov.name]==="number" ? dp.output_results[ov.name].toFixed(2) : dp.output_results[ov.name])
+        : "—";
+      return '<td style="font-family:monospace">' + val + '</td>';
+    }).join("");
+    return '<tr>' +
+      '<td>' + dp.name + '</td>' +
+      '<td>' + pstBadge(dp.status) + '</td>' +
+      inputCells + outputCells +
+      '<td style="font-size:11px">' + (dp.mesh_cells||"—") + '</td>' +
+      '<td style="font-size:11px">' + (dp.solve_time_sec!=null?dp.solve_time_sec.toFixed(1)+"s":"—") + '</td>' +
+      '<td><button class="btn" style="padding:2px 8px;font-size:11px" onclick="pstRunDP(\'' + dp.id + '\')" ' +
+        (dp.status==="finished"||dp.status==="running"?"disabled":"") + '>▶</button></td>' +
+      '</tr>';
+  }).join("");
+
+  return `
+    <h3 style="color:var(--accent);margin-bottom:8px">Scenario Table — ${pstActiveStudy.name}</h3>
+    <p class="text-dim" style="font-size:12px;margin-bottom:8px">${dps.length} design points from ${ivs.length} input variable(s)</p>
+    <div style="overflow-x:auto">
+      <table class="data-table"><thead><tr>
+        <th>Design Point</th><th>Status</th>
+        ${inputHeaders}${outputHeaders}
+        <th>Mesh Cells</th><th>Solve Time</th><th></th>
+      </tr></thead><tbody>${dpRows}</tbody></table>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="btn btn-accent" onclick="pstGenerate()">🔄 Regenerate Design Points</button>
+      <button class="btn btn-green" onclick="pstRunAll()">▶️ Run All Pending</button>
+    </div>`;
+}
+
+/* ── 6. Run Control ──────────────────────────────────────────────────── */
+
+function pstRenderRun() {
+  if (!pstActiveStudy) return '<div class="info-box">Select a study from the Overview tab first.</div>';
+  const dps = pstActiveStudy.design_points || [];
+  const total = dps.length;
+  const converged = dps.filter(d=>d.status==="finished"||d.status==="converged").length;
+  const failed    = dps.filter(d=>d.status==="failed").length;
+  const pending   = dps.filter(d=>d.status==="not_calculated"||d.status==="pending").length;
+  const running   = dps.filter(d=>d.status==="running"||d.status==="meshing").length;
+  const pct = total > 0 ? Math.round(converged/total*100) : 0;
+
+  const dpCards = dps.map(dp =>
+    '<div style="display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:12px">' +
+    pstBadge(dp.status) + ' ' + dp.name +
+    (dp.status==="not_calculated"||dp.status==="pending"?'<button class="btn" style="padding:1px 6px;font-size:10px;margin-left:4px" onclick="pstRunDP(\'' + dp.id + '\')"'>▶</button>':'') +
+    '</div>'
+  ).join("");
+
+  return `
+    <h3 style="color:var(--accent);margin-bottom:12px">Run Control — ${pstActiveStudy.name}</h3>
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:16px">
+      <div style="text-align:center;padding:12px;background:var(--sidebar-bg);border-radius:var(--radius)">
+        <div style="font-size:24px;font-weight:bold">${total}</div><div style="font-size:11px;color:var(--fg-dim)">Total</div>
+      </div>
+      <div style="text-align:center;padding:12px;background:var(--sidebar-bg);border-radius:var(--radius)">
+        <div style="font-size:24px;font-weight:bold;color:#4caf50">${converged}</div><div style="font-size:11px;color:var(--fg-dim)">Converged</div>
+      </div>
+      <div style="text-align:center;padding:12px;background:var(--sidebar-bg);border-radius:var(--radius)">
+        <div style="font-size:24px;font-weight:bold;color:#2196f3">${running}</div><div style="font-size:11px;color:var(--fg-dim)">Running</div>
+      </div>
+      <div style="text-align:center;padding:12px;background:var(--sidebar-bg);border-radius:var(--radius)">
+        <div style="font-size:24px;font-weight:bold;color:#f44336">${failed}</div><div style="font-size:11px;color:var(--fg-dim)">Failed</div>
+      </div>
+      <div style="text-align:center;padding:12px;background:var(--sidebar-bg);border-radius:var(--radius)">
+        <div style="font-size:24px;font-weight:bold;color:#ff9800">${pending}</div><div style="font-size:11px;color:var(--fg-dim)">Pending</div>
       </div>
     </div>
-
-    <h3 style="margin:20px 0 12px;font-size:14px;color:var(--fg-dim)">Comparison Table</h3>
-    <div class="info-box">
-      Run variants to see goal comparison results across all design variants. Multiple "what-if" simulations
-      result in optimum design — saving CFD specialist resources for only the most critical analyses.
+    <div style="margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+        <span>Progress</span><span>${pct}%</span>
+      </div>
+      <div style="height:8px;background:#333;border-radius:4px;overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#4caf50,#8bc34a);transition:width 0.5s"></div>
+      </div>
     </div>
-  `;
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      <button class="btn btn-green" onclick="pstRunAll()" ${pending===0?"disabled":""}>▶️ Run All Pending (${pending})</button>
+      <button class="btn" onclick="pstGenerate()">🔄 Regenerate Design Points</button>
+    </div>
+    <h4 style="color:var(--fg-dim);font-size:13px;margin-bottom:8px">Design Point Status</h4>
+    <div style="display:flex;flex-wrap:wrap;gap:6px">${dpCards || '<span class="text-dim">No design points</span>'}</div>
+    <div class="info-box" style="margin-top:16px">
+      <strong>Network:</strong> ${pstActiveStudy.run_on_network?"✅ Enabled — variants will be distributed across network computers":"❌ Disabled — running on local machine only"}
+    </div>`;
 }
 
-async function pstCreate() {
-  const name = ($("#pstName")?.value || "").trim() || "Parametric Study";
-  const d = await apiPost("/api/floefd/parametric", { name });
-  if (d) { toast("✅ Parametric study created"); await pstLoad(); pstRender(); }
+/* ── 7. Compare Results ──────────────────────────────────────────────── */
+
+function pstRenderCompare() {
+  const dps = pstActiveStudy ? (pstActiveStudy.design_points||[]) : [];
+
+  // compare configs list
+  const cfgRows = pstCompares.map(c => {
+    const goals = (c.compare_goal_plots||[]).join(", ");
+    return '<tr>' +
+      '<td><strong>' + c.name + '</strong></td>' +
+      '<td>' + (c.compare_active_scene?"🖼️ Scene ":"")
+             + ((c.compare_goal_plots||[]).length?"📈 Goals ":"")
+             + ((c.compare_surface_parameters||[]).length?"📐 Surface":"") + '</td>' +
+      '<td style="font-size:11px">' + (c.side_by_side?"Side-by-side":"Stacked") + '</td>' +
+      '<td style="font-size:11px">' + (goals||"—") + '</td>' +
+      '<td>' +
+        '<button class="btn" style="padding:2px 8px;font-size:11px;margin-right:4px" onclick="pstViewCompare(\'' + c.id + '\')">👁 View</button>' +
+        '<button class="btn" style="padding:2px 8px;font-size:11px" onclick="pstDeleteCompare(\'' + c.id + '\')">🗑</button>' +
+      '</td></tr>';
+  }).join("") || '<tr><td colspan="5" class="text-dim">No compare configurations</td></tr>';
+
+  // DP selection checkboxes
+  const dpChecks = dps.filter(d=>d.status==="finished"||d.status==="converged").map(d =>
+    '<label style="display:inline-flex;align-items:center;gap:4px;font-size:12px;margin-right:12px">' +
+    '<input type="checkbox" class="pstCompareDp" value="' + d.id + '" checked> ' + d.name + '</label>'
+  ).join("") || '<span class="text-dim">No converged design points available</span>';
+
+  return `
+    <h3 style="color:var(--accent);margin-bottom:12px">Compare Results</h3>
+    <table class="data-table"><thead>
+      <tr><th>Name</th><th>Compare Content</th><th>Layout</th><th>Goals</th><th></th></tr>
+    </thead><tbody>${cfgRows}</tbody></table>
+
+    <div style="border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-top:16px">
+      <h4 style="margin:0 0 10px;font-size:13px;color:var(--accent)">Create Compare Configuration</h4>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div class="form-section" style="margin:0">
+          <label>Name</label>
+          <input type="text" id="pstCompName" value="Compare 1">
+        </div>
+        <div class="form-section" style="margin:0">
+          <label><input type="checkbox" id="pstCompScene" checked> Compare Active Scene</label>
+          <label style="margin-left:12px"><input type="checkbox" id="pstCompSideBySide" checked> Side by Side</label>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+        <div class="form-section" style="margin:0">
+          <label>Goal Plots (comma-separated names)</label>
+          <input type="text" id="pstCompGoals" value="" placeholder="e.g. Max Temperature, Pressure Drop">
+        </div>
+        <div class="form-section" style="margin:0">
+          <label>Surface Parameters (comma-separated)</label>
+          <input type="text" id="pstCompSurface" value="" placeholder="e.g. Temperature, Velocity">
+        </div>
+      </div>
+      <div style="margin-top:8px">
+        <label style="font-size:12px;color:var(--fg-dim)">Select Design Points:</label>
+        <div style="margin-top:4px">${dpChecks}</div>
+      </div>
+      <button class="btn btn-accent" style="margin-top:10px" onclick="pstCreateCompare()">➕ Create Compare Config</button>
+    </div>`;
 }
 
-async function pstAddVariant(studyId) {
-  const idx = pstStudies.find(s => s.id === studyId)?.variants?.length || 0;
-  const name = `Variant ${idx + 1}`;
-  const paramName = $("#pstParamName")?.value || "inlet_velocity";
-  const min = parseFloat($("#pstParamMin")?.value || 1);
-  const max = parseFloat($("#pstParamMax")?.value || 10);
-  const steps = parseInt($("#pstParamSteps")?.value || 5);
-  const value = min + (max - min) * (idx / Math.max(steps - 1, 1));
+async function pstCreateCompare() {
+  const checks = document.querySelectorAll(".pstCompareDp:checked");
+  const selIds = Array.from(checks).map(c=>c.value);
+  const goalStr = $("#pstCompGoals")?.value || "";
+  const surfStr = $("#pstCompSurface")?.value || "";
+  const body = {
+    name: $("#pstCompName")?.value || "Compare",
+    compare_active_scene: !!$("#pstCompScene")?.checked,
+    side_by_side: !!$("#pstCompSideBySide")?.checked,
+    compare_goal_plots: goalStr ? goalStr.split(",").map(s=>s.trim()).filter(Boolean) : [],
+    compare_surface_parameters: surfStr ? surfStr.split(",").map(s=>s.trim()).filter(Boolean) : [],
+    project_configs: selIds.map(id=>({variant_id:id, selected:true})),
+  };
+  const d = await apiPost("/api/floefd/compare", body);
+  if (d) { toast("✅ Compare config created"); await pstLoad(); pstRender(); }
+}
 
-  const d = await apiPost(`/api/floefd/parametric/${studyId}/variant`, {
-    name,
-    parameters: { [paramName]: Math.round(value * 100) / 100 },
+async function pstDeleteCompare(cid) {
+  const d = await apiDel("/api/floefd/compare/" + cid);
+  if (d && d.success) { toast("🗑 Compare config removed"); await pstLoad(); pstRender(); }
+}
+
+async function pstViewCompare(cid) {
+  const cfg = pstCompares.find(c=>c.id===cid);
+  if (!cfg) return;
+  // navigate to the appropriate sub-tab
+  if (cfg.compare_type === "active_scene")          pstSwitchTab("active-scene");
+  else if (cfg.compare_type === "surface_parameters") pstSwitchTab("surface-params");
+  else if (cfg.compare_type === "goal_plot")          pstSwitchTab("goal-plot");
+  else pstSwitchTab("surface-params");
+}
+
+/* ── 8. Active Scene (visual comparison) ─────────────────────────────── */
+
+function pstRenderActiveScene() {
+  if (!pstActiveStudy) return '<div class="info-box">Select a study from the Overview tab first.</div>';
+  const dps = (pstActiveStudy.design_points||[]).filter(d=>d.status==="finished"||d.status==="converged");
+
+  if (dps.length === 0) {
+    return '<h3 style="color:var(--accent);margin-bottom:12px">Active Scene Comparison</h3>' +
+      '<div class="info-box">Run design points first to compare active scenes visually.</div>';
+  }
+
+  const cards = dps.map(dp => {
+    // mock colour-coded thumbnail
+    const hue = Math.abs(dp.name.split("").reduce((a,c)=>a+c.charCodeAt(0),0)) % 360;
+    return `<div style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;width:220px">
+      <div style="height:140px;background:linear-gradient(135deg,hsl(${hue},60%,25%),hsl(${hue+60},60%,45%));
+        display:flex;align-items:center;justify-content:center;font-size:36px;color:#fff88">🌡️</div>
+      <div style="padding:8px">
+        <div style="font-weight:bold;font-size:12px;margin-bottom:4px">${dp.name}</div>
+        <div style="font-size:11px;color:var(--fg-dim)">
+          ${Object.entries(dp.input_values||{}).map(([k,v])=>k+": "+v).join(", ")||"—"}
+        </div>
+        <div style="font-size:11px;margin-top:4px">
+          ${Object.entries(dp.output_results||{}).slice(0,2).map(([k,v])=>k+": "+(typeof v==="number"?v.toFixed(1):v)).join(", ")||"—"}
+        </div>
+      </div>
+    </div>`;
+  }).join("");
+
+  return `
+    <h3 style="color:var(--accent);margin-bottom:12px">Active Scene Comparison — ${pstActiveStudy.name}</h3>
+    <p class="text-dim" style="font-size:12px;margin-bottom:12px">
+      Visual comparison of the active scene across design points. Each card shows a mock thermal/flow
+      visualization with input parameter values and key results.
+    </p>
+    <div style="display:flex;flex-wrap:wrap;gap:12px">${cards}</div>`;
+}
+
+/* ── 9. Surface Parameters Comparison ────────────────────────────────── */
+
+function pstRenderSurfaceParams() {
+  if (!pstActiveStudy) return '<div class="info-box">Select a study from the Overview tab first.</div>';
+  const dps = (pstActiveStudy.design_points||[]).filter(d=>d.status==="finished"||d.status==="converged");
+  const ivs = pstActiveStudy.input_variables || [];
+  const ovs = pstActiveStudy.output_variables || [];
+
+  if (dps.length === 0) {
+    return '<h3 style="color:var(--accent);margin-bottom:12px">Surface Parameter Comparison</h3>' +
+      '<div class="info-box">No converged design points to compare.</div>';
+  }
+
+  // Build a table: rows = parameters, columns = design points
+  const allParams = [...ivs.map(iv=>({name:iv.name,type:"input"})), ...ovs.map(ov=>({name:ov.name,type:"output"}))];
+  const dpHeaders = dps.map(dp => '<th>' + dp.name + '</th>').join("");
+  const paramRows = allParams.map(p => {
+    const cells = dps.map(dp => {
+      let val;
+      if (p.type === "input") val = dp.input_values?.[p.name];
+      else val = dp.output_results?.[p.name];
+      if (typeof val === "number") val = val.toFixed(3);
+      return '<td style="font-family:monospace">' + (val!=null?val:"—") + '</td>';
+    }).join("");
+    const badge = p.type==="input"?'<span style="color:#64b5f6">📥</span>':'<span style="color:#ef9a9a">📤</span>';
+    return '<tr><td>' + badge + ' ' + p.name + '</td>' + cells + '</tr>';
+  }).join("");
+
+  return `
+    <h3 style="color:var(--accent);margin-bottom:12px">Surface Parameter Comparison — ${pstActiveStudy.name}</h3>
+    <p class="text-dim" style="font-size:12px;margin-bottom:12px">
+      Numerical comparison of all input/output parameters across converged design points.
+    </p>
+    <div style="overflow-x:auto">
+      <table class="data-table"><thead>
+        <tr><th>Parameter</th>${dpHeaders}</tr>
+      </thead><tbody>${paramRows}</tbody></table>
+    </div>`;
+}
+
+/* ── 10. Goal Plot Comparison ────────────────────────────────────────── */
+
+function pstRenderGoalPlot() {
+  if (!pstActiveStudy) return '<div class="info-box">Select a study from the Overview tab first.</div>';
+  const dps = (pstActiveStudy.design_points||[]).filter(d=>d.status==="finished"||d.status==="converged");
+  const ovs = pstActiveStudy.output_variables || [];
+
+  if (dps.length === 0 || ovs.length === 0) {
+    return '<h3 style="color:var(--accent);margin-bottom:12px">Goal Plot Comparison</h3>' +
+      '<div class="info-box">Need converged design points with output variables to display goal plots.</div>';
+  }
+
+  return `
+    <h3 style="color:var(--accent);margin-bottom:12px">Goal Plot Comparison — ${pstActiveStudy.name}</h3>
+    <p class="text-dim" style="font-size:12px;margin-bottom:12px">
+      Overlaid convergence-style chart comparing output goal values across design points.
+    </p>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <div class="form-section" style="margin:0;width:200px">
+        <label>Select Goal</label>
+        <select id="pstGoalSelect" onchange="pstDrawGoalChart()">
+          ${ovs.map(ov=>'<option value="'+ov.name+'">'+ov.name+'</option>').join("")}
+        </select>
+      </div>
+    </div>
+    <div style="background:var(--sidebar-bg);border-radius:var(--radius);padding:12px">
+      <canvas id="pstGoalCanvas" width="800" height="350"></canvas>
+    </div>
+    <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:12px">
+      ${dps.map((dp,i)=>{
+        const colours = ["#4caf50","#2196f3","#ff9800","#e91e63","#9c27b0","#00bcd4","#ffeb3b","#795548"];
+        return '<span style="display:flex;align-items:center;gap:4px;font-size:12px">' +
+          '<span style="width:12px;height:3px;background:'+colours[i%colours.length]+'"></span>' +
+          dp.name + '</span>';
+      }).join("")}
+    </div>`;
+}
+
+function pstDrawGoalChart() {
+  const canvas = $("#pstGoalCanvas");
+  if (!canvas || !pstActiveStudy) return;
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+
+  const goalName = $("#pstGoalSelect")?.value;
+  if (!goalName) return;
+
+  const dps = (pstActiveStudy.design_points||[]).filter(d=>d.status==="finished"||d.status==="converged");
+  const colours = ["#4caf50","#2196f3","#ff9800","#e91e63","#9c27b0","#00bcd4","#ffeb3b","#795548"];
+
+  // collect values
+  const vals = dps.map(dp => dp.output_results?.[goalName]).filter(v=>v!=null);
+  if (vals.length === 0) { ctx.fillStyle="#888"; ctx.fillText("No data",W/2-20,H/2); return; }
+
+  const minV = Math.min(...vals)*0.9;
+  const maxV = Math.max(...vals)*1.1 || 1;
+  const pad = {l:60,r:20,t:20,b:40};
+  const cW = W-pad.l-pad.r, cH = H-pad.t-pad.b;
+
+  // axes
+  ctx.strokeStyle = "#555"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(pad.l,pad.t); ctx.lineTo(pad.l,H-pad.b); ctx.lineTo(W-pad.r,H-pad.b); ctx.stroke();
+  ctx.fillStyle = "#888"; ctx.font = "11px monospace";
+  for (let i=0;i<=4;i++) {
+    const y = pad.t + cH*(1-i/4);
+    const v = minV + (maxV-minV)*i/4;
+    ctx.fillText(v.toFixed(1),4,y+4);
+    ctx.beginPath(); ctx.strokeStyle="#333"; ctx.moveTo(pad.l,y); ctx.lineTo(W-pad.r,y); ctx.stroke();
+  }
+
+  // bars + line
+  const barW = Math.min(40, cW/dps.length*0.6);
+  dps.forEach((dp,i) => {
+    const v = dp.output_results?.[goalName];
+    if (v == null) return;
+    const x = pad.l + (i+0.5)*cW/dps.length;
+    const bH = ((v-minV)/(maxV-minV))*cH;
+    ctx.fillStyle = colours[i%colours.length] + "88";
+    ctx.fillRect(x-barW/2, pad.t+cH-bH, barW, bH);
+    // label
+    ctx.fillStyle = "#ccc"; ctx.font = "10px sans-serif";
+    ctx.save(); ctx.translate(x, H-pad.b+12); ctx.rotate(Math.PI/6);
+    ctx.fillText(dp.name,0,0); ctx.restore();
+    // value on top
+    ctx.fillStyle = "#fff"; ctx.font = "11px monospace";
+    ctx.fillText(v.toFixed(2), x-16, pad.t+cH-bH-6);
   });
-  if (d) { toast("✅ Variant added"); await pstLoad(); pstRender(); }
-}
 
-async function pstClone(studyId, variantId) {
-  const d = await apiPost(`/api/floefd/parametric/${studyId}/clone`, {
-    variant_id: variantId,
-    name: "Clone",
+  // connecting line
+  ctx.beginPath(); ctx.strokeStyle = "#ff9800"; ctx.lineWidth = 2;
+  dps.forEach((dp,i) => {
+    const v = dp.output_results?.[goalName];
+    if (v == null) return;
+    const x = pad.l + (i+0.5)*cW/dps.length;
+    const y = pad.t + cH - ((v-minV)/(maxV-minV))*cH;
+    if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
   });
-  if (d) { toast("📋 Variant cloned"); await pstLoad(); pstRender(); }
+  ctx.stroke();
 }
 
-async function pstRunStudy(studyId) {
-  toast("⏳ Running all variants…");
-  const d = await apiPost(`/api/floefd/parametric/${studyId}/run`, {});
-  if (d) { toast("✅ All variants completed"); await pstLoad(); pstRender(); }
+/* ── 11. Export ───────────────────────────────────────────────────────── */
+
+function pstRenderExport() {
+  if (!pstActiveStudy) return '<div class="info-box">Select a study from the Overview tab first.</div>';
+  const s = pstActiveStudy;
+  return `
+    <h3 style="color:var(--accent);margin-bottom:12px">Export & Integration — ${s.name}</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div style="border:1px solid var(--border);border-radius:var(--radius);padding:16px">
+        <h4 style="margin:0 0 8px;font-size:14px">💾 Save Study</h4>
+        <p class="text-dim" style="font-size:12px;margin-bottom:12px">Export the parametric study configuration and results.</p>
+        <div class="form-section" style="margin:0 0 8px">
+          <label>Format</label>
+          <select id="pstExportFormat">
+            <option value="fwps">.fwps — FloEFD Parametric Study</option>
+            <option value="xlsx">.xlsx — Excel Spreadsheet</option>
+            <option value="csv">.csv — Comma-Separated Values</option>
+            <option value="json">.json — JSON Data</option>
+          </select>
+        </div>
+        <button class="btn btn-accent" onclick="pstExportStudy()">💾 Export</button>
+      </div>
+      <div style="border:1px solid var(--border);border-radius:var(--radius);padding:16px">
+        <h4 style="margin:0 0 8px;font-size:14px">📂 Load Study</h4>
+        <p class="text-dim" style="font-size:12px;margin-bottom:12px">Import a previously saved parametric study.</p>
+        <div class="form-section" style="margin:0 0 8px">
+          <label>File</label>
+          <input type="file" id="pstImportFile" accept=".fwps,.xlsx,.csv,.json" style="font-size:12px">
+        </div>
+        <button class="btn" onclick="toast('📂 Import not yet implemented')">📂 Import</button>
+      </div>
+    </div>
+    <div style="border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-top:16px">
+      <h4 style="margin:0 0 8px;font-size:14px">🌐 Network & Integration</h4>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+        <div>
+          <div style="font-size:12px;color:var(--fg-dim)">Run on Network</div>
+          <div style="font-size:14px">${s.run_on_network?"✅ Enabled":"❌ Disabled"}</div>
+        </div>
+        <div>
+          <div style="font-size:12px;color:var(--fg-dim)">Excel Output</div>
+          <div style="font-size:14px">${s.excel_output?"✅ Enabled":"❌ Disabled"}</div>
+        </div>
+        <div>
+          <div style="font-size:12px;color:var(--fg-dim)">Flowmaster Integration</div>
+          <div style="font-size:14px">⬜ Not configured</div>
+        </div>
+      </div>
+    </div>
+    <div class="info-box" style="margin-top:16px">
+      <strong>Tip:</strong> Use .fwps format to preserve all study settings and results. Excel format is
+      useful for sharing scenario tables with non-FloEFD users.
+    </div>`;
+}
+
+function pstExportStudy() {
+  if (!pstActiveStudy) return;
+  const fmt = $("#pstExportFormat")?.value || "json";
+  const data = JSON.stringify(pstActiveStudy, null, 2);
+  const blob = new Blob([data], {type:"application/json"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = pstActiveStudy.name.replace(/\s+/g,"_") + "." + fmt;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast("💾 Exported as ." + fmt);
+}
+
+/* ── actions (API calls) ─────────────────────────────────────────────── */
+
+async function pstCreateStudy(studyType) {
+  const name = (studyType==="goal_optimization"?"Goal Optimization ":"What-If Study ") + (pstStudies.length+1);
+  const d = await apiPost("/api/floefd/parametric", { name, study_type: studyType||"what_if" });
+  if (d) {
+    toast("✅ Study created: " + name);
+    await pstLoad();
+    pstActiveStudy = pstStudies[pstStudies.length-1] || null;
+    pstSwitchTab("setup");
+  }
+}
+
+async function pstSelectStudy(sid) {
+  pstActiveStudy = pstStudyById(sid);
+  pstRender();
+}
+
+async function pstDeleteStudy(sid) {
+  const d = await apiDel("/api/floefd/parametric/" + sid);
+  if (d && d.success) {
+    toast("🗑 Study deleted");
+    if (pstActiveStudy && pstActiveStudy.id === sid) pstActiveStudy = null;
+    await pstLoad(); pstRender();
+  }
+}
+
+async function pstGenerate() {
+  if (!pstActiveStudy) return;
+  const d = await apiPost("/api/floefd/parametric/" + pstActiveStudy.id + "/generate-design-points", {});
+  if (d) { toast("🔄 Design points generated"); await pstLoad(); pstRender(); }
+}
+
+async function pstRunAll() {
+  if (!pstActiveStudy) return;
+  toast("⏳ Running all pending design points…");
+  const d = await apiPost("/api/floefd/parametric/" + pstActiveStudy.id + "/run", {});
+  if (d) { toast("✅ All design points completed"); await pstLoad(); pstRender(); }
+}
+
+async function pstRunDP(dpId) {
+  if (!pstActiveStudy) return;
+  toast("⏳ Running " + dpId + "…");
+  const d = await apiPost("/api/floefd/parametric/" + pstActiveStudy.id + "/run/" + dpId, {});
+  if (d) { toast("✅ Design point completed"); await pstLoad(); pstRender(); }
 }
 
 

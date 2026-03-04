@@ -1294,7 +1294,9 @@ def api_floefd_goal_parameters():
     return jsonify(GOAL_PARAMETERS)
 
 
-# ── L6: Solver ───────────────────────────────────────────────────────
+# ── L6: Solver & Monitoring ───────────────────────────────────────────
+
+from domain.floefd_features import RunConfig, PreviewPlot, GoalPlotConfig, SolverLogEntry
 
 @app.route("/api/floefd/solver")
 def api_floefd_solver_config():
@@ -1313,24 +1315,58 @@ def api_floefd_solver_save():
     return jsonify({"success": True})
 
 
+@app.route("/api/floefd/solver/run-config")
+def api_floefd_run_config():
+    return jsonify(floefd_project.solver_config.run_config.to_dict())
+
+
+@app.route("/api/floefd/solver/run-config", methods=["PUT"])
+def api_floefd_run_config_save():
+    body = request.get_json(force=True)
+    rc = floefd_project.solver_config.run_config
+    for key in ("mesh_enabled", "solve_enabled", "new_calculation",
+                "take_previous_results", "run_at", "close_cad",
+                "cpu_count", "load_results", "batch_results"):
+        if key in body:
+            setattr(rc, key, body[key])
+    return jsonify({"success": True})
+
+
 @app.route("/api/floefd/solver/run", methods=["POST"])
 def api_floefd_solver_run():
     """Run N iterations of the mock solver."""
     body = request.get_json(force=True)
     n = min(body.get("iterations", 10), 200)
-    floefd_project.solver_config.convergence_status = "converging"
+    sc = floefd_project.solver_config
+    sc.convergence_status = "converging"
+    sc.status_text = "Calculation"
+    sc.fluid_cells_info = floefd_project.mesh_settings.fluid_cells
+    sc.partial_cells_info = floefd_project.mesh_settings.partial_cells
+
+    # Add log entry
+    import datetime
+    now = datetime.datetime.now().strftime("%H:%M:%S")
+    if sc.current_iteration == 0:
+        sc.solver_log.append({"event": "Preparing data for calculation", "iteration": "", "time": now})
+        sc.solver_log.append({"event": "Calculation started", "iteration": 0, "time": now})
 
     results = []
     for _ in range(n):
         entry = floefd_project.simulate_iteration()
         results.append(entry)
-        if floefd_project.solver_config.convergence_status in ("converged", "diverging"):
+        sc.last_iteration_finished = datetime.datetime.now().strftime("%H:%M:%S")
+        sc.cpu_time_per_iteration = "00:00:08"
+        sc.travels = round(sc.current_iteration / max(sc.iterations_per_travel or 107, 1), 5)
+        if sc.iterations_per_travel == 0:
+            sc.iterations_per_travel = 107
+        if sc.convergence_status in ("converged", "diverging"):
+            sc.solver_log.append({"event": f"Solver {sc.convergence_status}", "iteration": sc.current_iteration, "time": now})
             break
 
     return jsonify({
         "iterations_run": len(results),
-        "status": floefd_project.solver_config.convergence_status,
-        "current_iteration": floefd_project.solver_config.current_iteration,
+        "status": sc.convergence_status,
+        "current_iteration": sc.current_iteration,
         "latest": results[-1] if results else None,
     })
 
@@ -1338,6 +1374,18 @@ def api_floefd_solver_run():
 @app.route("/api/floefd/solver/reset", methods=["POST"])
 def api_floefd_solver_reset():
     floefd_project.reset_solver()
+    sc = floefd_project.solver_config
+    sc.status_text = "Not started"
+    sc.fluid_cells_info = 0
+    sc.partial_cells_info = 0
+    sc.last_iteration_finished = ""
+    sc.cpu_time_per_iteration = ""
+    sc.travels = 0.0
+    sc.iterations_per_travel = 0
+    sc.cpu_time = ""
+    sc.calculation_time_left = ""
+    sc.solver_log = []
+    sc.warnings = []
     return jsonify({"success": True})
 
 
@@ -1346,7 +1394,156 @@ def api_floefd_solver_history():
     return jsonify(floefd_project.iteration_history)
 
 
+@app.route("/api/floefd/solver/log")
+def api_floefd_solver_log():
+    return jsonify(floefd_project.solver_config.solver_log)
+
+
+@app.route("/api/floefd/solver/info")
+def api_floefd_solver_info():
+    """Solver info window data (slide: Solver Window - Default Windows)."""
+    sc = floefd_project.solver_config
+    return jsonify({
+        "status": sc.status_text,
+        "fluid_cells": sc.fluid_cells_info,
+        "partial_cells": sc.partial_cells_info,
+        "iterations": sc.current_iteration,
+        "last_iteration_finished": sc.last_iteration_finished,
+        "cpu_time_per_iteration": sc.cpu_time_per_iteration,
+        "travels": sc.travels,
+        "iterations_per_travel": sc.iterations_per_travel,
+        "cpu_time": sc.cpu_time,
+        "calculation_time_left": sc.calculation_time_left,
+        "convergence_status": sc.convergence_status,
+        "warnings": sc.warnings,
+    })
+
+
+# ── L6: Preview Plots ────────────────────────────────────────────────
+
+@app.route("/api/floefd/solver/preview-plots")
+def api_floefd_preview_plots():
+    return jsonify([p.to_dict() for p in floefd_project.solver_config.preview_plots])
+
+
+@app.route("/api/floefd/solver/preview-plots", methods=["POST"])
+def api_floefd_preview_plot_add():
+    body = request.get_json(force=True)
+    import uuid
+    pp = PreviewPlot(id=str(uuid.uuid4())[:8])
+    for k, v in body.items():
+        if hasattr(pp, k) and k != "id":
+            setattr(pp, k, v)
+    if not pp.name:
+        pp.name = f"Preview {len(floefd_project.solver_config.preview_plots) + 1}"
+    floefd_project.solver_config.preview_plots.append(pp)
+    return jsonify(pp.to_dict())
+
+
+@app.route("/api/floefd/solver/preview-plots/<pid>", methods=["PUT"])
+def api_floefd_preview_plot_update(pid):
+    body = request.get_json(force=True)
+    for pp in floefd_project.solver_config.preview_plots:
+        if pp.id == pid:
+            for k, v in body.items():
+                if hasattr(pp, k) and k != "id":
+                    setattr(pp, k, v)
+            return jsonify(pp.to_dict())
+    return jsonify({"error": "not found"}), 404
+
+
+@app.route("/api/floefd/solver/preview-plots/<pid>", methods=["DELETE"])
+def api_floefd_preview_plot_delete(pid):
+    plots = floefd_project.solver_config.preview_plots
+    floefd_project.solver_config.preview_plots = [p for p in plots if p.id != pid]
+    return jsonify({"success": True})
+
+
+# ── L6: Goal Plots ───────────────────────────────────────────────────
+
+@app.route("/api/floefd/solver/goal-plots")
+def api_floefd_goal_plots():
+    return jsonify([g.to_dict() for g in floefd_project.solver_config.goal_plots])
+
+
+@app.route("/api/floefd/solver/goal-plots", methods=["POST"])
+def api_floefd_goal_plot_add():
+    body = request.get_json(force=True)
+    import uuid
+    gp = GoalPlotConfig(id=str(uuid.uuid4())[:8])
+    for k, v in body.items():
+        if hasattr(gp, k) and k != "id":
+            setattr(gp, k, v)
+    if not gp.name:
+        gp.name = f"Goal plot {len(floefd_project.solver_config.goal_plots) + 1}"
+    floefd_project.solver_config.goal_plots.append(gp)
+    return jsonify(gp.to_dict())
+
+
+@app.route("/api/floefd/solver/goal-plots/<gid>", methods=["PUT"])
+def api_floefd_goal_plot_update(gid):
+    body = request.get_json(force=True)
+    for gp in floefd_project.solver_config.goal_plots:
+        if gp.id == gid:
+            for k, v in body.items():
+                if hasattr(gp, k) and k != "id":
+                    setattr(gp, k, v)
+            return jsonify(gp.to_dict())
+    return jsonify({"error": "not found"}), 404
+
+
+@app.route("/api/floefd/solver/goal-plots/<gid>", methods=["DELETE"])
+def api_floefd_goal_plot_delete(gid):
+    plots = floefd_project.solver_config.goal_plots
+    floefd_project.solver_config.goal_plots = [g for g in plots if g.id != gid]
+    return jsonify({"success": True})
+
+
+# ── L6: Termination / Convergence Summary ─────────────────────────────
+
+@app.route("/api/floefd/solver/termination")
+def api_floefd_termination():
+    """Return termination criteria progress (slide: Termination Criteria)."""
+    goals = floefd_project.goals
+    sc = floefd_project.solver_config
+    fc = floefd_project.finish_conditions
+    rows = []
+    for g in goals:
+        crit = g.convergence_criterion if g.convergence_criterion else "Auto"
+        delta = abs(g.current_value - g.averaged_value) if g.current_value and g.averaged_value else 0
+        achieved_it = sc.current_iteration if g.is_converged else None
+        rows.append({
+            "name": g.name,
+            "parameter": g.parameter,
+            "progress": f"Achieved (IT = {achieved_it})" if g.is_converged else "In progress",
+            "criterion": f"{crit}",
+            "delta": round(delta, 8),
+            "unit": g.unit or "",
+            "converged": g.is_converged,
+        })
+    return jsonify({
+        "goals": rows,
+        "finish_mode": "if_all_satisfied",
+        "max_iterations": fc.max_iterations,
+        "max_iterations_enabled": fc.max_iterations_enabled,
+        "max_travels": fc.max_travels,
+        "max_travels_enabled": fc.max_travels_enabled,
+        "goals_convergence_enabled": fc.goals_convergence_enabled,
+        "analysis_interval": fc.analysis_interval,
+        "current_iteration": sc.current_iteration,
+        "status": sc.convergence_status,
+    })
+
+
 # ── L7: Post Processing ──────────────────────────────────────────────
+
+from domain.floefd_features import (
+    PostProcessingCutPlot, SurfacePlot, Isosurface, FlowTrajectory,
+    ParticleStudy, PointParameter, SurfaceParameter, VolumeParameter,
+    PPXYPlot, PPGoalPlot, PPReport, PPAnimation, ResultsSummary,
+)
+
+# -- Cut Plots --
 
 @app.route("/api/floefd/post/cut-plots")
 def api_floefd_cut_plots():
@@ -1362,11 +1559,35 @@ def api_floefd_cut_plot_add():
         plane=body.get("plane", "XY"),
     )
     for key in ("offset", "show_contours", "show_isolines", "show_vectors",
-                "min_value", "max_value", "num_levels", "color_map"):
+                "show_streamlines", "show_mesh", "min_value", "max_value",
+                "num_levels", "color_map", "use_cad_geometry", "isoline_count",
+                "isoline_color", "isoline_width", "vector_spacing", "vector_size",
+                "vector_color_by_parameter", "streamline_density", "streamline_thickness",
+                "display_3d_profile", "profile_direction", "profile_offset",
+                "display_boundary_layer", "display_outlines", "interpolate",
+                "dynamic_drag", "transparency"):
         if key in body:
             setattr(plot, key, body[key])
     return jsonify(plot.to_dict())
 
+
+@app.route("/api/floefd/post/cut-plots/<pid>", methods=["PUT"])
+def api_floefd_cut_plot_update(pid):
+    body = request.get_json(force=True)
+    obj = floefd_project._pp_update("cut_plots", pid, body)
+    if obj:
+        return jsonify(obj.to_dict())
+    return jsonify({"error": "Not found"}), 404
+
+
+@app.route("/api/floefd/post/cut-plots/<pid>", methods=["DELETE"])
+def api_floefd_cut_plot_delete(pid):
+    if floefd_project._pp_remove("cut_plots", pid):
+        return jsonify({"success": True})
+    return jsonify({"error": "Not found"}), 404
+
+
+# -- Surface Plots --
 
 @app.route("/api/floefd/post/surface-plots")
 def api_floefd_surface_plots():
@@ -1376,15 +1597,123 @@ def api_floefd_surface_plots():
 @app.route("/api/floefd/post/surface-plots", methods=["POST"])
 def api_floefd_surface_plot_add():
     body = request.get_json(force=True)
-    plot = floefd_project.add_surface_plot(
-        name=body.get("name", "Surface Plot"),
-        parameter=body.get("parameter", "temperature"),
-        surface_name=body.get("surface_name", ""),
-    )
-    return jsonify(plot.to_dict())
+    obj = floefd_project._pp_add("surface_plots", SurfacePlot, body)
+    if not obj.name:
+        obj.name = "Surface Plot"
+    return jsonify(obj.to_dict())
+
+
+@app.route("/api/floefd/post/surface-plots/<pid>", methods=["PUT"])
+def api_floefd_surface_plot_update(pid):
+    body = request.get_json(force=True)
+    obj = floefd_project._pp_update("surface_plots", pid, body)
+    if obj:
+        return jsonify(obj.to_dict())
+    return jsonify({"error": "Not found"}), 404
+
+
+@app.route("/api/floefd/post/surface-plots/<pid>", methods=["DELETE"])
+def api_floefd_surface_plot_delete(pid):
+    if floefd_project._pp_remove("surface_plots", pid):
+        return jsonify({"success": True})
+    return jsonify({"error": "Not found"}), 404
+
+
+# -- L7 Generic CRUD Registry (isosurfaces, trajectories, etc.) --
+
+_PP_REGISTRY = [
+    ("isosurfaces",         "isosurfaces",         Isosurface),
+    ("flow-trajectories",   "flow_trajectories",   FlowTrajectory),
+    ("particle-studies",    "particle_studies",     ParticleStudy),
+    ("point-parameters",    "point_parameters",    PointParameter),
+    ("surface-parameters",  "surface_parameters",  SurfaceParameter),
+    ("volume-parameters",   "volume_parameters",   VolumeParameter),
+    ("xy-plots",            "xy_plots",            PPXYPlot),
+    ("goal-plots",          "pp_goal_plots",       PPGoalPlot),
+    ("reports",             "pp_reports",           PPReport),
+    ("animations",          "pp_animations",       PPAnimation),
+]
+
+
+def _register_pp_routes():
+    """Dynamically register GET/POST/PUT/DELETE for each L7 post-processing type."""
+    for url_seg, col_name, cls in _PP_REGISTRY:
+        base = f"/api/floefd/post/{url_seg}"
+
+        def make_list(cn=col_name):
+            def handler():
+                return jsonify([o.to_dict() for o in getattr(floefd_project, cn)])
+            return handler
+
+        def make_add(cn=col_name, c=cls):
+            def handler():
+                body = request.get_json(force=True)
+                obj = floefd_project._pp_add(cn, c, body)
+                return jsonify(obj.to_dict())
+            return handler
+
+        def make_update(cn=col_name):
+            def handler(pid):
+                body = request.get_json(force=True)
+                obj = floefd_project._pp_update(cn, pid, body)
+                if obj:
+                    return jsonify(obj.to_dict())
+                return jsonify({"error": "Not found"}), 404
+            return handler
+
+        def make_delete(cn=col_name):
+            def handler(pid):
+                if floefd_project._pp_remove(cn, pid):
+                    return jsonify({"success": True})
+                return jsonify({"error": "Not found"}), 404
+            return handler
+
+        app.add_url_rule(base, f"pp_list_{url_seg}", make_list(), methods=["GET"])
+        app.add_url_rule(base, f"pp_add_{url_seg}", make_add(), methods=["POST"])
+        app.add_url_rule(f"{base}/<pid>", f"pp_update_{url_seg}", make_update(), methods=["PUT"])
+        app.add_url_rule(f"{base}/<pid>", f"pp_delete_{url_seg}", make_delete(), methods=["DELETE"])
+
+
+_register_pp_routes()
+
+
+# -- Results Summary --
+
+@app.route("/api/floefd/post/results-summary")
+def api_floefd_results_summary():
+    rs = floefd_project.build_results_summary()
+    return jsonify(rs.to_dict())
+
+
+# -- Post Processing Summary (all counts) --
+
+@app.route("/api/floefd/post/summary")
+def api_floefd_post_summary():
+    data = {
+        "cut_plots": len(floefd_project.cut_plots),
+        "surface_plots": len(floefd_project.surface_plots),
+        "isosurfaces": len(floefd_project.isosurfaces),
+        "flow_trajectories": len(floefd_project.flow_trajectories),
+        "particle_studies": len(floefd_project.particle_studies),
+        "point_parameters": len(floefd_project.point_parameters),
+        "surface_parameters": len(floefd_project.surface_parameters),
+        "volume_parameters": len(floefd_project.volume_parameters),
+        "xy_plots": len(floefd_project.xy_plots),
+        "goal_plots": len(floefd_project.pp_goal_plots),
+        "reports": len(floefd_project.pp_reports),
+        "animations": len(floefd_project.pp_animations),
+    }
+    data["total"] = sum(data.values())
+    return jsonify(data)
 
 
 # ── L8: Parametric Study ─────────────────────────────────────────────
+
+from domain.floefd_features import (
+    InputVariable, OutputVariable, DesignPoint, CompareDefinition,
+)
+
+# -- Studies CRUD --
 
 @app.route("/api/floefd/parametric")
 def api_floefd_parametric_list():
@@ -1396,11 +1725,211 @@ def api_floefd_parametric_create():
     body = request.get_json(force=True)
     study = floefd_project.create_parametric_study(
         name=body.get("name", "Parametric Study"),
+        study_type=body.get("study_type", "what_if"),
     )
     if "parameters" in body:
         study.parameters = body["parameters"]
+    for key in ("auto_mesh", "run_on_network", "excel_output"):
+        if key in body:
+            setattr(study, key, body[key])
     return jsonify(study.to_dict())
 
+
+@app.route("/api/floefd/parametric/<study_id>")
+def api_floefd_parametric_get(study_id):
+    study = floefd_project._find_study(study_id)
+    if study:
+        return jsonify(study.to_dict())
+    return jsonify({"error": "Study not found"}), 404
+
+
+@app.route("/api/floefd/parametric/<study_id>", methods=["PUT"])
+def api_floefd_parametric_update(study_id):
+    study = floefd_project._find_study(study_id)
+    if not study:
+        return jsonify({"error": "Study not found"}), 404
+    body = request.get_json(force=True)
+    for key in ("name", "study_type", "auto_mesh", "run_on_network", "excel_output",
+                "compare_active_scene", "compare_surface_params", "compare_goal_plots"):
+        if key in body:
+            setattr(study, key, body[key])
+    return jsonify(study.to_dict())
+
+
+@app.route("/api/floefd/parametric/<study_id>", methods=["DELETE"])
+def api_floefd_parametric_delete(study_id):
+    before = len(floefd_project.parametric_studies)
+    floefd_project.parametric_studies = [s for s in floefd_project.parametric_studies if s.id != study_id]
+    if len(floefd_project.parametric_studies) < before:
+        return jsonify({"success": True})
+    return jsonify({"error": "Not found"}), 404
+
+
+# -- Input Variables --
+
+@app.route("/api/floefd/parametric/<study_id>/input-variables")
+def api_floefd_param_input_vars(study_id):
+    study = floefd_project._find_study(study_id)
+    if not study:
+        return jsonify({"error": "Study not found"}), 404
+    return jsonify([v.to_dict() if hasattr(v, 'to_dict') else v for v in study.input_variables])
+
+
+@app.route("/api/floefd/parametric/<study_id>/input-variables", methods=["POST"])
+def api_floefd_param_input_var_add(study_id):
+    body = request.get_json(force=True)
+    iv = floefd_project.add_input_variable(study_id, body)
+    if iv:
+        return jsonify(iv.to_dict())
+    return jsonify({"error": "Study not found"}), 404
+
+
+@app.route("/api/floefd/parametric/<study_id>/input-variables/<var_id>", methods=["PUT"])
+def api_floefd_param_input_var_update(study_id, var_id):
+    study = floefd_project._find_study(study_id)
+    if not study:
+        return jsonify({"error": "Study not found"}), 404
+    body = request.get_json(force=True)
+    for iv in study.input_variables:
+        if iv.id == var_id:
+            for k, v in body.items():
+                if hasattr(iv, k) and k != "id":
+                    setattr(iv, k, v)
+            return jsonify(iv.to_dict())
+    return jsonify({"error": "Variable not found"}), 404
+
+
+@app.route("/api/floefd/parametric/<study_id>/input-variables/<var_id>", methods=["DELETE"])
+def api_floefd_param_input_var_delete(study_id, var_id):
+    if floefd_project.remove_input_variable(study_id, var_id):
+        return jsonify({"success": True})
+    return jsonify({"error": "Not found"}), 404
+
+
+# -- Output Variables --
+
+@app.route("/api/floefd/parametric/<study_id>/output-variables")
+def api_floefd_param_output_vars(study_id):
+    study = floefd_project._find_study(study_id)
+    if not study:
+        return jsonify({"error": "Study not found"}), 404
+    return jsonify([v.to_dict() if hasattr(v, 'to_dict') else v for v in study.output_variables])
+
+
+@app.route("/api/floefd/parametric/<study_id>/output-variables", methods=["POST"])
+def api_floefd_param_output_var_add(study_id):
+    body = request.get_json(force=True)
+    ov = floefd_project.add_output_variable(study_id, body)
+    if ov:
+        return jsonify(ov.to_dict())
+    return jsonify({"error": "Study not found"}), 404
+
+
+@app.route("/api/floefd/parametric/<study_id>/output-variables/<var_id>", methods=["DELETE"])
+def api_floefd_param_output_var_delete(study_id, var_id):
+    if floefd_project.remove_output_variable(study_id, var_id):
+        return jsonify({"success": True})
+    return jsonify({"error": "Not found"}), 404
+
+
+# -- Design Points --
+
+@app.route("/api/floefd/parametric/<study_id>/design-points")
+def api_floefd_param_design_points(study_id):
+    study = floefd_project._find_study(study_id)
+    if not study:
+        return jsonify({"error": "Study not found"}), 404
+    return jsonify([d.to_dict() if hasattr(d, 'to_dict') else d for d in study.design_points])
+
+
+@app.route("/api/floefd/parametric/<study_id>/generate-design-points", methods=["POST"])
+def api_floefd_param_generate_dp(study_id):
+    dps = floefd_project.generate_design_points(study_id)
+    if dps is not None:
+        return jsonify([d.to_dict() if hasattr(d, 'to_dict') else d for d in dps])
+    return jsonify({"error": "Study not found"}), 404
+
+
+@app.route("/api/floefd/parametric/<study_id>/design-points", methods=["POST"])
+def api_floefd_param_dp_add(study_id):
+    study = floefd_project._find_study(study_id)
+    if not study:
+        return jsonify({"error": "Study not found"}), 404
+    body = request.get_json(force=True)
+    dp = DesignPoint(id=uuid.uuid4().hex[:8])
+    for k, v in body.items():
+        if hasattr(dp, k) and k != "id":
+            setattr(dp, k, v)
+    if not dp.name:
+        dp.name = f"Design Point {len(study.design_points) + 1}"
+    study.design_points.append(dp)
+    return jsonify(dp.to_dict())
+
+
+@app.route("/api/floefd/parametric/<study_id>/design-points/<dp_id>", methods=["PUT"])
+def api_floefd_param_dp_update(study_id, dp_id):
+    study = floefd_project._find_study(study_id)
+    if not study:
+        return jsonify({"error": "Study not found"}), 404
+    body = request.get_json(force=True)
+    for dp in study.design_points:
+        if dp.id == dp_id:
+            for k, v in body.items():
+                if hasattr(dp, k) and k != "id":
+                    setattr(dp, k, v)
+            return jsonify(dp.to_dict())
+    return jsonify({"error": "Design point not found"}), 404
+
+
+@app.route("/api/floefd/parametric/<study_id>/design-points/<dp_id>", methods=["DELETE"])
+def api_floefd_param_dp_delete(study_id, dp_id):
+    study = floefd_project._find_study(study_id)
+    if not study:
+        return jsonify({"error": "Study not found"}), 404
+    before = len(study.design_points)
+    study.design_points = [d for d in study.design_points if d.id != dp_id]
+    if len(study.design_points) < before:
+        return jsonify({"success": True})
+    return jsonify({"error": "Not found"}), 404
+
+
+# -- Run --
+
+@app.route("/api/floefd/parametric/<study_id>/run", methods=["POST"])
+def api_floefd_parametric_run(study_id):
+    """Run all design points OR legacy variants."""
+    study = floefd_project._find_study(study_id)
+    if not study:
+        return jsonify({"error": "Study not found"}), 404
+    # New-style: run design points
+    if study.design_points:
+        floefd_project.run_all_design_points(study_id)
+        return jsonify(study.to_dict())
+    # Legacy: run variants
+    for v in study.variants:
+        obj = v if not isinstance(v, dict) else None
+        if obj:
+            obj.status = "running"
+            floefd_project.reset_solver()
+            for _ in range(30):
+                floefd_project.simulate_iteration()
+            obj.status = floefd_project.solver_config.convergence_status
+            obj.mesh_cells = floefd_project.mesh_settings.total_cells
+            for g in floefd_project.goals:
+                obj.goals_results[g.name] = round(g.current_value, 4)
+    return jsonify(study.to_dict())
+
+
+@app.route("/api/floefd/parametric/<study_id>/run/<dp_id>", methods=["POST"])
+def api_floefd_parametric_run_dp(study_id, dp_id):
+    """Run a single design point."""
+    dp = floefd_project.run_design_point(study_id, dp_id)
+    if dp:
+        return jsonify(dp.to_dict())
+    return jsonify({"error": "Not found"}), 404
+
+
+# -- Legacy variant endpoints --
 
 @app.route("/api/floefd/parametric/<study_id>/variant", methods=["POST"])
 def api_floefd_parametric_add_variant(study_id):
@@ -1428,27 +1957,43 @@ def api_floefd_parametric_clone(study_id):
     return jsonify({"error": "Study or variant not found"}), 404
 
 
-@app.route("/api/floefd/parametric/<study_id>/run", methods=["POST"])
-def api_floefd_parametric_run(study_id):
-    """Simulate running all variants in a parametric study."""
-    import time as _time
-    for study in floefd_project.parametric_studies:
-        if study.id == study_id:
-            for v in study.variants:
-                obj = v if not isinstance(v, dict) else None
-                if obj:
-                    obj.status = "running"
-                    # Reset and run a short simulation for each variant
-                    floefd_project.reset_solver()
-                    for _ in range(30):
-                        floefd_project.simulate_iteration()
-                    obj.status = floefd_project.solver_config.convergence_status
-                    obj.mesh_cells = floefd_project.mesh_settings.total_cells
-                    # Collect goal results
-                    for g in floefd_project.goals:
-                        obj.goals_results[g.name] = round(g.current_value, 4)
-            return jsonify(study.to_dict())
-    return jsonify({"error": "Study not found"}), 404
+# -- Compare --
+
+@app.route("/api/floefd/compare")
+def api_floefd_compare_list():
+    return jsonify([c.to_dict() for c in floefd_project.compare_definitions])
+
+
+@app.route("/api/floefd/compare", methods=["POST"])
+def api_floefd_compare_create():
+    body = request.get_json(force=True)
+    cd = floefd_project.create_compare(name=body.get("name", "Compare 1"))
+    for k in ("compare_active_scene", "compare_surface_parameters", "compare_goal_plots",
+              "project_configs", "side_by_side"):
+        if k in body:
+            setattr(cd, k, body[k])
+    return jsonify(cd.to_dict())
+
+
+@app.route("/api/floefd/compare/<cid>", methods=["PUT"])
+def api_floefd_compare_update(cid):
+    body = request.get_json(force=True)
+    for cd in floefd_project.compare_definitions:
+        if cd.id == cid:
+            for k, v in body.items():
+                if hasattr(cd, k) and k != "id":
+                    setattr(cd, k, v)
+            return jsonify(cd.to_dict())
+    return jsonify({"error": "Not found"}), 404
+
+
+@app.route("/api/floefd/compare/<cid>", methods=["DELETE"])
+def api_floefd_compare_delete(cid):
+    before = len(floefd_project.compare_definitions)
+    floefd_project.compare_definitions = [c for c in floefd_project.compare_definitions if c.id != cid]
+    if len(floefd_project.compare_definitions) < before:
+        return jsonify({"success": True})
+    return jsonify({"error": "Not found"}), 404
 
 
 # ═══════════════════════════════════════════════════════════════════════════
