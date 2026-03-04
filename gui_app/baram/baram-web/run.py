@@ -3,7 +3,7 @@
 """BaramFlow Web — CLI entry point.
 
 Usage:
-    python run.py                       # default port 5100
+    python run.py                       # default port 5200
     python run.py --port 8080 --open    # custom port + auto-open browser
     python run.py --debug               # Flask hot-reload
     python run.py --project /path/to/my.bf  # auto-open project on start

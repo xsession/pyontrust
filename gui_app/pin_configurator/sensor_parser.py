@@ -167,7 +167,7 @@ _SENSOR_VENDORS: list[tuple[str, str, re.Pattern]] = [
     ("st",       "STMicroelectronics",    re.compile(r'LIS[23][A-Z]{1,3}\d{1,2}|LSM\d[A-Z]{2,3}\d?|LPS\d{2}[A-Z]{2}|HTS\d{3}|STTS\d{3}|IIS\d[A-Z]{2,3}|ISM\d{3}|ASM\d{3}', re.I)),
     ("tdk",      "TDK InvenSense",        re.compile(r'ICM[-]?\d{5}|MPU[-]?\d{4}|ICP[-]?\d{5}|IAM[-]?\d{5}', re.I)),
     ("adi",      "Analog Devices",        re.compile(r'ADXL\d{3,4}|ADT\d{4}|ADIS\d{4,5}|MAX\d{5}|LTC\d{4}', re.I)),
-    ("ti",       "Texas Instruments",     re.compile(r'TMP\d{3}|HDC\d{4}|OPT\d{4}|ADS\d{4}|INA\d{3}|LM7[35]\d', re.I)),
+    ("ti",       "Texas Instruments",     re.compile(r'TMP\d{3}|HDC\d{4}|OPT\d{4}|ADS\d{4}|INA\d{3}|LM7[35]\d{0,2}', re.I)),
     ("nxp",      "NXP Semiconductors",    re.compile(r'FXOS\d{4}|FXAS\d{4,5}|MMA\d{3,4}|MPL\d{4}|LPC\d{4}|MPR\d{3}', re.I)),
     ("sensirion","Sensirion",             re.compile(r'SHT[34]\d|SCD[34]\d|SGP[34]\d|SPS\d{2}|SEN\d{2}', re.I)),
     ("honeywell","Honeywell",             re.compile(r'HMC\d{4}|HSC|SSC|HPM|HIH\d{4}|ABP\d?', re.I)),
@@ -223,7 +223,8 @@ _RE_I2C_7BIT = re.compile(
 _RE_SPI_FREQ = re.compile(
     r'(?:SPI|SCLK|SCK)\s*(?:clock\s*)?(?:frequency|speed|max)?\s*[=:≤<]?\s*(\d+)\s*(MHz|kHz)|'
     r'(?:up\s+to\s+)(\d+)\s*(MHz|kHz)\s*(?:SPI|SCLK|SCK|serial\s*clock)|'
-    r'(?:SPI|SCLK|SCK)\S{0,5}\s+(?:up\s+to\s+)?(\d+)\s*(MHz|kHz)',
+    r'(?:SPI|SCLK|SCK)\S{0,5}\s+(?:up\s+to\s+)?(\d+)\s*(MHz|kHz)|'
+    r'(?:SPI|SCLK|SCK)[^.;\n]{0,80}up\s+to\s+(\d+)\s*(MHz|kHz)',
     re.I)
 _RE_WHO_AM_I = re.compile(
     r'(?:WHO[\s_]*AM[\s_]*I|CHIP[\s_]*ID|DEVICE[\s_]*ID|ID[\s_]*REG(?:ISTER)?)\s*'
@@ -365,19 +366,21 @@ def _is_register_table(header: list[str]) -> tuple[bool, dict[str, int]]:
     for ci, h in enumerate(hu):
         if not h:
             continue
-        if re.search(r'^ADDR|^OFFSET|^REG\s*ADDR|^ADDRESS', h):
+        # Normalise multi-line header cells (PDF tables may have \n in cells)
+        h_norm = re.sub(r'\s+', ' ', h).strip()
+        if re.search(r'^ADDR|^OFFSET|^REG\s*ADDR|^ADDRESS', h_norm):
             cols["addr"] = ci
-        elif re.search(r'^NAME|^REGISTER|^MNEMONIC|^SYMBOL|^REG\s*NAME', h):
+        elif re.search(r'^REGISTER\s*NAME|^NAME|^REGISTER$|^MNEMONIC|^SYMBOL|^REG\s*NAME', h_norm):
             cols["name"] = ci
-        elif re.search(r'^TYPE|^ACCESS|^R/?W|^MODE', h):
+        elif re.search(r'^TYPE|^ACCESS|^R/?W|^MODE', h_norm):
             cols["access"] = ci
-        elif re.search(r'^RESET|^DEFAULT|^POR|^INITIAL', h):
+        elif re.search(r'^RESET|^DEFAULT|^POR|^INITIAL', h_norm):
             cols["reset"] = ci
-        elif re.search(r'^DESC|^FUNCTION|^COMMENT|^NOTE', h):
+        elif re.search(r'^DESC|^FUNCTION|^COMMENT|^NOTE', h_norm):
             cols["desc"] = ci
-        elif re.search(r'^SIZE|^WIDTH|^BYTES|^BITS', h):
+        elif re.search(r'^SIZE|^WIDTH|^BYTES|^BITS', h_norm):
             cols["size"] = ci
-        elif re.search(r'^BIT', h):
+        elif re.search(r'^BIT', h_norm):
             # Could be bit-field columns (Bit 7, Bit 6, …)
             cols.setdefault("bitcols", ci)
 
@@ -558,6 +561,170 @@ def _extract_bitfields_from_table(
     return fields
 
 
+def _extract_bitfields_bosch_style(
+    tbl: list[list[str]], reg_name: str
+) -> list[RegisterField]:
+    """
+    Extract bit-fields from Bosch-style register description tables.
+
+    These tables look like:
+        | (empty) | Register 0xF4 | (empty) | Name | Description |
+        | (empty) | "ctrl_meas"   | (empty) | (empty) | (empty) |
+        | Bit 7,6,5 | ...         | (empty) | osrs_t[2:0] | Controls ... |
+        | Bit 4,3,2 | ...         | (empty) | osrs_p[2:0] | Controls ... |
+        | Bit 1, 0 | ...          | (empty) | mode[1:0]   | Controls ... |
+
+    The key is: rows contain "Bit N, N, N" in an early column and
+    field names (often with [n:m] notation) in a later column.
+    """
+    fields: list[RegisterField] = []
+    if not tbl or len(tbl) < 3:
+        return fields
+
+    for row in tbl[1:]:
+        if not row:
+            continue
+        row_strs = [str(c).strip() if c else "" for c in row]
+        all_text = " ".join(row_strs)
+
+        # Find a "Bit N, N, N" or "Bit N" pattern in any column
+        bit_match = re.search(r'Bit\s+([\d,\s]+)', all_text, re.I)
+        if not bit_match:
+            continue
+
+        # Parse the bit numbers
+        bit_nums_raw = bit_match.group(1).strip()
+        bit_nums = [int(x.strip()) for x in re.findall(r'\d+', bit_nums_raw)]
+        if not bit_nums:
+            continue
+        bit_high = max(bit_nums)
+        bit_low = min(bit_nums)
+
+        # Find the field name — look for something with [n:m] or a short identifier
+        fname = ""
+        fdesc = ""
+        for cell in row_strs:
+            if not cell:
+                continue
+            # Skip cells that are just the bit pattern or the register address
+            if re.match(r'^Bit\s', cell, re.I):
+                continue
+            if re.match(r'^Register|^"', cell, re.I):
+                continue
+            # Field name with bracket notation: "osrs_t[2:0]"
+            nm = re.search(r'(\w+)\s*\[\d+(?::\d+)?\]', cell)
+            if nm and not fname:
+                fname = nm.group(1).strip()
+                continue
+            # If cell looks like a short name (no spaces, < 30 chars)
+            if not fname and len(cell) < 30 and not re.search(r'\s{2,}', cell):
+                fname = cell
+                continue
+            # Otherwise it's probably the description
+            if cell and len(cell) > 10:
+                fdesc = cell
+
+        if not fname:
+            continue
+
+        fname_clean = re.sub(r'[\s\-]+', '_', fname).upper()
+        fname_clean = re.sub(r'\[.*?\]', '', fname_clean)  # remove [n:m]
+        fname_clean = re.sub(r'[^A-Z0-9_]', '', fname_clean)
+        if not fname_clean:
+            continue
+
+        bits_str = f"{bit_high}:{bit_low}" if bit_high != bit_low else str(bit_high)
+
+        fields.append(RegisterField(
+            name=fname_clean, bits=bits_str,
+            bit_high=bit_high, bit_low=bit_low,
+            access="RW",
+            description=fdesc[:200],
+        ))
+
+    return fields
+
+
+def _extract_pointer_registers(texts: list[str]) -> list[SensorRegister]:
+    """
+    Extract registers from datasheets that use pointer-addressed schemes.
+
+    Some sensors (e.g. TI LM73) use a Pointer Register to select internal
+    registers.  The datasheet describes them as:
+        "Pointer Address 00h (Read Only)"
+        "PointerAddress01h(R/W)"
+        "Reset State: 40h"
+
+    This function scans the text for these patterns.
+    """
+    regs: list[SensorRegister] = []
+    seen: set[int] = set()
+    full_text = "\n".join(texts)
+
+    # Pattern: "Pointer Address XXh" followed by register info
+    # The TI datasheet merges spaces so also handle "PointerAddressXXh"
+    ptr_pat = re.compile(
+        r'(?:Pointer\s*Address\s*)'
+        r'(?:0[xX])?([0-9A-Fa-f]{1,4})\s*[hH]?'
+        r'\s*\(([^)]*)\)',
+        re.I)
+
+    # Also look for name from preceding section header like
+    # "7.5.1.2 Temperature Data Register" or "7.5.1.6 Control/Status Register"
+    section_pat = re.compile(
+        r'(?:\d+\.)+\d+\s+(.+?)\s*(?:Register|Reg)\s*$',
+        re.MULTILINE | re.I)
+    sections: list[tuple[int, str]] = []
+    for m in section_pat.finditer(full_text):
+        sections.append((m.start(), m.group(1).strip()))
+
+    # Also match "ResetState:XXh" or "Reset State: XXh"
+    reset_pat = re.compile(
+        r'Reset\s*State\s*[:\s]+(?:0[xX])?([0-9A-Fa-f]{1,8})\s*[hH]?',
+        re.I)
+
+    for m in ptr_pat.finditer(full_text):
+        addr = _parse_hex(m.group(1))
+        if addr < 0 or addr > 0xFF or addr in seen:
+            continue
+
+        access_raw = m.group(2).strip()
+        access = "RW"
+        if re.search(r'read\s*only|RO', access_raw, re.I):
+            access = "RO"
+        elif re.search(r'write\s*only|WO', access_raw, re.I):
+            access = "WO"
+
+        # Find the register name from the nearest preceding section header
+        name = f"REG_{addr:02X}"
+        for sec_pos, sec_name in reversed(sections):
+            if sec_pos < m.start() and (m.start() - sec_pos) < 500:
+                cname = sec_name.upper().replace(" ", "_").replace("-", "_")
+                cname = re.sub(r'[^A-Z0-9_]', '', cname)
+                if cname and len(cname) > 2:
+                    # Remove common prefixes like "LM73_"
+                    name = re.sub(r'^(?:THE\s*)?', '', cname).strip('_')
+                break
+
+        # Find reset value nearby
+        reset = 0
+        vicinity = full_text[m.end():m.end() + 200]
+        rm = reset_pat.search(vicinity)
+        if rm:
+            rv = _parse_hex(rm.group(1))
+            if rv >= 0:
+                reset = rv
+
+        seen.add(addr)
+        regs.append(SensorRegister(
+            address=addr, name=name, access=access,
+            reset_value=reset,
+            description=f"Pointer register 0x{addr:02X}",
+        ))
+
+    return regs
+
+
 def _extract_registers_from_text(texts: list[str]) -> list[SensorRegister]:
     """
     Text-based fallback: scan for register definitions in plain text.
@@ -617,6 +784,124 @@ def _extract_registers_from_text(texts: list[str]) -> list[SensorRegister]:
                     description=line[:120],
                 ))
                 break  # first pattern wins
+
+    return regs
+
+
+def _extract_category_access_table(
+    pdf: pdfplumber.PDF, texts: list[str]
+) -> dict[str, str]:
+    """
+    Extract register category → access mapping from structured tables.
+
+    Some datasheets (e.g. BMP280) have a table like:
+      Row 0: Reserved registers | Calibration data | Control registers | Data registers | …
+      Row 1: do not write      | read only        | read / write      | read only      | …
+
+    Returns dict like: {"control": "RW", "data": "RO", "status": "RO", "reset": "WO", …}
+    """
+    category_access: dict[str, str] = {}
+
+    # Scan register map pages for category access tables
+    reg_pages = _find_register_table_pages(texts)
+    for idx in reg_pages:
+        try:
+            page_tables = pdf.pages[idx].extract_tables()
+        except Exception:
+            continue
+        for tbl in page_tables:
+            if not tbl or len(tbl) < 2:
+                continue
+            # Check if this table has category keywords in its header
+            header = [str(c).strip().lower() if c else "" for c in tbl[0]]
+            header_text = " ".join(header)
+
+            # Must contain at least 2 of these category keywords
+            kw_count = sum(1 for kw in ("control", "data", "status", "reset",
+                                        "calibration", "reserved", "revision")
+                          if kw in header_text)
+            if kw_count < 2:
+                continue
+
+            # Found it — match headers to access values in the next row(s)
+            for row in tbl[1:]:
+                if not row:
+                    continue
+                row_strs = [str(c).strip().lower() if c else "" for c in row]
+                row_text = " ".join(row_strs)
+                if "read" not in row_text and "write" not in row_text:
+                    continue
+
+                # Match each header column to its access value
+                for ci, h in enumerate(header):
+                    if ci >= len(row_strs) or not row_strs[ci]:
+                        continue
+                    access_raw = row_strs[ci]
+                    if "read" not in access_raw and "write" not in access_raw:
+                        continue
+
+                    access_val = _norm_access(access_raw.replace("do not write", "RO"))
+                    # Handle "do not write" as a special case
+                    if "do not" in access_raw and "write" in access_raw:
+                        access_val = "RO"
+                    elif "write only" in access_raw:
+                        access_val = "WO"
+
+                    # Map header to category
+                    for cat in ("control", "data", "status", "reset",
+                                "calibration", "reserved", "revision"):
+                        if cat in h:
+                            category_access[cat] = access_val
+                            break
+
+                if category_access:
+                    break  # got what we need
+            if category_access:
+                break
+        if category_access:
+            break
+
+    return category_access
+
+
+def _extract_calibration_registers(texts: list[str]) -> list[SensorRegister]:
+    """
+    Extract calibration/compensation register definitions from text.
+
+    Common patterns (Bosch BMP280/BME280/BME680):
+      "0x88 / 0x89  dig_T1  unsigned short"
+      "0x8A / 0x8B  dig_T2  signed short"
+    """
+    regs: list[SensorRegister] = []
+    seen: set[int] = set()
+    full_text = "\n".join(texts)
+
+    # Pattern: "0xHH / 0xHH  dig_XX  type"
+    calib_pat = re.compile(
+        r'(?:0[xX])([0-9A-Fa-f]{2})\s*/\s*(?:0[xX])([0-9A-Fa-f]{2})\s+'
+        r'(dig_[A-Z]\d+)\s+'
+        r'(unsigned|signed)\s+(short|int|long|char)',
+        re.I)
+
+    for m in calib_pat.finditer(full_text):
+        addr_lo = int(m.group(1), 16)
+        addr_hi = int(m.group(2), 16)
+        name = m.group(3).upper()
+        is_unsigned = m.group(4).lower() == "unsigned"
+        dtype = m.group(5).lower()
+
+        if addr_lo in seen:
+            continue
+        seen.add(addr_lo)
+
+        size = 2 if dtype == "short" else 4 if dtype in ("int", "long") else 1
+        regs.append(SensorRegister(
+            address=addr_lo,
+            name=f"CALIB_{name}",
+            size=size,
+            access="RO",
+            description=f"Calibration {name} ({'u' if is_unsigned else 's'}{size*8})",
+        ))
 
     return regs
 
@@ -698,17 +983,120 @@ def extract_register_map(
             header = [str(c).strip().upper() if c else "" for c in tbl[0]]
             has_bit = any(re.search(r'BIT', h) for h in header)
             has_name = any(re.search(r'NAME|FIELD|MNEMONIC', h) for h in header)
-            if has_bit and has_name:
+
+            # BMP280-style: first column is register addr "Register 0xF3"
+            # and rows have "Bit 7, 6, 5" in an inner column
+            # Skip range headers like "Register 0xF7-0xF9" (multi-register tables)
+            reg_in_header = None
+            if not has_bit:
+                for h in header:
+                    # Skip range patterns: "Register 0xF7-" or "0xF7…0xF9"
+                    if re.search(r'0[xX][0-9A-Fa-f]{2,4}\s*[-–…]', h):
+                        continue
+                    hm = re.search(r'(?:REGISTER|REG)\s*(?:0[xX])([0-9A-Fa-f]{2,4})\b', h)
+                    if hm:
+                        haddr = _parse_hex(hm.group(1))
+                        for r in all_regs:
+                            if r.address == haddr:
+                                reg_in_header = r
+                                break
+                        break
+
+            if reg_in_header and len(tbl) >= 3:
+                # Try to extract bitfields from BMP280-style table
+                fields = _extract_bitfields_bosch_style(tbl, reg_in_header.name)
+                if fields:
+                    reg_in_header.fields = fields
+                    log.debug("Added %d Bosch-style fields to register %s",
+                              len(fields), reg_in_header.name)
+            elif has_bit and has_name:
                 rname = target_reg.name if target_reg else "UNKNOWN"
                 fields = _extract_bitfields_from_table(tbl, rname)
                 if fields and target_reg:
                     target_reg.fields = fields
                     log.debug("Added %d fields to register %s", len(fields), rname)
 
+            # Also try to find the register from "Register 0xHH" patterns in
+            # the page text if we still don't have a target
+            if not target_reg and not reg_in_header and has_bit:
+                # Scan for "Register 0xHH" in the text near the table
+                page_reg_pats = re.findall(
+                    r'Register\s+(?:0[xX])([0-9A-Fa-f]{2,4})\s+"?(\w+)"?',
+                    txt, re.I)
+                for addr_hex, rname in page_reg_pats:
+                    addr = _parse_hex(addr_hex)
+                    for r in all_regs:
+                        if r.address == addr:
+                            fields = _extract_bitfields_from_table(tbl, r.name)
+                            if fields and not r.fields:
+                                r.fields = fields
+                                log.debug("Added %d fields to register %s (page scan)",
+                                          len(fields), r.name)
+                            break
+
+    # ── Phase 2b: pointer-based register extraction (e.g. TI LM73) ──
+    # Some datasheets use "Pointer Address XXh" to identify registers
+    if not all_regs:
+        pointer_regs = _extract_pointer_registers(texts)
+        if pointer_regs:
+            all_regs.extend(pointer_regs)
+            log.info("Extracted %d pointer-based registers", len(pointer_regs))
+
+    # ── Phase 2c: calibration registers (Bosch BMP/BME style) ──
+    calib_regs = _extract_calibration_registers(texts)
+    if calib_regs:
+        existing_addrs = {r.address for r in all_regs}
+        new_calib = [r for r in calib_regs if r.address not in existing_addrs]
+        if new_calib:
+            all_regs.extend(new_calib)
+            log.info("Extracted %d calibration registers", len(new_calib))
+
     # ── Phase 3: text fallback if tables gave us nothing ──
     if not all_regs:
         log.info("No register tables found, falling back to text extraction")
         all_regs = _extract_registers_from_text(texts)
+
+    # ── Phase 4: infer access types from text & tables ──
+    # Some datasheets have category-access tables (BMP280 page 24 table 1):
+    #   Row 0: "Reserved registers | Calibration data | Control registers | ..."
+    #   Row 1: "do not write       | read only       | read / write       | ..."
+    category_access = _extract_category_access_table(pdf, texts)
+    if category_access:
+        log.info("Category access map: %s", category_access)
+
+    # Also try text-based patterns as fallback
+    full_text = "\n".join(texts)
+    if not category_access:
+        cat_pat = re.compile(
+            r'(Control|Data|Status|Calibration|Reset|Revision)\s*'
+            r'(?:registers?)?[^.\n]{0,60}?'
+            r'(read[\s/]*only|write[\s/]*only|read\s*/?\s*write)',
+            re.I)
+        for m in cat_pat.finditer(full_text):
+            cat = m.group(1).lower()
+            access_val = _norm_access(m.group(2))
+            category_access[cat] = access_val
+
+    for r in all_regs:
+        if r.access == "RW":  # only override default "RW"
+            name_u = r.name.upper()
+
+            # Try category-based access
+            inferred = None
+            if any(k in name_u for k in ('CTRL', 'CONFIG', 'CONTROL')):
+                inferred = category_access.get("control")
+            elif any(k in name_u for k in ('_MSB', '_LSB', '_XLSB', 'PRESS', 'TEMP',
+                                           'DATA', 'CALIB')):
+                inferred = category_access.get("data") or category_access.get("calibration")
+            elif 'STATUS' in name_u:
+                inferred = category_access.get("status")
+            elif 'RESET' in name_u:
+                inferred = category_access.get("reset")
+            elif name_u in ('ID', 'CHIP_ID', 'WHO_AM_I', 'IDENTIFICATION'):
+                inferred = category_access.get("revision") or "RO"
+
+            if inferred:
+                r.access = inferred
 
     # Deduplicate and sort by address
     seen: set[int] = set()
@@ -768,11 +1156,22 @@ def extract_addresses(texts: list[str]) -> SensorAddress:
 
     # Table-based: look for address tables
     # Pattern: "SDO = GND → 0x76", "SDO = VDD → 0x77"
+    # Also handle "SDO to GND ... 0x76" and "Connecting SDO to GND results in ... (0x76)"
     addr_table_pat = re.compile(
-        r'(?:SDO|AD[O0]|ADDR|SA0|A0)\s*=?\s*(?:GND|LOW|0|VSS|VDD|HIGH|1|VDDIO)\s*'
+        r'(?:SDO|AD[O0]|ADDR|SA0|A0)\s*(?:=|to)?\s*(?:GND|LOW|0|VSS|VDD|HIGH|1|VDDIO)\s*'
         r'[→:=\s]+\s*(?:0[xX])([0-9A-Fa-f]{2})',
         re.I)
     for m in addr_table_pat.finditer(sample):
+        a = int(m.group(1), 16)
+        if 0x03 <= a <= 0x77:
+            i2c_addrs.add(a)
+
+    # Extended pattern: "Connecting SDO to GND results in slave address ... (0x76)"
+    addr_long_pat = re.compile(
+        r'(?:SDO|AD[O0]|ADDR|SA0|A0)\s+(?:to\s+)?(?:GND|LOW|VSS|VDD|HIGH|VDDIO)\s+'
+        r'.{0,80}?(?:0[xX])([0-9A-Fa-f]{2})',
+        re.I)
+    for m in addr_long_pat.finditer(sample):
         a = int(m.group(1), 16)
         if 0x03 <= a <= 0x77:
             i2c_addrs.add(a)
@@ -811,6 +1210,49 @@ def extract_addresses(texts: list[str]) -> SensorAddress:
                 if 0x03 <= a <= 0x77:
                     i2c_addrs.add(a)
 
+    # Parenthesized hex after binary address: "slave address 1110110 (0x76)"
+    paren_hex = re.compile(
+        r'(?:slave|I2C|device)\s+address\s+[01]{6,7}\s*\(\s*(?:0[xX])([0-9A-Fa-f]{2})\s*\)',
+        re.I)
+    for m in paren_hex.finditer(sample):
+        a = int(m.group(1), 16)
+        if 0x03 <= a <= 0x77:
+            i2c_addrs.add(a)
+
+    # Standalone parenthesized hex near "slave address" context:
+    # "results in slave address\n1110110 (0x76)" or "slave address 1110111 (0x77)"
+    paren_near_addr = re.compile(
+        r'(?:slave|I2C|device)\s+address\s*(?:\S+\s+){0,5}\(\s*(?:0[xX])([0-9A-Fa-f]{2})\s*\)',
+        re.I)
+    for m in paren_near_addr.finditer(sample):
+        a = int(m.group(1), 16)
+        if 0x03 <= a <= 0x77:
+            i2c_addrs.add(a)
+
+    # Binary address with explicit hex in parentheses anywhere:
+    # "1110110 (0x76)" or "1001000(0x48)"
+    bin_with_hex = re.compile(
+        r'[01]{6,7}\s*\(\s*(?:0[xX])([0-9A-Fa-f]{2})\s*\)')
+    for m in bin_with_hex.finditer(sample):
+        a = int(m.group(1), 16)
+        if 0x03 <= a <= 0x77:
+            i2c_addrs.add(a)
+
+    # Table-based binary addresses without hex (e.g. LM73):
+    # Table rows contain 7-bit binary addresses like "1001000\n1001001\n1001010"
+    # near keywords like "DEVICE ADDRESS" or "ADDRESS PIN"
+    if not i2c_addrs and re.search(r'DEVICE\s*ADDRESS|ADDRESS\s*PIN|SLAVE\s*ADDRESS', sample_upper):
+        # Find all 7-bit binary strings that look like I2C addresses
+        bin_addr_pat = re.compile(r'\b([01]{7})\b')
+        for m in bin_addr_pat.finditer(sample):
+            bits = m.group(1)
+            try:
+                a = int(bits, 2)
+                if 0x03 <= a <= 0x77:
+                    i2c_addrs.add(a)
+            except ValueError:
+                pass
+
     addr.i2c_addresses = sorted(i2c_addrs)
 
     # ── Address pin ──
@@ -830,25 +1272,42 @@ def extract_addresses(texts: list[str]) -> SensorAddress:
         if m2:
             addr.i2c_address_pin = m2.group(1).upper()
         else:
-            # "SDO/SA0 ... GND ... 0x76 ... VDD ... 0x77" style
-            m3 = re.search(r'(SDO|AD[O0]|SA0|A0)\s+.*(?:GND|VDD).*(?:0[xX][0-9A-Fa-f]{2})', sample, re.I)
-            if m3:
-                addr.i2c_address_pin = m3.group(1).upper()
+            # "ADDR ... Address Select Input" (TI LM73 style)
+            m2b = re.search(
+                r'\b(SDO|AD[O0]|ADDR|SA0|A0)\b\s+(?:\S+\s+){0,5}address\s*select',
+                sample, re.I)
+            if m2b:
+                addr.i2c_address_pin = m2b.group(1).upper()
+            else:
+                # "SDO/SA0 ... GND ... 0x76 ... VDD ... 0x77" style
+                m3 = re.search(r'(SDO|AD[O0]|SA0|A0)\s+.*(?:GND|VDD).*(?:0[xX][0-9A-Fa-f]{2})', sample, re.I)
+                if m3:
+                    addr.i2c_address_pin = m3.group(1).upper()
+                else:
+                    # "SDO to GND ... 0x76" / "changeable by SDO" / "SDO pin"
+                    m4 = re.search(
+                        r'\b(SDO|AD[O0]|SA0|A0)\b.*(?:GND|VDD|VDDIO|address)',
+                        sample, re.I)
+                    if m4:
+                        addr.i2c_address_pin = m4.group(1).upper()
 
     # ── SPI parameters ──
     m = _RE_SPI_FREQ.search(sample)
     if m:
-        # Groups 1,2 for first alt; 3,4 for second; 5,6 for third
-        freq_str = m.group(1) or m.group(3) or m.group(5)
-        unit_str = m.group(2) or m.group(4) or m.group(6)
+        # Groups 1,2 for first alt; 3,4 for second; 5,6 for third; 7,8 for fourth
+        freq_str = m.group(1) or m.group(3) or m.group(5) or m.group(7)
+        unit_str = m.group(2) or m.group(4) or m.group(6) or m.group(8)
         if freq_str and unit_str:
             freq = int(freq_str)
             unit = unit_str.upper()
             addr.spi_max_freq_hz = freq * (1_000_000 if unit == "MHZ" else 1_000)
 
     # SPI mode
+    _Q = r"""['\u2018\u2019\u201C\u201D"']?"""  # ASCII + Unicode smart quotes
     spi_mode_pat = re.compile(
-        r'SPI\s*mode\s*(\d)|CPOL\s*=\s*(\d)\s*,?\s*CPHA\s*=\s*(\d)', re.I)
+        r'SPI\s*mode\s*' + _Q + r'(\d)' + _Q +
+        r'|CPOL\s*=\s*' + _Q + r'(\d)' + _Q + r'\s*,?\s*CPHA\s*=\s*' + _Q + r'(\d)' + _Q,
+        re.I)
     m = spi_mode_pat.search(sample)
     if m:
         if m.group(1):
@@ -856,6 +1315,17 @@ def extract_addresses(texts: list[str]) -> SensorAddress:
         elif m.group(2) and m.group(3):
             cpol, cpha = int(m.group(2)), int(m.group(3))
             addr.spi_mode = cpol * 2 + cpha
+
+    # BMP280-style: "CPOL = CPHA = '0'" means mode 0, "CPOL = CPHA = '1'" means mode 3
+    if addr.spi_mode < 0:
+        cpol_cpha = re.compile(
+            r"CPOL\s*=\s*CPHA\s*=\s*" + _Q + r"(\d)" + _Q, re.I)
+        modes_found = []
+        for m2 in cpol_cpha.finditer(sample):
+            val = int(m2.group(1))
+            modes_found.append(val * 2 + val)  # CPOL=CPHA=0 → mode 0; CPOL=CPHA=1 → mode 3
+        if modes_found:
+            addr.spi_mode = modes_found[0]  # primary mode
 
     return addr
 
@@ -903,23 +1373,51 @@ def _extract_sensor_summary(
     if m:
         summary.who_am_i_reg = int(m.group(1), 16)
 
-    # Supply voltage
-    vdd_pat = re.compile(
-        r'(?:VDD|supply|V_?DD)\s*[=:]\s*(\d+\.?\d*)\s*(?:V|to)\s*'
-        r'(?:to\s+)?(\d+\.?\d*)\s*V?',
+    # Supply voltage — try most specific patterns first
+    _v_found = False
+
+    # 1) Electrical table: "VDD ... 1.71 1.8 3.6 V" (min typ max on ONE line)
+    vdd_line_table = re.compile(
+        r'\bVDD\b[^\n]{0,60}?(\d+\.\d+)\s+(\d+\.?\d*)\s+(\d+\.?\d*)\s*V',
         re.I)
-    m = vdd_pat.search(scan)
-    if m:
-        summary.supply_voltage_min = float(m.group(1))
-        summary.supply_voltage_max = float(m.group(2))
-    else:
-        # "1.71 V to 3.6 V"
-        vrange = re.search(r'(\d+\.?\d*)\s*V\s*(?:to|-)\s*(\d+\.?\d*)\s*V', scan)
+    mt = vdd_line_table.search(scan)
+    if mt:
+        vals = sorted([float(mt.group(i)) for i in (1, 2, 3)])
+        if 0.5 <= vals[0] <= 5.5:
+            summary.supply_voltage_min = vals[0]
+            summary.supply_voltage_max = vals[-1]
+            _v_found = True
+
+    # 2) "VDD = 1.8 to 3.6 V" or "supply = 2.7 to 5.5 V"
+    if not _v_found:
+        vdd_pat = re.compile(
+            r'(?:VDD|supply|V_?DD)\s*[=:]\s*(\d+\.?\d*)\s*(?:V|to)\s*'
+            r'(?:to\s+)?(\d+\.?\d*)\s*V?',
+            re.I)
+        m = vdd_pat.search(scan)
+        if m:
+            summary.supply_voltage_min = float(m.group(1))
+            summary.supply_voltage_max = float(m.group(2))
+            _v_found = True
+
+    # 3) Generic "1.71 V to 3.6 V"
+    if not _v_found:
+        vrange = re.search(r'(\d+\.?\d*)\s*V\s*(?:to|\u2013|-)\s*(\d+\.?\d*)\s*V', scan)
         if vrange:
             v1, v2 = float(vrange.group(1)), float(vrange.group(2))
             if 0.5 <= v1 <= 5.5 and 0.5 <= v2 <= 5.5:
                 summary.supply_voltage_min = min(v1, v2)
                 summary.supply_voltage_max = max(v1, v2)
+                _v_found = True
+
+    # 4) Bosch-style single typical: "VDD 1.80 V"
+    if not _v_found:
+        vdd_single = re.search(r'\bVDD\s+(\d+\.\d+)\s*V', scan, re.I)
+        if vdd_single:
+            v = float(vdd_single.group(1))
+            if 0.8 <= v <= 5.5:
+                summary.supply_voltage_min = round(v * 0.9, 2)
+                summary.supply_voltage_max = round(v * 1.1, 2)
 
     # Operating temperature
     temp_pat = re.compile(
@@ -1070,6 +1568,7 @@ def sensor_info_to_json(info: SensorDatasheetInfo) -> dict:
             "i2c_addresses": [f"0x{a:02X}" for a in info.address.i2c_addresses],
             "i2c_address_pin": info.address.i2c_address_pin,
             "spi_max_freq_hz": info.address.spi_max_freq_hz,
+            "spi_max_freq_mhz": info.address.spi_max_freq_hz / 1_000_000 if info.address.spi_max_freq_hz else 0,
             "spi_mode": info.address.spi_mode,
             "spi_word_size": info.address.spi_word_size,
         },
