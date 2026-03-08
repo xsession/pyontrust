@@ -1,0 +1,34 @@
+{
+  "name": "flowlab_hil_run",
+  "description": "HIL test exported from FlowLab (1 steps)",
+  "instruments": {
+    "power_meter": {
+      "type": "simulated",
+      "params": {}
+    }
+  },
+  "recorders": [],
+  "steps": [
+    {
+      "name": "step_1_measure",
+      "duration_s": 1.0,
+      "description": "Power measurement (simulated_power, 1.0s @ 1000.0Hz)",
+      "actions": [
+        {
+          "type": "mark",
+          "label": "step_1_start_simulated_power"
+        },
+        {
+          "type": "mark",
+          "label": "measure_start_simulated_power"
+        }
+      ]
+    }
+  ],
+  "meta": {
+    "source": "flowlab",
+    "diagram_version": 1,
+    "block_count": 1,
+    "wire_count": 0
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "name": "selenium_test_profile",
+  "description": "HIL test exported from FlowLab (1 steps)",
+  "instruments": {
+    "power_meter": {
+      "type": "simulated",
+      "params": {}
+    }
+  },
+  "recorders": [],
+  "steps": [
+    {
+      "name": "step_1_delay",
+      "duration_s": 1.0,
+      "description": "Delay 1.0s",
+      "actions": [
+        {
+          "type": "mark",
+          "label": "step_1_start_delay"
+        },
+        {
+          "type": "sleep",
+          "seconds": 1.0
+        }
+      ]
+    }
+  ],
+  "meta": {
+    "source": "flowlab",
+    "diagram_version": 1,
+    "block_count": 1,
+    "wire_count": 0
+  }
+}

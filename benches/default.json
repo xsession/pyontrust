@@ -1,0 +1,16 @@
+{
+  "name": "default_bench",
+  "description": "Default lab bench with simulated instruments for development",
+  "instruments": [
+    {
+      "type": "simulated",
+      "enabled": true,
+      "params": {
+        "sample_rate_hz": 1000,
+        "base_current_a": 0.00001,
+        "noise_amplitude_a": 0.000001,
+        "voltage_v": 3.3
+      }
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+[console_scripts]
+pyontrust = pyontrust.gateway.app:main
+
+[pyontrust.instruments]
+ad3_cluster = pyontrust.instruments.ad3_cluster:create
+ad3_dwf = pyontrust.instruments.ad3_dwf:create
+aoi_camera = pyontrust.instruments.aoi_camera:create
+csv_file = pyontrust.instruments.csv_power_meter:create
+csv_process = pyontrust.instruments.csv_power_meter:create
+seek_thermal = pyontrust.instruments.seek_thermal:create
+simulated = pyontrust.instruments.simulated:create
+
+[pyontrust.recorders]
+aoi = pyontrust.recorders.aoi:create
+ffmpeg = pyontrust.recorders.ffmpeg_webcam:create
+hackrf_iq = pyontrust.recorders.hackrf_iq:create
+nrf52840 = pyontrust.recorders.nrf52840_dongle:create
+pcan_can = pyontrust.recorders.pcan_can:create
+process = pyontrust.recorders.process:create
+thermal = pyontrust.recorders.thermal:create

@@ -1,0 +1,12 @@
+{
+  "total_defects": 0,
+  "visual_defects": 0,
+  "solder_defects": 0,
+  "via_defects": 0,
+  "solder_joints_total": 0,
+  "vias_total": 0,
+  "time_acquire_s": 0.0001,
+  "time_preprocess_s": 0.0005,
+  "time_total_s": 0.0005,
+  "timestamp": "2026-03-08T12:01:07.281209+00:00"
+}

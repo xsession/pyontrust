@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CSV Plotter</title>
+  <link rel="stylesheet" href="/static/shell/shell.css">
+  <style>
+    .placeholder {
+      display: flex; align-items: center; justify-content: center;
+      height: 80vh; color: var(--fg-dim); font-size: 18px;
+      flex-direction: column; gap: 12px;
+    }
+    .placeholder p { font-size: 13px; max-width: 500px; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="placeholder">
+    <span style="font-size: 48px;">📈</span>
+    <h2>CSV Plotter</h2>
+    <p>
+      The full CSV Plotter SPA lives at
+      <code>gui_app/csv_plotter/web/</code> and is served by the
+      standalone <code>server.py</code>.  This placeholder will be
+      replaced once the migration to the unified gateway is complete.
+    </p>
+    <p>
+      For now, the CSV Plotter Blueprint at <code>/csv/</code> exposes
+      the same REST API — any existing frontend can be pointed at it.
+    </p>
+  </div>
+</body>
+</html>

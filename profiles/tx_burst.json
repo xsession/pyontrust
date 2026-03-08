@@ -1,0 +1,35 @@
+{
+  "name": "tx_burst",
+  "description": "Measure current during a TX burst cycle: idle → transmit → idle",
+  "instruments": {
+    "power_meter": {
+      "type": "simulated",
+      "params": {}
+    }
+  },
+  "recorders": [],
+  "actions": [
+    { "type": "mark", "label": "test_start" },
+    {
+      "type": "run",
+      "name": "pre_idle",
+      "duration_s": 2.0,
+      "description": "Baseline idle measurement"
+    },
+    { "type": "mark", "label": "tx_start" },
+    {
+      "type": "run",
+      "name": "tx_burst",
+      "duration_s": 5.0,
+      "description": "DUT transmitting"
+    },
+    { "type": "mark", "label": "tx_end" },
+    {
+      "type": "run",
+      "name": "post_idle",
+      "duration_s": 3.0,
+      "description": "Post-TX return to idle"
+    },
+    { "type": "mark", "label": "test_end" }
+  ]
+}

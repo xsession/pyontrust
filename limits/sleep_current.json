@@ -1,0 +1,12 @@
+{
+  "name": "sleep_current_limits",
+  "description": "Pass/fail limits for nRF91 deep sleep current",
+  "steps": {
+    "idle_10s": {
+      "limits": [
+        { "metric": "avg_current_a", "op": "<=", "value": 0.000005, "description": "Average sleep current < 5 µA" },
+        { "metric": "max_current_a", "op": "<=", "value": 0.000050, "description": "Peak current < 50 µA (transients allowed)" }
+      ]
+    }
+  }
+}

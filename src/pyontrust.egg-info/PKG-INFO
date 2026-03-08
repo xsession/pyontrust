@@ -1,3 +1,52 @@
+Metadata-Version: 2.4
+Name: pyontrust
+Version: 2026.3.0
+Summary: Enterprise embedded test & measurement platform
+Author: Pyontrust Team
+License: MIT
+Keywords: embedded,testing,iot,power-measurement,hil,sdr,csv-plotter
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Software Development :: Testing
+Classifier: Topic :: Scientific/Engineering
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Provides-Extra: gui
+Requires-Dist: flask>=3.0; extra == "gui"
+Requires-Dist: flask-sock>=0.7; extra == "gui"
+Provides-Extra: analysis
+Requires-Dist: pandas>=1.5; extra == "analysis"
+Requires-Dist: numpy>=1.23; extra == "analysis"
+Requires-Dist: matplotlib>=3.6; extra == "analysis"
+Provides-Extra: aoi
+Requires-Dist: opencv-python>=4.8; extra == "aoi"
+Requires-Dist: scikit-image>=0.21; extra == "aoi"
+Requires-Dist: scipy>=1.10; extra == "aoi"
+Requires-Dist: numpy>=1.23; extra == "aoi"
+Requires-Dist: harvesters>=1.4; extra == "aoi"
+Provides-Extra: thermal
+Requires-Dist: numpy>=1.23; extra == "thermal"
+Requires-Dist: opencv-python>=4.8; extra == "thermal"
+Requires-Dist: seekcamera-python>=1.1; sys_platform == "linux" and extra == "thermal"
+Provides-Extra: sdr
+Requires-Dist: numpy>=1.23; extra == "sdr"
+Provides-Extra: power
+Requires-Dist: docopt>=0.6.2; extra == "power"
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.0; extra == "dev"
+Requires-Dist: mypy>=1.0; extra == "dev"
+Requires-Dist: ruff>=0.1; extra == "dev"
+Requires-Dist: sphinx>=7.0; extra == "dev"
+Requires-Dist: sphinx-rtd-theme>=2.0; extra == "dev"
+Provides-Extra: all
+Requires-Dist: pyontrust[analysis,aoi,dev,gui,power,sdr,thermal]; extra == "all"
+
 # pyontrust
 
 A flexible, hardware-agnostic **embedded test & measurement system** for automated power profiling, RF testing, flash programming, CAN bus capture, and visual inspection of embedded hardware designs.

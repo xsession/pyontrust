@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>pyontrust — Enterprise Test Platform</title>
+  <link rel="stylesheet" href="/static/shell/shell.css">
+</head>
+<body>
+
+<nav id="app-nav">
+  <a href="/" class="logo">⚡ pyontrust</a>
+  <a href="/hil/"   data-tool="hil">🔬 HIL Dashboard</a>
+  <a href="/csv/"   data-tool="csv">📈 CSV Plotter</a>
+  <a href="/bench/" data-tool="bench">🏗️ Lab Bench</a>
+  <a href="/flowlab/" data-tool="flowlab">🔬 FlowLab</a>
+  <a href="/artifacts/" data-tool="artifacts">📦 Artifacts</a>
+  <a href="/config/api/profiles" data-tool="config">⚙️ Config</a>
+  <span class="spacer"></span>
+  <span id="status-badge" class="status-badge">● idle</span>
+</nav>
+
+<main id="app-content">
+  <iframe id="tool-frame" src="/hil/"></iframe>
+</main>
+
+<script src="/static/shell/shell.js"></script>
+</body>
+</html>

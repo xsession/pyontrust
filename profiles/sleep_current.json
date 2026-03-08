@@ -1,0 +1,21 @@
+{
+  "name": "sleep_current",
+  "description": "Measure idle/sleep current consumption over 10 seconds",
+  "instruments": {
+    "power_meter": {
+      "type": "simulated",
+      "params": {}
+    }
+  },
+  "recorders": [],
+  "actions": [
+    { "type": "mark", "label": "test_start" },
+    {
+      "type": "run",
+      "name": "idle_10s",
+      "duration_s": 10.0,
+      "description": "Device in deep sleep for 10 seconds"
+    },
+    { "type": "mark", "label": "test_end" }
+  ]
+}

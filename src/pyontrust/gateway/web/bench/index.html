@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lab Bench</title>
+  <link rel="stylesheet" href="/static/shell/shell.css">
+  <style>
+    .bench-page { padding: 20px; max-width: 900px; margin: 0 auto; }
+    .bench-page h2 { color: var(--accent); margin-bottom: 16px; }
+    .bench-actions { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+    #bench-table { margin-top: 12px; }
+    .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+    .status-dot.connected { background: var(--green); }
+    .status-dot.error { background: var(--red); }
+    .status-dot.disabled { background: var(--fg-dim); }
+    .status-dot.not_instantiated { background: var(--yellow); }
+    .types-list { font-size: 12px; color: var(--fg-dim); margin-top: 12px; }
+  </style>
+</head>
+<body>
+<div class="bench-page">
+  <h2>🏗️ Lab Bench Manager</h2>
+
+  <div class="bench-actions">
+    <input type="text" id="bench-path" placeholder="benches/default.json" style="width:280px;">
+    <button class="btn" id="btn-load" onclick="loadBench()">Load</button>
+    <button class="btn" id="btn-save" onclick="saveBench()">Save</button>
+    <button class="btn btn-primary" onclick="connectAll()">Connect All</button>
+    <button class="btn btn-danger" onclick="disconnectAll()">Disconnect</button>
+    <button class="btn" onclick="refreshTypes()">Refresh Types</button>
+  </div>
+
+  <div class="card">
+    <h3 style="font-size: 13px; color: var(--fg-dim); margin-bottom: 8px;">Instrument Status</h3>
+    <table id="bench-table">
+      <thead><tr><th>Type</th><th>Status</th><th>Enabled</th><th>Info</th></tr></thead>
+      <tbody id="bench-tbody"><tr><td colspan="4" style="color:var(--fg-dim)">No bench loaded</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="types-list card" style="margin-top: 16px;">
+    <h3 style="font-size: 13px; color: var(--fg-dim); margin-bottom: 8px;">Available Instrument Types</h3>
+    <div id="types-content">Click "Refresh Types" to discover.</div>
+  </div>
+</div>
+
+<script>
+const API = '/bench/api';
+
+async function loadBench() {
+  const path = document.getElementById('bench-path').value.trim();
+  const body = path ? { path } : {};
+  const res = await fetch(API + '/load', { method: 'POST',
+    headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
+  const data = await res.json();
+  if (data.error) alert(data.error);
+  refreshStatus();
+}
+
+async function saveBench() {
+  const path = document.getElementById('bench-path').value.trim();
+  const body = path ? { path } : {};
+  const res = await fetch(API + '/save', { method: 'POST',
+    headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
+  const data = await res.json();
+  if (data.error) alert(data.error); else alert('Saved');
+}
+
+async function connectAll() {
+  const res = await fetch(API + '/connect', { method: 'POST' });
+  const data = await res.json();
+  console.log('Connect result:', data);
+  refreshStatus();
+}
+
+async function disconnectAll() {
+  await fetch(API + '/disconnect', { method: 'POST' });
+  refreshStatus();
+}
+
+async function refreshStatus() {
+  try {
+    const res = await fetch(API + '/status');
+    const instruments = await res.json();
+    const tbody = document.getElementById('bench-tbody');
+    if (!Array.isArray(instruments) || instruments.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" style="color:var(--fg-dim)">No instruments configured</td></tr>';
+      return;
+    }
+    tbody.innerHTML = instruments.map(i => `<tr>
+      <td><span class="status-dot ${i.status||'not_instantiated'}"></span>${i.type}</td>
+      <td>${i.status || '—'}</td>
+      <td>${i.enabled ? '✓' : '✗'}</td>
+      <td style="font-size:11px;color:var(--fg-dim)">${i.info||i.error||'—'}</td>
+    </tr>`).join('');
+  } catch {}
+}
+
+async function refreshTypes() {
+  try {
+    const res = await fetch(API + '/types');
+    const types = await res.json();
+    const el = document.getElementById('types-content');
+    el.innerHTML = Object.keys(types).map(t =>
+      `<span class="badge badge-info" style="margin:2px">${t}</span>`
+    ).join(' ') || 'None found';
+  } catch {}
+}
+
+refreshStatus();
+</script>
+</body>
+</html>

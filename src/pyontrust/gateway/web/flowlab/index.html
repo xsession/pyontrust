@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FlowLab — Visual Experiment Designer</title>
+  <link rel="stylesheet" href="/static/shell/shell.css">
+  <link rel="stylesheet" href="/flowlab/static/flowlab.css">
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     TOOLBAR
+     ═══════════════════════════════════════════════════════════════ -->
+<div id="toolbar">
+  <span class="toolbar-title">⚡ FlowLab</span>
+  <button class="btn btn-primary" id="btn-run"    title="Execute diagram (Ctrl+Enter)">▶ Run</button>
+  <button class="btn"             id="btn-stop"    title="Stop execution" disabled>■ Stop</button>
+  <span class="sep"></span>
+  <button class="btn" id="btn-clear"  title="Clear canvas">🗑 Clear</button>
+  <button class="btn" id="btn-save"   title="Save diagram (Ctrl+S)">💾 Save</button>
+  <button class="btn" id="btn-load"   title="Load diagram">📂 Load</button>
+  <button class="btn" id="btn-export" title="Export as JSON">⬇ Export</button>
+  <span class="sep"></span>
+  <button class="btn btn-hil" id="btn-save-hil" title="Save diagram as HIL test profile">🧪 Save as HIL</button>
+  <button class="btn btn-hil" id="btn-run-hil"  title="Run diagram as HIL test sequence">🚀 Run as HIL</button>
+  <button class="btn btn-hil" id="btn-import-hil" title="Import HIL profile into FlowLab">📥 Import HIL</button>
+  <span class="sep"></span>
+  <button class="btn btn-tutorial" id="btn-tutorial" title="Component reference & tutorial">❓ Tutorial</button>
+  <span class="spacer"></span>
+  <span id="exec-status" class="badge badge-info">idle</span>
+  <span id="exec-time" class="exec-time"></span>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     MAIN LAYOUT: Palette | Canvas | Properties
+     ═══════════════════════════════════════════════════════════════ -->
+<div id="main-layout">
+
+  <!-- ── Block palette (left sidebar) ────────────────────────── -->
+  <aside id="palette">
+    <input type="text" id="palette-search" placeholder="Search blocks…">
+    <div id="palette-list"></div>
+  </aside>
+
+  <!-- ── Canvas ──────────────────────────────────────────────── -->
+  <div id="canvas-wrap">
+    <svg id="canvas" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <path d="M0,0 L8,3 L0,6" fill="var(--accent)" />
+        </marker>
+        <!-- Grid pattern -->
+        <pattern id="grid-small" width="20" height="20" patternUnits="userSpaceOnUse">
+          <path d="M 20 0 L 0 0 0 20" fill="none" stroke="var(--bg3)" stroke-width="0.5"/>
+        </pattern>
+        <pattern id="grid-big" width="100" height="100" patternUnits="userSpaceOnUse">
+          <rect width="100" height="100" fill="url(#grid-small)"/>
+          <path d="M 100 0 L 0 0 0 100" fill="none" stroke="var(--bg4)" stroke-width="1"/>
+        </pattern>
+      </defs>
+      <rect width="10000" height="10000" fill="url(#grid-big)" class="canvas-bg"/>
+      <g id="wires-layer"></g>
+      <g id="blocks-layer"></g>
+      <!-- Temp wire while dragging -->
+      <path id="temp-wire" class="wire temp" d="" style="display:none"/>
+    </svg>
+  </div>
+
+  <!-- ── Properties panel (right sidebar) ────────────────────── -->
+  <aside id="props-panel">
+    <h3 id="props-title">Properties</h3>
+    <div id="props-body">
+      <p class="hint">Select a block to edit its properties.</p>
+    </div>
+    <!-- Output / console -->
+    <h3 class="console-header">Console Output</h3>
+    <pre id="console-output"></pre>
+  </aside>
+
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     HIL Import Modal
+     ═══════════════════════════════════════════════════════════════ -->
+<div id="hil-modal" class="modal-overlay" style="display:none">
+  <div class="modal-box">
+    <h3>📥 Import HIL Test Profile</h3>
+    <div class="modal-section">
+      <label>Load from saved profiles:</label>
+      <div id="hil-profile-list" class="profile-list"></div>
+    </div>
+    <div class="modal-section">
+      <label>Or paste profile JSON:</label>
+      <textarea id="hil-json-input" rows="10" placeholder='{"name":"...", "actions":[...]}' spellcheck="false"></textarea>
+    </div>
+    <div class="modal-section">
+      <label>Or upload a profile file:</label>
+      <input type="file" id="hil-file-input" accept=".json">
+    </div>
+    <div class="modal-buttons">
+      <button class="btn btn-primary" id="hil-import-btn">Import</button>
+      <button class="btn" id="hil-cancel-btn">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     HIL Save Modal
+     ═══════════════════════════════════════════════════════════════ -->
+<div id="hil-save-modal" class="modal-overlay" style="display:none">
+  <div class="modal-box">
+    <h3>🧪 Save as HIL Test Profile</h3>
+    <div class="modal-section">
+      <label>Profile name:</label>
+      <input type="text" id="hil-save-name" value="flowlab_export" placeholder="my_test_profile">
+    </div>
+    <div class="modal-section">
+      <label>Preview:</label>
+      <pre id="hil-save-preview" class="json-preview"></pre>
+    </div>
+    <div class="modal-buttons">
+      <button class="btn btn-primary" id="hil-save-confirm-btn">💾 Save Profile</button>
+      <button class="btn" id="hil-save-download-btn">⬇ Download JSON</button>
+      <button class="btn" id="hil-save-cancel-btn">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     Tutorial / Component Reference Modal
+     ═══════════════════════════════════════════════════════════════ -->
+<div id="tutorial-modal" class="modal-overlay" style="display:none">
+  <div class="modal-box tutorial-box">
+    <div class="tutorial-header">
+      <h3>❓ FlowLab Component Reference</h3>
+      <input type="text" id="tutorial-search" placeholder="Search components...">
+    </div>
+    <div class="tutorial-layout">
+      <nav id="tutorial-nav" class="tutorial-nav"></nav>
+      <article id="tutorial-content" class="tutorial-content">
+        <p class="hint">Select a category or component from the sidebar.</p>
+      </article>
+    </div>
+    <div class="modal-buttons">
+      <button class="btn" id="tutorial-close-btn">Close</button>
+    </div>
+  </div>
+</div>
+
+<script src="/flowlab/static/flowlab.js"></script>
+</body>
+</html>

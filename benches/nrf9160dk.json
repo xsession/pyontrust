@@ -1,0 +1,38 @@
+{
+  "name": "nrf9160dk_bench",
+  "description": "Lab bench for nRF9160 DK testing with AD3 and HackRF",
+  "instruments": [
+    {
+      "type": "ad3_dwf",
+      "enabled": true,
+      "params": {
+        "device_index": 0,
+        "channel": 0,
+        "range_a": 0.001
+      },
+      "calibration": {
+        "offset_a": 0.0,
+        "gain": 1.0,
+        "date": "2026-01-15"
+      }
+    },
+    {
+      "type": "hackrf",
+      "enabled": false,
+      "params": {
+        "center_freq_hz": 2402000000,
+        "sample_rate_hz": 2000000,
+        "lna_gain_db": 16,
+        "vga_gain_db": 20
+      }
+    },
+    {
+      "type": "pcan",
+      "enabled": false,
+      "params": {
+        "channel": "PCAN_USBBUS1",
+        "bitrate": 500000
+      }
+    }
+  ]
+}

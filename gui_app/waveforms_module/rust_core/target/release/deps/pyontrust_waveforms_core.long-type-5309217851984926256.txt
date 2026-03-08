@@ -1,2 +1,0 @@
-HashMap<&str, pyo3::Bound<'_, PyArray<f32, Dim<[usize; 1]>>>>
-pyo3::Bound<'_, PyArray<f32, Dim<[usize; 1]>>>

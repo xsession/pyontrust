@@ -4,17 +4,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyontrust"
-version = "0.1.0"
-description = "Pyontrust — embedded systems testing & visualization infrastructure."
+version = "2026.3.0"
+description = "Enterprise embedded test & measurement platform"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
 authors = [
     {name = "Pyontrust Team"},
 ]
-keywords = ["embedded", "testing", "iot", "power-measurement", "csv-plotter"]
+keywords = ["embedded", "testing", "iot", "power-measurement", "hil", "sdr", "csv-plotter"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
@@ -24,17 +24,34 @@ classifiers = [
     "Topic :: Software Development :: Testing",
     "Topic :: Scientific/Engineering",
 ]
-dependencies = [
-    "docopt>=0.6.2",
-]
+dependencies = []  # Core has ZERO mandatory dependencies
 
 [project.optional-dependencies]
-csv-plotter = [
+gui = [
+    "flask>=3.0",
+    "flask-sock>=0.7",
+]
+analysis = [
     "pandas>=1.5",
     "numpy>=1.23",
     "matplotlib>=3.6",
 ]
-power-test = [
+aoi = [
+    "opencv-python>=4.8",
+    "scikit-image>=0.21",
+    "scipy>=1.10",
+    "numpy>=1.23",
+    "harvesters>=1.4",
+]
+thermal = [
+    "numpy>=1.23",
+    "opencv-python>=4.8",
+    "seekcamera-python>=1.1; sys_platform == 'linux'",
+]
+sdr = [
+    "numpy>=1.23",
+]
+power = [
     "docopt>=0.6.2",
 ]
 dev = [
@@ -42,16 +59,61 @@ dev = [
     "pytest-cov>=4.0",
     "mypy>=1.0",
     "ruff>=0.1",
+    "sphinx>=7.0",
+    "sphinx-rtd-theme>=2.0",
 ]
+all = [
+    "pyontrust[gui,analysis,sdr,power,aoi,thermal,dev]",
+]
+
+[project.scripts]
+pyontrust = "pyontrust.gateway.app:main"
+
+[project.entry-points."pyontrust.instruments"]
+simulated     = "pyontrust.instruments.simulated:create"
+ad3_dwf       = "pyontrust.instruments.ad3_dwf:create"
+ad3_cluster   = "pyontrust.instruments.ad3_cluster:create"
+csv_file      = "pyontrust.instruments.csv_power_meter:create"
+csv_process   = "pyontrust.instruments.csv_power_meter:create"
+aoi_camera    = "pyontrust.instruments.aoi_camera:create"
+seek_thermal  = "pyontrust.instruments.seek_thermal:create"
+
+[project.entry-points."pyontrust.recorders"]
+process       = "pyontrust.recorders.process:create"
+hackrf_iq     = "pyontrust.recorders.hackrf_iq:create"
+ffmpeg        = "pyontrust.recorders.ffmpeg_webcam:create"
+pcan_can      = "pyontrust.recorders.pcan_can:create"
+nrf52840      = "pyontrust.recorders.nrf52840_dongle:create"
+aoi           = "pyontrust.recorders.aoi:create"
+thermal       = "pyontrust.recorders.thermal:create"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"pyontrust.gateway.web" = ["**/*.html", "**/*.css", "**/*.js", "**/*.ico"]
 
 # --- Testing ---------------------------------------------------------------
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra --strict-markers -q"
+addopts = "-ra --strict-markers -q --tb=short"
 markers = [
-    "slow: marks tests as slow",
-    "integration: marks tests needing external hardware",
-    "ad3: marks tests requiring Analog Discovery 3",
+    "slow: marks tests as slow (>5s)",
+    "integration: needs external hardware or Docker",
+    "ad3: needs Analog Discovery 3",
+    "ppk2: needs Nordic PPK2",
+    "jlink: needs SEGGER J-Link",
+    "hackrf: needs HackRF One",
+    "can: needs PEAK-CAN adapter",
+    "aoi: needs industrial camera or AOI dependencies",
+    "thermal: needs Seek Thermal camera or thermal dependencies",
+    "e2e: browser-based end-to-end test",
+]
+filterwarnings = [
+    "ignore::pytest.PytestCollectionWarning",
 ]
 
 # --- Type checking ---------------------------------------------------------
@@ -71,11 +133,12 @@ select = ["E", "W", "F", "I", "N", "UP", "B", "SIM"]
 ignore = ["E501", "B904"]
 
 [tool.ruff.isort]
-known-first-party = ["pyontrust_packages", "gui_app", "sdr_module", "waveforms_module", "gnuradio_module"]
+known-first-party = ["pyontrust", "pyontrust_packages", "gui_app"]
 
 # --- Coverage --------------------------------------------------------------
 [tool.coverage.run]
 source = [
+    "src/pyontrust",
     "pyontrust_packages",
     "gui_app/csv_plotter",
 ]

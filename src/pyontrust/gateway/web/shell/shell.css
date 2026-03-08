@@ -1,0 +1,160 @@
+/* ═══════════════════════════════════════════════════════════════
+   Catppuccin Mocha — Shared Theme Variables
+   Used by all pyontrust web tools (app shell + micro-frontends).
+   ═══════════════════════════════════════════════════════════════ */
+:root {
+  --bg:        #1e1e2e;
+  --bg2:       #252538;
+  --bg3:       #2d2d44;
+  --bg4:       #353550;
+  --fg:        #cdd6f4;
+  --fg-dim:    #6c7086;
+  --accent:    #89b4fa;
+  --green:     #a6e3a1;
+  --red:       #f38ba8;
+  --yellow:    #f9e2af;
+  --peach:     #fab387;
+  --mauve:     #cba6f7;
+  --pink:      #f5c2e7;
+  --teal:      #94e2d5;
+  --border:    #45475a;
+  --radius:    6px;
+  --sidebar-w: 220px;
+  --nav-h:     48px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  min-height: 100vh;
+}
+
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--bg2); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--fg-dim); }
+
+/* ─── Top navigation bar ─── */
+#app-nav {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: var(--nav-h);
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 4px;
+  z-index: 1000;
+}
+
+#app-nav .logo {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--accent);
+  margin-right: 20px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+#app-nav a {
+  color: var(--fg-dim);
+  text-decoration: none;
+  padding: 8px 14px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+#app-nav a:hover { background: var(--bg3); color: var(--fg); }
+#app-nav a.active { background: var(--bg3); color: var(--accent); }
+
+#app-nav .spacer { flex: 1; }
+
+#app-nav .status-badge {
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  background: var(--bg3);
+  color: var(--green);
+  border: 1px solid var(--border);
+}
+
+/* ─── Main content area ─── */
+#app-content {
+  margin-top: var(--nav-h);
+  height: calc(100vh - var(--nav-h));
+  overflow: hidden;
+}
+
+#app-content iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+/* ─── Common utility classes ─── */
+.btn {
+  background: var(--bg3);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn:hover { background: var(--bg4); }
+.btn-primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+.btn-primary:hover { opacity: 0.9; }
+.btn-danger { background: var(--red); color: var(--bg); border-color: var(--red); }
+.btn-danger:hover { opacity: 0.9; }
+
+.card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.badge-ok { background: var(--green); color: var(--bg); }
+.badge-err { background: var(--red); color: var(--bg); }
+.badge-warn { background: var(--yellow); color: var(--bg); }
+.badge-info { background: var(--accent); color: var(--bg); }
+
+input[type="text"], input[type="number"], select, textarea {
+  background: var(--bg3);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  font-size: 13px;
+  outline: none;
+}
+input:focus, select:focus, textarea:focus {
+  border-color: var(--accent);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+th { color: var(--fg-dim); font-weight: 600; }
+tr:hover td { background: var(--bg3); }
