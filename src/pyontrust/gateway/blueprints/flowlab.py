@@ -20,6 +20,7 @@ from flask import Blueprint, current_app, jsonify, request, send_from_directory
 
 from pyontrust.gateway.flowlab_engine import FlowLabEngine
 from pyontrust.gateway.hil_flowlab_converter import diagram_to_hil, hil_to_diagram
+from pyontrust.gateway.flowlab_codegen import diagram_to_python, extract_diagram_from_python
 
 logger = logging.getLogger("pyontrust.gateway.flowlab")
 
@@ -115,6 +116,105 @@ def list_diagrams():
 def block_types():
     engine = _get_engine()
     return jsonify({"blocks": list(engine.block_registry.keys())})
+
+
+# ── Export as Python source ──────────────────────────────────────────
+
+@bp.route("/api/export_python", methods=["POST"])
+def export_python():
+    """Convert the current FlowLab diagram to a standalone Python script.
+
+    Accepts:
+        {"diagram": {...}, "name": "optional_script_name"}
+    Returns:
+        {"source": "#!/usr/bin/env python3\\n..."}
+    """
+    body = request.get_json(force=True)
+    diagram = body.get("diagram")
+    if not diagram or not diagram.get("blocks"):
+        return jsonify({"error": "Empty or invalid diagram"}), 400
+
+    name = body.get("name", "flowlab_export")
+
+    try:
+        source = diagram_to_python(diagram, script_name=name)
+        return jsonify({"source": source, "name": name})
+    except Exception as exc:
+        logger.exception("Python export failed")
+        return jsonify({"error": str(exc)}), 500
+
+
+# ── Import diagram from file ────────────────────────────────────────
+
+@bp.route("/api/import_diagram", methods=["POST"])
+def import_diagram():
+    """Import a FlowLab diagram from a JSON file or Python script.
+
+    Accepts multipart/form-data with a ``file`` field, or JSON body:
+        - ``{"source": "...python source..."}`` — extract embedded diagram
+        - ``{"diagram": {...}}`` — direct diagram JSON
+    Returns:
+        {"diagram": {...FlowLab diagram...}}
+    """
+    # Handle file upload (multipart)
+    if request.content_type and "multipart" in request.content_type:
+        f = request.files.get("file")
+        if not f:
+            return jsonify({"error": "No file uploaded"}), 400
+
+        text = f.read().decode("utf-8", errors="replace")
+        fname = f.filename or ""
+
+        if fname.endswith(".py"):
+            diagram = extract_diagram_from_python(text)
+            if not diagram:
+                return jsonify({"error": "No embedded FlowLab diagram found in .py file"}), 400
+            return jsonify({"diagram": diagram, "source": "python"})
+
+        elif fname.endswith(".json"):
+            try:
+                data = json.loads(text)
+                # Could be a direct diagram or a wrapper
+                if "blocks" in data:
+                    return jsonify({"diagram": data, "source": "json"})
+                elif "diagram" in data:
+                    return jsonify({"diagram": data["diagram"], "source": "json"})
+                else:
+                    return jsonify({"error": "JSON file does not contain a FlowLab diagram (no 'blocks' key)"}), 400
+            except json.JSONDecodeError as exc:
+                return jsonify({"error": f"Invalid JSON: {exc}"}), 400
+
+        else:
+            return jsonify({"error": f"Unsupported file type: {fname}. Use .py or .json"}), 400
+
+    # Handle JSON body
+    body = request.get_json(force=True, silent=True) or {}
+
+    # Direct diagram JSON
+    if body.get("diagram") and body["diagram"].get("blocks"):
+        return jsonify({"diagram": body["diagram"], "source": "json"})
+
+    # Python source string
+    source = body.get("source", "")
+    if source:
+        diagram = extract_diagram_from_python(source)
+        if diagram:
+            return jsonify({"diagram": diagram, "source": "python"})
+        return jsonify({"error": "No embedded FlowLab diagram found in Python source"}), 400
+
+    # Load from saved diagrams by name
+    name = body.get("name", "")
+    if name:
+        path = _SAVE_DIR / f"{name}.json"
+        if path.exists():
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                return jsonify({"diagram": data, "source": "saved"})
+            except Exception as exc:
+                return jsonify({"error": f"Failed to load: {exc}"}), 500
+        return jsonify({"error": f"Diagram not found: {name}"}), 404
+
+    return jsonify({"error": "Provide a file upload, 'source' (Python), 'diagram' (JSON), or 'name'"}), 400
 
 
 # ── HIL ↔ FlowLab conversion ─────────────────────────────────────────

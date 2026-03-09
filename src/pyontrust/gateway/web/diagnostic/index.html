@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hardware Diagnostic</title>
+  <link rel="stylesheet" href="/static/shell/shell.css">
+  <style>
+    .diag-page { padding: 24px; max-width: 1200px; margin: 0 auto; }
+
+    /* ── Header ── */
+    .diag-header { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+    .diag-header h2 { color: var(--accent); font-size: 22px; margin: 0; }
+    .diag-header .actions { display: flex; gap: 8px; margin-left: auto; }
+
+    /* ── Summary bar ── */
+    .summary-bar {
+      display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;
+    }
+    .summary-card {
+      flex: 1; min-width: 140px;
+      background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 14px 18px; text-align: center;
+    }
+    .summary-card .num { font-size: 28px; font-weight: 700; }
+    .summary-card .label { font-size: 11px; color: var(--fg-dim); text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; }
+    .summary-card.ok .num { color: var(--green); }
+    .summary-card.err .num { color: var(--red); }
+    .summary-card.miss .num { color: var(--fg-dim); }
+    .summary-card.time .num { color: var(--yellow); }
+    .summary-card.tested .num { color: var(--teal); }
+
+    /* ── Category sections ── */
+    .cat-section { margin-bottom: 20px; }
+    .cat-title {
+      font-size: 12px; font-weight: 700; color: var(--fg-dim);
+      text-transform: uppercase; letter-spacing: 1px;
+      margin-bottom: 10px; padding-bottom: 6px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* ── Hardware cards ── */
+    .hw-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+
+    .hw-card {
+      background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 16px; position: relative; transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .hw-card:hover { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+    .hw-card.status-ok { border-left: 3px solid var(--green); }
+    .hw-card.status-error { border-left: 3px solid var(--red); }
+    .hw-card.status-not_found { border-left: 3px solid var(--fg-dim); opacity: 0.6; }
+
+    .hw-card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .hw-card-icon { font-size: 28px; line-height: 1; }
+    .hw-card-title { font-size: 14px; font-weight: 600; color: var(--fg); }
+    .hw-card-type { font-size: 11px; color: var(--fg-dim); font-family: monospace; }
+    .hw-card-status {
+      margin-left: auto; padding: 2px 10px; border-radius: 10px;
+      font-size: 11px; font-weight: 600;
+    }
+    .hw-card-status.ok { background: var(--green); color: var(--bg); }
+    .hw-card-status.error { background: var(--red); color: var(--bg); }
+    .hw-card-status.not_found { background: var(--bg3); color: var(--fg-dim); }
+
+    .hw-card-details {
+      display: grid; grid-template-columns: auto 1fr; gap: 2px 12px;
+      font-size: 12px; margin-bottom: 10px;
+    }
+    .hw-card-details .key { color: var(--fg-dim); font-weight: 600; white-space: nowrap; }
+    .hw-card-details .val { color: var(--fg); word-break: break-all; font-family: monospace; font-size: 11px; }
+
+    .hw-card-error {
+      background: rgba(243,139,168,0.1); border: 1px solid var(--red);
+      border-radius: 4px; padding: 6px 10px; font-size: 12px; color: var(--red);
+      margin-bottom: 10px;
+    }
+
+    .hw-card-actions { display: flex; gap: 6px; align-items: center; }
+    .hw-card-actions .btn { font-size: 11px; padding: 4px 10px; }
+
+    /* ── Test result badge ── */
+    .test-result {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 12px; padding: 6px 10px; border-radius: 4px;
+      margin-bottom: 10px;
+    }
+    .test-result.pass { background: rgba(166,227,161,0.1); border: 1px solid var(--green); color: var(--green); }
+    .test-result.fail { background: rgba(243,139,168,0.1); border: 1px solid var(--red); color: var(--red); }
+    .test-result .test-icon { font-size: 14px; }
+    .test-result .test-msg { flex: 1; font-family: monospace; font-size: 11px; }
+
+    /* ── Sensor list ── */
+    .sensor-list { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+    .sensor-chip {
+      background: var(--bg3); border: 1px solid var(--border); border-radius: 10px;
+      padding: 2px 8px; font-size: 10px; color: var(--fg-dim);
+    }
+
+    /* ── System info ── */
+    .sys-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; margin-top: 12px; }
+    .sys-card {
+      background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 14px;
+    }
+    .sys-card h4 { font-size: 12px; color: var(--fg-dim); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
+    .sys-card .info-row { display: flex; justify-content: space-between; font-size: 12px; padding: 3px 0; border-bottom: 1px solid var(--bg3); }
+    .sys-card .info-row .key { color: var(--fg-dim); }
+    .sys-card .info-row .val { color: var(--fg); font-family: monospace; }
+    .pkg-installed { color: var(--green); }
+    .pkg-missing { color: var(--red); }
+
+    /* ── Spinner ── */
+    .spinner {
+      display: inline-block; width: 16px; height: 16px;
+      border: 2px solid var(--border); border-top-color: var(--accent);
+      border-radius: 50%; animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Progress ── */
+    .scan-progress {
+      display: flex; align-items: center; gap: 10px;
+      color: var(--fg-dim); font-size: 13px; margin-bottom: 16px;
+    }
+
+    /* ── Status bar ── */
+    .status-strip {
+      display: flex; gap: 4px; height: 6px; border-radius: 3px; overflow: hidden;
+      margin-bottom: 16px;
+    }
+    .status-strip .seg { transition: flex 0.5s; }
+    .status-strip .seg-ok { background: var(--green); }
+    .status-strip .seg-err { background: var(--red); }
+    .status-strip .seg-miss { background: var(--bg3); }
+  </style>
+</head>
+<body>
+<div class="diag-page">
+
+  <!-- Header -->
+  <div class="diag-header">
+    <h2>🩺 Hardware Diagnostic</h2>
+    <span id="scan-time" style="font-size:12px; color:var(--fg-dim)"></span>
+    <div class="actions">
+      <button class="btn btn-primary" id="btn-scan" onclick="scanHardware()">🔍 Scan Hardware</button>
+      <button class="btn" id="btn-test-all" onclick="testAllHardware()" disabled>🧪 Test All</button>
+      <button class="btn" id="btn-refresh" onclick="location.reload()">↻ Refresh</button>
+    </div>
+  </div>
+
+  <!-- Summary bar -->
+  <div class="summary-bar" id="summary-bar" style="display:none">
+    <div class="summary-card ok"><div class="num" id="sum-ok">0</div><div class="label">Connected</div></div>
+    <div class="summary-card err"><div class="num" id="sum-err">0</div><div class="label">Errors</div></div>
+    <div class="summary-card miss"><div class="num" id="sum-miss">0</div><div class="label">Not Found</div></div>
+    <div class="summary-card time"><div class="num" id="sum-time">—</div><div class="label">Scan Time</div></div>
+    <div class="summary-card tested"><div class="num" id="sum-tested">—</div><div class="label">Tests Passed</div></div>
+  </div>
+
+  <!-- Status strip -->
+  <div class="status-strip" id="status-strip" style="display:none">
+    <div class="seg seg-ok" id="strip-ok" style="flex:0"></div>
+    <div class="seg seg-err" id="strip-err" style="flex:0"></div>
+    <div class="seg seg-miss" id="strip-miss" style="flex:0"></div>
+  </div>
+
+  <!-- Progress -->
+  <div class="scan-progress" id="scan-progress" style="display:none">
+    <div class="spinner"></div>
+    <span id="scan-msg">Scanning hardware…</span>
+  </div>
+
+  <!-- Hardware devices -->
+  <div id="hw-container">
+    <div class="card" style="text-align:center; padding:40px; color:var(--fg-dim)">
+      <div style="font-size:48px; margin-bottom:16px">🩺</div>
+      <div style="font-size:16px; margin-bottom:8px">Hardware Diagnostic</div>
+      <div style="font-size:13px; margin-bottom:20px">
+        Click <strong>Scan Hardware</strong> to probe all connected devices:<br>
+        USB serial ports, Android phones (ADB), webcams, Analog Discovery,<br>
+        Seek Thermal, J-Link, HackRF, PPK2, nRF52840 dongles, and more.
+      </div>
+      <button class="btn btn-primary" onclick="scanHardware()" style="font-size:14px; padding:10px 24px">
+        🔍 Start Scan
+      </button>
+    </div>
+  </div>
+
+  <!-- System info section -->
+  <div id="sys-section" style="margin-top:24px; display:none">
+    <div class="cat-title">📋 System Information</div>
+    <div class="sys-grid" id="sys-grid"></div>
+  </div>
+
+</div>
+
+<script>
+const API = '/diag/api';
+let lastScan = null;
+
+async function scanHardware() {
+  const btn = document.getElementById('btn-scan');
+  const prog = document.getElementById('scan-progress');
+  const msg = document.getElementById('scan-msg');
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Scanning…';
+  prog.style.display = 'flex';
+  msg.textContent = 'Probing USB, ADB, cameras, instruments…';
+
+  try {
+    const [scanRes, sysRes] = await Promise.all([
+      fetch(API + '/scan').then(r => r.json()),
+      fetch(API + '/system').then(r => r.json()),
+    ]);
+
+    lastScan = scanRes;
+    renderDevices(scanRes.devices);
+    renderSummary(scanRes.summary, scanRes.scan_time_s);
+    renderSystemInfo(sysRes);
+
+    document.getElementById('btn-test-all').disabled = false;
+    document.getElementById('scan-time').textContent =
+      `Last scan: ${new Date().toLocaleTimeString()} (${scanRes.scan_time_s}s)`;
+  } catch (err) {
+    document.getElementById('hw-container').innerHTML =
+      `<div class="card hw-card-error">Scan failed: ${err.message}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔍 Scan Hardware';
+    prog.style.display = 'none';
+  }
+}
+
+async function testAllHardware() {
+  const btn = document.getElementById('btn-test-all');
+  const prog = document.getElementById('scan-progress');
+  const msg = document.getElementById('scan-msg');
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Testing…';
+  prog.style.display = 'flex';
+  msg.textContent = 'Running quick tests on all connected hardware…';
+
+  try {
+    const res = await fetch(API + '/test_all', { method: 'POST' }).then(r => r.json());
+    lastScan = res;
+    renderDevices(res.devices);
+
+    // Update summary with test results
+    const sum = {
+      total: res.devices.length,
+      ok: res.devices.filter(d => d.status === 'ok').length,
+      error: res.devices.filter(d => d.status === 'error').length,
+      not_found: res.devices.filter(d => d.status === 'not_found').length,
+    };
+    renderSummary(sum, res.total_time_s, res.test_summary);
+
+    document.getElementById('scan-time').textContent =
+      `Last test: ${new Date().toLocaleTimeString()} (${res.total_time_s}s)`;
+  } catch (err) {
+    alert('Test failed: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🧪 Test All';
+    prog.style.display = 'none';
+  }
+}
+
+async function testSingleDevice(index) {
+  const devices = lastScan?.devices;
+  if (!devices || !devices[index]) return;
+
+  const hw = devices[index];
+  const cardEl = document.querySelector(`[data-hw-index="${index}"]`);
+  const btn = cardEl?.querySelector('.btn-test');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
+
+  try {
+    const result = await fetch(API + '/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(hw),
+    }).then(r => r.json());
+
+    devices[index].test_result = result;
+    renderDevices(devices);
+  } catch (err) {
+    alert('Test failed: ' + err.message);
+  }
+}
+
+function renderSummary(summary, scanTime, testSummary) {
+  document.getElementById('summary-bar').style.display = 'flex';
+  document.getElementById('status-strip').style.display = 'flex';
+
+  document.getElementById('sum-ok').textContent = summary.ok;
+  document.getElementById('sum-err').textContent = summary.error;
+  document.getElementById('sum-miss').textContent = summary.not_found;
+  document.getElementById('sum-time').textContent = scanTime + 's';
+
+  if (testSummary) {
+    document.getElementById('sum-tested').textContent =
+      `${testSummary.passed}/${testSummary.tested}`;
+  }
+
+  const total = summary.ok + summary.error + summary.not_found || 1;
+  document.getElementById('strip-ok').style.flex = summary.ok;
+  document.getElementById('strip-err').style.flex = summary.error;
+  document.getElementById('strip-miss').style.flex = summary.not_found;
+}
+
+function renderDevices(devices) {
+  const container = document.getElementById('hw-container');
+
+  // Group by category
+  const groups = {};
+  devices.forEach((d, i) => {
+    d._index = i;
+    const cat = d.category || 'other';
+    if (!groups[cat]) groups[cat] = [];
+    groups[cat].push(d);
+  });
+
+  const catLabels = {
+    android: '📱 Android Devices',
+    serial: '🔌 Serial Ports',
+    camera: '📷 Cameras',
+    instruments: '📟 Test Instruments',
+    thermal: '🌡️ Thermal Cameras',
+    debug: '🔧 Debug Probes',
+    sdr: '📡 SDR / Radio',
+    ble: '📶 BLE / Wireless',
+    network: '🌐 Network',
+  };
+  const catOrder = ['android', 'serial', 'camera', 'instruments', 'thermal', 'debug', 'sdr', 'ble', 'network', 'other'];
+
+  let html = '';
+  for (const cat of catOrder) {
+    const items = groups[cat];
+    if (!items) continue;
+
+    html += `<div class="cat-section">`;
+    html += `<div class="cat-title">${catLabels[cat] || cat}</div>`;
+    html += `<div class="hw-grid">`;
+
+    for (const d of items) {
+      html += renderCard(d);
+    }
+
+    html += `</div></div>`;
+  }
+
+  container.innerHTML = html || '<div class="card" style="color:var(--fg-dim)">No devices found</div>';
+}
+
+function renderCard(d) {
+  const statusClass = `status-${d.status}`;
+  const statusLabel = d.status === 'ok' ? '✓ Connected' :
+                      d.status === 'error' ? '✗ Error' : '— Not Found';
+
+  let detailsHtml = '';
+  if (d.status === 'ok' && d.details) {
+    const skip = new Set(['raw_line', 'raw']);
+    const entries = Object.entries(d.details).filter(([k]) => !skip.has(k));
+    if (entries.length > 0) {
+      detailsHtml = '<div class="hw-card-details">';
+      for (const [k, v] of entries) {
+        if (v === '' || v === null || v === undefined) continue;
+        const label = k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        detailsHtml += `<span class="key">${label}</span><span class="val">${escHtml(String(v))}</span>`;
+      }
+      detailsHtml += '</div>';
+    }
+  }
+
+  let errorHtml = '';
+  if (d.error) {
+    errorHtml = `<div class="hw-card-error">⚠ ${escHtml(d.error)}</div>`;
+  }
+
+  let testHtml = '';
+  if (d.test_result) {
+    const tr = d.test_result;
+    const cls = tr.passed ? 'pass' : 'fail';
+    const icon = tr.passed ? '✅' : '❌';
+    testHtml = `<div class="test-result ${cls}">
+      <span class="test-icon">${icon}</span>
+      <span class="test-msg">${escHtml(tr.message || '')}</span>
+    </div>`;
+    // Show detected sensors for Android
+    if (tr.sensors && tr.sensors.length > 0) {
+      testHtml += '<div class="sensor-list">';
+      for (const s of tr.sensors) {
+        testHtml += `<span class="sensor-chip">${escHtml(s)}</span>`;
+      }
+      testHtml += '</div>';
+    }
+  }
+
+  let actionsHtml = '';
+  if (d.status === 'ok') {
+    actionsHtml = `<div class="hw-card-actions">
+      <button class="btn btn-test" onclick="testSingleDevice(${d._index})">🧪 Quick Test</button>
+    </div>`;
+  }
+
+  return `<div class="hw-card ${statusClass}" data-hw-index="${d._index}">
+    <div class="hw-card-head">
+      <span class="hw-card-icon">${d.icon || '❓'}</span>
+      <div>
+        <div class="hw-card-title">${escHtml(d.name)}</div>
+        <div class="hw-card-type">${escHtml(d.type)}</div>
+      </div>
+      <span class="hw-card-status ${d.status}">${statusLabel}</span>
+    </div>
+    ${errorHtml}
+    ${testHtml}
+    ${detailsHtml}
+    ${actionsHtml}
+  </div>`;
+}
+
+function renderSystemInfo(sys) {
+  const section = document.getElementById('sys-section');
+  section.style.display = '';
+
+  let html = '';
+
+  // System card
+  html += `<div class="sys-card"><h4>🖥️ System</h4>`;
+  for (const [k, v] of Object.entries({
+    'Hostname': sys.hostname, 'OS': sys.os,
+    'Architecture': sys.arch, 'Python': sys.python?.split(' ')[0],
+  })) {
+    html += `<div class="info-row"><span class="key">${k}</span><span class="val">${escHtml(String(v || ''))}</span></div>`;
+  }
+  html += `</div>`;
+
+  // Packages card
+  html += `<div class="sys-card"><h4>📦 Key Packages</h4>`;
+  if (sys.packages) {
+    for (const [pkg, ver] of Object.entries(sys.packages)) {
+      const cls = ver ? 'pkg-installed' : 'pkg-missing';
+      const display = ver || 'not installed';
+      html += `<div class="info-row"><span class="key">${pkg}</span><span class="val ${cls}">${escHtml(display)}</span></div>`;
+    }
+  }
+  html += `</div>`;
+
+  document.getElementById('sys-grid').innerHTML = html;
+}
+
+function escHtml(s) {
+  const el = document.createElement('span');
+  el.textContent = s;
+  return el.innerHTML;
+}
+
+// Auto-scan on load
+scanHardware();
+</script>
+</body>
+</html>

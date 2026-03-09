@@ -68,6 +68,72 @@
       params: {distribution:{type:'select',default:'normal',options:['normal','uniform','poisson','exponential','beta']}, size:{type:'slider',default:1000,min:10,max:100000,step:10}, param1:{type:'number',default:0}, param2:{type:'number',default:1}},
       hint: 'Random data from statistical distributions' },
 
+    // ── Android Phone Sensors (USB / ADB) ────────────────────
+    { cat: 'Instruments', type: 'android_accel', label: 'Android Accel', icon: '📱', colour: '#89b4fa',
+      inputs: [], outputs: [{name:'accel', dtype:'dict'},{name:'trace', dtype:'power_trace'}],
+      params: {mode:{type:'select',default:'simulated',options:['simulated','adb','adb_bridge']}, duration_s:{type:'slider',default:1,min:0.1,max:30,step:0.1}, sample_rate_hz:{type:'slider',default:50,min:1,max:500,step:1}},
+      hint: 'Android accelerometer — 3-axis m/s² via USB' },
+
+    { cat: 'Instruments', type: 'android_gyro', label: 'Android Gyro', icon: '🌀', colour: '#89b4fa',
+      inputs: [], outputs: [{name:'gyro', dtype:'dict'},{name:'trace', dtype:'power_trace'}],
+      params: {mode:{type:'select',default:'simulated',options:['simulated','adb','adb_bridge']}, duration_s:{type:'slider',default:1,min:0.1,max:30,step:0.1}, sample_rate_hz:{type:'slider',default:50,min:1,max:500,step:1}},
+      hint: 'Android gyroscope — 3-axis rad/s via USB' },
+
+    { cat: 'Instruments', type: 'android_mag', label: 'Android Magnetometer', icon: '🧭', colour: '#89b4fa',
+      inputs: [], outputs: [{name:'mag', dtype:'dict'},{name:'trace', dtype:'power_trace'}],
+      params: {mode:{type:'select',default:'simulated',options:['simulated','adb','adb_bridge']}, duration_s:{type:'slider',default:1,min:0.1,max:30,step:0.1}, sample_rate_hz:{type:'slider',default:50,min:1,max:500,step:1}},
+      hint: 'Android magnetometer — 3-axis µT via USB' },
+
+    { cat: 'Instruments', type: 'android_mic', label: 'Android Mic', icon: '🎤', colour: '#89b4fa',
+      inputs: [], outputs: [{name:'audio', dtype:'power_trace'},{name:'level_db', dtype:'number'}],
+      params: {mode:{type:'select',default:'simulated',options:['simulated','adb','adb_bridge']}, duration_s:{type:'slider',default:2,min:0.1,max:60,step:0.1}, sample_rate:{type:'select',default:'16000',options:['8000','16000','22050','44100','48000']}},
+      hint: 'Android microphone — audio capture via USB' },
+
+    { cat: 'Instruments', type: 'android_proximity', label: 'Android Proximity', icon: '👋', colour: '#89b4fa',
+      inputs: [], outputs: [{name:'distance', dtype:'number'},{name:'near', dtype:'bool'}],
+      params: {mode:{type:'select',default:'simulated',options:['simulated','adb','adb_bridge']}},
+      hint: 'Android proximity sensor — distance in cm' },
+
+    { cat: 'Instruments', type: 'android_light', label: 'Android Light', icon: '☀️', colour: '#89b4fa',
+      inputs: [], outputs: [{name:'lux', dtype:'number'}],
+      params: {mode:{type:'select',default:'simulated',options:['simulated','adb','adb_bridge']}, duration_s:{type:'slider',default:1,min:0.1,max:30,step:0.1}},
+      hint: 'Android ambient light sensor — lux' },
+
+    { cat: 'Instruments', type: 'android_pressure', label: 'Android Barometer', icon: '🌤️', colour: '#89b4fa',
+      inputs: [], outputs: [{name:'hpa', dtype:'number'}],
+      params: {mode:{type:'select',default:'simulated',options:['simulated','adb','adb_bridge']}, duration_s:{type:'slider',default:1,min:0.1,max:30,step:0.1}},
+      hint: 'Android barometric pressure — hPa' },
+
+    { cat: 'Instruments', type: 'android_gps', label: 'Android GPS', icon: '📍', colour: '#89b4fa',
+      inputs: [], outputs: [{name:'location', dtype:'dict'}],
+      params: {mode:{type:'select',default:'simulated',options:['simulated','adb','adb_bridge']}},
+      hint: 'Android GPS — lat, lon, alt, speed' },
+
+    { cat: 'Instruments', type: 'android_battery', label: 'Android Battery', icon: '🔋', colour: '#89b4fa',
+      inputs: [], outputs: [{name:'battery', dtype:'dict'}],
+      params: {mode:{type:'select',default:'simulated',options:['simulated','adb','adb_bridge']}},
+      hint: 'Android battery — level, voltage, temp, status' },
+
+    { cat: 'Instruments', type: 'android_gravity', label: 'Android Gravity', icon: '⬇️', colour: '#89b4fa',
+      inputs: [], outputs: [{name:'gravity', dtype:'dict'},{name:'trace', dtype:'power_trace'}],
+      params: {mode:{type:'select',default:'simulated',options:['simulated','adb','adb_bridge']}, duration_s:{type:'slider',default:1,min:0.1,max:30,step:0.1}, sample_rate_hz:{type:'slider',default:50,min:1,max:500,step:1}},
+      hint: 'Android gravity sensor — 3-axis m/s²' },
+
+    { cat: 'Instruments', type: 'android_rotation', label: 'Android Rotation', icon: '🔄', colour: '#89b4fa',
+      inputs: [], outputs: [{name:'rotation', dtype:'dict'},{name:'trace', dtype:'power_trace'}],
+      params: {mode:{type:'select',default:'simulated',options:['simulated','adb','adb_bridge']}, duration_s:{type:'slider',default:1,min:0.1,max:30,step:0.1}, sample_rate_hz:{type:'slider',default:50,min:1,max:500,step:1}},
+      hint: 'Android rotation vector — quaternion orientation' },
+
+    { cat: 'Instruments', type: 'android_torch', label: 'Android Torch', icon: '🔦', colour: '#f9e2af',
+      inputs: [], outputs: [{name:'ok', dtype:'bool'},{name:'state', dtype:'string'}],
+      params: {mode:{type:'select',default:'simulated',options:['simulated','adb','adb_bridge']}, state:{type:'select',default:'on',options:['on','off']}},
+      hint: 'Toggle Android flashlight (torch) on/off via ADB' },
+
+    { cat: 'Instruments', type: 'lux_measure', label: 'Lux Measure', icon: '💡', colour: '#f9e2af',
+      inputs: [], outputs: [{name:'result', dtype:'dict'},{name:'webcam_lux', dtype:'list'},{name:'android_lux', dtype:'list'},{name:'correlation', dtype:'number'}],
+      params: {android_mode:{type:'select',default:'simulated',options:['simulated','adb','adb_bridge']}, n_cycles:{type:'slider',default:3,min:1,max:10,step:1}, torch_on_s:{type:'slider',default:3,min:0.5,max:15,step:0.5}, torch_off_s:{type:'slider',default:3,min:0.5,max:15,step:0.5}},
+      hint: 'Parallel lux measurement — webcam + Android light sensor with torch cycling' },
+
     // ═══════════════════════════════════════════════════════════
     // ANALYSIS — Signal processing & measurements
     // ═══════════════════════════════════════════════════════════
@@ -1106,6 +1172,36 @@
     consoleLog('⬇ Exported diagram JSON');
   }
 
+  async function exportPython() {
+    const data = serialize();
+    if (!data.blocks || data.blocks.length === 0) {
+      consoleLog('⚠ Nothing to export — canvas is empty');
+      return;
+    }
+    consoleLog('🐍 Generating Python script...');
+    try {
+      const res = await fetch('/flowlab/api/export_python', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({diagram: data, name: 'flowlab_test'}),
+      });
+      const j = await res.json();
+      if (j.error) {
+        consoleLog('❌ Python export error: ' + j.error);
+        return;
+      }
+      const blob = new Blob([j.source], {type: 'text/x-python'});
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href = url; a.download = (j.name || 'flowlab_test') + '.py'; a.click();
+      URL.revokeObjectURL(url);
+      const lines = (j.source.match(/\n/g) || []).length + 1;
+      consoleLog('🐍 Exported Python script: ' + (j.name || 'flowlab_test') + '.py (' + lines + ' lines)');
+    } catch (err) {
+      consoleLog('❌ Python export error: ' + err.message);
+    }
+  }
+
   // ══════════════════════════════════════════════════════════════
   // Execution
   // ══════════════════════════════════════════════════════════════
@@ -1209,11 +1305,15 @@
   document.getElementById('btn-save').addEventListener('click', saveDiagram);
   document.getElementById('btn-load').addEventListener('click', loadDiagram);
   document.getElementById('btn-export').addEventListener('click', exportDiagram);
+  document.getElementById('btn-export-py').addEventListener('click', exportPython);
 
   // ── HIL buttons ──────────────────────────────────────────────
   document.getElementById('btn-save-hil').addEventListener('click', openSaveHilModal);
   document.getElementById('btn-run-hil').addEventListener('click', runAsHil);
   document.getElementById('btn-import-hil').addEventListener('click', openImportHilModal);
+
+  // ── Import button ──────────────────────────────────────────
+  document.getElementById('btn-import-py').addEventListener('click', openImportModal);
 
   // ══════════════════════════════════════════════════════════════
   // HIL Integration — Save as HIL Profile
@@ -1429,6 +1529,7 @@
       document.getElementById('hil-modal').style.display = 'none';
       document.getElementById('hil-save-modal').style.display = 'none';
       document.getElementById('tutorial-modal').style.display = 'none';
+      document.getElementById('import-modal').style.display = 'none';
     }
   });
 
@@ -1438,6 +1539,111 @@
   });
   document.getElementById('hil-save-modal').addEventListener('click', (e) => {
     if (e.target === e.currentTarget) e.currentTarget.style.display = 'none';
+  });
+  document.getElementById('import-modal').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) e.currentTarget.style.display = 'none';
+  });
+
+  // ══════════════════════════════════════════════════════════════
+  // Import Diagram from .py or .json
+  // ══════════════════════════════════════════════════════════════
+
+  let selectedImportDiagram = null;
+
+  async function openImportModal() {
+    selectedImportDiagram = null;
+    document.getElementById('import-file-input').value = '';
+
+    // Load available saved diagrams
+    const listEl = document.getElementById('import-diagram-list');
+    listEl.innerHTML = '<span style="color:var(--fg-dim);font-size:11px">Loading…</span>';
+    document.getElementById('import-modal').style.display = 'flex';
+
+    try {
+      const res = await fetch('/flowlab/api/list');
+      const j = await res.json();
+      listEl.innerHTML = '';
+
+      if (!j.diagrams || j.diagrams.length === 0) {
+        listEl.innerHTML = '<span style="color:var(--fg-dim);font-size:11px">No saved diagrams found</span>';
+        return;
+      }
+
+      for (const name of j.diagrams) {
+        const el = document.createElement('div');
+        el.className = 'profile-item';
+        el.innerHTML = `<span class="profile-name">${name}</span>`;
+        el.addEventListener('click', () => {
+          listEl.querySelectorAll('.profile-item').forEach(x => x.classList.remove('selected'));
+          el.classList.add('selected');
+          selectedImportDiagram = name;
+        });
+        listEl.appendChild(el);
+      }
+    } catch (err) {
+      listEl.innerHTML = '<span style="color:#f38ba8;font-size:11px">Error loading diagrams</span>';
+    }
+  }
+
+  document.getElementById('import-confirm-btn').addEventListener('click', async () => {
+    const fileInput = document.getElementById('import-file-input');
+
+    // Priority: file upload > selected saved diagram
+    if (fileInput.files && fileInput.files.length > 0) {
+      const file = fileInput.files[0];
+      const formData = new FormData();
+      formData.append('file', file);
+
+      try {
+        consoleLog('📤 Importing from ' + file.name + '...');
+        const res = await fetch('/flowlab/api/import_diagram', {
+          method: 'POST',
+          body: formData,
+        });
+        const j = await res.json();
+        if (j.error) {
+          consoleLog('❌ Import error: ' + j.error);
+          return;
+        }
+        if (j.diagram) {
+          if (Object.keys(blocks).length > 0) {
+            if (!confirm('Replace current diagram with imported test sequence?')) return;
+          }
+          deserialize(j.diagram);
+          const n = (j.diagram.blocks || []).length;
+          consoleLog('📤 Imported from ' + file.name + ' (' + j.source + ') → ' + n + ' blocks');
+        }
+      } catch (err) {
+        consoleLog('❌ Import error: ' + err.message);
+      }
+    } else if (selectedImportDiagram) {
+      try {
+        consoleLog('📤 Loading saved diagram: ' + selectedImportDiagram + '...');
+        const res = await fetch('/flowlab/api/load?name=' + encodeURIComponent(selectedImportDiagram));
+        const j = await res.json();
+        if (j.diagram) {
+          if (Object.keys(blocks).length > 0) {
+            if (!confirm('Replace current diagram with saved diagram?')) return;
+          }
+          deserialize(j.diagram);
+          const n = (j.diagram.blocks || []).length;
+          consoleLog('📤 Loaded diagram: ' + selectedImportDiagram + ' → ' + n + ' blocks');
+        } else {
+          consoleLog('⚠ No diagram data found');
+        }
+      } catch (err) {
+        consoleLog('❌ Load error: ' + err.message);
+      }
+    } else {
+      consoleLog('⚠ Select a saved diagram or upload a .py/.json file');
+      return;
+    }
+
+    document.getElementById('import-modal').style.display = 'none';
+  });
+
+  document.getElementById('import-cancel-btn').addEventListener('click', () => {
+    document.getElementById('import-modal').style.display = 'none';
   });
 
   // ══════════════════════════════════════════════════════════════

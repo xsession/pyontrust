@@ -148,6 +148,222 @@ def _blk_seek_thermal(params: dict, inputs: dict, ctx: ExecContext) -> dict:
         cam.close()
 
 
+# ── Android phone sensor handlers ─────────────────────────────
+
+def _android_sensor_instance(params: dict, ctx: ExecContext):
+    """Helper: create, open and return an AndroidSensorInstrument."""
+    from pyontrust.instruments.android_sensors import create as create_android
+    cfg = {
+        "mode": str(params.get("mode", "simulated")),
+        "sample_rate_hz": float(params.get("sample_rate_hz", 50)),
+    }
+    inst = create_android(cfg)
+    inst.open()
+    return inst
+
+
+def _blk_android_accel(params: dict, inputs: dict, ctx: ExecContext) -> dict:
+    """Read Android accelerometer."""
+    inst = _android_sensor_instance(params, ctx)
+    try:
+        dur = float(params.get("duration_s", 1))
+        data = inst.read_accelerometer(dur)
+        ctx.log(f"📱 Accel: x={data.get('x',0):.3f} y={data.get('y',0):.3f} z={data.get('z',0):.3f} m/s²")
+        trace = {"time_s": data.get("time_s", []), "current_a": data.get("magnitude", []),
+                 "sample_rate_hz": float(params.get("sample_rate_hz", 50)),
+                 "n_samples": data.get("n_samples", 0)}
+        return {"accel": data, "trace": trace}
+    finally:
+        inst.close()
+
+
+def _blk_android_gyro(params: dict, inputs: dict, ctx: ExecContext) -> dict:
+    """Read Android gyroscope."""
+    inst = _android_sensor_instance(params, ctx)
+    try:
+        dur = float(params.get("duration_s", 1))
+        data = inst.read_gyroscope(dur)
+        ctx.log(f"🌀 Gyro: x={data.get('x',0):.3f} y={data.get('y',0):.3f} z={data.get('z',0):.3f} rad/s")
+        trace = {"time_s": data.get("time_s", []), "current_a": data.get("magnitude", []),
+                 "sample_rate_hz": float(params.get("sample_rate_hz", 50)),
+                 "n_samples": data.get("n_samples", 0)}
+        return {"gyro": data, "trace": trace}
+    finally:
+        inst.close()
+
+
+def _blk_android_mag(params: dict, inputs: dict, ctx: ExecContext) -> dict:
+    """Read Android magnetometer."""
+    inst = _android_sensor_instance(params, ctx)
+    try:
+        dur = float(params.get("duration_s", 1))
+        data = inst.read_magnetometer(dur)
+        ctx.log(f"🧭 Mag: x={data.get('x',0):.1f} y={data.get('y',0):.1f} z={data.get('z',0):.1f} µT")
+        trace = {"time_s": data.get("time_s", []), "current_a": data.get("magnitude", []),
+                 "sample_rate_hz": float(params.get("sample_rate_hz", 50)),
+                 "n_samples": data.get("n_samples", 0)}
+        return {"mag": data, "trace": trace}
+    finally:
+        inst.close()
+
+
+def _blk_android_mic(params: dict, inputs: dict, ctx: ExecContext) -> dict:
+    """Record from Android microphone."""
+    inst = _android_sensor_instance(params, ctx)
+    try:
+        dur = float(params.get("duration_s", 2))
+        sr = int(params.get("sample_rate", 16000))
+        data = inst.read_microphone(dur, sr)
+        level = data.get("level_db", -60)
+        ctx.log(f"🎤 Mic: {data.get('n_samples',0)} samples, {dur}s @ {sr} Hz, level={level:.1f} dB")
+        audio_trace = {"time_s": data.get("time_s", []), "current_a": data.get("samples", []),
+                       "sample_rate_hz": sr, "n_samples": data.get("n_samples", 0)}
+        return {"audio": audio_trace, "level_db": level}
+    finally:
+        inst.close()
+
+
+def _blk_android_proximity(params: dict, inputs: dict, ctx: ExecContext) -> dict:
+    """Read Android proximity sensor."""
+    inst = _android_sensor_instance(params, ctx)
+    try:
+        data = inst.read_proximity(0.5)
+        dist = data.get("distance", 5.0)
+        near = dist < 1.0
+        ctx.log(f"👋 Proximity: {dist:.1f} cm ({'NEAR' if near else 'FAR'})")
+        return {"distance": dist, "near": near}
+    finally:
+        inst.close()
+
+
+def _blk_android_light(params: dict, inputs: dict, ctx: ExecContext) -> dict:
+    """Read Android ambient light sensor."""
+    inst = _android_sensor_instance(params, ctx)
+    try:
+        dur = float(params.get("duration_s", 1))
+        data = inst.read_light(dur)
+        lux = data.get("lux", data.get("mean", 0))
+        ctx.log(f"☀️ Light: {lux:.0f} lux")
+        return {"lux": float(lux)}
+    finally:
+        inst.close()
+
+
+def _blk_android_pressure(params: dict, inputs: dict, ctx: ExecContext) -> dict:
+    """Read Android barometric pressure."""
+    inst = _android_sensor_instance(params, ctx)
+    try:
+        dur = float(params.get("duration_s", 1))
+        data = inst.read_barometer(dur)
+        hpa = data.get("hpa", data.get("mean", 1013.25))
+        ctx.log(f"🌤️ Pressure: {hpa:.1f} hPa")
+        return {"hpa": float(hpa)}
+    finally:
+        inst.close()
+
+
+def _blk_android_gps(params: dict, inputs: dict, ctx: ExecContext) -> dict:
+    """Read Android GPS location."""
+    inst = _android_sensor_instance(params, ctx)
+    try:
+        data = inst.read_gps()
+        ctx.log(f"📍 GPS: lat={data.get('latitude',0):.5f} lon={data.get('longitude',0):.5f} alt={data.get('altitude',0):.1f}m")
+        return {"location": data}
+    finally:
+        inst.close()
+
+
+def _blk_android_battery(params: dict, inputs: dict, ctx: ExecContext) -> dict:
+    """Read Android battery info."""
+    inst = _android_sensor_instance(params, ctx)
+    try:
+        data = inst.read_battery()
+        ctx.log(f"🔋 Battery: {data.get('level',0)}% {data.get('status','?')} {data.get('temp_c',0):.1f}°C")
+        return {"battery": data}
+    finally:
+        inst.close()
+
+
+def _blk_android_gravity(params: dict, inputs: dict, ctx: ExecContext) -> dict:
+    """Read Android gravity sensor."""
+    inst = _android_sensor_instance(params, ctx)
+    try:
+        dur = float(params.get("duration_s", 1))
+        data = inst.read_gravity(dur)
+        ctx.log(f"⬇️ Gravity: x={data.get('x',0):.3f} y={data.get('y',0):.3f} z={data.get('z',0):.3f} m/s²")
+        trace = {"time_s": data.get("time_s", []), "current_a": data.get("magnitude", []),
+                 "sample_rate_hz": float(params.get("sample_rate_hz", 50)),
+                 "n_samples": data.get("n_samples", 0)}
+        return {"gravity": data, "trace": trace}
+    finally:
+        inst.close()
+
+
+def _blk_android_rotation(params: dict, inputs: dict, ctx: ExecContext) -> dict:
+    """Read Android rotation vector sensor."""
+    inst = _android_sensor_instance(params, ctx)
+    try:
+        dur = float(params.get("duration_s", 1))
+        data = inst.read_rotation(dur)
+        ctx.log(f"🔄 Rotation: x={data.get('x',0):.3f} y={data.get('y',0):.3f} z={data.get('z',0):.3f} w={data.get('w',0):.3f}")
+        trace = {"time_s": data.get("time_s", []), "current_a": data.get("magnitude", []),
+                 "sample_rate_hz": float(params.get("sample_rate_hz", 50)),
+                 "n_samples": data.get("n_samples", 0)}
+        return {"rotation": data, "trace": trace}
+    finally:
+        inst.close()
+
+
+def _blk_android_torch(params: dict, inputs: dict, ctx: ExecContext) -> dict:
+    """Toggle Android phone flashlight (torch) via ADB."""
+    from pyontrust.analysis.lux_measurement import SimulatedTorch, torch_on, torch_off
+    mode = str(params.get("mode", "simulated"))
+    state = str(params.get("state", "on")).lower()
+    if mode == "simulated":
+        t = SimulatedTorch()
+        ok = t.on() if state == "on" else t.off()
+    else:
+        ok = torch_on() if state == "on" else torch_off()
+    ctx.log(f"🔦 Torch {'ON' if state == 'on' else 'OFF'} (mode={mode}, ok={ok})")
+    return {"ok": ok, "state": state}
+
+
+def _blk_lux_measure(params: dict, inputs: dict, ctx: ExecContext) -> dict:
+    """Parallel lux measurement — webcam + Android light sensor."""
+    from pyontrust.analysis.lux_measurement import (
+        LuxCaptureConfig, measure_parallel_lux,
+    )
+    cfg = LuxCaptureConfig(
+        device_index=int(params.get("device_index", 0)),
+        width=int(params.get("width", 640)),
+        height=int(params.get("height", 480)),
+        target_fps=float(params.get("fps", 30)),
+        torch_on_s=float(params.get("torch_on_s", 3)),
+        torch_off_s=float(params.get("torch_off_s", 3)),
+        n_cycles=int(params.get("n_cycles", 3)),
+        pre_capture_s=float(params.get("pre_capture_s", 1)),
+        android_mode=str(params.get("android_mode", "simulated")),
+        android_sample_rate_hz=float(params.get("android_rate_hz", 10)),
+        lux_scale=float(params.get("lux_scale", 2.0)),
+        lux_offset=float(params.get("lux_offset", 0.0)),
+    )
+    use_real = str(params.get("android_mode", "simulated")) != "simulated"
+    result = measure_parallel_lux(cfg, use_real_torch=use_real)
+    ctx.log(
+        f"💡 Lux: webcam_Δ={result.webcam_lux_delta:.1f}, "
+        f"android_Δ={result.android_lux_delta:.1f}, "
+        f"r={result.correlation:.3f}"
+        if result.ok and result.webcam_lux_delta is not None
+        else f"💡 Lux: {result.error or 'no data'}"
+    )
+    return {
+        "result": result.summary(),
+        "webcam_lux": result.webcam_lux,
+        "android_lux": result.android_lux,
+        "correlation": result.correlation,
+    }
+
+
 def _blk_stats(params: dict, inputs: dict, ctx: ExecContext) -> dict:
     """Compute statistics on a power trace."""
     trace = inputs.get("trace", {})
@@ -1370,6 +1586,20 @@ class FlowLabEngine:
         "ad3_dwf_meter":   _blk_ad3_dwf_meter,
         "waveform_gen":    _blk_waveform_gen,
         "random_data":     _blk_random_data,
+        # Android phone sensors
+        "android_accel":   _blk_android_accel,
+        "android_gyro":    _blk_android_gyro,
+        "android_mag":     _blk_android_mag,
+        "android_mic":     _blk_android_mic,
+        "android_proximity": _blk_android_proximity,
+        "android_light":   _blk_android_light,
+        "android_pressure": _blk_android_pressure,
+        "android_gps":     _blk_android_gps,
+        "android_battery": _blk_android_battery,
+        "android_gravity": _blk_android_gravity,
+        "android_rotation": _blk_android_rotation,
+        "android_torch":   _blk_android_torch,
+        "lux_measure":     _blk_lux_measure,
         # Analysis
         "stats":           _blk_stats,
         "filter":          _blk_filter,

@@ -40,6 +40,7 @@ _BUILTIN_FACTORIES: dict[str, str] = {
     "nrf52840_dongle": "pyontrust.instruments.ad3_cluster:_create_nrf52840_dongle",
     "aoi_camera": "pyontrust.instruments.aoi_camera:create",
     "seek_thermal": "pyontrust.instruments.seek_thermal:create",
+    "android_sensors": "pyontrust.instruments.android_sensors:create",
 }
 
 

@@ -126,8 +126,10 @@ def create_app(
     from pyontrust.gateway.blueprints.artifacts import bp as artifacts_bp
     from pyontrust.gateway.blueprints.config import bp as config_bp
     from pyontrust.gateway.blueprints.flowlab import bp as flowlab_bp
+    from pyontrust.gateway.blueprints.diagnostic import bp as diag_bp
 
     app.register_blueprint(shell_bp)  # serves / and /static/shell/
+    app.register_blueprint(diag_bp, url_prefix="/diag")
     app.register_blueprint(hil_bp, url_prefix="/hil")
     app.register_blueprint(csv_bp, url_prefix="/csv")
     app.register_blueprint(bench_bp, url_prefix="/bench")

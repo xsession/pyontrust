@@ -21,6 +21,8 @@
   <button class="btn" id="btn-save"   title="Save diagram (Ctrl+S)">💾 Save</button>
   <button class="btn" id="btn-load"   title="Load diagram">📂 Load</button>
   <button class="btn" id="btn-export" title="Export as JSON">⬇ Export</button>
+  <button class="btn btn-python" id="btn-export-py" title="Export as executable Python script">🐍 Export .py</button>
+  <button class="btn btn-python" id="btn-import-py" title="Import diagram from .py or .json file">📤 Import</button>
   <span class="sep"></span>
   <button class="btn btn-hil" id="btn-save-hil" title="Save diagram as HIL test profile">🧪 Save as HIL</button>
   <button class="btn btn-hil" id="btn-run-hil"  title="Run diagram as HIL test sequence">🚀 Run as HIL</button>
@@ -123,6 +125,27 @@
       <button class="btn btn-primary" id="hil-save-confirm-btn">💾 Save Profile</button>
       <button class="btn" id="hil-save-download-btn">⬇ Download JSON</button>
       <button class="btn" id="hil-save-cancel-btn">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     Import Diagram Modal
+     ═══════════════════════════════════════════════════════════════ -->
+<div id="import-modal" class="modal-overlay" style="display:none">
+  <div class="modal-box">
+    <h3>📤 Import Test Sequence</h3>
+    <div class="modal-section">
+      <label>Upload a <strong>.py</strong> (exported FlowLab script) or <strong>.json</strong> diagram:</label>
+      <input type="file" id="import-file-input" accept=".py,.json">
+    </div>
+    <div class="modal-section">
+      <label>Or load from saved diagrams:</label>
+      <div id="import-diagram-list" class="profile-list"></div>
+    </div>
+    <div class="modal-buttons">
+      <button class="btn btn-primary" id="import-confirm-btn">📤 Import</button>
+      <button class="btn" id="import-cancel-btn">Cancel</button>
     </div>
   </div>
 </div>

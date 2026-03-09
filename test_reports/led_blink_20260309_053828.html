@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LED Blink Periodicity Test Report</title>
+  <style>:root {
+  --bg: #1e1e2e; --bg2: #252538; --bg3: #2d2d44; --bg4: #353550;
+  --fg: #cdd6f4; --fg-dim: #6c7086;
+  --accent: #89b4fa; --green: #a6e3a1; --red: #f38ba8;
+  --yellow: #f9e2af; --peach: #fab387; --mauve: #cba6f7;
+  --teal: #94e2d5; --border: #45475a; --radius: 6px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: var(--bg); color: var(--fg); line-height: 1.6;
+  padding: 0; margin: 0;
+}
+.report { max-width: 1100px; margin: 0 auto; padding: 32px 24px; }
+
+/* ── Header ── */
+.report-header {
+  border-bottom: 2px solid var(--accent); padding-bottom: 20px; margin-bottom: 28px;
+}
+.report-header h1 { color: var(--accent); font-size: 26px; margin-bottom: 4px; }
+.report-header .subtitle { color: var(--fg-dim); font-size: 13px; }
+.report-meta {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px 24px; margin-top: 14px; font-size: 12px;
+}
+.report-meta .key { color: var(--fg-dim); font-weight: 600; }
+.report-meta .val { color: var(--fg); font-family: monospace; font-size: 11px; }
+
+/* ── Verdict banner ── */
+.verdict {
+  padding: 16px 24px; border-radius: var(--radius); margin-bottom: 28px;
+  display: flex; align-items: center; gap: 14px; font-size: 15px; font-weight: 700;
+}
+.verdict.pass { background: rgba(166,227,161,0.12); border: 2px solid var(--green); color: var(--green); }
+.verdict.fail { background: rgba(243,139,168,0.12); border: 2px solid var(--red); color: var(--red); }
+.verdict .icon { font-size: 28px; }
+.verdict .details { font-size: 12px; font-weight: 400; color: var(--fg-dim); margin-top: 2px; }
+
+/* ── Sections ── */
+.section { margin-bottom: 28px; }
+.section h2 {
+  font-size: 15px; font-weight: 700; color: var(--accent);
+  text-transform: uppercase; letter-spacing: 1px;
+  border-bottom: 1px solid var(--border); padding-bottom: 6px; margin-bottom: 14px;
+}
+.section-text { font-size: 13px; line-height: 1.7; color: var(--fg); }
+.section-text p { margin-bottom: 10px; }
+
+/* ── Key-value grid ── */
+.kv-grid {
+  display: grid; grid-template-columns: 180px 1fr; gap: 4px 16px;
+  font-size: 13px; background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 18px;
+}
+.kv-grid .key { color: var(--fg-dim); font-weight: 600; }
+.kv-grid .val { color: var(--fg); font-family: monospace; font-size: 12px; word-break: break-all; }
+
+/* ── Tables ── */
+.data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.data-table th {
+  background: var(--bg3); color: var(--accent); font-weight: 700;
+  text-align: left; padding: 8px 12px; border-bottom: 2px solid var(--border);
+  text-transform: uppercase; letter-spacing: 0.5px; font-size: 11px;
+}
+.data-table td {
+  padding: 7px 12px; border-bottom: 1px solid var(--border);
+  font-family: monospace; font-size: 11px;
+}
+.data-table tr:hover td { background: var(--bg2); }
+.data-table .num { text-align: right; }
+.data-table .pass-cell { color: var(--green); font-weight: 700; }
+.data-table .fail-cell { color: var(--red); font-weight: 700; }
+
+/* ── SVG chart ── */
+.chart-container {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 16px; overflow-x: auto;
+}
+.chart-container svg { display: block; margin: 0 auto; }
+
+/* ── Footer ── */
+.report-footer {
+  margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--border);
+  font-size: 11px; color: var(--fg-dim); text-align: center;
+}
+
+/* ── Print ── */
+@media print {
+  body { background: #fff; color: #222; }
+  .report { padding: 0; }
+  .verdict.pass { border-color: #2a9d4e; color: #2a9d4e; background: #e6f9ee; }
+  .verdict.fail { border-color: #d64040; color: #d64040; background: #fde8e8; }
+  .kv-grid, .data-table th { background: #f5f5f5; }
+  .chart-container { background: #fafafa; }
+}
+</style>
+</head>
+<body>
+<div class="report">
+  <div class="report-header">
+    <h1>LED Blink Periodicity Test Report</h1>
+    <div class="subtitle">Automated Test Report — pyontrust Enterprise Platform</div>
+    <div class="report-meta"><div><span class="key">Test ID:</span> <span class="val">LED-BLINK-20260309_053828</span></div><div><span class="key">DUT:</span> <span class="val">Red LED — live webcam capture</span></div><div><span class="key">Operator:</span> <span class="val">Riko</span></div><div><span class="key">Environment:</span> <span class="val">LP-LIVANYI-1 / Windows 10</span></div><div><span class="key">Generated:</span> <span class="val">2026-03-09 04:38:28 UTC</span></div><div><span class="key">Platform:</span> <span class="val">pyontrust 2026.3.0</span></div></div>
+  </div>
+  <div class="verdict pass"><span class="icon">✅</span><div><div>PASS — Blink frequency: 1.0009 Hz (period: 0.9991 s)</div><div class="details">Method: fft · Blinks: 8 · Frames: 200 · Duration: 7.95 s</div></div></div>
+  <div class="section"><h2>Test Description</h2><div class="section-text"><p>This test captures video frames from a USB webcam, isolates red LED pixels using HSV colour masking, tracks brightness over time, and computes the blink frequency using FFT, zero-crossing, and peak-interval analysis.</p><p>The test validates that a red LED is blinking at a detectable, stable frequency within the configured measurement window.</p></div></div>
+<div class="section"><h2>Measurement Results</h2><div class="kv-grid"><div class="key">Status</div><div class="val">PASS ✅</div><div class="key">Frequency</div><div class="val">1.0009 Hz</div><div class="key">Period</div><div class="val">0.9991 s</div><div class="key">Duty Cycle</div><div class="val">52.0%</div><div class="key">Detection Method</div><div class="val">fft</div><div class="key">Blink Count</div><div class="val">8</div><div class="key">Capture Duration</div><div class="val">7.953 s</div><div class="key">Frames Captured</div><div class="val">200</div><div class="key">Actual FPS</div><div class="val">25.1</div></div></div>
+<div class="section"><h2>Capture Configuration</h2><div class="kv-grid"><div class="key">Device Index</div><div class="val">0</div><div class="key">Resolution</div><div class="val">640 × 480</div><div class="key">Target FPS</div><div class="val">30.0</div><div class="key">Capture Duration</div><div class="val">8.0 s</div><div class="key">Warmup Frames</div><div class="val">15</div><div class="key">ROI</div><div class="val">Full frame</div></div></div>
+<div class="section"><h2>HSV Mask Configuration</h2><div class="kv-grid"><div class="key">Red Range 1 (H)</div><div class="val">0 – 10</div><div class="key">Red Range 2 (H)</div><div class="val">160 – 180</div><div class="key">Saturation (S)</div><div class="val">80 – 255</div><div class="key">Value (V)</div><div class="val">80 – 255</div><div class="key">Min Pixel Count</div><div class="val">5</div></div></div>
+<div class="section"><h2>Brightness Time-Series</h2><div class="chart-container"><svg xmlns="http://www.w3.org/2000/svg" width="900" height="280" viewBox="0 0 900 280">
+<rect width="900" height="280" fill="#252538" rx="6"/>
+<text x="450" y="18" text-anchor="middle" fill="#cdd6f4" font-size="12" font-weight="700">Red LED Mean Brightness vs Time</text>
+<line x1="60" y1="240.0" x2="880" y2="240.0" stroke="#45475a" stroke-width="0.5"/>
+<text x="54" y="244.0" text-anchor="end" fill="#6c7086" font-size="10">-7.1</text>
+<line x1="60" y1="198.0" x2="880" y2="198.0" stroke="#45475a" stroke-width="0.5"/>
+<text x="54" y="202.0" text-anchor="end" fill="#6c7086" font-size="10">24.2</text>
+<line x1="60" y1="156.0" x2="880" y2="156.0" stroke="#45475a" stroke-width="0.5"/>
+<text x="54" y="160.0" text-anchor="end" fill="#6c7086" font-size="10">55.6</text>
+<line x1="60" y1="114.0" x2="880" y2="114.0" stroke="#45475a" stroke-width="0.5"/>
+<text x="54" y="118.0" text-anchor="end" fill="#6c7086" font-size="10">87.0</text>
+<line x1="60" y1="72.0" x2="880" y2="72.0" stroke="#45475a" stroke-width="0.5"/>
+<text x="54" y="76.0" text-anchor="end" fill="#6c7086" font-size="10">118.4</text>
+<line x1="60" y1="30.0" x2="880" y2="30.0" stroke="#45475a" stroke-width="0.5"/>
+<text x="54" y="34.0" text-anchor="end" fill="#6c7086" font-size="10">149.7</text>
+<text x="60.0" y="272" text-anchor="middle" fill="#6c7086" font-size="10">0.00</text>
+<text x="162.5" y="272" text-anchor="middle" fill="#6c7086" font-size="10">0.99</text>
+<text x="265.0" y="272" text-anchor="middle" fill="#6c7086" font-size="10">1.99</text>
+<text x="367.5" y="272" text-anchor="middle" fill="#6c7086" font-size="10">2.98</text>
+<text x="470.0" y="272" text-anchor="middle" fill="#6c7086" font-size="10">3.98</text>
+<text x="572.5" y="272" text-anchor="middle" fill="#6c7086" font-size="10">4.97</text>
+<text x="675.0" y="272" text-anchor="middle" fill="#6c7086" font-size="10">5.96</text>
+<text x="777.5" y="272" text-anchor="middle" fill="#6c7086" font-size="10">6.96</text>
+<text x="880.0" y="272" text-anchor="middle" fill="#6c7086" font-size="10">7.95</text>
+<text x="450" y="280" text-anchor="middle" fill="#6c7086" font-size="10">Time (s)</text>
+<text x="14" y="140" text-anchor="middle" fill="#6c7086" font-size="10" transform="rotate(-90,14,140)">Red LED Brightness</text>
+<line x1="60" y1="135.0" x2="880" y2="135.0" stroke="#f9e2af" stroke-width="1" stroke-dasharray="6,4"/>
+<text x="882" y="138.0" fill="#f9e2af" font-size="9">threshold</text>
+<polyline points="60.0,230.5 63.5,230.5 68.4,230.5 71.6,230.5 76.7,230.5 79.9,230.5 84.8,230.5 88.2,230.5 93.1,230.5 96.4,230.5 101.4,230.5 104.6,230.5 109.6,73.3 113.0,46.7 117.9,46.9 121.3,46.3 126.1,46.8 129.4,46.3 134.4,45.4 137.7,44.4 142.6,43.7 146.0,44.1 150.9,42.4 154.2,42.1 159.2,39.5 162.4,230.5 167.3,230.5 170.7,230.5 175.6,230.5 178.9,230.5 183.9,230.5 187.1,230.5 192.1,230.5 195.4,230.5 200.3,230.5 203.6,230.5 208.7,230.5 211.9,75.6 216.8,41.3 220.2,41.4 225.1,40.9 228.5,41.7 233.4,42.4 236.7,42.9 241.7,44.3 245.0,44.5 249.9,42.8 253.2,44.0 258.1,42.9 261.4,44.0 266.4,230.5 269.6,230.5 274.5,230.5 277.9,230.5 282.8,230.5 286.2,230.5 291.1,230.5 294.3,230.5 299.3,230.5 302.6,230.5 307.5,230.5 310.8,230.5 315.9,78.5 319.2,46.6 324.1,46.8 327.4,47.0 332.4,46.1 335.7,46.6 340.6,45.9 343.9,45.6 348.9,44.8 352.1,43.8 357.2,42.9 360.4,42.7 365.3,42.8 368.7,230.5 373.5,230.5 376.8,230.5 381.8,230.5 385.1,230.5 390.0,230.5 393.4,230.5 398.4,230.5 401.6,230.5 406.5,230.5 409.9,230.5 414.8,230.5 418.1,80.4 423.1,41.1 426.4,41.5 431.4,41.7 434.6,41.6 439.6,41.8 442.9,42.4 447.8,43.5 451.1,44.3 456.1,40.8 459.3,41.2 464.3,42.8 467.7,44.0 472.6,230.5 475.8,230.5 480.9,230.5 484.0,230.5 489.0,230.5 492.4,230.5 497.3,230.5 500.6,230.5 505.5,230.5 508.8,230.5 513.8,230.5 517.1,230.5 522.0,83.0 525.3,47.0 530.4,46.7 533.6,46.8 538.5,46.2 542.0,46.3 546.8,46.2 550.1,44.9 555.1,44.9 558.3,44.3 563.3,44.6 566.7,43.3 571.5,42.6 574.9,230.5 579.8,230.5 583.1,230.5 588.0,230.5 591.3,230.5 596.3,230.5 599.6,230.5 604.5,230.5 607.8,230.5 612.8,230.5 616.0,230.5 621.0,230.5 624.3,85.1 629.3,41.1 632.6,41.7 637.7,41.5 641.0,42.1 645.9,41.6 649.3,42.4 654.1,42.5 657.3,43.3 662.3,42.0 665.6,42.0 670.5,41.5 673.8,42.1 678.8,230.5 682.0,230.5 687.0,230.5 690.3,230.5 695.3,230.5 698.6,230.5 704.3,230.5 707.4,230.5 712.0,230.5 715.4,230.5 720.0,230.5 723.3,230.5 728.3,88.8 731.6,47.1 736.5,47.3 740.1,46.8 744.8,46.4 748.2,46.8 753.1,46.1 756.3,46.1 761.3,46.6 764.6,46.4 769.7,43.6 773.0,41.9 778.0,42.1 781.2,230.5 786.0,230.5 789.3,230.5 794.2,230.5 797.5,230.5 802.5,230.5 805.7,230.5 810.7,230.5 814.1,230.5 818.9,230.5 822.2,230.5 827.2,230.5 830.5,87.4 835.5,40.7 838.8,41.4 844.0,41.2 847.2,41.5 852.1,41.6 855.3,41.6 860.2,41.7 863.7,43.1 868.6,40.1 871.9,41.1 876.7,41.7 880.0,42.4" fill="none" stroke="#89b4fa" stroke-width="1.5"/>
+<text x="70" y="32" fill="#89b4fa" font-size="10">● Red LED Brightness</text>
+</svg></div></div>
+<div class="section"><h2>Red Pixel Count</h2><div class="chart-container"><svg xmlns="http://www.w3.org/2000/svg" width="900" height="280" viewBox="0 0 900 280">
+<rect width="900" height="280" fill="#252538" rx="6"/>
+<text x="450" y="18" text-anchor="middle" fill="#cdd6f4" font-size="12" font-weight="700">Red Mask Pixel Count vs Time</text>
+<line x1="60" y1="240.0" x2="880" y2="240.0" stroke="#45475a" stroke-width="0.5"/>
+<text x="54" y="244.0" text-anchor="end" fill="#6c7086" font-size="10">-598.4</text>
+<line x1="60" y1="198.0" x2="880" y2="198.0" stroke="#45475a" stroke-width="0.5"/>
+<text x="54" y="202.0" text-anchor="end" fill="#6c7086" font-size="10">2034</text>
+<line x1="60" y1="156.0" x2="880" y2="156.0" stroke="#45475a" stroke-width="0.5"/>
+<text x="54" y="160.0" text-anchor="end" fill="#6c7086" font-size="10">4667</text>
+<line x1="60" y1="114.0" x2="880" y2="114.0" stroke="#45475a" stroke-width="0.5"/>
+<text x="54" y="118.0" text-anchor="end" fill="#6c7086" font-size="10">7300</text>
+<line x1="60" y1="72.0" x2="880" y2="72.0" stroke="#45475a" stroke-width="0.5"/>
+<text x="54" y="76.0" text-anchor="end" fill="#6c7086" font-size="10">9933</text>
+<line x1="60" y1="30.0" x2="880" y2="30.0" stroke="#45475a" stroke-width="0.5"/>
+<text x="54" y="34.0" text-anchor="end" fill="#6c7086" font-size="10">12565</text>
+<text x="60.0" y="272" text-anchor="middle" fill="#6c7086" font-size="10">0.00</text>
+<text x="162.5" y="272" text-anchor="middle" fill="#6c7086" font-size="10">0.99</text>
+<text x="265.0" y="272" text-anchor="middle" fill="#6c7086" font-size="10">1.99</text>
+<text x="367.5" y="272" text-anchor="middle" fill="#6c7086" font-size="10">2.98</text>
+<text x="470.0" y="272" text-anchor="middle" fill="#6c7086" font-size="10">3.98</text>
+<text x="572.5" y="272" text-anchor="middle" fill="#6c7086" font-size="10">4.97</text>
+<text x="675.0" y="272" text-anchor="middle" fill="#6c7086" font-size="10">5.96</text>
+<text x="777.5" y="272" text-anchor="middle" fill="#6c7086" font-size="10">6.96</text>
+<text x="880.0" y="272" text-anchor="middle" fill="#6c7086" font-size="10">7.95</text>
+<text x="450" y="280" text-anchor="middle" fill="#6c7086" font-size="10">Time (s)</text>
+<text x="14" y="140" text-anchor="middle" fill="#6c7086" font-size="10" transform="rotate(-90,14,140)">Pixel Count</text>
+<polyline points="60.0,230.5 63.5,230.5 68.4,230.5 71.6,230.5 76.7,230.5 79.9,230.5 84.8,230.5 88.2,230.5 93.1,230.5 96.4,230.5 101.4,230.5 104.6,230.5 109.6,183.1 113.0,40.9 117.9,39.5 121.3,41.1 126.1,41.5 129.4,43.5 134.4,45.0 137.7,46.5 142.6,52.0 146.0,55.2 150.9,59.5 154.2,61.1 159.2,102.3 162.4,230.5 167.3,230.5 170.7,230.5 175.6,230.5 178.9,230.5 183.9,230.5 187.1,230.5 192.1,230.5 195.4,230.5 200.3,230.5 203.6,230.5 208.7,230.5 211.9,198.0 216.8,70.6 220.2,69.3 225.1,66.3 228.5,62.9 233.4,62.6 236.7,58.8 241.7,56.9 245.0,57.7 249.9,52.0 253.2,50.6 258.1,47.3 261.4,94.1 266.4,230.5 269.6,230.5 274.5,230.5 277.9,230.5 282.8,230.5 286.2,230.5 291.1,230.5 294.3,230.5 299.3,230.5 302.6,230.5 307.5,230.5 310.8,230.5 315.9,201.0 319.2,42.7 324.1,42.4 327.4,41.8 332.4,44.0 335.7,43.6 340.6,46.1 343.9,48.1 348.9,55.2 352.1,58.4 357.2,63.6 360.4,64.9 365.3,90.3 368.7,230.5 373.5,230.5 376.8,230.5 381.8,230.5 385.1,230.5 390.0,230.5 393.4,230.5 398.4,230.5 401.6,230.5 406.5,230.5 409.9,230.5 414.8,230.5 418.1,206.6 423.1,69.8 426.4,69.1 431.4,67.5 434.6,63.9 439.6,66.0 442.9,62.6 447.8,56.5 451.1,53.2 456.1,51.4 459.3,49.7 464.3,48.7 467.7,79.2 472.6,230.5 475.8,230.5 480.9,230.5 484.0,230.5 489.0,230.5 492.4,230.5 497.3,230.5 500.6,230.5 505.5,230.5 508.8,230.5 513.8,230.5 517.1,230.5 522.0,209.2 525.3,42.6 530.4,43.8 533.6,43.4 538.5,44.9 542.0,43.3 546.8,46.8 550.1,47.8 555.1,51.9 558.3,55.5 563.3,62.0 566.7,66.2 571.5,80.8 574.9,230.5 579.8,230.5 583.1,230.5 588.0,230.5 591.3,230.5 596.3,230.5 599.6,230.5 604.5,230.5 607.8,230.5 612.8,230.5 616.0,230.5 621.0,230.5 624.3,213.4 629.3,68.3 632.6,68.9 637.7,68.6 641.0,65.1 645.9,64.6 649.3,61.5 654.1,58.2 657.3,54.2 662.3,51.4 665.6,49.9 670.5,52.0 673.8,65.2 678.8,230.5 682.0,230.5 687.0,230.5 690.3,230.5 695.3,230.5 698.6,230.5 704.3,230.5 707.4,230.5 712.0,230.5 715.4,230.5 720.0,230.5 723.3,230.5 728.3,215.5 731.6,44.9 736.5,43.8 740.1,43.4 744.8,44.2 748.2,44.8 753.1,47.5 756.3,46.2 761.3,57.2 764.6,58.2 769.7,54.7 773.0,59.3 778.0,66.1 781.2,230.5 786.0,230.5 789.3,230.5 794.2,230.5 797.5,230.5 802.5,230.5 805.7,230.5 810.7,230.5 814.1,230.5 818.9,230.5 822.2,230.5 827.2,230.5 830.5,218.8 835.5,70.3 838.8,70.7 844.0,70.2 847.2,66.8 852.1,65.9 855.3,63.3 860.2,62.1 863.7,55.5 868.6,52.8 871.9,49.7 876.7,53.3 880.0,54.8" fill="none" stroke="#f38ba8" stroke-width="1.5"/>
+<text x="70" y="32" fill="#f38ba8" font-size="10">● Pixel Count</text>
+</svg></div></div>
+<div class="section"><h2>Signal Statistics</h2><table class="data-table"><thead><tr><th class="">Metric</th><th class="num">Value</th></tr></thead><tbody><tr><td>Min Brightness</td><td class="num">0.00</td></tr><tr><td>Max Brightness</td><td class="num">142.62</td></tr><tr><td>Mean Brightness</td><td class="num">71.44</td></tr><tr><td>Std Deviation</td><td class="num">68.87</td></tr><tr><td>Amplitude (p-p)</td><td class="num">142.62</td></tr><tr><td>Max Red Pixels</td><td class="num">11967</td></tr><tr><td>Mean Red Pixels</td><td class="num">5285</td></tr><tr><td>Frames w/ Red</td><td class="num">104 / 200</td></tr></tbody></table></div>
+
+  <div class="report-footer">
+    Generated by <strong>pyontrust 2026.3.0</strong>
+    &nbsp;·&nbsp; 2026-03-09 04:38:28 UTC
+    &nbsp;·&nbsp; Report is self-contained — no external dependencies
+  </div>
+</div>
+<script type="application/json" id="report-data">{"blink_result": {"ok": true, "frequency_hz": 1.0009, "period_s": 0.9991, "duty_cycle": 0.52, "method": "fft", "blink_count": 8, "capture_duration_s": 7.953, "frame_count": 200, "actual_fps": 25.1}, "time_series": {"timestamps": [3.00002284348011e-07, 0.03352599998470396, 0.08099909999873489, 0.11293149995617568, 0.16175440000370145, 0.19294159999117255, 0.24090309999883175, 0.27365779993124306, 0.3212642000289634, 0.3528741999762133, 0.4013211999554187, 0.4328224000055343, 0.4812018999364227, 0.5137314000166953, 0.5614969999296591, 0.5941127999685705, 0.6411089999601245, 0.6733728999970481, 0.7217143999878317, 0.7534770999336615, 0.8012844999320805, 0.8339850000338629, 0.8816641999874264, 0.913883600034751, 0.961714299977757, 0.9936313999351114, 1.0410787999862805, 1.0733352999668568, 1.120719200000167, 1.153389499988407, 1.201443099998869, 1.2328247999539599, 1.2808055999921635, 1.3134376999223605, 1.3606644999235868, 1.3932020999491215, 1.4419662000145763, 1.4728214000351727, 1.52123329997994, 1.5540043000364676, 1.6013528000330552, 1.633899400010705, 1.6820092999842018, 1.7142706000013277, 1.761953999986872, 1.794157600030303, 1.8416147999232635, 1.873578600003384, 1.9218142000027, 1.9532667000312358, 2.0015037999255583, 2.033326999982819, 2.080792999942787, 2.1136090999934822, 2.160619299975224, 2.1936588999815285, 2.2411313999909908, 2.272854099981487, 2.321062400005758, 2.353417200036347, 2.400749000022188, 2.432936599943787, 2.4815691999392584, 2.5138807999901474, 2.5615520999999717, 2.59332230000291, 2.641771199996583, 2.6737898000283167, 2.721453999984078, 2.7538075000047684, 2.801903499988839, 2.83319329994265, 2.882184899994172, 2.913704999955371, 2.9614968999521807, 2.9938308999408036, 3.0408940999768674, 3.0727767000207677, 3.120920700021088, 3.153476499952376, 3.200800699996762, 3.233595800003968, 3.2818162000039592, 3.3129208999453112, 3.3608623000327498, 3.3933286999817938, 3.440863800002262, 3.473062300006859, 3.5217137000290677, 3.5532746999524534, 3.6022937999805436, 3.6333834999240935, 3.681223699939437, 3.713930399972014, 3.7612049999879673, 3.7931229999521747, 3.841985799954273, 3.8731371000176296, 3.9212951000081375, 3.953769800020382, 4.002073499956168, 4.033173899981193, 4.082327799987979, 4.112545399926603, 4.160924799973145, 4.193689699983224, 4.240857299999334, 4.273319500032812, 4.321243299986236, 4.352776199928485, 4.400879199965857, 4.4333038999466226, 4.480763199971989, 4.513367299921811, 4.561982600018382, 4.593199700000696, 4.6410957999760285, 4.674634599941783, 4.721104399999604, 4.753361499984749, 4.802285999991, 4.833423099946231, 4.881723099970259, 4.91408220003359, 4.961347099975683, 4.9937572999624535, 5.041407799930312, 5.073146999930032, 5.121309699956328, 5.15275989996735, 5.201469099964015, 5.233258599997498, 5.280842899926938, 5.3129435000009835, 5.361468499992043, 5.392984100035392, 5.440826199948788, 5.473301699967124, 5.521241499925964, 5.553406900027767, 5.603318499983288, 5.635366200003773, 5.682533300016075, 5.716015600017272, 5.761920399963856, 5.793296599993482, 5.84142489999067, 5.8739574999781325, 5.921105599962175, 5.953114600037225, 6.00165140000172, 6.033136299927719, 6.080824399949051, 6.113011299981736, 6.161879300023429, 6.193761299946345, 6.249041100032628, 6.278929500025697, 6.323712799930945, 6.356873699929565, 6.4011436000000685, 6.432849099976011, 6.481489700032398, 6.513844699948095, 6.5617061000084504, 6.595875600003637, 6.641770799993537, 6.674337200005539, 6.722012699930929, 6.753002699930221, 6.801489899982698, 6.834218999953009, 6.883161299978383, 6.915426200022921, 6.963518999982625, 6.994784299982712, 7.041525000007823, 7.07337420003023, 7.1213038000278175, 7.153234899975359, 7.2014391999691725, 7.2326831999234855, 7.280810600030236, 7.313597699976526, 7.3607488999841735, 7.392744899960235, 7.441277800011449, 7.4725653999485075, 7.521198699949309, 7.553807599935681, 7.604136899928562, 7.635274500004016, 7.682539699948393, 7.713659200002439, 7.761336499941535, 7.794785400037654, 7.842150799930096, 7.87479649996385, 7.921501099946909, 7.953076199977659], "brightness": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 117.37925227349275, 137.25555555555556, 137.13236400100274, 137.55046335299073, 137.1659348083094, 137.60018774534905, 138.2502796179988, 139.00208188757807, 139.51819075712882, 139.25293635618684, 140.51008026880717, 140.7440173355945, 142.61865039840637, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 115.69513991163475, 141.34015370795487, 141.247649213105, 141.5745942268442, 140.98019047619047, 140.51796236456948, 140.10383936041646, 139.0457636463885, 138.8995475948666, 140.20784909708564, 139.31346989447547, 140.11314345440292, 139.2994032994033, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 113.52355170546834, 137.32503610568347, 137.18442483881915, 137.03712787550745, 137.72426187419768, 137.34058898847633, 137.83551094574716, 138.09498819207556, 138.70267564615943, 139.4293795789669, 140.12927902084527, 140.25149354403544, 140.16569932855356, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 112.07142857142857, 141.4385860391222, 141.1456109134045, 141.0224158183242, 141.08905486929044, 140.9160764528961, 140.45177230827713, 139.63759743237046, 139.07279107432066, 141.68018178577793, 141.4068649077914, 140.19863073817257, 139.30465042708005, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 110.18947368421053, 137.07047036848363, 137.28526243802358, 137.18244626407372, 137.63057872559978, 137.60151721786565, 137.65331827658096, 138.61687631027252, 138.61302716225876, 139.05873233014137, 138.83050847457628, 139.7986792269593, 140.36165902548245, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 108.57410881801125, 141.45689824837632, 141.0212324708671, 141.15245885483395, 140.71956395909706, 141.06337147802674, 140.51704277216504, 140.437662097073, 139.77702335687127, 140.7916778045086, 140.75154620957767, 141.15883089023953, 140.7134994206257, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 105.84615384615385, 136.9733493810179, 136.79432381603692, 137.18186471039834, 137.48642165681488, 137.1866620831901, 137.75265911072364, 137.7411897133951, 137.32470761580257, 137.4811111111111, 139.59133829671327, 140.871656258738, 140.68801552644348, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 106.8945205479452, 141.72582412110347, 141.22066899650522, 141.34730240891898, 141.12759528219124, 141.10166698972668, 141.0933295161752, 141.01203449256136, 139.94428232719315, 142.2045985270343, 141.44546417225556, 141.03845807439433, 140.44976380813952], "red_pixel_counts": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2969, 11880, 11967, 11870, 11842, 11718, 11623, 11528, 11187, 10983, 10714, 10614, 8032, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2037, 10019, 10103, 10289, 10500, 10522, 10757, 10882, 10831, 11186, 11277, 11481, 8547, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1847, 11771, 11788, 11824, 11685, 11715, 11557, 11433, 10988, 10783, 10458, 10378, 8787, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1498, 10071, 10116, 10216, 10443, 10307, 10523, 10905, 11114, 11222, 11333, 11393, 9483, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1330, 11778, 11698, 11724, 11629, 11732, 11512, 11448, 11192, 10965, 10561, 10297, 9379, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1066, 10162, 10126, 10147, 10366, 10399, 10591, 10796, 11046, 11223, 11318, 11188, 10356, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 936, 11632, 11698, 11723, 11673, 11636, 11470, 11549, 10859, 10800, 11014, 10729, 10305, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 730, 10041, 10015, 10046, 10259, 10318, 10479, 10553, 10966, 11134, 11332, 11103, 11008]}}</script>
+</body>
+</html>

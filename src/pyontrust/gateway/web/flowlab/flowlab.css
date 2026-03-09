@@ -270,6 +270,16 @@
   background: rgba(166, 227, 161, 0.15) !important;
 }
 
+/* ── Python export button ────────────────────────────────────── */
+.btn-python {
+  background: var(--bg3) !important;
+  border: 1px solid #f9e2af !important;
+  color: #f9e2af !important;
+}
+.btn-python:hover {
+  background: rgba(249, 226, 175, 0.15) !important;
+}
+
 /* ── Modal overlay ───────────────────────────────────────────── */
 .modal-overlay {
   position: fixed; inset: 0; z-index: 2000;
