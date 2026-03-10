@@ -133,6 +133,86 @@
     .status-strip .seg-ok { background: var(--green); }
     .status-strip .seg-err { background: var(--red); }
     .status-strip .seg-miss { background: var(--bg3); }
+
+    /* ── Live data panel ── */
+    .live-overlay {
+      display: none; position: fixed; inset: 0; z-index: 1000;
+      background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+    }
+    .live-overlay.open { display: flex; align-items: center; justify-content: center; }
+
+    .live-panel {
+      background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+      width: 90vw; max-width: 960px; max-height: 90vh; overflow-y: auto;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5); padding: 0;
+    }
+    .live-panel-head {
+      display: flex; align-items: center; gap: 12px; padding: 16px 20px;
+      border-bottom: 1px solid var(--border); position: sticky; top: 0;
+      background: var(--bg); z-index: 1;
+    }
+    .live-panel-head h3 { margin: 0; color: var(--accent); font-size: 16px; flex: 1; }
+    .live-panel-head .btn-close {
+      background: none; border: none; color: var(--fg-dim); font-size: 20px;
+      cursor: pointer; padding: 4px 8px; border-radius: 4px;
+    }
+    .live-panel-head .btn-close:hover { background: var(--bg2); color: var(--red); }
+
+    .live-panel-body { padding: 16px 20px; }
+
+    /* Sensor selector */
+    .sensor-select-row {
+      display: flex; gap: 8px; align-items: center; margin-bottom: 16px; flex-wrap: wrap;
+    }
+    .sensor-select-row label { font-size: 12px; color: var(--fg-dim); white-space: nowrap; }
+    .sensor-select-row select, .sensor-select-row input {
+      background: var(--bg2); border: 1px solid var(--border); border-radius: 4px;
+      color: var(--fg); font-size: 12px; padding: 4px 8px; font-family: monospace;
+    }
+    .sensor-select-row select:focus, .sensor-select-row input:focus {
+      border-color: var(--accent); outline: none;
+    }
+
+    /* Live chart area */
+    .live-chart-container {
+      background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 12px; margin-bottom: 12px; min-height: 200px; position: relative;
+    }
+    .live-chart-container svg { width: 100%; height: 200px; }
+
+    /* Live values table */
+    .live-values {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 8px; margin-bottom: 12px;
+    }
+    .live-val-card {
+      background: var(--bg2); border: 1px solid var(--border); border-radius: 6px;
+      padding: 10px 14px; text-align: center;
+    }
+    .live-val-card .lv-label {
+      font-size: 10px; color: var(--fg-dim); text-transform: uppercase;
+      letter-spacing: 0.5px; margin-bottom: 4px;
+    }
+    .live-val-card .lv-num {
+      font-size: 22px; font-weight: 700; color: var(--green); font-family: monospace;
+    }
+    .live-val-card .lv-unit { font-size: 10px; color: var(--fg-dim); margin-left: 2px; }
+
+    /* Stream status indicator */
+    .stream-dot {
+      display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+      background: var(--fg-dim); margin-right: 6px;
+    }
+    .stream-dot.active { background: var(--green); animation: pulse-dot 1s infinite; }
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+    .stream-info { font-size: 11px; color: var(--fg-dim); }
+
+    /* Card live button */
+    .btn-live { background: var(--accent); color: var(--bg); }
+    .btn-live:hover { filter: brightness(1.15); }
   </style>
 </head>
 <body>
@@ -193,6 +273,60 @@
     <div class="sys-grid" id="sys-grid"></div>
   </div>
 
+</div>
+
+<!-- ═══ Live Data Panel (overlay) ═══ -->
+<div class="live-overlay" id="live-overlay">
+  <div class="live-panel">
+    <div class="live-panel-head">
+      <h3 id="live-title">📡 Live Data</h3>
+      <span class="stream-info">
+        <span class="stream-dot" id="stream-dot"></span>
+        <span id="stream-status">Stopped</span>
+        &nbsp;·&nbsp;
+        <span id="stream-rate">0 sps</span>
+        &nbsp;·&nbsp;
+        <span id="stream-count">0 samples</span>
+      </span>
+      <button class="btn btn-close" onclick="closeLivePanel()">✕</button>
+    </div>
+    <div class="live-panel-body">
+      <!-- Sensor selector -->
+      <div class="sensor-select-row">
+        <label>Sensor:</label>
+        <select id="live-sensor" onchange="onLiveSensorChange()"></select>
+        <label>Rate:</label>
+        <select id="live-rate">
+          <option value="200">5 Hz (200ms)</option>
+          <option value="500" selected>2 Hz (500ms)</option>
+          <option value="1000">1 Hz (1s)</option>
+          <option value="2000">0.5 Hz (2s)</option>
+        </select>
+        <label>Mode:</label>
+        <select id="live-mode">
+          <option value="auto">Auto</option>
+          <option value="adb">ADB (real)</option>
+          <option value="simulated">Simulated</option>
+        </select>
+        <button class="btn btn-live" id="btn-stream" onclick="toggleStream()">▶ Start</button>
+        <button class="btn" onclick="clearLiveData()">🗑 Clear</button>
+      </div>
+
+      <!-- Live values -->
+      <div class="live-values" id="live-values"></div>
+
+      <!-- Chart -->
+      <div class="live-chart-container" id="live-chart-box">
+        <svg id="live-chart" viewBox="0 0 900 200" preserveAspectRatio="none"></svg>
+      </div>
+
+      <!-- Raw data log (last 5 samples) -->
+      <details style="margin-top: 8px;">
+        <summary style="font-size:12px; color:var(--fg-dim); cursor:pointer">Raw JSON log</summary>
+        <pre id="live-raw" style="background:var(--bg2); border:1px solid var(--border); border-radius:4px; padding:8px; font-size:11px; color:var(--fg); max-height:200px; overflow:auto; white-space:pre-wrap;"></pre>
+      </details>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -362,7 +496,7 @@ function renderCard(d) {
 
   let detailsHtml = '';
   if (d.status === 'ok' && d.details) {
-    const skip = new Set(['raw_line', 'raw']);
+    const skip = new Set(['raw_line', 'raw', 'sensors', 'adb_state']);
     const entries = Object.entries(d.details).filter(([k]) => !skip.has(k));
     if (entries.length > 0) {
       detailsHtml = '<div class="hw-card-details">';
@@ -399,10 +533,28 @@ function renderCard(d) {
     }
   }
 
+  // Show sensors from scan details (even before quick test)
+  let sensorChipsHtml = '';
+  if (d.details?.sensors && d.details.sensors.length > 0 && !d.test_result?.sensors) {
+    sensorChipsHtml = '<div class="sensor-list" style="margin-top:8px">';
+    for (const s of d.details.sensors.slice(0, 12)) {
+      sensorChipsHtml += `<span class="sensor-chip">${escHtml(s)}</span>`;
+    }
+    if (d.details.sensors.length > 12) {
+      sensorChipsHtml += `<span class="sensor-chip">+${d.details.sensors.length - 12} more</span>`;
+    }
+    sensorChipsHtml += '</div>';
+  }
+
   let actionsHtml = '';
   if (d.status === 'ok') {
     actionsHtml = `<div class="hw-card-actions">
       <button class="btn btn-test" onclick="testSingleDevice(${d._index})">🧪 Quick Test</button>
+      <button class="btn btn-live" onclick="openLivePanel('${escAttr(d.type)}', '${escAttr(d.details?.serial || '')}', ${JSON.stringify(d.details?.sensors || []).replace(/'/g, '\\x27')})">📡 Live Data</button>
+    </div>`;
+  } else if (d.status === 'error' && d.details?.adb_state) {
+    actionsHtml = `<div class="hw-card-actions">
+      <button class="btn" onclick="retryAdbAuth()">🔄 Retry ADB</button>
     </div>`;
   }
 
@@ -417,6 +569,7 @@ function renderCard(d) {
     </div>
     ${errorHtml}
     ${testHtml}
+    ${sensorChipsHtml}
     ${detailsHtml}
     ${actionsHtml}
   </div>`;
@@ -457,6 +610,312 @@ function escHtml(s) {
   el.textContent = s;
   return el.innerHTML;
 }
+
+function escAttr(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/'/g,'&#39;').replace(/"/g,'&quot;');
+}
+
+// ═══ Live Data Panel ═══
+
+const ANDROID_SENSORS = [
+  { id: 'accelerometer', label: 'Accelerometer', unit: 'm/s²', axes: ['x','y','z'] },
+  { id: 'gyroscope',     label: 'Gyroscope',     unit: 'rad/s', axes: ['x','y','z'] },
+  { id: 'magnetometer',  label: 'Magnetometer',  unit: 'µT',    axes: ['x','y','z'] },
+  { id: 'light',         label: 'Light',          unit: 'lux',   axes: ['lux'] },
+  { id: 'proximity',     label: 'Proximity',      unit: 'cm',    axes: ['distance'] },
+  { id: 'barometer',     label: 'Barometer',      unit: 'hPa',   axes: ['pressure'] },
+  { id: 'gravity',       label: 'Gravity',        unit: 'm/s²', axes: ['x','y','z'] },
+  { id: 'rotation',      label: 'Rotation Vec',   unit: '',      axes: ['x','y','z','w'] },
+  { id: 'battery',       label: 'Battery',        unit: '',      axes: ['level_pct','voltage_mv','temperature_c'] },
+  { id: 'gps',           label: 'GPS',            unit: '',      axes: ['latitude','longitude','altitude_m'] },
+];
+
+const WEBCAM_SENSORS = [
+  { id: '0', label: 'Camera #0', unit: '', axes: ['brightness','mean_r','mean_g','mean_b'] },
+  { id: '1', label: 'Camera #1', unit: '', axes: ['brightness','mean_r','mean_g','mean_b'] },
+];
+
+const CHART_COLORS = ['#89b4fa','#a6e3a1','#f9e2af','#f38ba8','#cba6f7','#94e2d5','#fab387','#f2cdcd'];
+
+let liveState = {
+  hwType: '', serial: '', streaming: false, eventSource: null,
+  sampleCount: 0, startTime: 0, history: {}, maxHistory: 200,
+  currentSensor: null,
+};
+
+function openLivePanel(hwType, serial, sensorNames) {
+  liveState.hwType = hwType;
+  liveState.serial = serial;
+
+  // Populate sensor dropdown
+  const sel = document.getElementById('live-sensor');
+  sel.innerHTML = '';
+
+  let sensors = [];
+  if (hwType === 'android_sensors') {
+    sensors = ANDROID_SENSORS;
+  } else if (hwType === 'webcam') {
+    sensors = WEBCAM_SENSORS;
+  } else {
+    sensors = [{ id: 'default', label: hwType, unit: '', axes: ['value'] }];
+  }
+
+  for (const s of sensors) {
+    const opt = document.createElement('option');
+    opt.value = s.id;
+    opt.textContent = `${s.label} (${s.unit || s.id})`;
+    sel.appendChild(opt);
+  }
+
+  // Auto-select mode based on device
+  const modeSel = document.getElementById('live-mode');
+  if (hwType === 'android_sensors' && serial) {
+    modeSel.value = 'adb';
+  } else if (hwType === 'android_sensors') {
+    modeSel.value = 'auto';
+  }
+
+  const title = document.getElementById('live-title');
+  title.textContent = `📡 Live Data — ${hwType.replace(/_/g, ' ')}`;
+  if (serial) title.textContent += ` (${serial.slice(0, 16)})`;
+
+  clearLiveData();
+  onLiveSensorChange();
+  document.getElementById('live-overlay').classList.add('open');
+}
+
+function closeLivePanel() {
+  stopStream();
+  document.getElementById('live-overlay').classList.remove('open');
+}
+
+function onLiveSensorChange() {
+  const sensorId = document.getElementById('live-sensor').value;
+  let sensors = liveState.hwType === 'android_sensors' ? ANDROID_SENSORS
+    : liveState.hwType === 'webcam' ? WEBCAM_SENSORS
+    : [{ id: 'default', label: liveState.hwType, unit: '', axes: ['value'] }];
+
+  liveState.currentSensor = sensors.find(s => s.id === sensorId) || sensors[0];
+  clearLiveData();
+}
+
+function clearLiveData() {
+  liveState.history = {};
+  liveState.sampleCount = 0;
+  document.getElementById('live-values').innerHTML = '';
+  document.getElementById('live-raw').textContent = '';
+  renderLiveChart();
+}
+
+function toggleStream() {
+  if (liveState.streaming) {
+    stopStream();
+  } else {
+    startStream();
+  }
+}
+
+function startStream() {
+  const sensor = document.getElementById('live-sensor').value;
+  const rateMs = document.getElementById('live-rate').value;
+  const mode = document.getElementById('live-mode').value;
+
+  const params = new URLSearchParams({
+    hw_type: liveState.hwType,
+    sensor: sensor,
+    rate_ms: rateMs,
+    mode: mode,
+  });
+  if (liveState.serial) params.set('serial', liveState.serial);
+
+  liveState.eventSource = new EventSource(`${API}/live/stream?${params}`);
+  liveState.streaming = true;
+  liveState.startTime = performance.now();
+  liveState.sampleCount = 0;
+
+  document.getElementById('btn-stream').textContent = '⏹ Stop';
+  document.getElementById('btn-stream').style.background = 'var(--red)';
+  document.getElementById('stream-dot').classList.add('active');
+  document.getElementById('stream-status').textContent = 'Streaming';
+
+  liveState.eventSource.onmessage = (evt) => {
+    try {
+      const msg = JSON.parse(evt.data);
+      liveState.sampleCount++;
+      processLiveSample(msg);
+    } catch (e) {
+      console.warn('SSE parse error', e);
+    }
+  };
+
+  liveState.eventSource.onerror = () => {
+    // SSE auto-reconnects, but update UI
+    document.getElementById('stream-status').textContent = 'Reconnecting…';
+  };
+}
+
+function stopStream() {
+  if (liveState.eventSource) {
+    liveState.eventSource.close();
+    liveState.eventSource = null;
+  }
+  liveState.streaming = false;
+
+  // Also tell the server to stop
+  fetch(`${API}/live/stop`, { method: 'POST' }).catch(() => {});
+
+  document.getElementById('btn-stream').textContent = '▶ Start';
+  document.getElementById('btn-stream').style.background = '';
+  document.getElementById('stream-dot').classList.remove('active');
+  document.getElementById('stream-status').textContent = 'Stopped';
+}
+
+function processLiveSample(msg) {
+  const data = msg.data || {};
+  const sensorDef = liveState.currentSensor;
+  if (!sensorDef) return;
+
+  const ts = msg.ts || (Date.now() / 1000);
+  const axes = sensorDef.axes;
+
+  // Extract scalar values from the data
+  for (const axis of axes) {
+    if (!liveState.history[axis]) liveState.history[axis] = [];
+    let val = data[axis];
+    // Handle lists — take mean or last
+    if (Array.isArray(val)) {
+      val = val.length > 0 ? val.reduce((a, b) => a + b, 0) / val.length : 0;
+    }
+    if (val !== undefined && val !== null && !isNaN(Number(val))) {
+      liveState.history[axis].push({ t: ts, v: Number(val) });
+      // Trim to max history
+      if (liveState.history[axis].length > liveState.maxHistory) {
+        liveState.history[axis] = liveState.history[axis].slice(-liveState.maxHistory);
+      }
+    }
+  }
+
+  // Update value cards
+  updateLiveValues(data, axes, sensorDef.unit);
+
+  // Update chart
+  renderLiveChart();
+
+  // Update rate display
+  const elapsed = (performance.now() - liveState.startTime) / 1000;
+  const sps = elapsed > 0 ? (liveState.sampleCount / elapsed).toFixed(1) : '0';
+  document.getElementById('stream-rate').textContent = `${sps} sps`;
+  document.getElementById('stream-count').textContent = `${liveState.sampleCount} samples`;
+
+  // Update raw log (last 5)
+  const rawEl = document.getElementById('live-raw');
+  const lines = rawEl.textContent.split('\n').filter(Boolean).slice(-4);
+  lines.push(JSON.stringify(data, null, 0));
+  rawEl.textContent = lines.join('\n');
+}
+
+function updateLiveValues(data, axes, unit) {
+  const container = document.getElementById('live-values');
+  let html = '';
+  for (let i = 0; i < axes.length; i++) {
+    const axis = axes[i];
+    let val = data[axis];
+    if (Array.isArray(val)) val = val.length > 0 ? val.reduce((a, b) => a + b, 0) / val.length : 0;
+    const numStr = (val !== undefined && val !== null) ? Number(val).toFixed(3) : '—';
+    const color = CHART_COLORS[i % CHART_COLORS.length];
+    html += `<div class="live-val-card">
+      <div class="lv-label" style="color:${color}">${axis}</div>
+      <div class="lv-num" style="color:${color}">${numStr}</div>
+      ${unit ? `<div class="lv-unit">${escHtml(unit)}</div>` : ''}
+    </div>`;
+  }
+  container.innerHTML = html;
+}
+
+function renderLiveChart() {
+  const svg = document.getElementById('live-chart');
+  const W = 900, H = 200, PAD = 30;
+
+  const axes = Object.keys(liveState.history);
+  if (axes.length === 0) {
+    svg.innerHTML = `<text x="${W/2}" y="${H/2}" text-anchor="middle" fill="var(--fg-dim)" font-size="13">No data yet — press Start</text>`;
+    return;
+  }
+
+  // Find global min/max across all axes
+  let globalMin = Infinity, globalMax = -Infinity;
+  let globalTmin = Infinity, globalTmax = -Infinity;
+  for (const axis of axes) {
+    const pts = liveState.history[axis];
+    if (!pts || pts.length === 0) continue;
+    for (const p of pts) {
+      if (p.v < globalMin) globalMin = p.v;
+      if (p.v > globalMax) globalMax = p.v;
+      if (p.t < globalTmin) globalTmin = p.t;
+      if (p.t > globalTmax) globalTmax = p.t;
+    }
+  }
+
+  if (globalMin === globalMax) { globalMin -= 1; globalMax += 1; }
+  const tRange = Math.max(globalTmax - globalTmin, 0.1);
+  const vRange = globalMax - globalMin;
+
+  function sx(t) { return PAD + ((t - globalTmin) / tRange) * (W - 2 * PAD); }
+  function sy(v) { return H - PAD - ((v - globalMin) / vRange) * (H - 2 * PAD); }
+
+  let html = '';
+
+  // Grid lines
+  for (let i = 0; i <= 4; i++) {
+    const y = PAD + (i / 4) * (H - 2 * PAD);
+    const val = globalMax - (i / 4) * vRange;
+    html += `<line x1="${PAD}" y1="${y}" x2="${W-PAD}" y2="${y}" stroke="var(--border)" stroke-width="0.5"/>`;
+    html += `<text x="${PAD-4}" y="${y+3}" text-anchor="end" fill="var(--fg-dim)" font-size="9">${val.toFixed(1)}</text>`;
+  }
+
+  // Time labels
+  for (let i = 0; i <= 4; i++) {
+    const x = PAD + (i / 4) * (W - 2 * PAD);
+    const t = globalTmin + (i / 4) * tRange;
+    const relSec = (t - globalTmin).toFixed(1);
+    html += `<text x="${x}" y="${H-4}" text-anchor="middle" fill="var(--fg-dim)" font-size="9">${relSec}s</text>`;
+  }
+
+  // Data lines
+  axes.forEach((axis, idx) => {
+    const pts = liveState.history[axis];
+    if (!pts || pts.length < 2) return;
+    const color = CHART_COLORS[idx % CHART_COLORS.length];
+    const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${sx(p.t).toFixed(1)},${sy(p.v).toFixed(1)}`).join(' ');
+    html += `<path d="${d}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linecap="round"/>`;
+
+    // Current value dot
+    const last = pts[pts.length - 1];
+    html += `<circle cx="${sx(last.t).toFixed(1)}" cy="${sy(last.v).toFixed(1)}" r="3" fill="${color}"/>`;
+  });
+
+  svg.innerHTML = html;
+}
+
+async function retryAdbAuth() {
+  // Kill and restart ADB server, then re-scan
+  try {
+    await fetch(`${API}/scan`);
+    scanHardware();
+  } catch(e) {
+    alert('Retry failed: ' + e.message);
+  }
+}
+
+// Close panel on Escape key
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeLivePanel();
+});
+
+// Close panel when clicking overlay background
+document.getElementById('live-overlay').addEventListener('click', (e) => {
+  if (e.target.id === 'live-overlay') closeLivePanel();
+});
 
 // Auto-scan on load
 scanHardware();

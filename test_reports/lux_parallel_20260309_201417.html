@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Parallel Lux Measurement Report</title>
+  <style>:root {
+  --bg: #1e1e2e; --bg2: #252538; --bg3: #2d2d44; --bg4: #353550;
+  --fg: #cdd6f4; --fg-dim: #6c7086;
+  --accent: #89b4fa; --green: #a6e3a1; --red: #f38ba8;
+  --yellow: #f9e2af; --peach: #fab387; --mauve: #cba6f7;
+  --teal: #94e2d5; --border: #45475a; --radius: 6px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: var(--bg); color: var(--fg); line-height: 1.6;
+  padding: 0; margin: 0;
+}
+.report { max-width: 1100px; margin: 0 auto; padding: 32px 24px; }
+
+/* ── Header ── */
+.report-header {
+  border-bottom: 2px solid var(--accent); padding-bottom: 20px; margin-bottom: 28px;
+}
+.report-header h1 { color: var(--accent); font-size: 26px; margin-bottom: 4px; }
+.report-header .subtitle { color: var(--fg-dim); font-size: 13px; }
+.report-meta {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px 24px; margin-top: 14px; font-size: 12px;
+}
+.report-meta .key { color: var(--fg-dim); font-weight: 600; }
+.report-meta .val { color: var(--fg); font-family: monospace; font-size: 11px; }
+
+/* ── Verdict banner ── */
+.verdict {
+  padding: 16px 24px; border-radius: var(--radius); margin-bottom: 28px;
+  display: flex; align-items: center; gap: 14px; font-size: 15px; font-weight: 700;
+}
+.verdict.pass { background: rgba(166,227,161,0.12); border: 2px solid var(--green); color: var(--green); }
+.verdict.fail { background: rgba(243,139,168,0.12); border: 2px solid var(--red); color: var(--red); }
+.verdict .icon { font-size: 28px; }
+.verdict .details { font-size: 12px; font-weight: 400; color: var(--fg-dim); margin-top: 2px; }
+
+/* ── Sections ── */
+.section { margin-bottom: 28px; }
+.section h2 {
+  font-size: 15px; font-weight: 700; color: var(--accent);
+  text-transform: uppercase; letter-spacing: 1px;
+  border-bottom: 1px solid var(--border); padding-bottom: 6px; margin-bottom: 14px;
+}
+.section-text { font-size: 13px; line-height: 1.7; color: var(--fg); }
+.section-text p { margin-bottom: 10px; }
+
+/* ── Key-value grid ── */
+.kv-grid {
+  display: grid; grid-template-columns: 180px 1fr; gap: 4px 16px;
+  font-size: 13px; background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 18px;
+}
+.kv-grid .key { color: var(--fg-dim); font-weight: 600; }
+.kv-grid .val { color: var(--fg); font-family: monospace; font-size: 12px; word-break: break-all; }
+
+/* ── Tables ── */
+.data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.data-table th {
+  background: var(--bg3); color: var(--accent); font-weight: 700;
+  text-align: left; padding: 8px 12px; border-bottom: 2px solid var(--border);
+  text-transform: uppercase; letter-spacing: 0.5px; font-size: 11px;
+}
+.data-table td {
+  padding: 7px 12px; border-bottom: 1px solid var(--border);
+  font-family: monospace; font-size: 11px;
+}
+.data-table tr:hover td { background: var(--bg2); }
+.data-table .num { text-align: right; }
+.data-table .pass-cell { color: var(--green); font-weight: 700; }
+.data-table .fail-cell { color: var(--red); font-weight: 700; }
+
+/* ── SVG chart ── */
+.chart-container {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 16px; overflow-x: auto;
+}
+.chart-container svg { display: block; margin: 0 auto; }
+
+/* ── Footer ── */
+.report-footer {
+  margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--border);
+  font-size: 11px; color: var(--fg-dim); text-align: center;
+}
+
+/* ── Print ── */
+@media print {
+  body { background: #fff; color: #222; }
+  .report { padding: 0; }
+  .verdict.pass { border-color: #2a9d4e; color: #2a9d4e; background: #e6f9ee; }
+  .verdict.fail { border-color: #d64040; color: #d64040; background: #fde8e8; }
+  .kv-grid, .data-table th { background: #f5f5f5; }
+  .chart-container { background: #fafafa; }
+}
+</style>
+</head>
+<body>
+<div class="report">
+  <div class="report-header">
+    <h1>Parallel Lux Measurement Report</h1>
+    <div class="subtitle">Automated Test Report — pyontrust Enterprise Platform</div>
+    <div class="report-meta"><div><span class="key">Test ID:</span> <span class="val">LUX-PARALLEL-20260309_201417</span></div><div><span class="key">DUT:</span> <span class="val">Webcam + Android Light Sensor</span></div><div><span class="key">Operator:</span> <span class="val">Riko</span></div><div><span class="key">Environment:</span> <span class="val">LP-LIVANYI-1 / Windows 10</span></div><div><span class="key">Generated:</span> <span class="val">2026-03-09 19:14:17 UTC</span></div><div><span class="key">Platform:</span> <span class="val">pyontrust 2026.3.0</span></div></div>
+  </div>
+  <div class="verdict pass"><span class="icon">✅</span><div><div>PASS — Webcam Δlux: 1.4 · Android Δlux: -1.8 · Pearson r: 0.0816</div><div class="details">Cycles: 2 · Webcam frames: 116 · Android samples: 65 · Duration: 6.44 s</div></div></div>
+  <div class="section"><h2>Test Description</h2><div class="section-text"><p>This test measures ambient light (lux) simultaneously from two independent sources — a USB webcam (V-channel brightness with linear calibration) and an Android phone&#x27;s hardware light sensor (via ADB or simulated).</p><p>The phone&#x27;s flashlight (torch) is cycled ON/OFF to create a controlled step-change in illuminance. Both sensors should track the same light event, allowing cross-validation via Pearson correlation and cross-correlation lag estimation.</p></div></div>
+<div class="section"><h2>Measurement Results</h2><div class="kv-grid"><div class="key">Status</div><div class="val">PASS ✅</div><div class="key">Capture Duration</div><div class="val">6.436 s</div><div class="key">Torch Cycles</div><div class="val">2</div><div class="key">Webcam Frames</div><div class="val">116</div><div class="key">Webcam FPS</div><div class="val">25.2</div><div class="key">Android Samples</div><div class="val">65</div><div class="key">Webcam Mean Lux (ON)</div><div class="val">290.1</div><div class="key">Webcam Mean Lux (OFF)</div><div class="val">288.8</div><div class="key">Webcam Δ Lux (ON − OFF)</div><div class="val">1.4</div><div class="key">Android Mean Lux (ON)</div><div class="val">294.7</div><div class="key">Android Mean Lux (OFF)</div><div class="val">296.6</div><div class="key">Android Δ Lux (ON − OFF)</div><div class="val">-1.8</div><div class="key">Pearson Correlation (r)</div><div class="val">0.0816</div><div class="key">Cross-Correlation Lag</div><div class="val">-4500.3 ms</div></div></div>
+<div class="section"><h2>Capture Configuration</h2><div class="kv-grid"><div class="key">Device Index</div><div class="val">0</div><div class="key">Resolution</div><div class="val">640 × 480</div><div class="key">Target FPS</div><div class="val">30.0</div><div class="key">Warmup Frames</div><div class="val">15</div><div class="key">ROI</div><div class="val">Full frame</div><div class="key">Torch ON Duration</div><div class="val">1.5 s</div><div class="key">Torch OFF Duration</div><div class="val">1.5 s</div><div class="key">Torch Cycles</div><div class="val">2</div><div class="key">Pre-Capture Baseline</div><div class="val">0.5 s</div><div class="key">Android Mode</div><div class="val">simulated</div><div class="key">Lux Scale</div><div class="val">2.0</div><div class="key">Lux Offset</div><div class="val">0.0</div></div></div>
+<div class="section"><h2>Webcam Estimated Lux</h2><div class="chart-container"><svg xmlns="http://www.w3.org/2000/svg" width="900" height="280" viewBox="0 0 900 280">
+<rect width="900" height="280" fill="#252538" rx="6"/>
+<text x="450" y="18" text-anchor="middle" fill="#cdd6f4" font-size="12" font-weight="700">Webcam V-Channel → Estimated Lux vs Time</text>
+<line x1="60" y1="240.0" x2="880" y2="240.0" stroke="#45475a" stroke-width="0.5"/>
+<text x="54" y="244.0" text-anchor="end" fill="#6c7086" font-size="10">269.6</text>
+<line x1="60" y1="198.0" x2="880" y2="198.0" stroke="#45475a" stroke-width="0.5"/>
+<text x="54" y="202.0" text-anchor="end" fill="#6c7086" font-size="10">290.5</text>
+<line x1="60" y1="156.0" x2="880" y2="156.0" stroke="#45475a" stroke-width="0.5"/>
+<text x="54" y="160.0" text-anchor="end" fill="#6c7086" font-size="10">311.3</text>
+<line x1="60" y1="114.0" x2="880" y2="114.0" stroke="#45475a" stroke-width="0.5"/>
+<text x="54" y="118.0" text-anchor="end" fill="#6c7086" font-size="10">332.2</text>
+<line x1="60" y1="72.0" x2="880" y2="72.0" stroke="#45475a" stroke-width="0.5"/>
+<text x="54" y="76.0" text-anchor="end" fill="#6c7086" font-size="10">353.0</text>
+<line x1="60" y1="30.0" x2="880" y2="30.0" stroke="#45475a" stroke-width="0.5"/>
+<text x="54" y="34.0" text-anchor="end" fill="#6c7086" font-size="10">373.9</text>
+<text x="60.0" y="272" text-anchor="middle" fill="#6c7086" font-size="10">1.94</text>
+<text x="162.5" y="272" text-anchor="middle" fill="#6c7086" font-size="10">2.51</text>
+<text x="265.0" y="272" text-anchor="middle" fill="#6c7086" font-size="10">3.09</text>
+<text x="367.5" y="272" text-anchor="middle" fill="#6c7086" font-size="10">3.66</text>
+<text x="470.0" y="272" text-anchor="middle" fill="#6c7086" font-size="10">4.24</text>
+<text x="572.5" y="272" text-anchor="middle" fill="#6c7086" font-size="10">4.82</text>
+<text x="675.0" y="272" text-anchor="middle" fill="#6c7086" font-size="10">5.39</text>
+<text x="777.5" y="272" text-anchor="middle" fill="#6c7086" font-size="10">5.97</text>
+<text x="880.0" y="272" text-anchor="middle" fill="#6c7086" font-size="10">6.54</text>
+<text x="450" y="280" text-anchor="middle" fill="#6c7086" font-size="10">Time (s)</text>
+<text x="14" y="140" text-anchor="middle" fill="#6c7086" font-size="10" transform="rotate(-90,14,140)">Estimated Lux</text>
+<polyline points="60.0,39.5 68.6,52.6 74.3,40.5 82.9,43.9 88.5,76.6 97.0,79.1 102.7,111.8 111.2,114.1 116.9,136.7 125.5,138.8 131.2,154.7 139.7,155.0 145.5,173.2 154.0,177.5 159.7,177.8 168.2,183.9 173.9,193.5 182.4,193.4 188.3,192.9 196.7,191.8 202.4,192.0 210.9,196.6 216.6,197.2 225.1,199.4 230.9,199.4 239.4,203.9 245.1,203.7 253.6,203.2 259.3,203.0 267.9,204.5 273.6,204.2 282.1,206.7 287.8,205.9 296.3,207.8 302.0,207.2 310.6,206.8 316.2,206.9 324.8,206.7 330.5,206.9 339.0,207.0 344.7,206.9 353.3,207.1 359.0,207.0 367.5,206.8 373.2,204.9 381.7,204.2 387.4,203.8 395.9,203.1 401.8,202.3 410.2,201.7 415.9,201.5 424.4,200.9 430.1,200.4 438.7,199.9 444.4,199.3 452.9,199.1 458.6,199.7 467.2,199.4 472.8,199.5 481.4,199.4 487.1,199.2 495.6,199.1 501.3,199.0 509.8,199.3 515.5,199.6 524.1,199.7 529.8,200.2 538.3,201.1 544.0,213.2 552.7,212.8 558.3,225.3 566.8,225.4 572.5,225.3 581.0,225.5 586.7,225.4 595.2,225.7 600.9,226.0 609.5,226.7 615.2,227.3 623.7,227.7 629.4,228.2 637.9,229.8 643.6,230.0 652.2,230.5 657.9,229.9 666.4,229.5 672.2,228.9 680.7,228.9 686.3,228.8 694.9,228.7 700.6,228.4 709.1,228.9 714.8,229.1 723.4,229.8 729.1,228.9 737.6,229.3 743.3,229.3 751.8,229.4 757.5,229.3 766.1,229.3 772.3,229.2 780.3,229.0 786.0,229.2 794.5,229.1 800.2,229.3 808.7,229.4 814.5,230.2 823.0,230.1 828.7,229.5 837.2,228.3 842.9,227.1 851.5,226.1 857.2,225.4 865.7,224.9 871.5,224.2 880.0,223.9" fill="none" stroke="#89b4fa" stroke-width="1.5"/>
+<text x="70" y="32" fill="#89b4fa" font-size="10">● Estimated Lux</text>
+</svg></div></div>
+<div class="section"><h2>Android Light Sensor (Lux)</h2><div class="chart-container"><svg xmlns="http://www.w3.org/2000/svg" width="900" height="280" viewBox="0 0 900 280">
+<rect width="900" height="280" fill="#252538" rx="6"/>
+<text x="450" y="18" text-anchor="middle" fill="#cdd6f4" font-size="12" font-weight="700">Android Ambient Light Sensor vs Time</text>
+<line x1="60" y1="240.0" x2="880" y2="240.0" stroke="#45475a" stroke-width="0.5"/>
+<text x="54" y="244.0" text-anchor="end" fill="#6c7086" font-size="10">233.7</text>
+<line x1="60" y1="198.0" x2="880" y2="198.0" stroke="#45475a" stroke-width="0.5"/>
+<text x="54" y="202.0" text-anchor="end" fill="#6c7086" font-size="10">260.7</text>
+<line x1="60" y1="156.0" x2="880" y2="156.0" stroke="#45475a" stroke-width="0.5"/>
+<text x="54" y="160.0" text-anchor="end" fill="#6c7086" font-size="10">287.7</text>
+<line x1="60" y1="114.0" x2="880" y2="114.0" stroke="#45475a" stroke-width="0.5"/>
+<text x="54" y="118.0" text-anchor="end" fill="#6c7086" font-size="10">314.7</text>
+<line x1="60" y1="72.0" x2="880" y2="72.0" stroke="#45475a" stroke-width="0.5"/>
+<text x="54" y="76.0" text-anchor="end" fill="#6c7086" font-size="10">341.7</text>
+<line x1="60" y1="30.0" x2="880" y2="30.0" stroke="#45475a" stroke-width="0.5"/>
+<text x="54" y="34.0" text-anchor="end" fill="#6c7086" font-size="10">368.7</text>
+<text x="60.0" y="272" text-anchor="middle" fill="#6c7086" font-size="10">0.00</text>
+<text x="162.5" y="272" text-anchor="middle" fill="#6c7086" font-size="10">0.81</text>
+<text x="265.0" y="272" text-anchor="middle" fill="#6c7086" font-size="10">1.61</text>
+<text x="367.5" y="272" text-anchor="middle" fill="#6c7086" font-size="10">2.41</text>
+<text x="470.0" y="272" text-anchor="middle" fill="#6c7086" font-size="10">3.22</text>
+<text x="572.5" y="272" text-anchor="middle" fill="#6c7086" font-size="10">4.02</text>
+<text x="675.0" y="272" text-anchor="middle" fill="#6c7086" font-size="10">4.83</text>
+<text x="777.5" y="272" text-anchor="middle" fill="#6c7086" font-size="10">5.63</text>
+<text x="880.0" y="272" text-anchor="middle" fill="#6c7086" font-size="10">6.44</text>
+<text x="450" y="280" text-anchor="middle" fill="#6c7086" font-size="10">Time (s)</text>
+<text x="14" y="140" text-anchor="middle" fill="#6c7086" font-size="10" transform="rotate(-90,14,140)">Lux (sensor)</text>
+<polyline points="60.0,168.2 72.8,186.8 85.9,189.4 98.8,130.0 111.6,98.0 124.4,169.3 137.2,180.0 149.9,130.0 162.7,202.9 175.5,128.8 188.3,113.6 201.1,127.9 213.9,165.6 226.6,111.8 239.4,190.8 252.2,181.9 265.0,182.6 277.8,177.1 290.6,161.8 303.4,171.5 316.2,118.3 329.1,113.3 341.9,141.8 354.7,118.8 367.5,114.8 380.4,156.9 393.2,147.7 406.1,162.4 418.9,131.6 431.7,39.5 444.4,130.3 457.2,204.4 470.1,127.6 482.9,186.7 495.7,164.7 508.5,114.5 521.3,110.7 534.1,140.7 546.9,142.7 559.7,159.8 572.5,158.0 585.2,93.2 598.1,96.9 610.9,137.5 623.8,147.4 636.6,115.5 649.4,145.9 662.2,154.7 675.1,116.6 687.9,123.5 700.7,103.6 713.5,164.3 726.3,142.9 739.1,155.5 751.9,113.2 764.7,186.8 777.5,118.4 790.3,167.1 803.1,133.9 815.9,127.4 828.8,71.5 841.5,210.6 854.3,103.9 867.2,118.0 880.0,230.5" fill="none" stroke="#a6e3a1" stroke-width="1.5"/>
+<text x="70" y="32" fill="#a6e3a1" font-size="10">● Lux (sensor)</text>
+</svg></div></div>
+<div class="section"><h2>Overlay — Webcam vs Android</h2><div class="chart-container"><svg xmlns="http://www.w3.org/2000/svg" width="900" height="280" viewBox="0 0 900 280">
+<rect width="900" height="280" fill="#252538" rx="6"/>
+<text x="450" y="18" text-anchor="middle" fill="#cdd6f4" font-size="12" font-weight="700">Webcam (blue) vs Android (green) Lux</text>
+<line x1="60" y1="240.0" x2="880" y2="240.0" stroke="#45475a" stroke-width="0.5"/>
+<text x="54" y="244.0" text-anchor="end" fill="#6c7086" font-size="10">233.4</text>
+<line x1="60" y1="198.0" x2="880" y2="198.0" stroke="#45475a" stroke-width="0.5"/>
+<text x="54" y="202.0" text-anchor="end" fill="#6c7086" font-size="10">261.8</text>
+<line x1="60" y1="156.0" x2="880" y2="156.0" stroke="#45475a" stroke-width="0.5"/>
+<text x="54" y="160.0" text-anchor="end" fill="#6c7086" font-size="10">290.3</text>
+<line x1="60" y1="114.0" x2="880" y2="114.0" stroke="#45475a" stroke-width="0.5"/>
+<text x="54" y="118.0" text-anchor="end" fill="#6c7086" font-size="10">318.7</text>
+<line x1="60" y1="72.0" x2="880" y2="72.0" stroke="#45475a" stroke-width="0.5"/>
+<text x="54" y="76.0" text-anchor="end" fill="#6c7086" font-size="10">347.2</text>
+<line x1="60" y1="30.0" x2="880" y2="30.0" stroke="#45475a" stroke-width="0.5"/>
+<text x="54" y="34.0" text-anchor="end" fill="#6c7086" font-size="10">375.6</text>
+<text x="60.0" y="272" text-anchor="middle" fill="#6c7086" font-size="10">1.94</text>
+<text x="162.5" y="272" text-anchor="middle" fill="#6c7086" font-size="10">2.51</text>
+<text x="265.0" y="272" text-anchor="middle" fill="#6c7086" font-size="10">3.09</text>
+<text x="367.5" y="272" text-anchor="middle" fill="#6c7086" font-size="10">3.66</text>
+<text x="470.0" y="272" text-anchor="middle" fill="#6c7086" font-size="10">4.24</text>
+<text x="572.5" y="272" text-anchor="middle" fill="#6c7086" font-size="10">4.82</text>
+<text x="675.0" y="272" text-anchor="middle" fill="#6c7086" font-size="10">5.39</text>
+<text x="777.5" y="272" text-anchor="middle" fill="#6c7086" font-size="10">5.97</text>
+<text x="880.0" y="272" text-anchor="middle" fill="#6c7086" font-size="10">6.54</text>
+<text x="450" y="280" text-anchor="middle" fill="#6c7086" font-size="10">Time (s)</text>
+<text x="14" y="140" text-anchor="middle" fill="#6c7086" font-size="10" transform="rotate(-90,14,140)">Webcam Lux</text>
+<polyline points="60.0,162.1 68.6,137.8 74.3,123.8 82.9,121.5 88.5,120.0 97.0,127.8 102.7,136.3 111.2,143.9 116.9,137.0 125.5,126.6 131.2,123.6 139.7,121.8 145.5,121.5 154.0,140.4 159.7,153.0 168.2,158.2 173.9,155.3 182.4,153.0 188.3,157.5 196.7,164.1 202.4,160.2 210.9,146.3 216.6,137.0 225.1,96.0 230.9,67.9 239.4,71.9 245.1,99.4 253.6,139.8 259.3,162.3 267.9,196.1 273.6,192.7 282.1,158.1 287.8,134.9 296.3,158.0 302.0,175.9 310.6,183.8 316.2,177.1 324.8,166.0 330.5,150.9 339.0,128.2 344.7,119.8 353.3,118.1 359.0,116.9 367.5,128.9 373.2,138.0 381.7,145.7 387.4,146.3 395.9,147.5 401.8,152.8 410.2,160.4 415.9,163.1 424.4,162.3 430.1,161.8 438.7,136.2 444.4,116.6 452.9,100.9 458.6,102.0 467.2,103.9 472.8,116.1 481.4,134.5 487.1,143.3 495.6,147.8 501.3,150.7 509.8,139.9 515.5,130.3 524.1,126.5 529.8,135.7 538.3,149.4 544.0,152.6 552.7,156.7 558.3,155.2 566.8,138.1 572.5,126.7 581.0,124.7 586.7,126.8 595.2,126.0 600.9,120.0 609.5,111.0 615.2,125.6 623.7,153.0 629.4,166.3 637.9,156.6 643.6,150.1 652.2,151.4 657.9,155.2 666.4,153.9 672.2,141.0 680.7,122.0 686.3,136.4 694.9,169.8 700.6,186.3 709.1,155.2 714.8,134.6 723.4,138.8 729.1,153.5 737.6,166.8 743.3,156.7 751.8,141.7 757.5,137.4 766.1,134.4 772.3,129.8 780.3,106.0 786.0,89.2 794.5,118.6 800.2,160.8 808.7,202.1 814.5,169.6 823.0,121.2 828.7,113.2 837.2,119.5 842.9,124.2 851.5,175.0 857.2,209.0 865.7,230.5 871.5,230.5 880.0,230.5" fill="none" stroke="#a6e3a1" stroke-width="1.2" opacity="0.7"/>
+<text x="70" y="44" fill="#a6e3a1" font-size="10">● Android Lux (resampled)</text>
+<polyline points="60.0,39.5 68.6,49.1 74.3,40.2 82.9,42.7 88.5,66.7 97.0,68.6 102.7,92.5 111.2,94.2 116.9,110.7 125.5,112.3 131.2,124.0 139.7,124.2 145.5,137.5 154.0,140.6 159.7,140.9 168.2,145.3 173.9,152.4 182.4,152.3 188.3,152.0 196.7,151.1 202.4,151.3 210.9,154.7 216.6,155.1 225.1,156.7 230.9,156.7 239.4,160.0 245.1,159.9 253.6,159.5 259.3,159.4 267.9,160.5 273.6,160.2 282.1,162.1 287.8,161.5 296.3,162.9 302.0,162.5 310.6,162.2 316.2,162.2 324.8,162.1 330.5,162.2 339.0,162.3 344.7,162.3 353.3,162.4 359.0,162.3 367.5,162.2 373.2,160.7 381.7,160.3 387.4,160.0 395.9,159.4 401.8,158.9 410.2,158.4 415.9,158.2 424.4,157.9 430.1,157.4 438.7,157.1 444.4,156.6 452.9,156.5 458.6,156.9 467.2,156.7 472.8,156.8 481.4,156.7 487.1,156.6 495.6,156.5 501.3,156.4 509.8,156.7 515.5,156.9 524.1,157.0 529.8,157.3 538.3,158.0 544.0,166.8 552.7,166.6 558.3,175.7 566.8,175.8 572.5,175.8 581.0,175.8 586.7,175.8 595.2,176.0 600.9,176.3 609.5,176.7 615.2,177.2 623.7,177.5 629.4,177.9 637.9,179.1 643.6,179.2 652.2,179.5 657.9,179.1 666.4,178.8 672.2,178.4 680.7,178.4 686.3,178.3 694.9,178.2 700.6,178.0 709.1,178.3 714.8,178.5 723.4,179.0 729.1,178.4 737.6,178.7 743.3,178.6 751.8,178.8 757.5,178.6 766.1,178.7 772.3,178.6 780.3,178.5 786.0,178.6 794.5,178.5 800.2,178.6 808.7,178.7 814.5,179.3 823.0,179.2 828.7,178.8 837.2,178.0 842.9,177.1 851.5,176.3 857.2,175.8 865.7,175.4 871.5,174.9 880.0,174.7" fill="none" stroke="#89b4fa" stroke-width="1.5"/>
+<text x="70" y="56" fill="#89b4fa" font-size="10">● Webcam Lux</text>
+</svg></div></div>
+<div class="section"><h2>Webcam Raw Brightness (V-Channel)</h2><div class="chart-container"><svg xmlns="http://www.w3.org/2000/svg" width="900" height="280" viewBox="0 0 900 280">
+<rect width="900" height="280" fill="#252538" rx="6"/>
+<text x="450" y="18" text-anchor="middle" fill="#cdd6f4" font-size="12" font-weight="700">Mean V-Channel Brightness vs Time</text>
+<line x1="60" y1="240.0" x2="880" y2="240.0" stroke="#45475a" stroke-width="0.5"/>
+<text x="54" y="244.0" text-anchor="end" fill="#6c7086" font-size="10">134.8</text>
+<line x1="60" y1="198.0" x2="880" y2="198.0" stroke="#45475a" stroke-width="0.5"/>
+<text x="54" y="202.0" text-anchor="end" fill="#6c7086" font-size="10">145.2</text>
+<line x1="60" y1="156.0" x2="880" y2="156.0" stroke="#45475a" stroke-width="0.5"/>
+<text x="54" y="160.0" text-anchor="end" fill="#6c7086" font-size="10">155.7</text>
+<line x1="60" y1="114.0" x2="880" y2="114.0" stroke="#45475a" stroke-width="0.5"/>
+<text x="54" y="118.0" text-anchor="end" fill="#6c7086" font-size="10">166.1</text>
+<line x1="60" y1="72.0" x2="880" y2="72.0" stroke="#45475a" stroke-width="0.5"/>
+<text x="54" y="76.0" text-anchor="end" fill="#6c7086" font-size="10">176.5</text>
+<line x1="60" y1="30.0" x2="880" y2="30.0" stroke="#45475a" stroke-width="0.5"/>
+<text x="54" y="34.0" text-anchor="end" fill="#6c7086" font-size="10">186.9</text>
+<text x="60.0" y="272" text-anchor="middle" fill="#6c7086" font-size="10">1.94</text>
+<text x="162.5" y="272" text-anchor="middle" fill="#6c7086" font-size="10">2.51</text>
+<text x="265.0" y="272" text-anchor="middle" fill="#6c7086" font-size="10">3.09</text>
+<text x="367.5" y="272" text-anchor="middle" fill="#6c7086" font-size="10">3.66</text>
+<text x="470.0" y="272" text-anchor="middle" fill="#6c7086" font-size="10">4.24</text>
+<text x="572.5" y="272" text-anchor="middle" fill="#6c7086" font-size="10">4.82</text>
+<text x="675.0" y="272" text-anchor="middle" fill="#6c7086" font-size="10">5.39</text>
+<text x="777.5" y="272" text-anchor="middle" fill="#6c7086" font-size="10">5.97</text>
+<text x="880.0" y="272" text-anchor="middle" fill="#6c7086" font-size="10">6.54</text>
+<text x="450" y="280" text-anchor="middle" fill="#6c7086" font-size="10">Time (s)</text>
+<text x="14" y="140" text-anchor="middle" fill="#6c7086" font-size="10" transform="rotate(-90,14,140)">Brightness (0–255)</text>
+<polyline points="60.0,39.5 68.6,52.6 74.3,40.5 82.9,43.9 88.5,76.6 97.0,79.1 102.7,111.8 111.2,114.1 116.9,136.7 125.5,138.8 131.2,154.7 139.7,155.0 145.5,173.2 154.0,177.5 159.7,177.8 168.2,183.9 173.9,193.5 182.4,193.4 188.3,192.9 196.7,191.8 202.4,192.0 210.9,196.6 216.6,197.2 225.1,199.4 230.9,199.4 239.4,203.9 245.1,203.7 253.6,203.2 259.3,203.0 267.9,204.5 273.6,204.2 282.1,206.7 287.8,205.9 296.3,207.8 302.0,207.2 310.6,206.8 316.2,206.9 324.8,206.7 330.5,206.9 339.0,207.0 344.7,206.9 353.3,207.1 359.0,207.0 367.5,206.8 373.2,204.9 381.7,204.2 387.4,203.8 395.9,203.1 401.8,202.3 410.2,201.7 415.9,201.5 424.4,200.9 430.1,200.4 438.7,199.9 444.4,199.3 452.9,199.1 458.6,199.7 467.2,199.4 472.8,199.5 481.4,199.4 487.1,199.2 495.6,199.1 501.3,199.0 509.8,199.3 515.5,199.6 524.1,199.7 529.8,200.2 538.3,201.1 544.0,213.2 552.7,212.8 558.3,225.3 566.8,225.4 572.5,225.3 581.0,225.5 586.7,225.4 595.2,225.7 600.9,226.0 609.5,226.7 615.2,227.3 623.7,227.7 629.4,228.2 637.9,229.8 643.6,230.0 652.2,230.5 657.9,229.9 666.4,229.5 672.2,228.9 680.7,228.9 686.3,228.8 694.9,228.7 700.6,228.4 709.1,228.9 714.8,229.1 723.4,229.8 729.1,228.9 737.6,229.3 743.3,229.3 751.8,229.4 757.5,229.3 766.1,229.3 772.3,229.2 780.3,229.0 786.0,229.2 794.5,229.1 800.2,229.3 808.7,229.4 814.5,230.2 823.0,230.1 828.7,229.5 837.2,228.3 842.9,227.1 851.5,226.1 857.2,225.4 865.7,224.9 871.5,224.2 880.0,223.9" fill="none" stroke="#cba6f7" stroke-width="1.5"/>
+<text x="70" y="32" fill="#cba6f7" font-size="10">● Brightness (0–255)</text>
+</svg></div></div>
+<div class="section"><h2>Signal Statistics</h2><table class="data-table"><thead><tr><th class="">Metric</th><th class="num">Value</th></tr></thead><tbody><tr><td>Webcam — Min Lux</td><td class="num">274.4</td></tr><tr><td>Webcam — Max Lux</td><td class="num">369.1</td></tr><tr><td>Webcam — Mean Lux</td><td class="num">289.2</td></tr><tr><td>Webcam — Std Lux</td><td class="num">20.3</td></tr><tr><td>Android — Min Lux</td><td class="num">239.9</td></tr><tr><td>Android — Max Lux</td><td class="num">362.6</td></tr><tr><td>Android — Mean Lux</td><td class="num">295.7</td></tr><tr><td>Android — Std Lux</td><td class="num">22.4</td></tr><tr><td>Pearson r</td><td class="num">0.0816</td></tr><tr><td>Cross-Corr Lag</td><td class="num">-4500.3 ms</td></tr></tbody></table></div>
+<div class="section"><h2>Torch Events Log</h2><table class="data-table"><thead><tr><th class="num">Time (s)</th><th class="">State</th></tr></thead><tbody><tr><td class="num">0.501</td><td>ON</td></tr><tr><td class="num">2.002</td><td>OFF</td></tr><tr><td class="num">3.503</td><td>ON</td></tr><tr><td class="num">5.003</td><td>OFF</td></tr></tbody></table></div>
+
+  <div class="report-footer">
+    Generated by <strong>pyontrust 2026.3.0</strong>
+    &nbsp;·&nbsp; 2026-03-09 19:14:17 UTC
+    &nbsp;·&nbsp; Report is self-contained — no external dependencies
+  </div>
+</div>
+<script type="application/json" id="report-data">{"lux_result": {"ok": true, "capture_duration_s": 6.436, "webcam_frame_count": 116, "webcam_actual_fps": 25.2, "android_sample_count": 65, "n_cycles": 2, "webcam_lux_mean_on": 290.133, "webcam_lux_mean_off": 288.7771, "webcam_lux_delta": 1.3559, "android_lux_mean_on": 294.7329, "android_lux_mean_off": 296.5659, "android_lux_delta": -1.833, "correlation": 0.0816, "lag_ms": -4500.2937}, "webcam_series": {"timestamps": [1.9361731000244617, 1.984423300018534, 2.016363700036891, 2.0648474999470636, 2.0962523999623954, 2.144312600023113, 2.1762732999632135, 2.2241019000066444, 2.2562083000084385, 2.3041173999663442, 2.3362090999726206, 2.3842403000453487, 2.4167059999890625, 2.4642816999694332, 2.496257200022228, 2.5441718000220135, 2.5763170999707654, 2.624219899997115, 2.65694130002521, 2.704202999942936, 2.736172299948521, 2.784165099961683, 2.8161371999885887, 2.8640976999886334, 2.8963653999380767, 2.9441389000276104, 2.9761346000013873, 3.0241457000374794, 3.056240399950184, 3.104506899951957, 3.136331200017594, 3.1841258000349626, 3.2161268999334425, 3.2641965999500826, 3.296219000010751, 3.3443321000086144, 3.376214799936861, 3.4241618999512866, 3.4561157999560237, 3.5042679000180215, 3.5361938000423834, 3.584190099965781, 3.616312799975276, 3.6640903999796137, 3.6962215999374166, 3.7442656999919564, 3.776272999937646, 3.8241483999881893, 3.8568078000098467, 3.9041240999940783, 3.9361216999823228, 3.98423990001902, 4.016301900031976, 4.064295599935576, 4.096249699941836, 4.144367599976249, 4.1764793000184, 4.22433550003916, 4.256145899998955, 4.304206599947065, 4.336306600016542, 4.384431799990125, 4.416163699934259, 4.464155999943614, 4.496156399953179, 4.544172900030389, 4.576121599995531, 4.624269800027832, 4.656282400013879, 4.705073699937202, 4.7363601999823, 4.784144400036894, 4.8160901999799535, 4.864291799953207, 4.896254700026475, 4.944153300020844, 4.9761461999733, 5.02409770002123, 5.056351399980485, 5.104086400009692, 5.136158499983139, 5.184142999933101, 5.2161378000164405, 5.264168199966662, 5.296429899986833, 5.34422920003999, 5.37650080001913, 5.424179599969648, 5.456141600036062, 5.504109499976039, 5.536039700033143, 5.584134400007315, 5.61613550002221, 5.66422799997963, 5.696143100038171, 5.744096899987198, 5.7761983999516815, 5.824042199994437, 5.856058500008658, 5.904236100031994, 5.9389284999342635, 5.984063999960199, 6.016125699970871, 6.064057099982165, 6.0960471000289544, 6.143999299965799, 6.176182499970309, 6.224057300016284, 6.256190699990839, 6.304104399983771, 6.336165499989875, 6.384110199986026, 6.416173300007358, 6.46417749999091, 6.49646809999831, 6.544421199942008], "lux": [369.12865234375, 362.6527994791667, 368.6551106770833, 366.96788411458334, 350.7333658854167, 349.4729361979167, 333.2551497395833, 332.13654947916666, 320.92981119791665, 319.87361979166667, 311.96343098958334, 311.79846354166665, 302.78455729166666, 300.67737630208336, 300.5137044270833, 297.50108723958334, 292.71508463541664, 292.7863411458333, 292.98870442708335, 293.56987630208334, 293.4448046875, 291.1934505208333, 290.88873046875, 289.781484375, 289.8070572916667, 287.55671875, 287.6579817708333, 287.9211328125, 287.9936197916667, 287.23278645833335, 287.42475260416666, 286.1475520833333, 286.54767578125, 285.600546875, 285.9135872395833, 286.09702473958333, 286.06281901041666, 286.17713541666666, 286.0629296875, 285.9926302083333, 286.04149739583335, 285.95470703125, 286.0278515625, 286.11401692708336, 287.0707877604167, 287.3797265625, 287.585, 287.96057942708336, 288.32477213541665, 288.63311197916664, 288.76102864583333, 289.02520833333335, 289.3081770833333, 289.53782552083334, 289.85676432291666, 289.9178059895833, 289.6559244791667, 289.80991536458333, 289.7123763020833, 289.80835286458336, 289.86942708333333, 289.91234375, 289.9828385416667, 289.84346354166667, 289.66861328125, 289.63537109375, 289.3861263020833, 288.95068359375, 282.95525390625, 283.1320572916667, 276.9446875, 276.8555729166667, 276.91216145833334, 276.85247395833335, 276.85956380208336, 276.72677734375, 276.57158203125, 276.23884765625, 275.93791015625, 275.72467447916665, 275.4677018229167, 274.6717838541667, 274.57462239583333, 274.3713671875, 274.63786458333334, 274.83560546875, 275.12200520833335, 275.13045572916667, 275.19647135416665, 275.26128255208334, 275.41560546875, 275.15802083333335, 275.0214713541667, 274.69049479166665, 275.1447395833333, 274.9316861979167, 274.9632161458333, 274.87663411458334, 274.95824869791664, 274.93682942708335, 275.0032552083333, 275.07774739583334, 274.99546875, 275.02216796875, 274.96172526041664, 274.89412760416667, 274.4771223958333, 274.57071614583333, 274.86222005208333, 275.42167317708333, 276.01861979166665, 276.5397591145833, 276.87608723958334, 277.12921223958335, 277.4685286458333, 277.636484375], "brightness": [184.564326171875, 181.32639973958334, 184.32755533854166, 183.48394205729167, 175.36668294270834, 174.73646809895834, 166.62757486979166, 166.06827473958333, 160.46490559895832, 159.93680989583333, 155.98171549479167, 155.89923177083332, 151.39227864583333, 150.33868815104168, 150.25685221354166, 148.75054361979167, 146.35754231770832, 146.39317057291666, 146.49435221354167, 146.78493815104167, 146.72240234375, 145.59672526041666, 145.444365234375, 144.8907421875, 144.90352864583335, 143.778359375, 143.82899088541666, 143.96056640625, 143.99680989583334, 143.61639322916668, 143.71237630208333, 143.07377604166666, 143.273837890625, 142.8002734375, 142.95679361979165, 143.04851236979167, 143.03140950520833, 143.08856770833333, 143.03146484375, 142.99631510416665, 143.02074869791667, 142.977353515625, 143.01392578125, 143.05700846354168, 143.53539388020835, 143.68986328125, 143.7925, 143.98028971354168, 144.16238606770833, 144.31655598958332, 144.38051432291667, 144.51260416666668, 144.65408854166665, 144.76891276041667, 144.92838216145833, 144.95890299479166, 144.82796223958334, 144.90495768229167, 144.85618815104166, 144.90417643229168, 144.93471354166667, 144.956171875, 144.99141927083335, 144.92173177083333, 144.834306640625, 144.817685546875, 144.69306315104166, 144.475341796875, 141.477626953125, 141.56602864583334, 138.47234375, 138.42778645833334, 138.45608072916667, 138.42623697916667, 138.42978190104168, 138.363388671875, 138.285791015625, 138.119423828125, 137.968955078125, 137.86233723958333, 137.73385091145835, 137.33589192708334, 137.28731119791667, 137.18568359375, 137.31893229166667, 137.417802734375, 137.56100260416667, 137.56522786458333, 137.59823567708332, 137.63064127604167, 137.707802734375, 137.57901041666668, 137.51073567708335, 137.34524739583333, 137.57236979166666, 137.46584309895835, 137.48160807291666, 137.43831705729167, 137.47912434895832, 137.46841471354168, 137.50162760416666, 137.53887369791667, 137.497734375, 137.511083984375, 137.48086263020832, 137.44706380208333, 137.23856119791665, 137.28535807291667, 137.43111002604167, 137.71083658854167, 138.00930989583333, 138.26987955729166, 138.43804361979167, 138.56460611979168, 138.73426432291666, 138.8182421875]}, "android_series": {"timestamps": [0.0007075000321492553, 0.10096359997987747, 0.20437199994921684, 0.3051545999478549, 0.4056552000110969, 0.5062577000353485, 0.6063833000371233, 0.7065268999431282, 0.8071072000311688, 0.9074966999469325, 1.007796399993822, 1.1079952999716625, 1.2082988999318331, 1.308549299952574, 1.409079400007613, 1.5092553000431508, 1.6095875999890268, 1.7104090999346226, 1.8108868999406695, 1.9113895000191405, 2.011824599932879, 2.1125146000413224, 2.2134320000186563, 2.3139299999456853, 2.4144668999360874, 2.5155072000343353, 2.615894000045955, 2.7168871000176296, 2.8175333000253886, 2.917790599982254, 3.017880199942738, 3.118242399999872, 3.2190580000169575, 3.319685299997218, 3.4199828000273556, 3.520640300004743, 3.6213968000374734, 3.721686500008218, 3.82211800001096, 3.9223897999618202, 4.022730899974704, 4.123105000006035, 4.223630300024524, 4.3244319999357685, 4.425423900014721, 4.525947200017981, 4.626820100005716, 4.727017899975181, 4.828122999984771, 4.928841899964027, 5.0291427000192925, 5.129610299947672, 5.230130600044504, 5.330766599974595, 5.431382299982943, 5.531821000040509, 5.632274399977177, 5.73280789994169, 5.833192899939604, 5.9335522999754176, 6.034488399978727, 6.134596199961379, 6.2347476000431925, 6.335669499938376, 6.436466799932532], "lux": [279.9098660276475, 267.91073909105023, 266.29130049994916, 304.4173848092409, 325.04029245066835, 279.19155810067144, 272.30227765972836, 304.4560061466379, 257.560757089263, 305.19542867594697, 314.95392016238105, 305.8176679237738, 281.52943340181884, 316.128301794045, 265.3880589671901, 271.0722781817088, 270.6412883501874, 274.16735911544, 284.02645981118286, 277.7414681329068, 311.9569585964554, 315.1428571351717, 296.8826624336135, 311.64562727991114, 314.22402842063303, 287.1269699914133, 293.0841905675486, 283.62046846704163, 303.4284239598628, 362.579522025668, 304.25627289483026, 256.6053912156585, 305.9831453529039, 267.9806105239413, 282.1582906954292, 314.3743360714717, 316.87413300957223, 297.5899592417579, 296.2469276510774, 285.2947458733001, 286.44897824401096, 328.0788018449014, 325.7330054040237, 299.60260670516993, 293.28047287278986, 313.7824881536145, 294.2253607810291, 288.5892958840347, 313.0449236188021, 308.64854415318473, 321.4089116267731, 282.384319039361, 296.1735365965467, 288.0620578687456, 315.23608429316727, 267.9182106363377, 311.86505639036665, 280.5703352788002, 301.93005004542795, 306.14299692881855, 342.0501246474626, 252.60573198402057, 321.1974525327652, 312.14036926935296, 239.87480378630002]}, "torch_events": [{"t": 0.5014742999337614, "state": "ON"}, {"t": 2.002221900038421, "state": "OFF"}, {"t": 3.502569400006905, "state": "ON"}, {"t": 5.0031020999886096, "state": "OFF"}]}</script>
+</body>
+</html>

@@ -686,6 +686,7 @@ class FlowLabSeleniumTests(unittest.TestCase):
             "dict_build", "list_build", "json_parse", "format_string",
             "type_cast", "pick_field", "display", "plot_trace", "plot_xy",
             "plot_histogram", "plot_heatmap", "gauge_display", "table_display",
+            "live_video", "waterfall_display",
             "save_file", "log_message", "assert_check", "delay", "repeat",
             "gate", "merge", "sequence", "null_check", "try_catch",
             "shell_cmd", "http_request", "sleep_test", "tx_burst_test",

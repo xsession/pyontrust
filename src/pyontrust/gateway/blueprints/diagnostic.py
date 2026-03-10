@@ -1,4 +1,4 @@
-"""Diagnostic blueprint — hardware discovery, testing, and reports.
+"""Diagnostic blueprint — hardware discovery, testing, live data, and reports.
 
 Mounts at ``/diag/`` and provides:
 
@@ -11,15 +11,21 @@ Mounts at ``/diag/`` and provides:
 - ``GET  /diag/api/reports``           → list all HTML test reports
 - ``GET  /diag/api/reports/<name>``    → serve a specific report
 - ``GET  /diag/api/system``            → system info (OS, Python, packages)
+- ``GET  /diag/api/live/<type>/<sensor>`` → single-shot sensor read
+- ``GET  /diag/api/live/stream``       → SSE live data stream
+- ``POST /diag/api/live/stop``         → stop all active streams
 """
 from __future__ import annotations
 
+import json as _json
 import pathlib
 import platform
+import queue
 import sys
+import threading
 import time
 
-from flask import Blueprint, jsonify, request, send_from_directory
+from flask import Blueprint, Response, jsonify, request, send_from_directory
 
 _WEB_DIR = pathlib.Path(__file__).resolve().parent.parent / "web" / "diagnostic"
 
@@ -212,3 +218,200 @@ def system_info():
             pkgs[pkg] = None
     info["packages"] = pkgs
     return jsonify(info)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  Live data streaming
+# ═══════════════════════════════════════════════════════════════════════
+
+# Global registry of active streams keyed by a client-generated or
+# auto-assigned ID.  Each entry holds a threading.Event that, when set,
+# tells the generator to stop.
+_active_streams: dict[str, threading.Event] = {}
+
+
+def _read_sensor_once(
+    hw_type: str, sensor: str, device_serial: str | None = None,
+    mode: str = "auto",
+) -> dict:
+    """Read a single sensor sample.
+
+    *hw_type* is the hardware category (``android_sensors``, ``webcam``,
+    ``ad3_dwf``, etc.).  *sensor* is the specific sensor name
+    (``accelerometer``, ``light``, ``frame``, …).
+    """
+    if hw_type == "android_sensors":
+        from pyontrust.instruments.android_sensors import (
+            AndroidSensorInstrument,
+        )
+        # Pick mode: if a real device serial is provided and ADB works, use adb
+        if mode == "auto":
+            from pyontrust.instruments.android_sensors import _adb_available
+            mode = "adb" if _adb_available() else "simulated"
+
+        inst = AndroidSensorInstrument(mode=mode)
+        inst.open()
+        try:
+            if sensor == "battery":
+                return inst.read_battery()
+            elif sensor == "gps":
+                return inst.read_gps()
+            elif sensor == "microphone":
+                return inst.read_microphone(duration_s=0.5, sample_rate=16000)
+            else:
+                # Map sensor name to the specific read method
+                reader = getattr(inst, f"read_{sensor}", None)
+                if reader is not None:
+                    return reader(duration_s=0.2)
+                # Fallback: try the underlying impl's read_sensor
+                if inst._impl is not None:
+                    return inst._impl.read_sensor(sensor, duration_s=0.2)
+                return {"error": f"Unknown sensor: {sensor}"}
+        finally:
+            inst.close()
+
+    elif hw_type == "webcam":
+        try:
+            import cv2
+            import numpy as np
+
+            idx = int(sensor) if sensor.isdigit() else 0
+            cap = cv2.VideoCapture(idx, cv2.CAP_DSHOW)
+            if not cap.isOpened():
+                return {"error": f"Cannot open camera #{idx}"}
+            ret, frame = cap.read()
+            cap.release()
+            if not ret or frame is None:
+                return {"error": "Empty frame"}
+
+            # Compute summary statistics per channel
+            b, g, r = cv2.split(frame)
+            hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+            brightness = float(np.mean(hsv[:, :, 2]))
+            return {
+                "sensor": f"webcam_{idx}",
+                "width": frame.shape[1],
+                "height": frame.shape[0],
+                "brightness": round(brightness, 2),
+                "mean_r": round(float(np.mean(r)), 2),
+                "mean_g": round(float(np.mean(g)), 2),
+                "mean_b": round(float(np.mean(b)), 2),
+                "timestamp": time.time(),
+            }
+        except ImportError:
+            return {"error": "opencv-python not installed"}
+
+    elif hw_type == "ad3_dwf":
+        return {"error": "DWF live read not yet implemented", "sensor": sensor}
+
+    return {"error": f"Unknown hw_type: {hw_type}", "sensor": sensor}
+
+
+@bp.route("/api/live/<hw_type>/<sensor>")
+def live_read_once(hw_type: str, sensor: str):
+    """Single-shot live read from a device/sensor."""
+    mode = request.args.get("mode", "auto")
+    serial = request.args.get("serial", None)
+    try:
+        data = _read_sensor_once(hw_type, sensor, device_serial=serial, mode=mode)
+        return jsonify({"ok": True, "data": data, "ts": time.time()})
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc), "ts": time.time()}), 500
+
+
+@bp.route("/api/live/stream")
+def live_stream():
+    """Server-Sent Events stream for continuous live data.
+
+    Query params:
+        hw_type  — hardware type (android_sensors, webcam, …)
+        sensor   — sensor name (accelerometer, light, 0, …)
+        rate_ms  — sample interval in ms (default 500)
+        mode     — "auto", "simulated", "adb" (default auto)
+    """
+    hw_type = request.args.get("hw_type", "android_sensors")
+    sensor = request.args.get("sensor", "accelerometer")
+    rate_ms = max(100, int(request.args.get("rate_ms", "500")))
+    mode = request.args.get("mode", "auto")
+    serial = request.args.get("serial", None)
+
+    stop_evt = threading.Event()
+    stream_id = f"{hw_type}_{sensor}_{id(stop_evt)}"
+    _active_streams[stream_id] = stop_evt
+
+    def _generate():
+        try:
+            # For android, keep the instrument open across samples
+            inst = None
+            if hw_type == "android_sensors":
+                from pyontrust.instruments.android_sensors import (
+                    AndroidSensorInstrument, _adb_available,
+                )
+                effective_mode = mode
+                if effective_mode == "auto":
+                    effective_mode = "adb" if _adb_available() else "simulated"
+                inst = AndroidSensorInstrument(mode=effective_mode)
+                inst.open()
+
+            seq = 0
+            while not stop_evt.is_set():
+                t0 = time.time()
+                try:
+                    if inst is not None:
+                        # Android sensor
+                        if sensor == "battery":
+                            data = inst.read_battery()
+                        elif sensor == "gps":
+                            data = inst.read_gps()
+                        else:
+                            reader = getattr(inst, f"read_{sensor}", None)
+                            if reader is not None:
+                                data = reader(duration_s=0.1)
+                            elif inst._impl is not None:
+                                data = inst._impl.read_sensor(sensor, duration_s=0.1)
+                            else:
+                                data = {"error": f"Unknown sensor: {sensor}"}
+                    else:
+                        data = _read_sensor_once(
+                            hw_type, sensor, device_serial=serial, mode=mode,
+                        )
+                except Exception as exc:
+                    data = {"error": str(exc)}
+
+                payload = {"seq": seq, "ts": time.time(), "data": data}
+                yield f"data: {_json.dumps(payload)}\n\n"
+                seq += 1
+
+                # Sleep for the requested interval minus elapsed time
+                elapsed = time.time() - t0
+                sleep_s = max(0, rate_ms / 1000.0 - elapsed)
+                if sleep_s > 0:
+                    stop_evt.wait(sleep_s)
+        finally:
+            if inst is not None:
+                try:
+                    inst.close()
+                except Exception:
+                    pass
+            _active_streams.pop(stream_id, None)
+
+    return Response(
+        _generate(),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
+@bp.route("/api/live/stop", methods=["POST"])
+def live_stop():
+    """Stop all active SSE streams."""
+    count = 0
+    for sid, evt in list(_active_streams.items()):
+        evt.set()
+        count += 1
+    _active_streams.clear()
+    return jsonify({"stopped": count})

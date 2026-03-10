@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Report: Locator Base LED Blink Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .pass { color: green; }
+        .fail { color: red; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background: #4CAF50; color: white; }
+    </style>
+</head>
+<body>
+    <h1>Test Report: Locator Base LED Blink Test</h1>
+    <p>Duration: 0.00s</p>
+    <p>Results: <span class="pass">2</span> / 4 passed</p>
+    
+    <table>
+        <tr><th>Test</th><th>Status</th><th>Duration</th></tr>
+        <tr><td>LED Initial State</td><td class="pass">PASS</td><td>0.001s</td></tr>
+        <tr><td>Status LED Blink</td><td class="fail">FAIL</td><td>0.127s</td></tr>
+        <tr><td>Button Toggle</td><td class="fail">FAIL</td><td>0.000s</td></tr>
+        <tr><td>PWM LED Dimming</td><td class="pass">PASS</td><td>4.426s</td></tr>
+    </table>
+</body>
+</html>

@@ -97,6 +97,12 @@
 
 @keyframes dash { to { stroke-dashoffset: -6; } }
 
+/* ── Inline viz foreignObject ───────────────────────────────── */
+.viz-fo { pointer-events: none; }
+.viz-container { pointer-events: none; border: 1px solid var(--border); border-radius: 4px; }
+.viz-container canvas { display: block; image-rendering: auto; }
+.viz-container img { display: block; }
+
 .block-body {
   rx: 6; ry: 6;
   stroke: var(--border); stroke-width: 1;

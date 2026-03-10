@@ -1,0 +1,14 @@
+$version ProtoSim/PyOnTrust Simulation $end
+$date 2026-03-09T15:49:24.257036 $end
+$timescale 1ns $end
+$scope module locator_base $end
+$var wire 1 ! led_status $end
+$var wire 1 " led_user $end
+$var wire 1 # button $end
+$upscope $end
+$enddefinitions $end
+$dumpvars
+0!
+0"
+0#
+$end

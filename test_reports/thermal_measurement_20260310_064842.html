@@ -1,0 +1,177 @@
+<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'>
+<title>Thermal Measurement — DUT</title>
+<style>:root {
+  --bg: #1e1e2e; --bg2: #252538; --bg3: #2d2d44; --bg4: #353550;
+  --fg: #cdd6f4; --fg-dim: #6c7086;
+  --accent: #89b4fa; --green: #a6e3a1; --red: #f38ba8;
+  --yellow: #f9e2af; --peach: #fab387; --mauve: #cba6f7;
+  --teal: #94e2d5; --border: #45475a; --radius: 6px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: var(--bg); color: var(--fg); line-height: 1.6;
+  padding: 0; margin: 0;
+}
+.report { max-width: 1200px; margin: 0 auto; padding: 32px 24px; }
+.report-header {
+  border-bottom: 2px solid var(--accent); padding-bottom: 20px; margin-bottom: 28px;
+}
+.report-header h1 { color: var(--accent); font-size: 26px; margin-bottom: 4px; }
+.report-header .subtitle { color: var(--fg-dim); font-size: 13px; }
+.report-meta {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px 24px; margin-top: 14px; font-size: 12px;
+}
+.report-meta .key { color: var(--fg-dim); font-weight: 600; }
+.report-meta .val { color: var(--fg); font-family: monospace; font-size: 11px; }
+.verdict {
+  padding: 16px 24px; border-radius: var(--radius); margin-bottom: 28px;
+  display: flex; align-items: center; gap: 14px; font-size: 15px; font-weight: 700;
+}
+.verdict.pass { background: rgba(166,227,161,.12); color: var(--green); border: 1px solid var(--green); }
+.verdict.fail { background: rgba(243,139,168,.12); color: var(--red); border: 1px solid var(--red); }
+.section { margin-bottom: 28px; }
+.section h2 {
+  color: var(--mauve); font-size: 18px; margin-bottom: 12px;
+  padding-bottom: 6px; border-bottom: 1px solid var(--border);
+}
+.section h3 { color: var(--teal); font-size: 14px; margin: 10px 0 6px; }
+.kv-grid {
+  display: grid; grid-template-columns: 180px 1fr;
+  gap: 4px 16px; font-size: 13px;
+}
+.kv-grid .kv-key { color: var(--fg-dim); font-weight: 600; }
+.kv-grid .kv-val { font-family: monospace; font-size: 12px; }
+table {
+  width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px;
+}
+th { background: var(--bg3); color: var(--accent); padding: 8px 12px; text-align: left; font-weight: 600; }
+td { padding: 6px 12px; border-bottom: 1px solid var(--border); }
+tr:hover td { background: var(--bg2); }
+.verdict-badge {
+  display: inline-block; padding: 2px 8px; border-radius: 3px;
+  font-size: 11px; font-weight: 700;
+}
+.verdict-badge.NORMAL { background: rgba(166,227,161,.15); color: var(--green); }
+.verdict-badge.WARM   { background: rgba(249,226,175,.15); color: var(--yellow); }
+.verdict-badge.HOT    { background: rgba(243,139,168,.15); color: var(--red); }
+.verdict-badge.RUNAWAY { background: rgba(243,139,168,.25); color: var(--red); }
+.chart-container {
+  background: var(--bg2); border-radius: var(--radius);
+  padding: 16px; margin: 12px 0; border: 1px solid var(--border);
+}
+svg text { font-family: 'Segoe UI', system-ui, sans-serif; }
+.fail-reasons { margin-top: 8px; }
+.fail-reasons li {
+  color: var(--red); font-size: 13px; margin: 4px 0;
+  list-style: none; padding-left: 16px; position: relative;
+}
+.fail-reasons li::before { content: "✕ "; position: absolute; left: 0; }
+.stat-cards {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px; margin: 12px 0;
+}
+.stat-card {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 14px 16px; text-align: center;
+}
+.stat-card .stat-val { font-size: 24px; font-weight: 700; color: var(--accent); font-family: monospace; }
+.stat-card .stat-lbl { font-size: 11px; color: var(--fg-dim); margin-top: 2px; }
+</style></head><body><div class='report'>
+<div class='report-header'>
+<h1>🌡️ Continuous Monitoring</h1>
+<div class='subtitle'>Seek Thermal Camera Measurement Report — pyontrust</div>
+<div class='report-meta'>
+<div><span class='key'>Board ID:</span> <span class='val'>—</span></div>
+<div><span class='key'>Start Time:</span> <span class='val'>2026-03-10T05:48:40.966126+00:00</span></div>
+<div><span class='key'>Duration:</span> <span class='val'>1.20 s</span></div>
+<div><span class='key'>Frames:</span> <span class='val'>4</span></div>
+<div><span class='key'>Camera:</span> <span class='val'>SimulatedThermal</span></div>
+<div><span class='key'>Resolution:</span> <span class='val'>206×156 px</span></div>
+</div></div>
+<div class='verdict pass'>✓ PASS
+<span>All thermal limits satisfied</span>
+</div>
+<div class='section'><h2>📊 Global Statistics</h2>
+<div class='stat-cards'>
+<div class='stat-card'><div class='stat-val'>28.7°C</div><div class='stat-lbl'>Minimum</div></div>
+<div class='stat-card'><div class='stat-val'>30.0°C</div><div class='stat-lbl'>Mean</div></div>
+<div class='stat-card'><div class='stat-val'>31.3°C</div><div class='stat-lbl'>Maximum</div></div>
+<div class='stat-card'><div class='stat-val'>4</div><div class='stat-lbl'>Frames</div></div>
+<div class='stat-card'><div class='stat-val'>1.2s</div><div class='stat-lbl'>Duration</div></div>
+</div></div>
+<div class='section'><h2>📈 Temperature Time-Series</h2>
+<div class="chart-container">
+<svg width="920" height="300" viewBox="0 0 920 300" xmlns="http://www.w3.org/2000/svg">
+<text x="460" y="18" text-anchor="middle" fill="#cdd6f4" font-size="14" font-weight="600">Temperature vs Time</text>
+<g transform="translate(60,40)">
+<line x1="0" y1="220.0" x2="840" y2="220.0" stroke="#45475a" stroke-dasharray="3,3"/>
+<text x="-8" y="224.0" text-anchor="end" fill="#6c7086" font-size="10">29.5</text>
+<line x1="0" y1="176.0" x2="840" y2="176.0" stroke="#45475a" stroke-dasharray="3,3"/>
+<text x="-8" y="180.0" text-anchor="end" fill="#6c7086" font-size="10">29.7</text>
+<line x1="0" y1="132.0" x2="840" y2="132.0" stroke="#45475a" stroke-dasharray="3,3"/>
+<text x="-8" y="136.0" text-anchor="end" fill="#6c7086" font-size="10">29.9</text>
+<line x1="0" y1="88.0" x2="840" y2="88.0" stroke="#45475a" stroke-dasharray="3,3"/>
+<text x="-8" y="92.0" text-anchor="end" fill="#6c7086" font-size="10">30.1</text>
+<line x1="0" y1="44.0" x2="840" y2="44.0" stroke="#45475a" stroke-dasharray="3,3"/>
+<text x="-8" y="48.0" text-anchor="end" fill="#6c7086" font-size="10">30.3</text>
+<line x1="0" y1="0.0" x2="840" y2="0.0" stroke="#45475a" stroke-dasharray="3,3"/>
+<text x="-8" y="4.0" text-anchor="end" fill="#6c7086" font-size="10">30.5</text>
+<text x="0.0" y="238" text-anchor="middle" fill="#6c7086" font-size="10">0.0</text>
+<text x="210.0" y="238" text-anchor="middle" fill="#6c7086" font-size="10">0.2</text>
+<text x="420.0" y="238" text-anchor="middle" fill="#6c7086" font-size="10">0.5</text>
+<text x="630.0" y="238" text-anchor="middle" fill="#6c7086" font-size="10">0.7</text>
+<text x="840.0" y="238" text-anchor="middle" fill="#6c7086" font-size="10">0.9</text>
+<text x="420" y="254" text-anchor="middle" fill="#6c7086" font-size="11">Time (s)</text>
+<text x="-40" y="110" text-anchor="middle" fill="#6c7086" font-size="11" transform="rotate(-90,-40,110)">Temperature (°C)</text>
+<polyline points="0.0,110.0 281.1,110.2 560.0,109.8 840.0,110.2" fill="none" stroke="#89b4fa" stroke-width="1.5"/>
+</g>
+<rect x="60" y="286" width="12" height="4" fill="#89b4fa" rx="2"/>
+<text x="76" y="291" fill="#cdd6f4" font-size="10">Global Mean</text>
+</svg></div>
+</div>
+<div class='section'><h2>🎯 Hotspot Tracking</h2>
+<div class="chart-container">
+<svg width="920" height="300" viewBox="0 0 920 300" xmlns="http://www.w3.org/2000/svg">
+<text x="460" y="18" text-anchor="middle" fill="#cdd6f4" font-size="14" font-weight="600">Hotspot Temperature</text>
+<g transform="translate(60,40)">
+<line x1="0" y1="220.0" x2="840" y2="220.0" stroke="#45475a" stroke-dasharray="3,3"/>
+<text x="-8" y="224.0" text-anchor="end" fill="#6c7086" font-size="10">30.7</text>
+<line x1="0" y1="176.0" x2="840" y2="176.0" stroke="#45475a" stroke-dasharray="3,3"/>
+<text x="-8" y="180.0" text-anchor="end" fill="#6c7086" font-size="10">30.9</text>
+<line x1="0" y1="132.0" x2="840" y2="132.0" stroke="#45475a" stroke-dasharray="3,3"/>
+<text x="-8" y="136.0" text-anchor="end" fill="#6c7086" font-size="10">31.1</text>
+<line x1="0" y1="88.0" x2="840" y2="88.0" stroke="#45475a" stroke-dasharray="3,3"/>
+<text x="-8" y="92.0" text-anchor="end" fill="#6c7086" font-size="10">31.4</text>
+<line x1="0" y1="44.0" x2="840" y2="44.0" stroke="#45475a" stroke-dasharray="3,3"/>
+<text x="-8" y="48.0" text-anchor="end" fill="#6c7086" font-size="10">31.6</text>
+<line x1="0" y1="0.0" x2="840" y2="0.0" stroke="#45475a" stroke-dasharray="3,3"/>
+<text x="-8" y="4.0" text-anchor="end" fill="#6c7086" font-size="10">31.8</text>
+<text x="0.0" y="238" text-anchor="middle" fill="#6c7086" font-size="10">0.0</text>
+<text x="210.0" y="238" text-anchor="middle" fill="#6c7086" font-size="10">0.2</text>
+<text x="420.0" y="238" text-anchor="middle" fill="#6c7086" font-size="10">0.5</text>
+<text x="630.0" y="238" text-anchor="middle" fill="#6c7086" font-size="10">0.7</text>
+<text x="840.0" y="238" text-anchor="middle" fill="#6c7086" font-size="10">0.9</text>
+<text x="420" y="254" text-anchor="middle" fill="#6c7086" font-size="11">Time (s)</text>
+<text x="-40" y="110" text-anchor="middle" fill="#6c7086" font-size="11" transform="rotate(-90,-40,110)">Peak Temp (°C)</text>
+<polyline points="0.0,100.0 281.1,100.0 560.0,120.0 840.0,104.0" fill="none" stroke="#89b4fa" stroke-width="1.5"/>
+</g>
+<rect x="60" y="286" width="12" height="4" fill="#89b4fa" rx="2"/>
+<text x="76" y="291" fill="#cdd6f4" font-size="10">Hotspot Peak</text>
+</svg></div>
+</div>
+<div class='section'><h2>📷 Camera Info</h2>
+<div class='kv-grid'>
+<span class='kv-key'>Model:</span><span class='kv-val'>SimulatedThermal</span>
+<span class='kv-key'>Serial:</span><span class='kv-val'>SIM-THERMAL-0000</span>
+<span class='kv-key'>Vendor:</span><span class='kv-val'>pyontrust</span>
+<span class='kv-key'>Resolution:</span><span class='kv-val'>[206, 156]</span>
+<span class='kv-key'>Fpa Type:</span><span class='kv-val'>simulated</span>
+<span class='kv-key'>Spectral Range:</span><span class='kv-val'>simulated</span>
+<span class='kv-key'>Frame Rate Hz:</span><span class='kv-val'>9.0</span>
+<span class='kv-key'>Temperature Range C:</span><span class='kv-val'>[-40.0, 330.0]</span>
+</div></div>
+<div style='margin-top:40px;padding-top:16px;border-top:1px solid var(--border);color:var(--fg-dim);font-size:11px;'>
+Generated by pyontrust thermal measurement · 2026-03-10T05:48:42.169110+00:00
+</div></div></body></html>

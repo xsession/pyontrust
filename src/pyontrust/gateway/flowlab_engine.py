@@ -127,21 +127,43 @@ def _blk_seek_thermal(params: dict, inputs: dict, ctx: ExecContext) -> dict:
     from pyontrust.instruments.seek_thermal import create as create_thermal
     import numpy as np
 
-    cfg = {
-        "mode": str(params.get("mode", "simulated")),
+    mode = str(params.get("mode", "simulated"))
+    cfg: dict = {
+        "mode": mode,
         "base_temp_c": float(params.get("base_temp_c", 25)),
         "inject_hotspot": bool(params.get("inject_hotspot", False)),
+        "camera_type": str(params.get("camera_type", "compact")),
     }
-    cam = create_thermal(cfg)
-    cam.open()
+    ffc = params.get("ffc_file")
+    if ffc:
+        cfg["ffc_file"] = str(ffc)
+
+    # If user requested real hardware but the SDK is missing, give a clear
+    # error explaining what's needed — don't silently fall back.
+    try:
+        cam = create_thermal(cfg)
+        cam.open()
+    except ImportError as exc:
+        if mode != "simulated":
+            ctx.log(f"⚠️ Seek Thermal hardware requested but unavailable: {exc}")
+            ctx.log("🌡️ Falling back to simulated mode — install pyusb for libseek driver")
+            cfg["mode"] = "simulated"
+            cam = create_thermal(cfg)
+            cam.open()
+        else:
+            raise
+
     try:
         frame = cam.grab_temperature_frame()
         temp = float(np.mean(frame))
-        ctx.log(f"🌡️ Thermal: mean={temp:.1f}°C, max={float(np.max(frame)):.1f}°C, shape={frame.shape}")
+        actual_mode = cfg["mode"]
+        label = "simulated" if actual_mode == "simulated" else "hardware"
+        ctx.log(f"🌡️ Thermal ({label}): mean={temp:.1f}°C, max={float(np.max(frame)):.1f}°C, shape={frame.shape}")
         return {
             "thermal": {"shape": list(frame.shape), "mean_c": round(temp, 2),
                         "max_c": round(float(np.max(frame)), 2),
-                        "min_c": round(float(np.min(frame)), 2)},
+                        "min_c": round(float(np.min(frame)), 2),
+                        "mode": actual_mode},
             "temp_c": round(temp, 2),
         }
     finally:
@@ -149,6 +171,16 @@ def _blk_seek_thermal(params: dict, inputs: dict, ctx: ExecContext) -> dict:
 
 
 # ── Android phone sensor handlers ─────────────────────────────
+
+def _scalar(v, default: float = 0.0) -> float:
+    """Extract a scalar float from a sensor value that may be a list."""
+    if isinstance(v, (list, tuple)):
+        return float(v[-1]) if v else default
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return default
+
 
 def _android_sensor_instance(params: dict, ctx: ExecContext):
     """Helper: create, open and return an AndroidSensorInstrument."""
@@ -168,7 +200,7 @@ def _blk_android_accel(params: dict, inputs: dict, ctx: ExecContext) -> dict:
     try:
         dur = float(params.get("duration_s", 1))
         data = inst.read_accelerometer(dur)
-        ctx.log(f"📱 Accel: x={data.get('x',0):.3f} y={data.get('y',0):.3f} z={data.get('z',0):.3f} m/s²")
+        ctx.log(f"📱 Accel: x={_scalar(data.get('x')):.3f} y={_scalar(data.get('y')):.3f} z={_scalar(data.get('z')):.3f} m/s² ({data.get('n_samples',0)} samples)")
         trace = {"time_s": data.get("time_s", []), "current_a": data.get("magnitude", []),
                  "sample_rate_hz": float(params.get("sample_rate_hz", 50)),
                  "n_samples": data.get("n_samples", 0)}
@@ -183,7 +215,7 @@ def _blk_android_gyro(params: dict, inputs: dict, ctx: ExecContext) -> dict:
     try:
         dur = float(params.get("duration_s", 1))
         data = inst.read_gyroscope(dur)
-        ctx.log(f"🌀 Gyro: x={data.get('x',0):.3f} y={data.get('y',0):.3f} z={data.get('z',0):.3f} rad/s")
+        ctx.log(f"🌀 Gyro: x={_scalar(data.get('x')):.3f} y={_scalar(data.get('y')):.3f} z={_scalar(data.get('z')):.3f} rad/s ({data.get('n_samples',0)} samples)")
         trace = {"time_s": data.get("time_s", []), "current_a": data.get("magnitude", []),
                  "sample_rate_hz": float(params.get("sample_rate_hz", 50)),
                  "n_samples": data.get("n_samples", 0)}
@@ -198,7 +230,7 @@ def _blk_android_mag(params: dict, inputs: dict, ctx: ExecContext) -> dict:
     try:
         dur = float(params.get("duration_s", 1))
         data = inst.read_magnetometer(dur)
-        ctx.log(f"🧭 Mag: x={data.get('x',0):.1f} y={data.get('y',0):.1f} z={data.get('z',0):.1f} µT")
+        ctx.log(f"🧭 Mag: x={_scalar(data.get('x')):.1f} y={_scalar(data.get('y')):.1f} z={_scalar(data.get('z')):.1f} µT ({data.get('n_samples',0)} samples)")
         trace = {"time_s": data.get("time_s", []), "current_a": data.get("magnitude", []),
                  "sample_rate_hz": float(params.get("sample_rate_hz", 50)),
                  "n_samples": data.get("n_samples", 0)}
@@ -228,7 +260,7 @@ def _blk_android_proximity(params: dict, inputs: dict, ctx: ExecContext) -> dict
     inst = _android_sensor_instance(params, ctx)
     try:
         data = inst.read_proximity(0.5)
-        dist = data.get("distance", 5.0)
+        dist = _scalar(data.get("distance", 5.0), 5.0)
         near = dist < 1.0
         ctx.log(f"👋 Proximity: {dist:.1f} cm ({'NEAR' if near else 'FAR'})")
         return {"distance": dist, "near": near}
@@ -242,9 +274,9 @@ def _blk_android_light(params: dict, inputs: dict, ctx: ExecContext) -> dict:
     try:
         dur = float(params.get("duration_s", 1))
         data = inst.read_light(dur)
-        lux = data.get("lux", data.get("mean", 0))
-        ctx.log(f"☀️ Light: {lux:.0f} lux")
-        return {"lux": float(lux)}
+        lux = _scalar(data.get("lux", data.get("mean", 0)))
+        ctx.log(f"☀️ Light: {lux:.0f} lux ({data.get('n_samples',0)} samples)")
+        return {"lux": lux}
     finally:
         inst.close()
 
@@ -255,9 +287,9 @@ def _blk_android_pressure(params: dict, inputs: dict, ctx: ExecContext) -> dict:
     try:
         dur = float(params.get("duration_s", 1))
         data = inst.read_barometer(dur)
-        hpa = data.get("hpa", data.get("mean", 1013.25))
-        ctx.log(f"🌤️ Pressure: {hpa:.1f} hPa")
-        return {"hpa": float(hpa)}
+        hpa = _scalar(data.get("pressure", data.get("hpa", data.get("mean", 1013.25))), 1013.25)
+        ctx.log(f"🌤️ Pressure: {hpa:.1f} hPa ({data.get('n_samples',0)} samples)")
+        return {"hpa": hpa}
     finally:
         inst.close()
 
@@ -267,7 +299,7 @@ def _blk_android_gps(params: dict, inputs: dict, ctx: ExecContext) -> dict:
     inst = _android_sensor_instance(params, ctx)
     try:
         data = inst.read_gps()
-        ctx.log(f"📍 GPS: lat={data.get('latitude',0):.5f} lon={data.get('longitude',0):.5f} alt={data.get('altitude',0):.1f}m")
+        ctx.log(f"📍 GPS: lat={_scalar(data.get('latitude')):.5f} lon={_scalar(data.get('longitude')):.5f} alt={_scalar(data.get('altitude_m', data.get('altitude', 0))):.1f}m")
         return {"location": data}
     finally:
         inst.close()
@@ -278,7 +310,10 @@ def _blk_android_battery(params: dict, inputs: dict, ctx: ExecContext) -> dict:
     inst = _android_sensor_instance(params, ctx)
     try:
         data = inst.read_battery()
-        ctx.log(f"🔋 Battery: {data.get('level',0)}% {data.get('status','?')} {data.get('temp_c',0):.1f}°C")
+        level = _scalar(data.get('level_pct', data.get('level', 0)))
+        temp = _scalar(data.get('temperature_c', data.get('temp_c', 0)))
+        status = data.get('status', '?')
+        ctx.log(f"🔋 Battery: {level:.0f}% {status} {temp:.1f}°C")
         return {"battery": data}
     finally:
         inst.close()
@@ -290,7 +325,7 @@ def _blk_android_gravity(params: dict, inputs: dict, ctx: ExecContext) -> dict:
     try:
         dur = float(params.get("duration_s", 1))
         data = inst.read_gravity(dur)
-        ctx.log(f"⬇️ Gravity: x={data.get('x',0):.3f} y={data.get('y',0):.3f} z={data.get('z',0):.3f} m/s²")
+        ctx.log(f"⬇️ Gravity: x={_scalar(data.get('x')):.3f} y={_scalar(data.get('y')):.3f} z={_scalar(data.get('z')):.3f} m/s² ({data.get('n_samples',0)} samples)")
         trace = {"time_s": data.get("time_s", []), "current_a": data.get("magnitude", []),
                  "sample_rate_hz": float(params.get("sample_rate_hz", 50)),
                  "n_samples": data.get("n_samples", 0)}
@@ -305,7 +340,7 @@ def _blk_android_rotation(params: dict, inputs: dict, ctx: ExecContext) -> dict:
     try:
         dur = float(params.get("duration_s", 1))
         data = inst.read_rotation(dur)
-        ctx.log(f"🔄 Rotation: x={data.get('x',0):.3f} y={data.get('y',0):.3f} z={data.get('z',0):.3f} w={data.get('w',0):.3f}")
+        ctx.log(f"🔄 Rotation: x={_scalar(data.get('x')):.3f} y={_scalar(data.get('y')):.3f} z={_scalar(data.get('z')):.3f} w={_scalar(data.get('w')):.3f} ({data.get('n_samples',0)} samples)")
         trace = {"time_s": data.get("time_s", []), "current_a": data.get("magnitude", []),
                  "sample_rate_hz": float(params.get("sample_rate_hz", 50)),
                  "n_samples": data.get("n_samples", 0)}
@@ -453,6 +488,112 @@ def _blk_thermal_analyze(params: dict, inputs: dict, ctx: ExecContext) -> dict:
     }
 
 
+def _blk_thermal_measure(params: dict, inputs: dict, ctx: ExecContext) -> dict:
+    """Run a continuous thermal measurement session with Seek Thermal camera."""
+    from pyontrust.analysis.thermal.measurement import run_thermal_measurement
+    cfg = {
+        "mode": "continuous",
+        "duration_s": float(params.get("duration_s", 10)),
+        "capture_interval_s": float(params.get("capture_interval_s", 0.5)),
+        "warmup_frames": int(params.get("warmup_frames", 3)),
+        "camera": {"mode": str(params.get("camera_mode", "simulated")),
+                   "base_temp_c": float(params.get("base_temp_c", 25)),
+                   "inject_hotspot": bool(params.get("inject_hotspot", False)),
+                   "camera_type": str(params.get("camera_type", "compact"))},
+        "zones": inputs.get("zones", []),
+        "global_max_temp_c": float(params.get("max_temp_c", 85)),
+        "board_id": str(params.get("board_id", "")),
+        "save_snapshots": False,
+    }
+    result = run_thermal_measurement(cfg)
+    summary = result.summary()
+    status = "PASS" if result.passed else "FAIL"
+    ctx.log(f"🌡️ Thermal measurement ({result.total_frames} frames, {result.duration_s:.1f}s): "
+            f"{status} — mean={result.global_mean_c:.1f}°C, max={result.global_max_c:.1f}°C")
+    if not result.passed:
+        for reason in result.fail_reasons:
+            ctx.log(f"  ❌ {reason}")
+    return {"result": summary, "passed": result.passed, "max_c": result.global_max_c}
+
+
+def _blk_thermal_soak(params: dict, inputs: dict, ctx: ExecContext) -> dict:
+    """Run a thermal soak test — monitor until temperature stabilises."""
+    from pyontrust.analysis.thermal.measurement import run_thermal_measurement
+    cfg = {
+        "mode": "soak",
+        "duration_s": float(params.get("duration_s", 60)),
+        "capture_interval_s": float(params.get("capture_interval_s", 1.0)),
+        "warmup_frames": int(params.get("warmup_frames", 3)),
+        "soak_stable_window_s": float(params.get("stable_window_s", 10)),
+        "soak_stable_threshold_c": float(params.get("stable_threshold_c", 0.5)),
+        "soak_timeout_s": float(params.get("timeout_s", 300)),
+        "camera": {"mode": str(params.get("camera_mode", "simulated")),
+                   "base_temp_c": float(params.get("base_temp_c", 35)),
+                   "camera_type": str(params.get("camera_type", "compact"))},
+        "zones": inputs.get("zones", []),
+        "global_max_temp_c": float(params.get("max_temp_c", 85)),
+        "board_id": str(params.get("board_id", "")),
+        "save_snapshots": False,
+    }
+    result = run_thermal_measurement(cfg)
+    summary = result.summary()
+    settled = "settled" if result.soak_settled else "NOT settled"
+    ctx.log(f"🔥 Thermal soak ({result.total_frames} frames): {settled}, "
+            f"peak={result.global_max_c:.1f}°C")
+    return {"result": summary, "passed": result.passed, "settled": result.soak_settled,
+            "settle_time_s": result.soak_settle_time_s}
+
+
+def _blk_thermal_delta(params: dict, inputs: dict, ctx: ExecContext) -> dict:
+    """Measure temperature delta — baseline vs stimulus."""
+    from pyontrust.analysis.thermal.measurement import run_thermal_measurement
+    cfg = {
+        "mode": "delta",
+        "delta_baseline_frames": int(params.get("baseline_frames", 5)),
+        "delta_stimulus_frames": int(params.get("stimulus_frames", 5)),
+        "delta_pause_s": float(params.get("pause_s", 3)),
+        "capture_interval_s": float(params.get("capture_interval_s", 0.5)),
+        "warmup_frames": int(params.get("warmup_frames", 3)),
+        "camera": {"mode": str(params.get("camera_mode", "simulated")),
+                   "base_temp_c": float(params.get("base_temp_c", 25)),
+                   "camera_type": str(params.get("camera_type", "compact"))},
+        "zones": inputs.get("zones", []),
+        "board_id": str(params.get("board_id", "")),
+        "save_snapshots": False,
+    }
+    result = run_thermal_measurement(cfg)
+    summary = result.summary()
+    for zs in result.zone_stats:
+        ctx.log(f"Δ {zs.zone_name}: baseline={zs.baseline_mean_c:.1f}°C → "
+                f"stimulus={zs.stimulus_mean_c:.1f}°C, ΔT={zs.delta_c:+.2f}°C")
+    return {"result": summary, "zone_deltas": {zs.zone_name: zs.delta_c for zs in result.zone_stats}}
+
+
+def _blk_thermal_gradient(params: dict, inputs: dict, ctx: ExecContext) -> dict:
+    """Analyse spatial temperature gradient across the board."""
+    from pyontrust.analysis.thermal.measurement import run_thermal_measurement
+    cfg = {
+        "mode": "gradient",
+        "delta_baseline_frames": int(params.get("avg_frames", 5)),
+        "capture_interval_s": float(params.get("capture_interval_s", 0.5)),
+        "warmup_frames": int(params.get("warmup_frames", 3)),
+        "max_gradient_c_per_mm": float(params.get("max_gradient_c_per_mm", 0)),
+        "pixel_pitch_mm": float(params.get("pixel_pitch_mm", 0.17)),
+        "camera": {"mode": str(params.get("camera_mode", "simulated")),
+                   "base_temp_c": float(params.get("base_temp_c", 25)),
+                   "camera_type": str(params.get("camera_type", "compact"))},
+        "board_id": str(params.get("board_id", "")),
+        "save_snapshots": False,
+    }
+    result = run_thermal_measurement(cfg)
+    g = result.gradient
+    if g:
+        ctx.log(f"🌊 Gradient: {g.max_gradient_c_per_mm:.2f} °C/mm at ({g.gradient_location[0]}, {g.gradient_location[1]}), "
+                f"direction={g.direction_deg:.0f}°")
+    return {"result": result.summary(), "gradient": g.to_dict() if g else {},
+            "passed": result.passed}
+
+
 def _blk_aoi_inspect(params: dict, inputs: dict, ctx: ExecContext) -> dict:
     """Run AOI inspection on a frame."""
     frame = inputs.get("frame", {})
@@ -547,11 +688,24 @@ def _blk_display(params: dict, inputs: dict, ctx: ExecContext) -> dict:
 
 def _blk_plot_trace(params: dict, inputs: dict, ctx: ExecContext) -> dict:
     trace = inputs.get("trace", {})
-    n = len(trace.get("current_a", []))
+    y_data = trace.get("current_a", [])
+    x_data = trace.get("time_s", [])
+    n = len(y_data)
     title = str(params.get("title", "Trace"))
+    y_label = str(params.get("y_label", "Current (A)"))
     style = str(params.get("style", "lines"))
-    ctx.log(f"📈 Plot '{title}': {n} points, style={style} (chart rendered in browser)")
-    return {}
+    # Downsample for rendering (max 500 points for smooth canvas)
+    ds = max(1, n // 500)
+    ctx.log(f"📈 Plot '{title}': {n} points, style={style}")
+    return {"_viz": {
+        "type": "trace",
+        "title": title,
+        "y_label": y_label,
+        "style": style,
+        "x": x_data[::ds] if x_data else list(range(0, n, ds)),
+        "y": y_data[::ds],
+        "n_total": n,
+    }}
 
 
 def _blk_save_file(params: dict, inputs: dict, ctx: ExecContext) -> dict:
@@ -812,8 +966,19 @@ def _blk_fft_spectrum(params: dict, inputs: dict, ctx: ExecContext) -> dict:
     peak_indices = np.argsort(fft_vals)[-n_peaks:][::-1]
     peaks = [{"freq_hz": round(float(freqs[i]), 2), "amplitude": round(float(fft_vals[i]), 6)} for i in peak_indices if i > 0]
     ctx.log(f"🌈 FFT: {n} points, rate={rate}Hz, top peak={peaks[0]['freq_hz']}Hz" if peaks else "🌈 FFT: no peaks")
-    return {"spectrum": {"freq_hz": freqs.tolist(), "psd": psd, "amplitude": fft_vals.tolist()},
-            "peaks": {"peaks": peaks}}
+    # Downsample for viz
+    freq_list = freqs.tolist()
+    amp_list = fft_vals.tolist()
+    ds = max(1, len(freq_list) // 500)
+    return {"spectrum": {"freq_hz": freq_list, "psd": psd, "amplitude": amp_list},
+            "peaks": {"peaks": peaks},
+            "_viz": {
+                "type": "fft",
+                "title": f"FFT Spectrum ({win})",
+                "freq_hz": freq_list[::ds],
+                "amplitude": amp_list[::ds],
+                "peaks": peaks[:5],
+            }}
 
 
 def _blk_moving_average(params: dict, inputs: dict, ctx: ExecContext) -> dict:
@@ -1297,44 +1462,199 @@ def _blk_pick_field(params: dict, inputs: dict, ctx: ExecContext) -> dict:
     return {"result": result}
 
 
+# ── NEW: Visualization blocks ────────────────────────────────────────
+
+def _blk_live_video(params: dict, inputs: dict, ctx: ExecContext) -> dict:
+    """Capture a single frame from a webcam and return it as base64 JPEG."""
+    cam_idx = int(params.get("camera_index", 0))
+    width = int(params.get("width", 320))
+    height = int(params.get("height", 240))
+    try:
+        import cv2
+        import base64
+        cap = cv2.VideoCapture(cam_idx, cv2.CAP_DSHOW)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+        ret, frame = cap.read()
+        cap.release()
+        if not ret:
+            ctx.log(f"📹 Camera {cam_idx}: no frame")
+            return {"frame": None, "_viz": {"type": "video", "error": "No frame captured"}}
+        _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
+        b64 = base64.b64encode(buf).decode("ascii")
+        ctx.log(f"📹 Camera {cam_idx}: {frame.shape[1]}×{frame.shape[0]}")
+        return {"frame": {"width": frame.shape[1], "height": frame.shape[0]},
+                "_viz": {"type": "video", "src": f"data:image/jpeg;base64,{b64}",
+                         "width": frame.shape[1], "height": frame.shape[0]}}
+    except ImportError:
+        ctx.log("📹 cv2 not installed — generating placeholder")
+        return {"frame": None, "_viz": {"type": "video", "error": "cv2 not installed"}}
+    except Exception as exc:
+        ctx.log(f"📹 Camera error: {exc}")
+        return {"frame": None, "_viz": {"type": "video", "error": str(exc)}}
+
+
+def _blk_waterfall_display(params: dict, inputs: dict, ctx: ExecContext) -> dict:
+    """Waterfall / spectrogram display from FFT spectrum data.
+
+    Takes a spectrum dict (freq_hz, amplitude) and accumulates rows
+    into a 2-D intensity grid for spectrogram rendering.
+    """
+    spectrum = inputs.get("spectrum", {})
+    title = str(params.get("title", "Waterfall"))
+    n_rows = int(params.get("history_rows", 32))
+    colorscale = str(params.get("colorscale", "Inferno"))
+
+    amp = spectrum.get("amplitude", [])
+    freq = spectrum.get("freq_hz", [])
+
+    if not amp:
+        ctx.log(f"🌊 Waterfall '{title}': no data")
+        return {"_viz": {"type": "waterfall", "title": title, "grid": [], "freq_hz": []}}
+
+    # Downsample freq bins to max 256
+    ds = max(1, len(amp) // 256)
+    amp_ds = amp[::ds]
+    freq_ds = freq[::ds] if freq else []
+
+    # Build a grid — for single-shot we create a 1-row grid
+    # The JS side accumulates rows for live/repeated execution
+    grid = [amp_ds]
+
+    ctx.log(f"🌊 Waterfall '{title}': {len(amp)} bins → {len(amp_ds)} (ds={ds})")
+    return {"_viz": {
+        "type": "waterfall",
+        "title": title,
+        "grid": grid,
+        "freq_hz": freq_ds,
+        "n_rows": n_rows,
+        "colorscale": colorscale,
+    }}
+
+
 # ── NEW: I/O blocks ──────────────────────────────────────────────────
 
 def _blk_plot_xy(params: dict, inputs: dict, ctx: ExecContext) -> dict:
-    """XY scatter/line plot — returns Plotly-compatible data."""
+    """XY scatter/line plot."""
     x = inputs.get("x", [])
     y = inputs.get("y", [])
     title = str(params.get("title", "XY Plot"))
     mode = str(params.get("mode", "markers"))
-    ctx.log(f"📊 Plot XY: '{title}', {len(x) if isinstance(x, list) else '?'} points")
-    return {}
+    x_list = x if isinstance(x, list) else [x]
+    y_list = y if isinstance(y, list) else [y]
+    ds = max(1, len(x_list) // 500)
+    ctx.log(f"📊 Plot XY: '{title}', {len(x_list)} points")
+    return {"_viz": {
+        "type": "xy",
+        "title": title,
+        "mode": mode,
+        "x": x_list[::ds],
+        "y": y_list[::ds],
+    }}
 
 
 def _blk_plot_histogram(params: dict, inputs: dict, ctx: ExecContext) -> dict:
     data = inputs.get("data", [])
     title = str(params.get("title", "Histogram"))
-    ctx.log(f"▊ Plot histogram: '{title}'")
-    return {}
+    bins_n = int(params.get("bins", 50))
+    color = str(params.get("color", "#89b4fa"))
+    # Build histogram bins
+    arr = []
+    if isinstance(data, dict):
+        for v in data.values():
+            if isinstance(v, list):
+                arr = [float(x) for x in v if isinstance(x, (int, float))]
+                break
+    elif isinstance(data, list):
+        arr = [float(x) for x in data if isinstance(x, (int, float))]
+    bin_counts: list[int] = []
+    bin_edges: list[float] = []
+    if arr:
+        lo, hi = min(arr), max(arr)
+        if lo == hi:
+            hi = lo + 1
+        step = (hi - lo) / bins_n
+        bin_edges = [lo + i * step for i in range(bins_n + 1)]
+        bin_counts = [0] * bins_n
+        for v in arr:
+            idx = min(int((v - lo) / step), bins_n - 1)
+            bin_counts[idx] += 1
+    ctx.log(f"▊ Plot histogram: '{title}', {len(arr)} values, {bins_n} bins")
+    return {"_viz": {
+        "type": "histogram",
+        "title": title,
+        "color": color,
+        "bin_edges": bin_edges,
+        "bin_counts": bin_counts,
+    }}
 
 
 def _blk_plot_heatmap(params: dict, inputs: dict, ctx: ExecContext) -> dict:
     data = inputs.get("data", {})
     title = str(params.get("title", "Heatmap"))
-    ctx.log(f"🗺️ Plot heatmap: '{title}'")
-    return {}
+    # Extract 2D array from data
+    grid: list[list[float]] = []
+    if isinstance(data, dict) and "grid" in data:
+        grid = data["grid"]
+    elif isinstance(data, list) and data and isinstance(data[0], list):
+        grid = data
+    ctx.log(f"🗺️ Plot heatmap: '{title}', {len(grid)}x{len(grid[0]) if grid else 0}")
+    return {"_viz": {
+        "type": "heatmap",
+        "title": title,
+        "grid": grid[:64],  # limit rows for rendering
+        "colorscale": str(params.get("colorscale", "Inferno")),
+    }}
 
 
 def _blk_gauge_display(params: dict, inputs: dict, ctx: ExecContext) -> dict:
     value = _to_number(inputs.get("value", 0))
     title = str(params.get("title", "Gauge"))
     unit = str(params.get("unit", ""))
+    min_v = float(params.get("min_val", 0))
+    max_v = float(params.get("max_val", 100))
+    green_max = float(params.get("green_max", 60))
+    yellow_max = float(params.get("yellow_max", 80))
     ctx.log(f"🎯 Gauge '{title}': {value}{unit}")
-    return {}
+    return {"_viz": {
+        "type": "gauge",
+        "title": title,
+        "value": value,
+        "unit": unit,
+        "min": min_v,
+        "max": max_v,
+        "green_max": green_max,
+        "yellow_max": yellow_max,
+    }}
 
 
 def _blk_table_display(params: dict, inputs: dict, ctx: ExecContext) -> dict:
     data = inputs.get("data")
-    ctx.log(f"📋 Table display: {type(data).__name__}")
-    return {}
+    max_rows = int(params.get("max_rows", 100))
+    # Build table data: list of dicts or dict of lists
+    headers: list[str] = []
+    rows: list[list] = []
+    if isinstance(data, dict):
+        headers = list(data.keys())[:10]
+        n = max(len(v) for v in data.values() if isinstance(v, list)) if data else 0
+        n = min(n, max_rows)
+        for i in range(n):
+            rows.append([data[k][i] if isinstance(data[k], list) and i < len(data[k]) else data[k] for k in headers])
+    elif isinstance(data, list) and data:
+        if isinstance(data[0], dict):
+            headers = list(data[0].keys())[:10]
+            for row in data[:max_rows]:
+                rows.append([row.get(k, "") for k in headers])
+        else:
+            headers = ["value"]
+            rows = [[v] for v in data[:max_rows]]
+    ctx.log(f"📋 Table display: {len(headers)} cols, {len(rows)} rows")
+    return {"_viz": {
+        "type": "table",
+        "headers": headers,
+        "rows": rows[:20],  # limit for in-node display
+        "total_rows": len(rows),
+    }}
 
 
 def _blk_assert_check(params: dict, inputs: dict, ctx: ExecContext) -> dict:
@@ -1543,6 +1863,165 @@ def _blk_sleep_test(params: dict, inputs: dict, ctx: ExecContext) -> dict:
     return {"trace": trace, "verdict": verdict}
 
 
+# ── CAN bus blocks ────────────────────────────────────────────────
+
+def _blk_can_send(params: dict, inputs: dict, ctx: ExecContext) -> dict:
+    """Send a CAN frame via the CAN diagnostic service."""
+    try:
+        from pyontrust.services.can_service import CanDiagService
+        svc = CanDiagService()
+        interface = str(params.get("interface", "virtual"))
+        channel = str(params.get("channel", "vcan0"))
+        bitrate = int(params.get("bitrate", 500000))
+        arb_id = int(str(params.get("arb_id", inputs.get("arb_id", "0x100"))), 0)
+        data_hex = str(params.get("data", inputs.get("data", "DEADBEEF")))
+        data_bytes = bytes.fromhex(data_hex.replace(" ", "").replace("0x", ""))
+        extended = bool(params.get("extended", False))
+
+        svc.start(interface=interface, channel=channel, bitrate=bitrate)
+        svc.send_frame(arb_id, data_bytes, extended=extended)
+        svc.stop()
+        ctx.log(f"🔌 CAN TX: ID=0x{arb_id:03X} data={data_hex} on {interface}/{channel}")
+        return {"sent": True, "arb_id": arb_id, "data": data_hex}
+    except Exception as exc:
+        ctx.log(f"🔌 CAN TX failed: {exc}")
+        return {"sent": False, "error": str(exc)}
+
+
+def _blk_can_receive(params: dict, inputs: dict, ctx: ExecContext) -> dict:
+    """Capture CAN frames for a duration and return statistics."""
+    try:
+        from pyontrust.services.can_service import CanDiagService
+        import time as _time
+
+        svc = CanDiagService()
+        interface = str(params.get("interface", "virtual"))
+        channel = str(params.get("channel", "vcan0"))
+        bitrate = int(params.get("bitrate", 500000))
+        duration = float(params.get("duration_s", 2.0))
+        id_filter = params.get("id_filter", None)
+
+        svc.start(interface=interface, channel=channel, bitrate=bitrate)
+        if id_filter is not None:
+            svc.set_id_filter({int(str(i), 0) for i in id_filter}
+                              if isinstance(id_filter, list) else {int(str(id_filter), 0)})
+        _time.sleep(duration)
+        snap = svc.get_snapshot()
+        stats = svc.get_stats_table()
+        svc.stop()
+
+        n_frames = len(snap.get("messages", []))
+        n_ids = len(stats)
+        ctx.log(f"🔌 CAN RX: {n_frames} frames, {n_ids} unique IDs in {duration}s")
+        return {"messages": snap.get("messages", []),
+                "stats": stats,
+                "n_frames": n_frames, "n_ids": n_ids, "duration_s": duration}
+    except Exception as exc:
+        ctx.log(f"🔌 CAN RX failed: {exc}")
+        return {"messages": [], "stats": [], "error": str(exc)}
+
+
+def _blk_can_decode(params: dict, inputs: dict, ctx: ExecContext) -> dict:
+    """Decode CAN frames with CANopen or DBC-based signal extraction."""
+    try:
+        from pyontrust.services.can_service import decode_canopen
+        messages = inputs.get("messages", [])
+        if not messages:
+            ctx.log("🔌 CAN decode: no messages to decode")
+            return {"decoded": []}
+
+        decoded = []
+        for msg in messages[:500]:  # limit for performance
+            arb_id = msg.get("arb_id", 0)
+            data_hex = msg.get("data", "")
+            data_bytes = bytes.fromhex(data_hex.replace(" ", "")) if data_hex else b""
+            co = decode_canopen(arb_id, data_bytes)
+            decoded.append({
+                "arb_id": arb_id,
+                "data": data_hex,
+                "canopen_func": co.function if co else None,
+                "canopen_node": co.node_id if co else None,
+                "canopen_detail": co.detail if co else None,
+            })
+        ctx.log(f"🔌 CAN decode: {len(decoded)} frames processed")
+        return {"decoded": decoded}
+    except Exception as exc:
+        ctx.log(f"🔌 CAN decode failed: {exc}")
+        return {"decoded": [], "error": str(exc)}
+
+
+def _blk_can_analyze(params: dict, inputs: dict, ctx: ExecContext) -> dict:
+    """Deep reverse-engineering analysis of a specific CAN ID."""
+    try:
+        from pyontrust.services.can_service import CanDiagService
+        import time as _time
+
+        svc = CanDiagService()
+        interface = str(params.get("interface", "virtual"))
+        channel = str(params.get("channel", "vcan0"))
+        bitrate = int(params.get("bitrate", 500000))
+        target_id = int(str(params.get("arb_id", inputs.get("arb_id", "0x100"))), 0)
+        duration = float(params.get("duration_s", 5.0))
+
+        svc.start(interface=interface, channel=channel, bitrate=bitrate)
+        svc.set_id_filter({target_id})
+        _time.sleep(duration)
+        analysis = svc.analyze_message(target_id)
+        svc.stop()
+
+        ctx.log(f"🔌 CAN RE: ID=0x{target_id:03X} → "
+                f"{analysis.get('n_samples', 0)} samples, "
+                f"{len(analysis.get('signals', []))} signals")
+        return analysis
+    except Exception as exc:
+        ctx.log(f"🔌 CAN RE failed: {exc}")
+        return {"error": str(exc)}
+
+
+def _blk_can_replay(params: dict, inputs: dict, ctx: ExecContext) -> dict:
+    """Replay captured CAN messages back onto the bus."""
+    try:
+        from pyontrust.services.can_service import CanDiagService
+        import time as _time
+
+        svc = CanDiagService()
+        interface = str(params.get("interface", "virtual"))
+        channel = str(params.get("channel", "vcan0"))
+        bitrate = int(params.get("bitrate", 500000))
+        messages = inputs.get("messages", [])
+        speed_factor = float(params.get("speed_factor", 1.0))
+
+        if not messages:
+            ctx.log("🔌 CAN replay: no messages to replay")
+            return {"replayed": 0}
+
+        svc.start(interface=interface, channel=channel, bitrate=bitrate)
+        replayed = 0
+        prev_ts = None
+        for msg in messages:
+            ts = msg.get("timestamp", 0)
+            arb_id = msg.get("arb_id", 0)
+            data_hex = msg.get("data", "")
+            data_bytes = bytes.fromhex(data_hex.replace(" ", "")) if data_hex else b""
+            extended = msg.get("extended", False)
+
+            if prev_ts is not None and speed_factor > 0:
+                delay = (ts - prev_ts) / speed_factor
+                if 0 < delay < 10:
+                    _time.sleep(delay)
+            prev_ts = ts
+
+            svc.send_frame(arb_id, data_bytes, extended=extended)
+            replayed += 1
+        svc.stop()
+
+        ctx.log(f"🔌 CAN replay: {replayed} frames at {speed_factor}x speed")
+        return {"replayed": replayed}
+    except Exception as exc:
+        ctx.log(f"🔌 CAN replay failed: {exc}")
+        return {"replayed": 0, "error": str(exc)}
+
+
 # ══════════════════════════════════════════════════════════════════════
 # Helpers
 # ══════════════════════════════════════════════════════════════════════
@@ -1616,8 +2095,12 @@ class FlowLabEngine:
         "histogram":       _blk_histogram,
         "correlate":       _blk_correlate,
         # Vision
-        "thermal_analyze": _blk_thermal_analyze,
-        "aoi_inspect":     _blk_aoi_inspect,
+        "thermal_analyze":  _blk_thermal_analyze,
+        "thermal_measure":  _blk_thermal_measure,
+        "thermal_soak":     _blk_thermal_soak,
+        "thermal_delta":    _blk_thermal_delta,
+        "thermal_gradient": _blk_thermal_gradient,
+        "aoi_inspect":      _blk_aoi_inspect,
         "color_detect":    _blk_color_detect,
         "blob_detect":     _blk_blob_detect,
         "template_match":  _blk_template_match,
@@ -1656,6 +2139,8 @@ class FlowLabEngine:
         "plot_heatmap":    _blk_plot_heatmap,
         "gauge_display":   _blk_gauge_display,
         "table_display":   _blk_table_display,
+        "live_video":      _blk_live_video,
+        "waterfall_display": _blk_waterfall_display,
         "save_file":       _blk_save_file,
         "log_message":     _blk_log_message,
         "assert_check":    _blk_assert_check,
@@ -1676,6 +2161,12 @@ class FlowLabEngine:
         "serial_send":     _blk_serial_send,
         "load_profile":    _blk_load_profile,
         "benchmark_timer": _blk_benchmark_timer,
+        # CAN bus
+        "can_send":        _blk_can_send,
+        "can_receive":     _blk_can_receive,
+        "can_decode":      _blk_can_decode,
+        "can_analyze":     _blk_can_analyze,
+        "can_replay":      _blk_can_replay,
     }
 
     def __init__(self) -> None:

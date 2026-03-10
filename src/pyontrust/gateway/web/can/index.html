@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CAN Diagnostic — pyontrust</title>
+  <link rel="stylesheet" href="/static/shell/shell.css">
+  <style>
+    /* ── Layout ───────────────────────────────────────────────── */
+    :root{--can-green:#a6e3a1;--can-yellow:#f9e2af;--can-red:#f38ba8;
+          --can-blue:#89b4fa;--can-mauve:#cba6f7;--can-teal:#94e2d5;
+          --can-peach:#fab387;--can-flamingo:#f2cdcd;}
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:'JetBrains Mono','Fira Code','SF Mono',monospace;
+         font-size:12px;background:var(--bg);color:var(--fg);
+         display:flex;flex-direction:column;height:100vh;overflow:hidden;}
+
+    /* Toolbar */
+    #toolbar{display:flex;align-items:center;gap:8px;padding:6px 12px;
+             background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0;}
+    #toolbar .title{font-weight:700;font-size:14px;margin-right:8px;}
+    .btn{padding:4px 10px;border:1px solid var(--border);border-radius:var(--radius);
+         background:var(--bg3);color:var(--fg);cursor:pointer;font-size:11px;
+         font-family:inherit;transition:background .15s;}
+    .btn:hover{background:var(--bg4);}
+    .btn-primary{background:var(--accent);color:var(--bg);border-color:var(--accent);}
+    .btn-primary:hover{filter:brightness(1.1);}
+    .btn-danger{background:var(--can-red);color:var(--bg);border-color:var(--can-red);}
+    .btn-danger:hover{filter:brightness(1.1);}
+    .sep{width:1px;height:20px;background:var(--border);margin:0 4px;}
+    select,input[type=text],input[type=number]{
+      padding:3px 6px;border:1px solid var(--border);border-radius:var(--radius);
+      background:var(--bg);color:var(--fg);font-family:inherit;font-size:11px;}
+    select{min-width:100px;}
+    label{font-size:11px;color:var(--fg-dim);}
+    .badge{padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;}
+    .badge-ok{background:var(--can-green);color:var(--bg);}
+    .badge-err{background:var(--can-red);color:var(--bg);}
+    .badge-idle{background:var(--bg3);color:var(--fg-dim);}
+
+    /* Tabs */
+    #tab-bar{display:flex;background:var(--bg2);border-bottom:1px solid var(--border);
+             flex-shrink:0;}
+    .tab{padding:6px 16px;cursor:pointer;border-bottom:2px solid transparent;
+         color:var(--fg-dim);font-size:12px;transition:all .15s;}
+    .tab:hover{color:var(--fg);background:var(--bg3);}
+    .tab.active{color:var(--accent);border-bottom-color:var(--accent);}
+    .tab-panel{display:none;flex:1;overflow:auto;padding:8px;}
+    .tab-panel.active{display:flex;flex-direction:column;}
+
+    /* ── Traffic panel ────────────────────────────────────────── */
+    #traffic-table-wrap{flex:1;overflow:auto;position:relative;}
+    #traffic-table{width:100%;border-collapse:collapse;font-size:11px;}
+    #traffic-table th{position:sticky;top:0;background:var(--bg2);
+                      padding:4px 6px;text-align:left;border-bottom:1px solid var(--border);
+                      font-weight:600;color:var(--fg-dim);z-index:2;}
+    #traffic-table td{padding:3px 6px;border-bottom:1px solid var(--bg3);white-space:nowrap;}
+    #traffic-table tr:hover td{background:var(--bg3);}
+    .col-ts{width:90px;color:var(--fg-dim);}
+    .col-id{width:60px;font-weight:700;color:var(--can-blue);}
+    .col-dlc{width:30px;text-align:center;}
+    .col-data{font-family:inherit;color:var(--can-green);min-width:180px;}
+    .col-co{color:var(--can-mauve);min-width:80px;}
+    .col-detail{color:var(--fg-dim);max-width:300px;overflow:hidden;text-overflow:ellipsis;}
+    .ext-badge{font-size:9px;color:var(--can-peach);margin-left:2px;}
+
+    /* ── Stats panel ──────────────────────────────────────────── */
+    #stats-table{width:100%;border-collapse:collapse;font-size:11px;}
+    #stats-table th{position:sticky;top:0;background:var(--bg2);
+                    padding:4px 6px;text-align:left;border-bottom:1px solid var(--border);
+                    font-weight:600;color:var(--fg-dim);cursor:pointer;user-select:none;}
+    #stats-table th:hover{color:var(--accent);}
+    #stats-table td{padding:3px 6px;border-bottom:1px solid var(--bg3);}
+    #stats-table tr:hover td{background:var(--bg3);}
+    #stats-table tr.selected td{background:rgba(137,180,250,.15);}
+    .period-bar{display:inline-block;height:8px;background:var(--can-teal);border-radius:2px;vertical-align:middle;}
+    .jitter-warn{color:var(--can-yellow);}
+    .jitter-bad{color:var(--can-red);}
+
+    /* ── CANopen panel ────────────────────────────────────────── */
+    #canopen-table{width:100%;border-collapse:collapse;font-size:11px;}
+    #canopen-table th{position:sticky;top:0;background:var(--bg2);
+                      padding:4px 6px;text-align:left;border-bottom:1px solid var(--border);
+                      font-weight:600;color:var(--fg-dim);}
+    #canopen-table td{padding:3px 6px;border-bottom:1px solid var(--bg3);}
+    .co-nmt{color:var(--can-red);}
+    .co-hb{color:var(--can-green);}
+    .co-sdo{color:var(--can-blue);}
+    .co-pdo{color:var(--can-teal);}
+    .co-emcy{color:var(--can-yellow);}
+    .co-sync{color:var(--fg-dim);}
+
+    /* ── RE panel ─────────────────────────────────────────────── */
+    #re-panel{gap:8px;}
+    .re-section{background:var(--bg2);border:1px solid var(--border);
+                border-radius:var(--radius);padding:8px;margin-bottom:8px;}
+    .re-section h4{color:var(--accent);margin-bottom:6px;font-size:12px;}
+    .bit-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:1px;font-size:10px;}
+    .bit-cell{padding:2px 3px;text-align:center;border-radius:2px;
+              background:var(--bg3);color:var(--fg-dim);}
+    .bit-hot{background:var(--can-red);color:var(--bg);}
+    .bit-warm{background:var(--can-yellow);color:var(--bg);}
+    .bit-cool{background:var(--can-teal);color:var(--bg);}
+    .bit-static{background:var(--bg3);color:var(--fg-dim);opacity:.5;}
+    .signal-row{display:flex;gap:8px;align-items:center;padding:3px 0;
+                border-bottom:1px solid var(--bg3);font-size:11px;}
+    .dbc-output{width:100%;height:200px;background:var(--bg);color:var(--can-green);
+                border:1px solid var(--border);border-radius:var(--radius);
+                font-family:inherit;font-size:11px;padding:6px;resize:vertical;}
+
+    /* ── Send panel ───────────────────────────────────────────── */
+    .send-row{display:flex;gap:8px;align-items:center;padding:4px 0;}
+    .send-row label{min-width:60px;}
+    .send-row input{flex:1;max-width:300px;}
+    #send-log{max-height:150px;overflow:auto;background:var(--bg);
+              border:1px solid var(--border);border-radius:var(--radius);
+              padding:4px;font-size:10px;color:var(--fg-dim);margin-top:8px;}
+
+    /* ── Export panel ─────────────────────────────────────────── */
+    .export-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;}
+    .export-card{background:var(--bg2);border:1px solid var(--border);
+                 border-radius:var(--radius);padding:12px;text-align:center;cursor:pointer;
+                 transition:border-color .15s;}
+    .export-card:hover{border-color:var(--accent);}
+    .export-card .icon{font-size:24px;margin-bottom:4px;}
+    .export-card .label{font-size:12px;font-weight:600;}
+    .export-card .desc{font-size:10px;color:var(--fg-dim);margin-top:2px;}
+
+    /* ── Status bar ───────────────────────────────────────────── */
+    #statusbar{display:flex;align-items:center;gap:12px;padding:4px 12px;
+               background:var(--bg2);border-top:1px solid var(--border);
+               font-size:10px;color:var(--fg-dim);flex-shrink:0;}
+    .status-led{width:8px;height:8px;border-radius:50%;display:inline-block;}
+    .led-on{background:var(--can-green);box-shadow:0 0 4px var(--can-green);}
+    .led-off{background:var(--can-red);}
+    .led-idle{background:var(--fg-dim);}
+
+    /* Scrollbar */
+    ::-webkit-scrollbar{width:6px;height:6px;}
+    ::-webkit-scrollbar-track{background:var(--bg);}
+    ::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:3px;}
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════ TOOLBAR ═══════════════════════════════════ -->
+<div id="toolbar">
+  <span class="title">🔌 CAN Diagnostic</span>
+  <label>Interface</label>
+  <select id="sel-interface">
+    <option value="pcan">PCAN</option>
+    <option value="socketcan">SocketCAN</option>
+    <option value="vector">Vector</option>
+    <option value="kvaser">Kvaser</option>
+    <option value="ixxat">IXXAT</option>
+    <option value="virtual">Virtual</option>
+  </select>
+  <label>Channel</label>
+  <input type="text" id="inp-channel" value="PCAN_USBBUS1" style="width:130px">
+  <label>Bitrate</label>
+  <select id="sel-bitrate">
+    <option value="125000">125 kbit/s</option>
+    <option value="250000">250 kbit/s</option>
+    <option value="500000" selected>500 kbit/s</option>
+    <option value="1000000">1 Mbit/s</option>
+  </select>
+  <label><input type="checkbox" id="chk-fd"> FD</label>
+  <span class="sep"></span>
+  <button class="btn btn-primary" id="btn-start">▶ Start</button>
+  <button class="btn btn-danger" id="btn-stop" disabled>■ Stop</button>
+  <button class="btn" id="btn-clear">🗑 Clear</button>
+  <span class="sep"></span>
+  <span id="conn-badge" class="badge badge-idle">disconnected</span>
+  <span style="flex:1"></span>
+  <label>Filter IDs</label>
+  <input type="text" id="inp-filter" placeholder="0x100,0x200 or empty" style="width:140px">
+  <button class="btn" id="btn-filter">Apply</button>
+  <button class="btn" id="btn-filter-clear">✕</button>
+</div>
+
+<!-- ═══════════════════ TAB BAR ═══════════════════════════════════ -->
+<div id="tab-bar">
+  <div class="tab active" data-tab="traffic">📡 Live Traffic</div>
+  <div class="tab" data-tab="stats">📊 Statistics</div>
+  <div class="tab" data-tab="canopen">🔗 CANopen</div>
+  <div class="tab" data-tab="re">🔬 Reverse Eng.</div>
+  <div class="tab" data-tab="send">📤 Send</div>
+  <div class="tab" data-tab="export">💾 Export</div>
+</div>
+
+<!-- ═══════════════════ TAB PANELS ════════════════════════════════ -->
+
+<!-- ── Live Traffic ──────────────────────────────────────────── -->
+<div id="panel-traffic" class="tab-panel active">
+  <div id="traffic-table-wrap">
+    <table id="traffic-table">
+      <thead><tr>
+        <th class="col-ts">Time</th>
+        <th class="col-id">ID</th>
+        <th class="col-dlc">DLC</th>
+        <th class="col-data">Data</th>
+        <th class="col-co">CANopen</th>
+        <th class="col-detail">Detail</th>
+      </tr></thead>
+      <tbody id="traffic-body"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── Statistics ─────────────────────────────────────────────── -->
+<div id="panel-stats" class="tab-panel">
+  <div style="flex:1;overflow:auto;">
+    <table id="stats-table">
+      <thead><tr>
+        <th data-col="hex_id">ID ▾</th>
+        <th data-col="count">Count</th>
+        <th data-col="dlc">DLC</th>
+        <th data-col="period_ms">Period (ms)</th>
+        <th data-col="jitter_ms">Jitter (ms)</th>
+        <th data-col="rate_hz">Rate (Hz)</th>
+        <th data-col="last_data">Last Data</th>
+        <th data-col="byte_change_mask">Δ Mask</th>
+        <th data-col="canopen">CANopen</th>
+      </tr></thead>
+      <tbody id="stats-body"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── CANopen ────────────────────────────────────────────────── -->
+<div id="panel-canopen" class="tab-panel">
+  <div style="margin-bottom:6px;display:flex;gap:8px;align-items:center;">
+    <label>Show:</label>
+    <label><input type="checkbox" class="co-filter" value="HEARTBEAT" checked> HB</label>
+    <label><input type="checkbox" class="co-filter" value="NMT" checked> NMT</label>
+    <label><input type="checkbox" class="co-filter" value="SDO" checked> SDO</label>
+    <label><input type="checkbox" class="co-filter" value="PDO" checked> PDO</label>
+    <label><input type="checkbox" class="co-filter" value="EMCY" checked> EMCY</label>
+    <label><input type="checkbox" class="co-filter" value="SYNC" checked> SYNC</label>
+  </div>
+  <div style="flex:1;overflow:auto;">
+    <table id="canopen-table">
+      <thead><tr>
+        <th>Time</th>
+        <th>COB-ID</th>
+        <th>Node</th>
+        <th>Function</th>
+        <th>Detail</th>
+        <th>Raw Data</th>
+      </tr></thead>
+      <tbody id="canopen-body"></tbody>
+    </table>
+  </div>
+  <div id="canopen-nodes" style="margin-top:8px;padding:6px;background:var(--bg2);
+       border:1px solid var(--border);border-radius:var(--radius);">
+    <strong style="color:var(--accent);">Node Map:</strong>
+    <div id="node-map" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;"></div>
+  </div>
+</div>
+
+<!-- ── Reverse Engineering ────────────────────────────────────── -->
+<div id="panel-re" class="tab-panel" id="re-panel">
+  <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+    <label>Analyze ID:</label>
+    <select id="re-id-select" style="min-width:140px;"><option>— select —</option></select>
+    <button class="btn btn-primary" id="btn-analyze">🔬 Analyze</button>
+    <button class="btn" id="btn-gen-dbc">📄 Generate DBC</button>
+    <span id="re-status" style="color:var(--fg-dim);font-size:11px;"></span>
+  </div>
+
+  <div id="re-results" style="flex:1;overflow:auto;">
+    <div class="re-section">
+      <h4>📋 Message Summary</h4>
+      <div id="re-summary" style="font-size:11px;"></div>
+    </div>
+    <div class="re-section">
+      <h4>🔢 Byte Analysis</h4>
+      <div id="re-bytes" style="font-size:11px;"></div>
+    </div>
+    <div class="re-section">
+      <h4>🧮 Bit Transition Heatmap</h4>
+      <div id="re-bits"></div>
+    </div>
+    <div class="re-section">
+      <h4>📡 Heuristic Signals</h4>
+      <div id="re-signals"></div>
+    </div>
+    <div class="re-section">
+      <h4>📄 DBC Output</h4>
+      <textarea id="dbc-output" class="dbc-output" readonly placeholder="Click 'Generate DBC' to create a DBC file stub from observed traffic..."></textarea>
+    </div>
+  </div>
+</div>
+
+<!-- ── Send ───────────────────────────────────────────────────── -->
+<div id="panel-send" class="tab-panel">
+  <div style="max-width:500px;">
+    <div class="re-section">
+      <h4>📤 Send CAN Frame</h4>
+      <div class="send-row">
+        <label>Arb ID:</label>
+        <input type="text" id="send-id" value="0x123" style="width:80px;">
+        <label><input type="checkbox" id="send-ext"> Extended</label>
+      </div>
+      <div class="send-row">
+        <label>Data:</label>
+        <input type="text" id="send-data" value="01 02 03 04 05 06 07 08" placeholder="hex bytes">
+      </div>
+      <div class="send-row">
+        <label>Repeat:</label>
+        <input type="number" id="send-repeat" value="1" min="1" max="10000" style="width:70px;">
+        <label>Interval (ms):</label>
+        <input type="number" id="send-interval" value="100" min="1" max="60000" style="width:70px;">
+      </div>
+      <div style="margin-top:8px;display:flex;gap:8px;">
+        <button class="btn btn-primary" id="btn-send">📤 Send</button>
+        <button class="btn" id="btn-send-repeat">🔁 Send Repeated</button>
+        <button class="btn btn-danger" id="btn-send-stop" disabled>■ Stop</button>
+      </div>
+    </div>
+    <div class="re-section">
+      <h4>📋 Saved Frames</h4>
+      <div id="saved-frames" style="font-size:11px;color:var(--fg-dim);">No saved frames.</div>
+      <button class="btn" id="btn-save-frame" style="margin-top:4px;">💾 Save Current</button>
+    </div>
+    <div id="send-log"></div>
+  </div>
+</div>
+
+<!-- ── Export ─────────────────────────────────────────────────── -->
+<div id="panel-export" class="tab-panel">
+  <div class="export-grid" style="max-width:600px;margin-top:8px;">
+    <div class="export-card" data-fmt="asc">
+      <div class="icon">📄</div>
+      <div class="label">ASC Log</div>
+      <div class="desc">PEAK-compatible ASCII log format</div>
+    </div>
+    <div class="export-card" data-fmt="csv">
+      <div class="icon">📊</div>
+      <div class="label">CSV</div>
+      <div class="desc">Comma-separated values for analysis</div>
+    </div>
+    <div class="export-card" data-fmt="blf">
+      <div class="icon">💾</div>
+      <div class="label">BLF</div>
+      <div class="desc">Binary Logging Format (Vector)</div>
+    </div>
+    <div class="export-card" data-fmt="dbc">
+      <div class="icon">🔧</div>
+      <div class="label">DBC Stub</div>
+      <div class="desc">Generated database from traffic</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ STATUS BAR ════════════════════════════════ -->
+<div id="statusbar">
+  <span class="status-led led-idle" id="status-led"></span>
+  <span id="sb-state">Disconnected</span>
+  <span class="sep"></span>
+  <span>Frames: <strong id="sb-frames">0</strong></span>
+  <span>IDs: <strong id="sb-ids">0</strong></span>
+  <span>Bus Load: <strong id="sb-load">0%</strong></span>
+  <span>Errors: <strong id="sb-errors">0</strong></span>
+  <span>Uptime: <strong id="sb-uptime">0s</strong></span>
+</div>
+
+<!-- ═══════════════════ JAVASCRIPT ════════════════════════════════ -->
+<script>
+(function(){
+'use strict';
+
+const API = '/can/api';
+let pollTimer = null;
+let sendRepeatTimer = null;
+let autoScroll = true;
+let statsSortCol = 'hex_id';
+let statsSortAsc = true;
+let selectedReId = null;
+const savedFrames = JSON.parse(localStorage.getItem('can_saved_frames') || '[]');
+
+// ── DOM refs ──────────────────────────────────────────────────
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+
+// ── Tab switching ─────────────────────────────────────────────
+$$('.tab').forEach(t => t.addEventListener('click', () => {
+  $$('.tab').forEach(x => x.classList.remove('active'));
+  $$('.tab-panel').forEach(x => x.classList.remove('active'));
+  t.classList.add('active');
+  $(`#panel-${t.dataset.tab}`).classList.add('active');
+}));
+
+// ── Start / Stop ──────────────────────────────────────────────
+$('#btn-start').addEventListener('click', async () => {
+  const body = {
+    interface: $('#sel-interface').value,
+    channel: $('#inp-channel').value,
+    bitrate: parseInt($('#sel-bitrate').value),
+    fd: $('#chk-fd').checked,
+  };
+  const r = await postJSON(`${API}/start`, body);
+  if (r.ok) {
+    setConnected(true);
+    startPolling();
+  } else {
+    alert('Start failed: ' + (r.error || 'Unknown'));
+  }
+});
+
+$('#btn-stop').addEventListener('click', async () => {
+  await postJSON(`${API}/stop`, {});
+  setConnected(false);
+  stopPolling();
+});
+
+$('#btn-clear').addEventListener('click', async () => {
+  await postJSON(`${API}/clear`, {});
+  $('#traffic-body').innerHTML = '';
+  $('#stats-body').innerHTML = '';
+  $('#canopen-body').innerHTML = '';
+  updateStatusBar({total_frames:0, unique_ids:0, bus_load_pct:0, error_count:0, uptime_s:0});
+});
+
+// ── Filter ────────────────────────────────────────────────────
+$('#btn-filter').addEventListener('click', async () => {
+  const val = $('#inp-filter').value.trim();
+  if (!val) return;
+  const ids = val.split(',').map(s => s.trim()).filter(Boolean);
+  await postJSON(`${API}/filter`, { ids });
+});
+$('#btn-filter-clear').addEventListener('click', async () => {
+  $('#inp-filter').value = '';
+  await postJSON(`${API}/filter`, { clear: true });
+});
+
+// ── Interface change → auto-set channel ───────────────────────
+$('#sel-interface').addEventListener('change', () => {
+  const map = {pcan:'PCAN_USBBUS1', socketcan:'can0', vector:'0',
+               kvaser:'0', ixxat:'0', virtual:'test'};
+  $('#inp-channel').value = map[$('#sel-interface').value] || '';
+});
+
+// ── Polling ───────────────────────────────────────────────────
+function startPolling() {
+  stopPolling();
+  pollTimer = setInterval(poll, 200);
+}
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
+async function poll() {
+  try {
+    const snap = await getJSON(`${API}/snapshot?n=300`);
+    if (!snap) return;
+    renderTraffic(snap.messages || []);
+    renderStats(snap.stats || {});
+    renderCANopen(snap.messages || []);
+    updateStatusBar(snap);
+    updateReIdSelect(snap.stats || {});
+  } catch(e) { /* ignore */ }
+}
+
+// ── Traffic rendering ─────────────────────────────────────────
+function renderTraffic(msgs) {
+  const tbody = $('#traffic-body');
+  // Incremental: append new rows, trim old
+  const frag = document.createDocumentFragment();
+  // Clear and redraw (simpler, fast enough for 300 rows)
+  tbody.innerHTML = '';
+  for (const m of msgs) {
+    const tr = document.createElement('tr');
+    const coClass = m.canopen ? getCoClass(m.canopen) : '';
+    tr.innerHTML = `
+      <td class="col-ts">${m.ts.toFixed(4)}</td>
+      <td class="col-id">${m.hex_id}${m.ext?'<span class="ext-badge">X</span>':''}</td>
+      <td class="col-dlc">${m.dlc}</td>
+      <td class="col-data">${colorizeData(m.data, m.hex_id)}</td>
+      <td class="col-co ${coClass}">${m.canopen||''}</td>
+      <td class="col-detail">${m.canopen_detail||''}</td>`;
+    frag.appendChild(tr);
+  }
+  tbody.appendChild(frag);
+  if (autoScroll) {
+    const wrap = $('#traffic-table-wrap');
+    wrap.scrollTop = wrap.scrollHeight;
+  }
+}
+
+function colorizeData(hexStr, hexId) {
+  // Highlight bytes that changed (if we have stats)
+  return hexStr;
+}
+
+function getCoClass(func) {
+  if (func.includes('NMT')) return 'co-nmt';
+  if (func.includes('HEARTBEAT') || func.includes('HB')) return 'co-hb';
+  if (func.includes('SDO')) return 'co-sdo';
+  if (func.includes('PDO')) return 'co-pdo';
+  if (func.includes('EMCY')) return 'co-emcy';
+  if (func.includes('SYNC')) return 'co-sync';
+  return '';
+}
+
+// ── Stats rendering ───────────────────────────────────────────
+function renderStats(statsObj) {
+  let rows = Object.values(statsObj);
+  rows.sort((a,b) => {
+    let va = a[statsSortCol], vb = b[statsSortCol];
+    if (typeof va === 'string') return statsSortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+    return statsSortAsc ? va - vb : vb - va;
+  });
+
+  const tbody = $('#stats-body');
+  tbody.innerHTML = '';
+  const maxPeriod = Math.max(1, ...rows.map(r => r.period_ms));
+
+  for (const r of rows) {
+    const tr = document.createElement('tr');
+    if (selectedReId === r.arb_id) tr.classList.add('selected');
+    const jClass = r.jitter_ms > 5 ? 'jitter-bad' : r.jitter_ms > 1 ? 'jitter-warn' : '';
+    const barW = Math.min(80, (r.period_ms / maxPeriod) * 80);
+    tr.innerHTML = `
+      <td class="col-id">${r.hex_id}</td>
+      <td>${r.count.toLocaleString()}</td>
+      <td>${r.dlc}</td>
+      <td><span class="period-bar" style="width:${barW}px"></span> ${r.period_ms}</td>
+      <td class="${jClass}">${r.jitter_ms}</td>
+      <td>${r.rate_hz}</td>
+      <td class="col-data">${r.last_data}</td>
+      <td>${r.byte_change_mask}</td>
+      <td class="${getCoClass(r.canopen||'')}">${r.canopen||''}</td>`;
+    tr.addEventListener('click', () => {
+      selectedReId = r.arb_id;
+      $$('#stats-table tr').forEach(x => x.classList.remove('selected'));
+      tr.classList.add('selected');
+      // Auto-select in RE tab
+      const sel = $('#re-id-select');
+      for (const opt of sel.options) {
+        if (opt.value == r.arb_id) { sel.value = r.arb_id; break; }
+      }
+    });
+    tbody.appendChild(tr);
+  }
+}
+
+// Stats sorting
+$$('#stats-table th').forEach(th => th.addEventListener('click', () => {
+  const col = th.dataset.col;
+  if (!col) return;
+  if (statsSortCol === col) statsSortAsc = !statsSortAsc;
+  else { statsSortCol = col; statsSortAsc = true; }
+}));
+
+// ── CANopen rendering ─────────────────────────────────────────
+function renderCANopen(msgs) {
+  const filters = new Set();
+  $$('.co-filter:checked').forEach(cb => filters.add(cb.value));
+
+  const coMsgs = msgs.filter(m => {
+    if (!m.canopen) return false;
+    for (const f of filters) {
+      if (m.canopen.includes(f)) return true;
+    }
+    return false;
+  });
+
+  const tbody = $('#canopen-body');
+  tbody.innerHTML = '';
+  for (const m of coMsgs) {
+    const nodeId = m.id & 0x7F;
+    const cls = getCoClass(m.canopen);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="col-ts">${m.ts.toFixed(4)}</td>
+      <td class="col-id">${m.hex_id}</td>
+      <td>${nodeId > 0 ? nodeId : '-'}</td>
+      <td class="${cls}">${m.canopen}</td>
+      <td>${m.canopen_detail||''}</td>
+      <td class="col-data">${m.data}</td>`;
+    tbody.appendChild(tr);
+  }
+
+  // Node map
+  const nodeMap = $('#node-map');
+  const nodes = new Map();
+  for (const m of coMsgs) {
+    const nid = m.id & 0x7F;
+    if (nid > 0 && nid < 128) {
+      if (!nodes.has(nid)) nodes.set(nid, new Set());
+      nodes.get(nid).add(m.canopen);
+    }
+  }
+  nodeMap.innerHTML = '';
+  for (const [nid, funcs] of [...nodes.entries()].sort((a,b)=>a[0]-b[0])) {
+    const span = document.createElement('span');
+    span.className = 'badge badge-ok';
+    span.style.fontSize = '10px';
+    span.title = [...funcs].join(', ');
+    span.textContent = `Node ${nid}`;
+    nodeMap.appendChild(span);
+  }
+  if (nodes.size === 0) nodeMap.innerHTML = '<span style="color:var(--fg-dim)">No nodes detected</span>';
+}
+
+// ── RE ID selector ────────────────────────────────────────────
+function updateReIdSelect(statsObj) {
+  const sel = $('#re-id-select');
+  const current = sel.value;
+  const ids = Object.keys(statsObj).map(Number).sort((a,b)=>a-b);
+  sel.innerHTML = '<option value="">— select —</option>';
+  for (const id of ids) {
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = `0x${id.toString(16).toUpperCase().padStart(3,'0')} (${statsObj[id].count} msgs)`;
+    sel.appendChild(opt);
+  }
+  if (current && ids.includes(Number(current))) sel.value = current;
+}
+
+// ── Analyze ───────────────────────────────────────────────────
+$('#btn-analyze').addEventListener('click', async () => {
+  const id = $('#re-id-select').value;
+  if (!id) return;
+  $('#re-status').textContent = 'Analyzing...';
+  const data = await getJSON(`${API}/analyze/0x${parseInt(id).toString(16)}`);
+  $('#re-status').textContent = '';
+  if (data.error) { alert(data.error); return; }
+  renderAnalysis(data);
+});
+
+function renderAnalysis(d) {
+  // Summary
+  $('#re-summary').innerHTML = `
+    <table style="border-collapse:collapse;">
+      <tr><td style="padding:2px 12px 2px 0;color:var(--fg-dim)">ID</td><td><strong>${d.hex_id}</strong></td></tr>
+      <tr><td style="padding:2px 12px 2px 0;color:var(--fg-dim)">Messages</td><td>${d.count.toLocaleString()}</td></tr>
+      <tr><td style="padding:2px 12px 2px 0;color:var(--fg-dim)">DLC</td><td>${d.dlc}</td></tr>
+      <tr><td style="padding:2px 12px 2px 0;color:var(--fg-dim)">Period</td><td>${d.period_ms} ms</td></tr>
+      <tr><td style="padding:2px 12px 2px 0;color:var(--fg-dim)">Jitter</td><td>${d.jitter_ms} ms</td></tr>
+      <tr><td style="padding:2px 12px 2px 0;color:var(--fg-dim)">CANopen</td><td>${d.canopen.function||'—'} ${d.canopen.detail||''}</td></tr>
+      <tr><td style="padding:2px 12px 2px 0;color:var(--fg-dim)">Counter bytes</td><td>${d.counter_bytes.length?d.counter_bytes.map(b=>'['+b+']').join(' '):'none detected'}</td></tr>
+      <tr><td style="padding:2px 12px 2px 0;color:var(--fg-dim)">CRC bytes</td><td>${d.crc_bytes.length?d.crc_bytes.map(b=>'['+b+']').join(' '):'none detected'}</td></tr>
+      <tr><td style="padding:2px 12px 2px 0;color:var(--fg-dim)">Samples</td><td>${d.sample_count}</td></tr>
+    </table>`;
+
+  // Byte analysis
+  let byteHtml = '<table style="border-collapse:collapse;width:100%">';
+  byteHtml += '<tr><th style="padding:2px 6px;text-align:left;color:var(--fg-dim)">Byte</th><th>Min</th><th>Max</th><th>Unique</th><th>Type</th></tr>';
+  for (const b of (d.byte_ranges||[])) {
+    let type = b.is_static ? '🔒 Static' : '📊 Dynamic';
+    if (d.counter_bytes.includes(b.byte)) type = '🔢 Counter';
+    if (d.crc_bytes.includes(b.byte)) type = '🔐 CRC';
+    byteHtml += `<tr>
+      <td style="padding:2px 6px;font-weight:700;color:var(--can-blue)">[${b.byte}]</td>
+      <td style="padding:2px 6px">0x${b.min.toString(16).toUpperCase().padStart(2,'0')}</td>
+      <td style="padding:2px 6px">0x${b.max.toString(16).toUpperCase().padStart(2,'0')}</td>
+      <td style="padding:2px 6px">${b.unique}</td>
+      <td style="padding:2px 6px">${type}</td></tr>`;
+  }
+  byteHtml += '</table>';
+  $('#re-bytes').innerHTML = byteHtml;
+
+  // Bit transition heatmap
+  const trans = d.bit_transitions || [];
+  if (trans.length) {
+    const maxT = Math.max(1, ...trans.flat());
+    let html = '<div style="margin-bottom:4px;font-size:10px;color:var(--fg-dim)">Byte \\ Bit: 7 6 5 4 3 2 1 0</div>';
+    for (let b = 0; b < trans.length; b++) {
+      html += `<div style="display:flex;align-items:center;gap:2px;margin-bottom:1px;">
+        <span style="width:28px;text-align:right;color:var(--can-blue);font-size:10px">[${b}]</span>`;
+      // Show bits 7→0 (MSB first)
+      for (let bit = 7; bit >= 0; bit--) {
+        const v = trans[b][bit];
+        const ratio = v / maxT;
+        const cls = ratio < 0.01 ? 'bit-static' : ratio < 0.3 ? 'bit-cool' : ratio < 0.7 ? 'bit-warm' : 'bit-hot';
+        html += `<span class="bit-cell ${cls}" title="Byte ${b} Bit ${bit}: ${v} flips">${v}</span>`;
+      }
+      html += '</div>';
+    }
+    $('#re-bits').innerHTML = html;
+  } else {
+    $('#re-bits').innerHTML = '<span style="color:var(--fg-dim)">No data</span>';
+  }
+
+  // Signals
+  const sigs = d.signals || [];
+  if (sigs.length) {
+    let html = '';
+    for (const s of sigs) {
+      html += `<div class="signal-row">
+        <span style="color:var(--can-blue);font-weight:700">Byte ${s.start_byte} Bit ${s.start_bit}</span>
+        <span>${s.length_bits} bits</span>
+        <span style="color:var(--fg-dim)">${s.transitions} avg transitions</span>
+        <span class="badge ${s.suspected_type==='counter'?'badge-ok':'badge-idle'}">${s.suspected_type}</span>
+      </div>`;
+    }
+    $('#re-signals').innerHTML = html;
+  } else {
+    $('#re-signals').innerHTML = '<span style="color:var(--fg-dim)">Collect more data for signal extraction</span>';
+  }
+}
+
+// ── DBC generation ────────────────────────────────────────────
+$('#btn-gen-dbc').addEventListener('click', async () => {
+  const data = await getJSON(`${API}/dbc`);
+  if (data.dbc) {
+    $('#dbc-output').value = data.dbc;
+    // Switch to show it
+    const reTab = document.querySelector('.tab[data-tab="re"]');
+    reTab.click();
+  }
+});
+
+// ── Send ──────────────────────────────────────────────────────
+$('#btn-send').addEventListener('click', () => sendOnce());
+$('#btn-send-repeat').addEventListener('click', () => startSendRepeat());
+$('#btn-send-stop').addEventListener('click', () => stopSendRepeat());
+
+async function sendOnce() {
+  const body = {
+    arb_id: $('#send-id').value,
+    data: $('#send-data').value,
+    extended: $('#send-ext').checked,
+  };
+  const r = await postJSON(`${API}/send`, body);
+  appendSendLog(r.ok ? `✅ Sent ${body.arb_id} [${body.data}]` : `❌ ${r.error}`);
+}
+
+function startSendRepeat() {
+  const count = parseInt($('#send-repeat').value) || 1;
+  const interval = parseInt($('#send-interval').value) || 100;
+  let sent = 0;
+  $('#btn-send-repeat').disabled = true;
+  $('#btn-send-stop').disabled = false;
+  sendRepeatTimer = setInterval(async () => {
+    if (sent >= count) { stopSendRepeat(); return; }
+    await sendOnce();
+    sent++;
+  }, interval);
+}
+
+function stopSendRepeat() {
+  if (sendRepeatTimer) { clearInterval(sendRepeatTimer); sendRepeatTimer = null; }
+  $('#btn-send-repeat').disabled = false;
+  $('#btn-send-stop').disabled = true;
+}
+
+function appendSendLog(msg) {
+  const log = $('#send-log');
+  const line = document.createElement('div');
+  line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
+}
+
+// ── Saved frames ──────────────────────────────────────────────
+$('#btn-save-frame').addEventListener('click', () => {
+  savedFrames.push({
+    id: $('#send-id').value,
+    data: $('#send-data').value,
+    ext: $('#send-ext').checked,
+    name: `Frame ${savedFrames.length+1}`,
+  });
+  localStorage.setItem('can_saved_frames', JSON.stringify(savedFrames));
+  renderSavedFrames();
+});
+
+function renderSavedFrames() {
+  const div = $('#saved-frames');
+  if (!savedFrames.length) { div.innerHTML = 'No saved frames.'; return; }
+  div.innerHTML = '';
+  for (let i = 0; i < savedFrames.length; i++) {
+    const f = savedFrames[i];
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:6px;align-items:center;padding:2px 0;border-bottom:1px solid var(--bg3)';
+    row.innerHTML = `<span style="color:var(--can-blue)">${f.id}</span>
+      <span style="color:var(--can-green)">${f.data}</span>
+      <button class="btn" style="font-size:10px" data-idx="${i}">📤</button>
+      <button class="btn btn-danger" style="font-size:10px" data-del="${i}">✕</button>`;
+    row.querySelector('[data-idx]').addEventListener('click', () => {
+      $('#send-id').value = f.id;
+      $('#send-data').value = f.data;
+      $('#send-ext').checked = f.ext;
+    });
+    row.querySelector('[data-del]').addEventListener('click', () => {
+      savedFrames.splice(i, 1);
+      localStorage.setItem('can_saved_frames', JSON.stringify(savedFrames));
+      renderSavedFrames();
+    });
+    div.appendChild(row);
+  }
+}
+renderSavedFrames();
+
+// ── Export ─────────────────────────────────────────────────────
+$$('.export-card').forEach(card => card.addEventListener('click', () => {
+  const fmt = card.dataset.fmt;
+  if (fmt === 'dbc') {
+    window.open(`${API}/dbc?download=1`);
+  } else {
+    window.open(`${API}/export/${fmt}?download=1`);
+  }
+}));
+
+// ── Status bar ────────────────────────────────────────────────
+function updateStatusBar(snap) {
+  $('#sb-frames').textContent = (snap.total_frames||0).toLocaleString();
+  $('#sb-ids').textContent = snap.unique_ids || 0;
+  $('#sb-load').textContent = (snap.bus_load_pct||0) + '%';
+  $('#sb-errors').textContent = snap.error_count || 0;
+  const up = snap.uptime_s || 0;
+  $('#sb-uptime').textContent = up < 60 ? `${up}s` : `${Math.floor(up/60)}m ${Math.round(up%60)}s`;
+}
+
+function setConnected(on) {
+  const led = $('#status-led');
+  const badge = $('#conn-badge');
+  const sbState = $('#sb-state');
+  led.className = 'status-led ' + (on ? 'led-on' : 'led-idle');
+  badge.className = 'badge ' + (on ? 'badge-ok' : 'badge-idle');
+  badge.textContent = on ? 'connected' : 'disconnected';
+  sbState.textContent = on ? 'Connected' : 'Disconnected';
+  $('#btn-start').disabled = on;
+  $('#btn-stop').disabled = !on;
+}
+
+// ── Fetch helpers ─────────────────────────────────────────────
+async function getJSON(url) {
+  try { const r = await fetch(url); return r.ok ? await r.json() : null; }
+  catch { return null; }
+}
+async function postJSON(url, body) {
+  try {
+    const r = await fetch(url, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    return r.ok ? await r.json() : {ok:false,error:'HTTP '+r.status};
+  } catch(e) { return {ok:false,error:e.message}; }
+}
+
+// ── Init: check status on load ────────────────────────────────
+(async () => {
+  const st = await getJSON(`${API}/status`);
+  if (st && st.running) {
+    setConnected(true);
+    startPolling();
+  }
+})();
+
+})();
+</script>
+</body>
+</html>

@@ -3,20 +3,27 @@
 Provides two ``ThermalCamera`` implementations:
 
 - **SeekThermalCamera** — real Seek Thermal Compact / CompactPRO / CompactXR
-  via the ``seekcamera`` Python SDK (or ``seek_thermal`` open-source lib)
+  via multiple backends (in priority order):
+    1. **libseek** — pure-Python pyusb driver ported from OpenThermal/libseek-thermal
+    2. **seekcamera** — official Seek Thermal SDK (seekcamera-python + native DLL)
+    3. **seek_thermal** — community pip library
 - **SimulatedThermalCamera** — deterministic synthetic thermal frames for CI
 
 Both share the ``create()`` entry-point factory for the instrument registry.
 
 Hardware info:
-    Seek Thermal Compact      — 206×156 px, 36° FOV, USB-C, <100 mK NETD
+    Seek Thermal Compact      — 207×154 px, 36° FOV, USB-C, <100 mK NETD
     Seek Thermal CompactPRO   — 320×240 px, 32° FOV, USB-C, <70 mK NETD
-    Seek Thermal CompactXR    — 206×156 px, 20° FOV, USB-C, extended range
+    Seek Thermal CompactXR    — 207×154 px, 20° FOV, USB-C, extended range
 
 Temperature calibration:
-    Raw sensor pixel values are converted to °C using the manufacturer's
-    calibration tables.  For the open-source ``seekcamera`` API, the SDK
-    provides the ``thermography_frame`` directly in degrees Celsius.
+    The libseek backend provides raw 14-bit data with an approximate
+    linear °C mapping.  For the ``seekcamera`` SDK, the thermography
+    frame is already in degrees Celsius.
+
+References:
+    - https://github.com/OpenThermal/libseek-thermal
+    - https://developer.thermal.com
 """
 
 from __future__ import annotations
@@ -148,37 +155,73 @@ class SimulatedThermalCamera:
 class SeekThermalCamera:
     """Seek Thermal USB camera (Compact / CompactPRO / CompactXR).
 
-    Requires the ``seekcamera`` Python package (Seek Thermal's official
-    SDK) or the community ``seek_thermal`` library.
+    Supports three backends (tried in priority order):
 
-    Install::
+    1. **libseek** (recommended) — pure-Python driver using ``pyusb``,
+       ported from the OpenThermal/libseek-thermal C++ library::
 
-        pip install seekcamera-python
+           pip install pyusb
 
-    Or for the community library::
+       On Windows, use Zadig to set the Seek Thermal USB interface
+       driver to *libusb-win32* or *WinUSB*.
 
-        pip install seek_thermal
+    2. **seekcamera** — official Seek Thermal SDK::
 
-    The driver will try both in order.
+           pip install seekcamera-python
+           # + install native seekcamera.dll from developer.thermal.com
+
+    3. **seek_thermal** — community pip library::
+
+           pip install seek_thermal
     """
 
     device_index: int = 0
+    camera_type: str = "compact"  # "compact" or "pro"
+    ffc_file: str | None = None
     emissivity: float = 0.95
     reflected_temp_c: float = 23.0
-    _backend: str = ""  # "seekcamera" | "seek_thermal" | ""
+    _backend: str = ""  # "libseek" | "seekcamera" | "seek_thermal" | ""
     _camera: Any = field(default=None, repr=False)
     _manager: Any = field(default=None, repr=False)
     _last_frame: Any = field(default=None, repr=False)
     _frame_available: Any = field(default=None, repr=False)
+    _libseek_cam: Any = field(default=None, repr=False)
 
     def _detect_backend(self) -> str:
-        """Detect which Seek Thermal library is available."""
+        """Detect which Seek Thermal library is available **and functional**."""
+        # ── libseek: pure-Python pyusb driver (preferred) ────────────
         try:
-            import seekcamera  # noqa: F401
+            from pyontrust.instruments.libseek_driver import (
+                LibSeekCamera, detect_camera,
+            )
+            import usb.core  # noqa: F401
+            detected = detect_camera()
+            if detected is not None:
+                logger.info("libseek backend: detected %s camera via USB", detected)
+                return "libseek"
+            # pyusb available but no camera plugged in — fall through
+            logger.debug("libseek: pyusb available but no camera detected on USB")
+        except ImportError:
+            logger.debug("libseek backend not available (pyusb not installed)")
+
+        # ── Official SDK: seekcamera-python ──────────────────────────
+        try:
+            import seekcamera as _skc  # noqa: F401
+            from seekcamera._clib import configure_dll, _cdll
+            if _cdll is None:
+                try:
+                    configure_dll()
+                except (RuntimeError, OSError, FileNotFoundError) as exc:
+                    logger.warning(
+                        "seekcamera Python package found but native SDK "
+                        "runtime missing: %s", exc,
+                    )
+                    raise ImportError(str(exc))
             return "seekcamera"
         except ImportError:
             pass
 
+        # ── Community library: seek_thermal ─────────────────────────
         try:
             import seek_thermal  # noqa: F401
             return "seek_thermal"
@@ -186,15 +229,27 @@ class SeekThermalCamera:
             pass
 
         raise ImportError(
-            "No Seek Thermal library found. Install either:\n"
-            "  pip install seekcamera-python   (official SDK)\n"
-            "  pip install seek_thermal        (community library)"
+            "No Seek Thermal library found. Install ONE of:\n"
+            "\n"
+            "  Option A — libseek (recommended, no native SDK needed):\n"
+            "    pip install pyusb\n"
+            "    (Windows: use Zadig to set Seek USB driver to libusb-win32)\n"
+            "\n"
+            "  Option B — Official SDK:\n"
+            "    1. pip install seekcamera-python\n"
+            "    2. Install the native Seek Thermal SDK runtime from\n"
+            "       https://developer.thermal.com  (seekcamera.dll / libseekcamera.so)\n"
+            "\n"
+            "  Option C — Community library:\n"
+            "    pip install seek_thermal\n"
         )
 
     def open(self) -> None:
         self._backend = self._detect_backend()
 
-        if self._backend == "seekcamera":
+        if self._backend == "libseek":
+            self._open_libseek()
+        elif self._backend == "seekcamera":
             self._open_seekcamera_sdk()
         elif self._backend == "seek_thermal":
             self._open_seek_thermal()
@@ -204,25 +259,62 @@ class SeekThermalCamera:
             self._backend, self.device_index,
         )
 
+    def _open_libseek(self) -> None:
+        """Open via pure-Python libseek driver (pyusb)."""
+        from pyontrust.instruments.libseek_driver import LibSeekCamera, detect_camera
+
+        cam_type = self.camera_type
+        if cam_type not in ("compact", "pro"):
+            # Auto-detect
+            detected = detect_camera()
+            cam_type = detected or "compact"
+
+        self._libseek_cam = LibSeekCamera(
+            camera_type=cam_type,
+            ffc_file=self.ffc_file,
+        )
+        self._libseek_cam.open()
+        self._camera = self._libseek_cam
+
     def _open_seekcamera_sdk(self) -> None:
-        """Open via official Seek Thermal SDK."""
+        """Open via official Seek Thermal SDK (seekcamera-python ≥ 1.1)."""
         import threading
         import seekcamera as skc
 
         self._frame_available = threading.Event()
 
         def _on_frame(camera, camera_frame, _user_data):
-            self._last_frame = camera_frame.thermography_float
+            # Request the thermography float frame (°C per pixel)
+            thermo = camera_frame.data
+            if thermo is not None:
+                import numpy as np
+                self._last_frame = np.array(thermo, dtype=np.float32)
             self._frame_available.set()
 
-        def _on_connect(manager, event, status, camera, _user_data):
-            if event == skc.CameraEvent.CONNECT:
-                camera.color_palette = skc.ColorPalette.TYRIAN
-                camera.thermography_enabled = True
-                camera.register_frame_available_callback(_on_frame)
+        def _on_event(manager, event, status, camera, _user_data):
+            if event == skc.SeekCameraManagerEvent.CONNECT:
+                camera.color_palette = skc.SeekCameraColorPalette.TYRIAN
+                camera.temperature_unit = skc.SeekCameraTemperatureUnit.CELSIUS
+                camera.scene_emissivity = self.emissivity
+                camera.register_frame_available_callback(
+                    _on_frame, None,
+                )
+                camera.capture_session_start(
+                    skc.SeekCameraFrameFormat.THERMOGRAPHY_FLOAT,
+                )
+                self._camera = camera
+                logger.info(
+                    "Seek camera connected: SN=%s",
+                    camera.serial_number,
+                )
+            elif event == skc.SeekCameraManagerEvent.DISCONNECT:
+                logger.warning("Seek camera disconnected")
+                self._camera = None
 
-        self._manager = skc.CameraManager()
-        self._manager.register_event_callback(_on_connect)
+        self._manager = skc.SeekCameraManager(
+            skc.SeekCameraIOType.USB,
+        )
+        self._manager.register_event_callback(_on_event, None)
 
     def _open_seek_thermal(self) -> None:
         """Open via community seek_thermal library."""
@@ -241,14 +333,33 @@ class SeekThermalCamera:
         )
 
     def close(self) -> None:
-        if self._backend == "seek_thermal" and self._camera is not None:
+        if self._backend == "libseek":
+            if self._libseek_cam is not None:
+                try:
+                    self._libseek_cam.close()
+                except Exception:
+                    pass
+                self._libseek_cam = None
+                self._camera = None
+        elif self._backend == "seek_thermal" and self._camera is not None:
             try:
                 self._camera.close()
             except Exception:
                 pass
             self._camera = None
-        elif self._backend == "seekcamera" and self._manager is not None:
-            self._manager = None
+        elif self._backend == "seekcamera":
+            if self._camera is not None:
+                try:
+                    self._camera.capture_session_stop()
+                except Exception:
+                    pass
+                self._camera = None
+            if self._manager is not None:
+                try:
+                    self._manager.destroy()
+                except Exception:
+                    pass
+                self._manager = None
 
         logger.info("SeekThermalCamera closed.")
 
@@ -268,11 +379,17 @@ class SeekThermalCamera:
         """Grab raw thermal frame (uint16 or float32 depending on backend)."""
         import numpy as np
 
+        if self._backend == "libseek":
+            if self._libseek_cam is None:
+                raise RuntimeError("Camera not open.")
+            return self._libseek_cam.grab()
+
         if self._backend == "seekcamera":
             if self._frame_available is None:
                 raise RuntimeError("Camera not open.")
-            self._frame_available.wait(timeout=5.0)
             self._frame_available.clear()
+            if not self._frame_available.wait(timeout=5.0):
+                raise RuntimeError("Timeout waiting for Seek Thermal frame (5s).")
             if self._last_frame is None:
                 raise RuntimeError("No frame received from Seek camera.")
             return np.array(self._last_frame, dtype=np.float32)
@@ -288,6 +405,11 @@ class SeekThermalCamera:
     def grab_temperature_frame(self) -> Any:
         """Grab radiometric frame — float32 temperatures in °C."""
         import numpy as np
+
+        if self._backend == "libseek":
+            if self._libseek_cam is None:
+                raise RuntimeError("Camera not open.")
+            return self._libseek_cam.grab_temperature_frame()
 
         raw = self.grab_frame()
 
@@ -307,8 +429,27 @@ class SeekThermalCamera:
 
     def info(self) -> ThermalCameraInfo:
         model = "Seek Thermal"
-        resolution = (206, 156)
-        if self._backend == "seek_thermal" and self._camera is not None:
+        serial = ""
+        resolution = (207, 154)
+
+        if self._backend == "libseek" and self._libseek_cam is not None:
+            w, h = self._libseek_cam.resolution
+            resolution = (w, h)
+            cam_type = self._libseek_cam.camera_type
+            if cam_type in ("pro", "compactpro", "compact_pro"):
+                model = "Seek Thermal CompactPRO (libseek)"
+            else:
+                model = "Seek Thermal Compact (libseek)"
+            serial = "libseek-usb"
+        elif self._backend == "seekcamera" and self._camera is not None:
+            try:
+                serial = str(self._camera.serial_number)
+                cpn = str(self._camera.core_part_number)
+                if cpn:
+                    model = f"Seek Thermal ({cpn})"
+            except Exception:
+                pass
+        elif self._backend == "seek_thermal" and self._camera is not None:
             try:
                 w = getattr(self._camera, "width", 206)
                 h = getattr(self._camera, "height", 156)
@@ -318,7 +459,7 @@ class SeekThermalCamera:
 
         return ThermalCameraInfo(
             model=model,
-            serial="",
+            serial=serial,
             vendor="Seek Thermal",
             resolution=resolution,
             fpa_type="VOx micro-bolometer",
@@ -339,6 +480,8 @@ def create(config: dict[str, Any]) -> SimulatedThermalCamera | SeekThermalCamera
     Config keys:
         mode: "simulated" (default) or "seek"
         device_index: Seek camera device index (default 0)
+        camera_type: "compact" (default) or "pro"
+        ffc_file: Path to flat-field calibration PNG (default None)
         emissivity: Surface emissivity (default 0.95)
         reflected_temp_c: Reflected temperature for radiometric correction (default 23.0)
         base_temp_c: Base temperature for simulated camera (default 25.0)
@@ -350,6 +493,8 @@ def create(config: dict[str, Any]) -> SimulatedThermalCamera | SeekThermalCamera
     if mode == "seek":
         return SeekThermalCamera(
             device_index=int(config.get("device_index", 0)),
+            camera_type=str(config.get("camera_type", "compact")),
+            ffc_file=config.get("ffc_file"),
             emissivity=float(config.get("emissivity", 0.95)),
             reflected_temp_c=float(config.get("reflected_temp_c", 23.0)),
         )

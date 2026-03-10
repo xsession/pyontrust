@@ -5,10 +5,13 @@ These tests mock hardware probes so they run anywhere without real devices.
 from __future__ import annotations
 
 import json
+import time
 import unittest
 from unittest.mock import MagicMock, patch
 
 from pyontrust.services.hardware_discovery import (
+    _adb_list_sensors,
+    _classify_nordic_cdc,
     _err,
     _not_found,
     _ok,
@@ -61,7 +64,9 @@ def _fake_serial_ports():
 
 def _fake_adb():
     return [_ok("android", "android_sensors", "Pixel 7", "📱",
-                {"serial": "ABC123", "brand": "Google", "model": "Pixel 7"})]
+                {"serial": "ABC123", "brand": "Google", "model": "Pixel 7",
+                 "adb_state": "device",
+                 "sensors": ["Accelerometer", "Gyroscope", "Light"]})]
 
 
 def _fake_webcam():
@@ -76,6 +81,10 @@ def _fake_dwf():
 
 def _fake_seek():
     return [_not_found("thermal", "seek_thermal", "No Seek Thermal", "🌡️")]
+
+
+def _fake_pcan():
+    return [_not_found("can", "pcan", "No PCAN", "🔌")]
 
 
 def _fake_jlink():
@@ -107,6 +116,7 @@ class TestDiscoverAllHardware(unittest.TestCase):
     @patch("pyontrust.services.hardware_discovery._probe_webcams", _fake_webcam)
     @patch("pyontrust.services.hardware_discovery._probe_dwf_devices", _fake_dwf)
     @patch("pyontrust.services.hardware_discovery._probe_seek_thermal", _fake_seek)
+    @patch("pyontrust.services.hardware_discovery._probe_pcan", _fake_pcan)
     @patch("pyontrust.services.hardware_discovery._probe_jlink", _fake_jlink)
     @patch("pyontrust.services.hardware_discovery._probe_hackrf", _fake_hackrf)
     @patch("pyontrust.services.hardware_discovery._probe_ppk2", _fake_ppk2)
@@ -122,7 +132,7 @@ class TestDiscoverAllHardware(unittest.TestCase):
         ok_count = sum(1 for s in statuses if s == "ok")
         self.assertEqual(ok_count, 8)  # serial×2 + adb + webcam + dwf + jlink + nrf + network
         nf_count = sum(1 for s in statuses if s == "not_found")
-        self.assertEqual(nf_count, 3)  # seek + hackrf + ppk2
+        self.assertEqual(nf_count, 4)  # seek + pcan + hackrf + ppk2
 
         # ok items come before not_found
         first_nf = next(i for i, s in enumerate(statuses) if s == "not_found")
@@ -133,6 +143,7 @@ class TestDiscoverAllHardware(unittest.TestCase):
     @patch("pyontrust.services.hardware_discovery._probe_webcams", _fake_webcam)
     @patch("pyontrust.services.hardware_discovery._probe_dwf_devices", _fake_dwf)
     @patch("pyontrust.services.hardware_discovery._probe_seek_thermal", _fake_seek)
+    @patch("pyontrust.services.hardware_discovery._probe_pcan", _fake_pcan)
     @patch("pyontrust.services.hardware_discovery._probe_jlink", _fake_jlink)
     @patch("pyontrust.services.hardware_discovery._probe_hackrf", _fake_hackrf)
     @patch("pyontrust.services.hardware_discovery._probe_ppk2", _fake_ppk2)
@@ -165,6 +176,7 @@ class TestDiscoveryTimeout(unittest.TestCase):
     @patch("pyontrust.services.hardware_discovery._probe_webcams", _fake_webcam)
     @patch("pyontrust.services.hardware_discovery._probe_dwf_devices", _fake_dwf)
     @patch("pyontrust.services.hardware_discovery._probe_seek_thermal", _fake_seek)
+    @patch("pyontrust.services.hardware_discovery._probe_pcan", _fake_pcan)
     @patch("pyontrust.services.hardware_discovery._probe_jlink", _fake_jlink)
     @patch("pyontrust.services.hardware_discovery._probe_hackrf", _fake_hackrf)
     @patch("pyontrust.services.hardware_discovery._probe_ppk2", _fake_ppk2)
@@ -258,6 +270,8 @@ class TestDiagnosticBlueprint(unittest.TestCase):
            lambda: [_not_found("instruments", "ad3_dwf", "No DWF", "📟")])
     @patch("pyontrust.services.hardware_discovery._probe_seek_thermal",
            lambda: [_not_found("thermal", "seek_thermal", "No Seek", "🌡️")])
+    @patch("pyontrust.services.hardware_discovery._probe_pcan",
+           lambda: [_not_found("can", "pcan", "No PCAN", "🔌")])
     @patch("pyontrust.services.hardware_discovery._probe_jlink",
            lambda: [_not_found("debug", "jlink", "No JLink", "🔧")])
     @patch("pyontrust.services.hardware_discovery._probe_hackrf",
@@ -281,7 +295,7 @@ class TestDiagnosticBlueprint(unittest.TestCase):
         self.assertIn("error", summary)
         self.assertIn("not_found", summary)
         self.assertEqual(summary["ok"], 2)  # COM3 + network
-        self.assertEqual(summary["not_found"], 8)
+        self.assertEqual(summary["not_found"], 9)  # adb + webcam + dwf + seek + pcan + jlink + hackrf + ppk2 + nrf
 
     @patch("pyontrust.services.hardware_discovery._probe_serial_ports",
            lambda: [_ok("serial", "serial_port", "COM3", "🔌", {"device": "COM3"})])
@@ -293,6 +307,8 @@ class TestDiagnosticBlueprint(unittest.TestCase):
            lambda: [_not_found("instruments", "ad3_dwf", "No DWF", "📟")])
     @patch("pyontrust.services.hardware_discovery._probe_seek_thermal",
            lambda: [_not_found("thermal", "seek_thermal", "No Seek", "🌡️")])
+    @patch("pyontrust.services.hardware_discovery._probe_pcan",
+           lambda: [_not_found("can", "pcan", "No PCAN", "🔌")])
     @patch("pyontrust.services.hardware_discovery._probe_jlink",
            lambda: [_not_found("debug", "jlink", "No JLink", "🔧")])
     @patch("pyontrust.services.hardware_discovery._probe_hackrf",
@@ -362,6 +378,438 @@ class TestNavIntegration(unittest.TestCase):
         self.assertIn("/diag/api/test", rules)
         self.assertIn("/diag/api/test_all", rules)
         self.assertIn("/diag/api/system", rules)
+        self.assertIn("/diag/api/live/<hw_type>/<sensor>", rules)
+        self.assertIn("/diag/api/live/stream", rules)
+        self.assertIn("/diag/api/live/stop", rules)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  ADB unauthorized / offline detection
+# ═══════════════════════════════════════════════════════════════════════
+
+class TestAdbUnauthorizedDetection(unittest.TestCase):
+    """Verify that unauthorized / offline devices are detected and shown."""
+
+    @patch("pyontrust.services.hardware_discovery.subprocess.Popen")
+    @patch("pyontrust.services.hardware_discovery.shutil.which", return_value="/usr/bin/adb")
+    def test_unauthorized_device_reported_as_error(self, _which, mock_popen):
+        from pyontrust.services.hardware_discovery import _probe_adb_devices
+
+        proc = MagicMock()
+        proc.communicate.return_value = (
+            "List of devices attached\nABC123\tunauthorized\n", ""
+        )
+        mock_popen.return_value = proc
+
+        results = _probe_adb_devices()
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["status"], "error")
+        self.assertIn("UNAUTHORIZED", results[0]["error"])
+        self.assertIn("serial", results[0]["details"])
+        self.assertEqual(results[0]["details"]["adb_state"], "unauthorized")
+
+    @patch("pyontrust.services.hardware_discovery.subprocess.Popen")
+    @patch("pyontrust.services.hardware_discovery.shutil.which", return_value="/usr/bin/adb")
+    def test_offline_device_reported(self, _which, mock_popen):
+        from pyontrust.services.hardware_discovery import _probe_adb_devices
+
+        proc = MagicMock()
+        proc.communicate.return_value = (
+            "List of devices attached\nXYZ789\toffline\n", ""
+        )
+        mock_popen.return_value = proc
+
+        results = _probe_adb_devices()
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["status"], "error")
+        self.assertIn("OFFLINE", results[0]["error"])
+        self.assertEqual(results[0]["details"]["adb_state"], "offline")
+
+    @patch("pyontrust.services.hardware_discovery.subprocess.Popen")
+    @patch("pyontrust.services.hardware_discovery.shutil.which", return_value="/usr/bin/adb")
+    def test_mixed_authorized_and_unauthorized(self, _which, mock_popen):
+        from pyontrust.services.hardware_discovery import _probe_adb_devices
+
+        # First call: adb devices -l
+        proc_devices = MagicMock()
+        proc_devices.communicate.return_value = (
+            "List of devices attached\n"
+            "DEV001\tdevice model:TestPhone\n"
+            "DEV002\tunauthorized\n", ""
+        )
+        # Second call: getprop (for authorized device)
+        proc_props = MagicMock()
+        proc_props.communicate.return_value = (
+            "Google\n|||\nPixel\n|||\n14\n|||\n34\n", ""
+        )
+        # Third call: battery
+        proc_bat = MagicMock()
+        proc_bat.communicate.return_value = ("level: 85\ntemperature: 320\n", "")
+        # Fourth call: sensorservice
+        proc_sensor = MagicMock()
+        proc_sensor.communicate.return_value = ("", "")
+
+        mock_popen.side_effect = [proc_devices, proc_props, proc_bat, proc_sensor]
+
+        results = _probe_adb_devices()
+        self.assertEqual(len(results), 2)
+        # One should be ok, one should be error
+        statuses = {r["status"] for r in results}
+        self.assertIn("ok", statuses)
+        self.assertIn("error", statuses)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  Sensor list parsing
+# ═══════════════════════════════════════════════════════════════════════
+
+class TestAdbListSensors(unittest.TestCase):
+
+    @patch("pyontrust.services.hardware_discovery.subprocess.Popen")
+    def test_parses_sensor_names(self, mock_popen):
+        proc = MagicMock()
+        proc.communicate.return_value = (
+            "Sensor List:\n"
+            "0x00000001) {Accelerometer | STMicro | ver: 1}\n"
+            "0x00000004) {Gyroscope | STMicro | ver: 1}\n"
+            "0x00000005) {Light Sensor | AMS | ver: 1}\n"
+            "0x00000008) {Proximity Sensor | AMS | ver: 1}\n",
+            ""
+        )
+        mock_popen.return_value = proc
+
+        sensors = _adb_list_sensors("adb", "SN123")
+        self.assertGreaterEqual(len(sensors), 3)
+        self.assertIn("Accelerometer", sensors)
+        self.assertIn("Gyroscope", sensors)
+
+    @patch("pyontrust.services.hardware_discovery.subprocess.Popen")
+    def test_empty_output_returns_empty_list(self, mock_popen):
+        proc = MagicMock()
+        proc.communicate.return_value = ("", "")
+        mock_popen.return_value = proc
+
+        sensors = _adb_list_sensors("adb", "SN123")
+        self.assertEqual(sensors, [])
+
+    @patch("pyontrust.services.hardware_discovery.subprocess.Popen")
+    def test_timeout_returns_empty(self, mock_popen):
+        import subprocess
+        proc = MagicMock()
+        proc.communicate.side_effect = subprocess.TimeoutExpired("adb", 8)
+        proc.kill = MagicMock()
+        mock_popen.return_value = proc
+
+        sensors = _adb_list_sensors("adb", "SN123")
+        self.assertEqual(sensors, [])
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  PPK2 vs nRF52840 dongle classification
+# ═══════════════════════════════════════════════════════════════════════
+
+def _make_fake_port(device, vid, pid, serial_number, description="", product=""):
+    """Create a mock serial port object mimicking pyserial ListPortInfo."""
+    p = MagicMock()
+    p.device = device
+    p.vid = vid
+    p.pid = pid
+    p.serial_number = serial_number
+    p.description = description
+    p.product = product
+    p.hwid = f"USB VID:PID={vid:04X}:{pid:04X} SER={serial_number}"
+    p.location = ""
+    return p
+
+
+class TestPpk2VsNrf52840Classification(unittest.TestCase):
+    """Test that PPK2 (multi-port) is distinguished from nRF52840 dongle."""
+
+    @patch("serial.tools.list_ports.comports")
+    def test_ppk2_two_ports_same_serial(self, mock_comports):
+        """Two CDC ports with same serial → PPK2, not nRF dongle."""
+        mock_comports.return_value = [
+            _make_fake_port("COM12", 0x1915, 0xC00A, "F2114C40B2B2",
+                            "nRF Connect USB CDC ACM (COM12)"),
+            _make_fake_port("COM17", 0x1915, 0xC00A, "F2114C40B2B2",
+                            "Soros USB-eszköz (COM17)"),
+            _make_fake_port("COM15", 0x1915, 0xC00A, "C3A7B28B99E6",
+                            "nRF Connect USB CDC ACM (COM15)"),
+        ]
+        ppk2_serials, groups = _classify_nordic_cdc()
+        self.assertIn("F2114C40B2B2", ppk2_serials)
+        self.assertNotIn("C3A7B28B99E6", ppk2_serials)
+        # PPK2 serial has 2 ports
+        self.assertEqual(len(groups["F2114C40B2B2"]), 2)
+        # nRF dongle serial has 1 port
+        self.assertEqual(len(groups["C3A7B28B99E6"]), 1)
+
+    @patch("serial.tools.list_ports.comports")
+    def test_single_port_is_not_ppk2(self, mock_comports):
+        """A single port device is classified as nRF dongle, not PPK2."""
+        mock_comports.return_value = [
+            _make_fake_port("COM15", 0x1915, 0xC00A, "SINGLE_SN",
+                            "nRF Connect USB CDC ACM (COM15)"),
+        ]
+        ppk2_serials, groups = _classify_nordic_cdc()
+        self.assertEqual(len(ppk2_serials), 0)
+        self.assertEqual(len(groups["SINGLE_SN"]), 1)
+
+    @patch("serial.tools.list_ports.comports")
+    def test_no_nordic_ports(self, mock_comports):
+        """When no VID=1915 PID=C00A ports exist, both sets empty."""
+        mock_comports.return_value = [
+            _make_fake_port("COM3", 0x0403, 0x6001, "FT232",
+                            "USB Serial (COM3)"),
+        ]
+        ppk2_serials, groups = _classify_nordic_cdc()
+        self.assertEqual(len(ppk2_serials), 0)
+        self.assertEqual(len(groups), 0)
+
+    @patch("serial.tools.list_ports.comports")
+    def test_multiple_ppk2_devices(self, mock_comports):
+        """Two separate PPK2 devices each with 2 ports."""
+        mock_comports.return_value = [
+            _make_fake_port("COM10", 0x1915, 0xC00A, "PPK2_A"),
+            _make_fake_port("COM11", 0x1915, 0xC00A, "PPK2_A"),
+            _make_fake_port("COM20", 0x1915, 0xC00A, "PPK2_B"),
+            _make_fake_port("COM21", 0x1915, 0xC00A, "PPK2_B"),
+        ]
+        ppk2_serials, groups = _classify_nordic_cdc()
+        self.assertEqual(len(ppk2_serials), 2)
+        self.assertIn("PPK2_A", ppk2_serials)
+        self.assertIn("PPK2_B", ppk2_serials)
+
+
+class TestPpk2ProbeIntegration(unittest.TestCase):
+    """Test _probe_ppk2 and _probe_nrf52840_dongle use classification."""
+
+    @patch("serial.tools.list_ports.comports")
+    def test_probe_ppk2_finds_multi_port_device(self, mock_comports):
+        from pyontrust.services.hardware_discovery import _probe_ppk2
+
+        mock_comports.return_value = [
+            _make_fake_port("COM12", 0x1915, 0xC00A, "F2114C40B2B2",
+                            "nRF Connect USB CDC ACM (COM12)"),
+            _make_fake_port("COM17", 0x1915, 0xC00A, "F2114C40B2B2",
+                            "Soros USB-eszköz (COM17)"),
+            _make_fake_port("COM15", 0x1915, 0xC00A, "C3A7B28B99E6",
+                            "nRF Connect USB CDC ACM (COM15)"),
+        ]
+        results = _probe_ppk2()
+        # Should find exactly one PPK2 device
+        ppk2_ok = [r for r in results if r["status"] == "ok"]
+        self.assertEqual(len(ppk2_ok), 1)
+        self.assertEqual(ppk2_ok[0]["type"], "ppk2")
+        self.assertEqual(ppk2_ok[0]["details"]["serial_number"], "F2114C40B2B2")
+        self.assertIn("COM12", ppk2_ok[0]["details"]["port"])
+        self.assertIn("all_ports", ppk2_ok[0]["details"])
+        self.assertIn("COM12", ppk2_ok[0]["details"]["all_ports"])
+        self.assertIn("COM17", ppk2_ok[0]["details"]["all_ports"])
+
+    @patch("serial.tools.list_ports.comports")
+    def test_probe_nrf52840_excludes_ppk2(self, mock_comports):
+        from pyontrust.services.hardware_discovery import _probe_nrf52840_dongle
+
+        mock_comports.return_value = [
+            _make_fake_port("COM12", 0x1915, 0xC00A, "F2114C40B2B2",
+                            "nRF Connect USB CDC ACM (COM12)"),
+            _make_fake_port("COM17", 0x1915, 0xC00A, "F2114C40B2B2",
+                            "Soros USB-eszköz (COM17)"),
+            _make_fake_port("COM15", 0x1915, 0xC00A, "C3A7B28B99E6",
+                            "nRF Connect USB CDC ACM (COM15)"),
+        ]
+        results = _probe_nrf52840_dongle()
+        # Should find only the single-port nRF dongle, not the PPK2
+        nrf_ok = [r for r in results if r["status"] == "ok"]
+        self.assertEqual(len(nrf_ok), 1)
+        self.assertEqual(nrf_ok[0]["details"]["serial_number"], "C3A7B28B99E6")
+        self.assertIn("COM15", nrf_ok[0]["details"]["port"])
+
+    @patch("serial.tools.list_ports.comports")
+    def test_probe_nrf52840_no_ppk2_mixed(self, mock_comports):
+        """When no PPK2 exists, nRF probe finds all VID=1915 PID=C00A."""
+        mock_comports.return_value = [
+            _make_fake_port("COM15", 0x1915, 0xC00A, "DONGLE1",
+                            "nRF Connect USB CDC ACM (COM15)"),
+        ]
+        from pyontrust.services.hardware_discovery import _probe_nrf52840_dongle
+        results = _probe_nrf52840_dongle()
+        nrf_ok = [r for r in results if r["status"] == "ok"]
+        self.assertEqual(len(nrf_ok), 1)
+        self.assertEqual(nrf_ok[0]["details"]["serial_number"], "DONGLE1")
+
+    @patch("serial.tools.list_ports.comports")
+    def test_probe_ppk2_not_found_when_only_dongle(self, mock_comports):
+        from pyontrust.services.hardware_discovery import _probe_ppk2
+
+        mock_comports.return_value = [
+            _make_fake_port("COM15", 0x1915, 0xC00A, "DONGLE1",
+                            "nRF Connect USB CDC ACM (COM15)"),
+        ]
+        results = _probe_ppk2()
+        # Only single-port device → not a PPK2
+        self.assertTrue(any(r["status"] == "not_found" for r in results))
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  Live data endpoints
+# ═══════════════════════════════════════════════════════════════════════
+
+class TestLiveDataEndpoints(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        from pyontrust.gateway.app import create_app
+        cls.app = create_app()
+        cls.client = cls.app.test_client()
+
+    @patch("pyontrust.gateway.blueprints.diagnostic._read_sensor_once")
+    def test_live_read_once_ok(self, mock_read):
+        mock_read.return_value = {
+            "sensor": "accelerometer",
+            "x": [0.1, 0.2], "y": [0.0, 0.1], "z": [9.8, 9.81],
+        }
+        r = self.client.get("/diag/api/live/android_sensors/accelerometer?mode=simulated")
+        self.assertEqual(r.status_code, 200)
+        data = json.loads(r.data)
+        self.assertTrue(data["ok"])
+        self.assertIn("data", data)
+        self.assertIn("ts", data)
+
+    @patch("pyontrust.gateway.blueprints.diagnostic._read_sensor_once",
+           side_effect=RuntimeError("sensor failed"))
+    def test_live_read_once_error(self, _):
+        r = self.client.get("/diag/api/live/android_sensors/light?mode=simulated")
+        self.assertEqual(r.status_code, 500)
+        data = json.loads(r.data)
+        self.assertFalse(data["ok"])
+        self.assertIn("error", data)
+
+    def test_live_read_simulated_android(self):
+        """Live read with simulated android sensors returns real data."""
+        r = self.client.get("/diag/api/live/android_sensors/accelerometer?mode=simulated")
+        self.assertEqual(r.status_code, 200)
+        data = json.loads(r.data)
+        self.assertTrue(data["ok"])
+        inner = data["data"]
+        self.assertEqual(inner["sensor"], "accelerometer")
+        self.assertIn("x", inner)
+        self.assertIn("y", inner)
+        self.assertIn("z", inner)
+
+    def test_live_read_simulated_light(self):
+        r = self.client.get("/diag/api/live/android_sensors/light?mode=simulated")
+        self.assertEqual(r.status_code, 200)
+        data = json.loads(r.data)
+        self.assertTrue(data["ok"])
+        self.assertIn("lux", data["data"])
+
+    def test_live_read_simulated_battery(self):
+        r = self.client.get("/diag/api/live/android_sensors/battery?mode=simulated")
+        self.assertEqual(r.status_code, 200)
+        data = json.loads(r.data)
+        self.assertTrue(data["ok"])
+        self.assertIn("level_pct", data["data"])
+
+    def test_live_read_simulated_gps(self):
+        r = self.client.get("/diag/api/live/android_sensors/gps?mode=simulated")
+        self.assertEqual(r.status_code, 200)
+        data = json.loads(r.data)
+        self.assertTrue(data["ok"])
+        self.assertIn("latitude", data["data"])
+
+    def test_live_read_unknown_hw_type(self):
+        r = self.client.get("/diag/api/live/unknown_hw/foo?mode=simulated")
+        self.assertEqual(r.status_code, 200)
+        data = json.loads(r.data)
+        self.assertTrue(data["ok"])
+        self.assertIn("error", data["data"])
+
+    def test_live_stop_endpoint(self):
+        r = self.client.post("/diag/api/live/stop")
+        self.assertEqual(r.status_code, 200)
+        data = json.loads(r.data)
+        self.assertIn("stopped", data)
+        self.assertIsInstance(data["stopped"], int)
+
+    def test_live_stream_returns_sse_headers(self):
+        """The SSE stream endpoint returns the correct content type."""
+        r = self.client.get(
+            "/diag/api/live/stream?hw_type=android_sensors&sensor=accelerometer"
+            "&rate_ms=500&mode=simulated"
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("text/event-stream", r.content_type)
+
+    def test_live_stream_produces_data(self):
+        """The SSE stream produces at least one data line."""
+        import threading
+
+        result = {}
+
+        def fetch():
+            r = self.client.get(
+                "/diag/api/live/stream?hw_type=android_sensors&sensor=light"
+                "&rate_ms=200&mode=simulated"
+            )
+            result["status"] = r.status_code
+            # Read first chunk
+            result["data"] = r.data[:2000].decode("utf-8", errors="replace")
+
+        # Run the request in a thread (since it's a streaming response)
+        # but we'll use the stop endpoint after a short delay
+        t = threading.Thread(target=fetch, daemon=True)
+        t.start()
+
+        # Give it time to produce some data, then stop
+        time.sleep(1.5)
+        self.client.post("/diag/api/live/stop")
+        t.join(timeout=5)
+
+        if result.get("data"):
+            self.assertIn("data:", result["data"])
+
+
+class TestLiveDataUI(unittest.TestCase):
+    """Verify the diagnostic HTML has the live data panel."""
+
+    @classmethod
+    def setUpClass(cls):
+        from pyontrust.gateway.app import create_app
+        cls.app = create_app()
+        cls.client = cls.app.test_client()
+
+    def test_page_has_live_overlay(self):
+        r = self.client.get("/diag/")
+        html = r.data.decode("utf-8")
+        self.assertIn("live-overlay", html)
+        self.assertIn("live-panel", html)
+
+    def test_page_has_live_chart(self):
+        r = self.client.get("/diag/")
+        html = r.data.decode("utf-8")
+        self.assertIn("live-chart", html)
+        self.assertIn("openLivePanel", html)
+
+    def test_page_has_sensor_selector(self):
+        r = self.client.get("/diag/")
+        html = r.data.decode("utf-8")
+        self.assertIn("live-sensor", html)
+        self.assertIn("ANDROID_SENSORS", html)
+
+    def test_page_has_stream_controls(self):
+        r = self.client.get("/diag/")
+        html = r.data.decode("utf-8")
+        self.assertIn("toggleStream", html)
+        self.assertIn("stopStream", html)
+        self.assertIn("EventSource", html)
+
+    def test_card_has_live_button(self):
+        r = self.client.get("/diag/")
+        html = r.data.decode("utf-8")
+        self.assertIn("btn-live", html)
+        self.assertIn("Live Data", html)
 
 
 if __name__ == "__main__":

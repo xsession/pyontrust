@@ -416,6 +416,16 @@
       params: {prefix:{type:'text',default:'LOG'}, level:{type:'select',default:'info',options:['info','warning','error','debug']}},
       hint: 'Log pass-through node' },
 
+    { cat: 'I/O', type: 'live_video', label: 'Live Video', icon: '📹', colour: '#f9e2af',
+      inputs: [], outputs: [{name:'frame', dtype:'any'}],
+      params: {camera_index:{type:'slider',default:0,min:0,max:4,step:1}, width:{type:'slider',default:320,min:160,max:1280,step:160}, height:{type:'slider',default:240,min:120,max:960,step:120}},
+      hint: 'Capture webcam frame (rendered in node)' },
+
+    { cat: 'I/O', type: 'waterfall_display', label: 'Waterfall', icon: '🌊', colour: '#f9e2af',
+      inputs: [{name:'spectrum', dtype:'any'}], outputs: [],
+      params: {title:{type:'text',default:'Waterfall'}, history_rows:{type:'slider',default:32,min:8,max:128,step:8}, colorscale:{type:'select',default:'Inferno',options:['Inferno','Viridis','Plasma','Hot','Jet','Blues']}},
+      hint: 'Waterfall / spectrogram display from FFT data' },
+
     { cat: 'I/O', type: 'assert_check', label: 'Assert', icon: '✓', colour: '#f9e2af',
       inputs: [{name:'condition', dtype:'bool'}], outputs: [{name:'pass', dtype:'bool'}],
       params: {message:{type:'text',default:'Assertion failed!'}, fail_action:{type:'select',default:'log',options:['log','stop','ignore']}},
@@ -503,6 +513,40 @@
       inputs: [{name:'trigger', dtype:'any'}], outputs: [{name:'elapsed_s', dtype:'number'}],
       params: {label:{type:'text',default:'operation'}},
       hint: 'Measure elapsed time' },
+
+    // ═══════════════════════════════════════════════════════════
+    // CAN BUS — CAN communication & analysis
+    // ═══════════════════════════════════════════════════════════
+
+    { cat: 'CAN Bus', type: 'can_send', label: 'CAN Send', icon: '🔌', colour: '#a6e3a1',
+      inputs: [{name:'arb_id', dtype:'number'}, {name:'data', dtype:'string'}],
+      outputs: [{name:'sent', dtype:'bool'}],
+      params: {interface:{type:'select',default:'virtual',options:['pcan','socketcan','vector','kvaser','ixxat','virtual']}, channel:{type:'text',default:'PCAN_USBBUS1'}, bitrate:{type:'select',default:'500000',options:['125000','250000','500000','1000000']}, arb_id:{type:'text',default:'0x100'}, data:{type:'text',default:'DEADBEEF'}, extended:{type:'checkbox',default:false}},
+      hint: 'Send a CAN frame' },
+
+    { cat: 'CAN Bus', type: 'can_receive', label: 'CAN Receive', icon: '📡', colour: '#a6e3a1',
+      inputs: [],
+      outputs: [{name:'messages', dtype:'array'}, {name:'stats', dtype:'array'}, {name:'n_frames', dtype:'number'}],
+      params: {interface:{type:'select',default:'virtual',options:['pcan','socketcan','vector','kvaser','ixxat','virtual']}, channel:{type:'text',default:'PCAN_USBBUS1'}, bitrate:{type:'select',default:'500000',options:['125000','250000','500000','1000000']}, duration_s:{type:'slider',default:2,min:0.5,max:30,step:0.5}, id_filter:{type:'text',default:''}},
+      hint: 'Capture CAN frames for a duration' },
+
+    { cat: 'CAN Bus', type: 'can_decode', label: 'CAN Decode', icon: '🔍', colour: '#a6e3a1',
+      inputs: [{name:'messages', dtype:'array'}],
+      outputs: [{name:'decoded', dtype:'array'}],
+      params: {},
+      hint: 'Decode CAN frames (CANopen, DBC signals)' },
+
+    { cat: 'CAN Bus', type: 'can_analyze', label: 'CAN Analyze', icon: '🧪', colour: '#a6e3a1',
+      inputs: [{name:'arb_id', dtype:'number'}],
+      outputs: [{name:'analysis', dtype:'object'}],
+      params: {interface:{type:'select',default:'virtual',options:['pcan','socketcan','vector','kvaser','ixxat','virtual']}, channel:{type:'text',default:'PCAN_USBBUS1'}, bitrate:{type:'select',default:'500000',options:['125000','250000','500000','1000000']}, arb_id:{type:'text',default:'0x100'}, duration_s:{type:'slider',default:5,min:1,max:60,step:1}},
+      hint: 'Deep RE analysis: counters, CRCs, bit transitions, signals' },
+
+    { cat: 'CAN Bus', type: 'can_replay', label: 'CAN Replay', icon: '⏪', colour: '#a6e3a1',
+      inputs: [{name:'messages', dtype:'array'}],
+      outputs: [{name:'replayed', dtype:'number'}],
+      params: {interface:{type:'select',default:'virtual',options:['pcan','socketcan','vector','kvaser','ixxat','virtual']}, channel:{type:'text',default:'PCAN_USBBUS1'}, bitrate:{type:'select',default:'500000',options:['125000','250000','500000','1000000']}, speed_factor:{type:'slider',default:1,min:0.1,max:10,step:0.1}},
+      hint: 'Replay captured CAN traffic back onto the bus' },
   ];
 
   // ══════════════════════════════════════════════════════════════
@@ -653,13 +697,23 @@
 
   const BLOCK_W = 160, PORT_SPACING = 22, HEADER_H = 28, PORT_R = 5;
 
+  // Viz-capable blocks get a wider, taller node to hold inline charts
+  const VIZ_W = 300, VIZ_CANVAS_H = 180;
+  const VIZ_TYPES = new Set([
+    'plot_trace','plot_xy','plot_histogram','plot_heatmap',
+    'gauge_display','table_display','fft_spectrum',
+    'live_video','waterfall_display',
+  ]);
+
   function blockDef(type) {
     return BLOCK_CATALOGUE.find(d => d.type === type);
   }
 
   function blockHeight(def) {
     const ports = Math.max(def.inputs.length, def.outputs.length, 1);
-    return HEADER_H + ports * PORT_SPACING + 8;
+    const base = HEADER_H + ports * PORT_SPACING + 8;
+    if (VIZ_TYPES.has(def.type)) return base + VIZ_CANVAS_H + 8;
+    return base;
   }
 
   function addBlock(type, x, y) {
@@ -667,11 +721,12 @@
     if (!def) return;
     const id = 'b' + (nextId++);
     const h = blockHeight(def);
+    const w = VIZ_TYPES.has(type) ? VIZ_W : BLOCK_W;
     const params = {};
     for (const [k, v] of Object.entries(def.params || {})) {
       params[k] = v.default;
     }
-    blocks[id] = { id, type, x, y, w: BLOCK_W, h, params, def };
+    blocks[id] = { id, type, x, y, w, h, params, def };
     renderBlock(id);
     selectBlock(id);
     return id;
@@ -1249,6 +1304,12 @@
           } else {
             g.classList.remove('error');
           }
+          // Render inline visualisation if _viz data present
+          const outputs = bres.outputs || {};
+          const viz = outputs._viz;
+          if (viz && blocks[bid]) {
+            try { renderVizInNode(bid, viz); } catch(e) { console.warn('viz render', bid, e); }
+          }
         }
 
         // Show outputs
@@ -1279,6 +1340,348 @@
   function stopExecution() {
     fetch('/flowlab/api/stop', {method: 'POST'}).catch(() => {});
     consoleLog('⏹ Stop requested');
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // In-node visualisation renderer (foreignObject + canvas)
+  // ══════════════════════════════════════════════════════════════
+
+  const INFERNO = [[0,0,4],[40,11,84],[101,21,110],[159,42,99],[212,72,66],[245,125,21],[250,186,12],[252,255,164]];
+  const VIRIDIS = [[68,1,84],[72,36,117],[65,68,135],[53,95,141],[42,120,142],[33,144,141],[39,173,129],[92,200,99],[170,220,50],[253,231,37]];
+
+  function colorscaleRgb(name, t) {
+    // t in [0,1] → [r,g,b]
+    const palette = name === 'Viridis' ? VIRIDIS : INFERNO;
+    const idx = t * (palette.length - 1);
+    const lo = Math.floor(idx), hi = Math.min(lo + 1, palette.length - 1);
+    const f = idx - lo;
+    return [
+      Math.round(palette[lo][0] + (palette[hi][0] - palette[lo][0]) * f),
+      Math.round(palette[lo][1] + (palette[hi][1] - palette[lo][1]) * f),
+      Math.round(palette[lo][2] + (palette[hi][2] - palette[lo][2]) * f),
+    ];
+  }
+
+  function renderVizInNode(bid, viz) {
+    const b = blocks[bid];
+    if (!b) return;
+    const g = document.getElementById('blk-' + bid);
+    if (!g) return;
+
+    // Remove previous viz overlay
+    const prev = g.querySelector('.viz-fo');
+    if (prev) prev.remove();
+
+    const ports = Math.max(b.def.inputs.length, b.def.outputs.length, 1);
+    const vizY = HEADER_H + ports * PORT_SPACING + 10;
+    const vizW = b.w - 8;
+    const vizH = VIZ_CANVAS_H;
+
+    const fo = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+    fo.classList.add('viz-fo');
+    fo.setAttribute('x', 4);
+    fo.setAttribute('y', vizY);
+    fo.setAttribute('width', vizW);
+    fo.setAttribute('height', vizH);
+
+    const div = document.createElement('div');
+    div.className = 'viz-container';
+    div.style.cssText = `width:${vizW}px;height:${vizH}px;background:#1e1e2e;border-radius:4px;overflow:hidden;position:relative;`;
+
+    switch (viz.type) {
+      case 'trace':   _vizTrace(div, viz, vizW, vizH); break;
+      case 'xy':      _vizXY(div, viz, vizW, vizH); break;
+      case 'fft':     _vizFFT(div, viz, vizW, vizH); break;
+      case 'histogram': _vizHistogram(div, viz, vizW, vizH); break;
+      case 'gauge':   _vizGauge(div, viz, vizW, vizH); break;
+      case 'heatmap': _vizHeatmap(div, viz, vizW, vizH); break;
+      case 'table':   _vizTable(div, viz, vizW, vizH); break;
+      case 'video':   _vizVideo(div, viz, vizW, vizH); break;
+      case 'waterfall': _vizWaterfall(div, viz, vizW, vizH); break;
+      default:
+        div.innerHTML = `<div style="color:#cdd6f4;padding:8px;font-size:10px;">Unknown viz type: ${viz.type}</div>`;
+    }
+
+    fo.appendChild(div);
+    g.appendChild(fo);
+  }
+
+  /* ── Trace / line chart ──────────────────────────────── */
+  function _vizTrace(div, viz, W, H) {
+    const c = _makeCanvas(div, W, H);
+    const ctx = c.getContext('2d');
+    const x = viz.x || [], y = viz.y || [];
+    if (!y.length) { _vizEmpty(div, viz.title || 'Trace'); return; }
+    const pad = {t:22, b:14, l:6, r:6};
+    _drawChartBg(ctx, W, H, viz.title);
+    const yMin = Math.min(...y), yMax = Math.max(...y);
+    const range = yMax - yMin || 1;
+    const pw = W - pad.l - pad.r, ph = H - pad.t - pad.b;
+    ctx.strokeStyle = '#89b4fa'; ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    for (let i = 0; i < y.length; i++) {
+      const px = pad.l + (i / (y.length - 1 || 1)) * pw;
+      const py = pad.t + ph - ((y[i] - yMin) / range) * ph;
+      i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+    _drawAxisLabels(ctx, W, H, pad, x, yMin, yMax, viz.y_label || '');
+  }
+
+  /* ── XY scatter ──────────────────────────────────────── */
+  function _vizXY(div, viz, W, H) {
+    const c = _makeCanvas(div, W, H);
+    const ctx = c.getContext('2d');
+    const x = viz.x || [], y = viz.y || [];
+    if (!x.length) { _vizEmpty(div, viz.title || 'XY'); return; }
+    const pad = {t:22, b:14, l:6, r:6};
+    _drawChartBg(ctx, W, H, viz.title);
+    const xMin = Math.min(...x), xMax = Math.max(...x);
+    const yMin = Math.min(...y), yMax = Math.max(...y);
+    const xR = xMax - xMin || 1, yR = yMax - yMin || 1;
+    const pw = W - pad.l - pad.r, ph = H - pad.t - pad.b;
+    const isLine = viz.mode && viz.mode.includes('lines');
+    if (isLine) {
+      ctx.strokeStyle = '#a6e3a1'; ctx.lineWidth = 1.2; ctx.beginPath();
+      for (let i = 0; i < x.length; i++) {
+        const px = pad.l + ((x[i] - xMin) / xR) * pw;
+        const py = pad.t + ph - ((y[i] - yMin) / yR) * ph;
+        i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+    }
+    if (!viz.mode || viz.mode.includes('markers')) {
+      ctx.fillStyle = '#f38ba8';
+      for (let i = 0; i < x.length; i++) {
+        const px = pad.l + ((x[i] - xMin) / xR) * pw;
+        const py = pad.t + ph - ((y[i] - yMin) / yR) * ph;
+        ctx.beginPath(); ctx.arc(px, py, 2, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+  }
+
+  /* ── FFT spectrum ────────────────────────────────────── */
+  function _vizFFT(div, viz, W, H) {
+    const c = _makeCanvas(div, W, H);
+    const ctx = c.getContext('2d');
+    const freq = viz.freq_hz || [], amp = viz.amplitude || [];
+    if (!amp.length) { _vizEmpty(div, viz.title || 'FFT'); return; }
+    const pad = {t:22, b:14, l:6, r:6};
+    _drawChartBg(ctx, W, H, viz.title);
+    const yMax = Math.max(...amp) || 1;
+    const pw = W - pad.l - pad.r, ph = H - pad.t - pad.b;
+    // Fill area
+    ctx.fillStyle = 'rgba(137,180,250,0.3)';
+    ctx.beginPath(); ctx.moveTo(pad.l, pad.t + ph);
+    for (let i = 0; i < amp.length; i++) {
+      const px = pad.l + (i / (amp.length - 1 || 1)) * pw;
+      const py = pad.t + ph - (amp[i] / yMax) * ph;
+      ctx.lineTo(px, py);
+    }
+    ctx.lineTo(pad.l + pw, pad.t + ph); ctx.closePath(); ctx.fill();
+    // Line
+    ctx.strokeStyle = '#89b4fa'; ctx.lineWidth = 1.2; ctx.beginPath();
+    for (let i = 0; i < amp.length; i++) {
+      const px = pad.l + (i / (amp.length - 1 || 1)) * pw;
+      const py = pad.t + ph - (amp[i] / yMax) * ph;
+      i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+    // Peak markers
+    if (viz.peaks) {
+      ctx.fillStyle = '#f38ba8'; ctx.font = '8px monospace';
+      for (const pk of viz.peaks.slice(0, 3)) {
+        const fi = freq.length ? freq.findIndex(f => f >= pk.freq_hz) : 0;
+        if (fi < 0) continue;
+        const px = pad.l + (fi / (amp.length - 1 || 1)) * pw;
+        const py = pad.t + ph - (amp[fi] / yMax) * ph;
+        ctx.beginPath(); ctx.arc(px, py, 3, 0, Math.PI * 2); ctx.fill();
+        ctx.fillText(`${pk.freq_hz}Hz`, px + 4, py - 2);
+      }
+    }
+  }
+
+  /* ── Histogram ───────────────────────────────────────── */
+  function _vizHistogram(div, viz, W, H) {
+    const c = _makeCanvas(div, W, H);
+    const ctx = c.getContext('2d');
+    const counts = viz.bin_counts || [], edges = viz.bin_edges || [];
+    if (!counts.length) { _vizEmpty(div, viz.title || 'Histogram'); return; }
+    const pad = {t:22, b:14, l:6, r:6};
+    _drawChartBg(ctx, W, H, viz.title);
+    const maxC = Math.max(...counts) || 1;
+    const pw = W - pad.l - pad.r, ph = H - pad.t - pad.b;
+    const barW = pw / counts.length;
+    ctx.fillStyle = viz.color || '#89b4fa';
+    for (let i = 0; i < counts.length; i++) {
+      const barH = (counts[i] / maxC) * ph;
+      ctx.fillRect(pad.l + i * barW, pad.t + ph - barH, Math.max(barW - 1, 1), barH);
+    }
+  }
+
+  /* ── Gauge / meter ───────────────────────────────────── */
+  function _vizGauge(div, viz, W, H) {
+    const c = _makeCanvas(div, W, H);
+    const ctx = c.getContext('2d');
+    _drawChartBg(ctx, W, H, '');
+    const cx = W / 2, cy = H * 0.62, r = Math.min(W, H) * 0.38;
+    const minV = viz.min || 0, maxV = viz.max || 100;
+    const val = Math.max(minV, Math.min(maxV, viz.value || 0));
+    const range = maxV - minV || 1;
+    const pct = (val - minV) / range;
+    // Arc background
+    const startA = Math.PI * 0.8, endA = Math.PI * 2.2;
+    const totalA = endA - startA;
+    // Green / yellow / red zones
+    const g_end = startA + totalA * ((viz.green_max - minV) / range);
+    const y_end = startA + totalA * ((viz.yellow_max - minV) / range);
+    ctx.lineWidth = 10; ctx.lineCap = 'round';
+    ctx.strokeStyle = '#a6e3a1'; ctx.beginPath(); ctx.arc(cx, cy, r, startA, Math.min(g_end, endA)); ctx.stroke();
+    ctx.strokeStyle = '#f9e2af'; ctx.beginPath(); ctx.arc(cx, cy, r, g_end, Math.min(y_end, endA)); ctx.stroke();
+    ctx.strokeStyle = '#f38ba8'; ctx.beginPath(); ctx.arc(cx, cy, r, y_end, endA); ctx.stroke();
+    // Needle
+    const needleA = startA + totalA * pct;
+    ctx.strokeStyle = '#cdd6f4'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(needleA) * r * 0.85, cy + Math.sin(needleA) * r * 0.85);
+    ctx.stroke();
+    // Value text
+    ctx.fillStyle = '#cdd6f4'; ctx.font = 'bold 16px monospace'; ctx.textAlign = 'center';
+    ctx.fillText(`${viz.value}${viz.unit || ''}`, cx, cy + r * 0.45);
+    ctx.font = '10px sans-serif'; ctx.fillText(viz.title || '', cx, 14);
+  }
+
+  /* ── Heatmap ─────────────────────────────────────────── */
+  function _vizHeatmap(div, viz, W, H) {
+    const c = _makeCanvas(div, W, H);
+    const ctx = c.getContext('2d');
+    const grid = viz.grid || [];
+    if (!grid.length) { _vizEmpty(div, viz.title || 'Heatmap'); return; }
+    _drawChartBg(ctx, W, H, viz.title);
+    const pad = {t:22, b:4, l:4, r:4};
+    const rows = grid.length, cols = grid[0] ? grid[0].length : 0;
+    if (!cols) return;
+    const cw = (W - pad.l - pad.r) / cols, ch = (H - pad.t - pad.b) / rows;
+    let gMin = Infinity, gMax = -Infinity;
+    for (const row of grid) for (const v of row) { if (v < gMin) gMin = v; if (v > gMax) gMax = v; }
+    const gRange = gMax - gMin || 1;
+    for (let r = 0; r < rows; r++) {
+      for (let c2 = 0; c2 < cols; c2++) {
+        const t = (grid[r][c2] - gMin) / gRange;
+        const rgb = colorscaleRgb(viz.colorscale || 'Inferno', t);
+        ctx.fillStyle = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
+        ctx.fillRect(pad.l + c2 * cw, pad.t + r * ch, Math.ceil(cw), Math.ceil(ch));
+      }
+    }
+  }
+
+  /* ── Table ───────────────────────────────────────────── */
+  function _vizTable(div, viz, W, H) {
+    const headers = viz.headers || [], rows = viz.rows || [];
+    if (!headers.length) { _vizEmpty(div, 'Table'); return; }
+    const tbl = document.createElement('div');
+    tbl.style.cssText = 'width:100%;height:100%;overflow:auto;font-size:9px;color:#cdd6f4;padding:2px;';
+    let html = '<table style="border-collapse:collapse;width:100%;"><thead><tr>';
+    for (const h of headers) html += `<th style="border:1px solid #45475a;padding:1px 3px;background:#313244;font-size:8px;white-space:nowrap;">${h}</th>`;
+    html += '</tr></thead><tbody>';
+    for (const row of rows.slice(0, 15)) {
+      html += '<tr>';
+      for (const cell of row) {
+        const v = typeof cell === 'number' ? cell.toPrecision(4) : String(cell).slice(0, 12);
+        html += `<td style="border:1px solid #45475a;padding:1px 3px;font-size:8px;white-space:nowrap;">${v}</td>`;
+      }
+      html += '</tr>';
+    }
+    html += '</tbody></table>';
+    if (viz.total_rows > 15) html += `<div style="color:#6c7086;font-size:8px;padding:2px;">…${viz.total_rows} total rows</div>`;
+    tbl.innerHTML = html;
+    div.appendChild(tbl);
+  }
+
+  /* ── Live video ──────────────────────────────────────── */
+  function _vizVideo(div, viz, W, H) {
+    if (viz.error) {
+      div.innerHTML = `<div style="color:#f38ba8;padding:8px;font-size:10px;">📹 ${viz.error}</div>`;
+      return;
+    }
+    const img = document.createElement('img');
+    img.src = viz.src || '';
+    img.style.cssText = `width:100%;height:100%;object-fit:contain;border-radius:4px;`;
+    div.appendChild(img);
+  }
+
+  /* ── Waterfall / spectrogram ─────────────────────────── */
+  function _vizWaterfall(div, viz, W, H) {
+    const c = _makeCanvas(div, W, H);
+    const ctx = c.getContext('2d');
+    const grid = viz.grid || [];
+    if (!grid.length || !grid[0].length) { _vizEmpty(div, viz.title || 'Waterfall'); return; }
+    _drawChartBg(ctx, W, H, viz.title);
+    const pad = {t:22, b:4, l:4, r:4};
+    const cols = grid[0].length;
+    const nRows = viz.n_rows || 32;
+    // Pad grid to n_rows height (blank rows at top)
+    const fullGrid = [];
+    for (let i = 0; i < nRows - grid.length; i++) fullGrid.push(new Array(cols).fill(0));
+    for (const row of grid) fullGrid.push(row);
+    const rows = fullGrid.length;
+    const cw = (W - pad.l - pad.r) / cols, ch = (H - pad.t - pad.b) / rows;
+    let gMin = Infinity, gMax = -Infinity;
+    for (const row of fullGrid) for (const v of row) { if (v < gMin) gMin = v; if (v > gMax) gMax = v; }
+    const gRange = gMax - gMin || 1;
+    for (let r = 0; r < rows; r++) {
+      for (let c2 = 0; c2 < cols; c2++) {
+        const t = (fullGrid[r][c2] - gMin) / gRange;
+        const rgb = colorscaleRgb(viz.colorscale || 'Inferno', t);
+        ctx.fillStyle = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
+        ctx.fillRect(pad.l + c2 * cw, pad.t + r * ch, Math.ceil(cw), Math.ceil(ch));
+      }
+    }
+    // Freq axis label
+    const freq = viz.freq_hz || [];
+    if (freq.length) {
+      ctx.fillStyle = '#6c7086'; ctx.font = '7px monospace';
+      ctx.fillText(`0`, pad.l, H - 1);
+      ctx.textAlign = 'end';
+      ctx.fillText(`${Math.round(freq[freq.length - 1])}Hz`, W - pad.r, H - 1);
+    }
+  }
+
+  /* ── Canvas helpers ──────────────────────────────────── */
+  function _makeCanvas(div, W, H) {
+    const c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    c.style.cssText = 'width:100%;height:100%;';
+    div.appendChild(c);
+    return c;
+  }
+
+  function _drawChartBg(ctx, W, H, title) {
+    ctx.fillStyle = '#1e1e2e'; ctx.fillRect(0, 0, W, H);
+    // Grid lines
+    ctx.strokeStyle = '#313244'; ctx.lineWidth = 0.5;
+    for (let x = 0; x < W; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+    for (let y = 0; y < H; y += 30) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+    if (title) {
+      ctx.fillStyle = '#cdd6f4'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left';
+      ctx.fillText(title, 6, 14);
+    }
+  }
+
+  function _drawAxisLabels(ctx, W, H, pad, x, yMin, yMax, yLabel) {
+    ctx.fillStyle = '#6c7086'; ctx.font = '7px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(yMax.toPrecision(3), pad.l, pad.t - 2);
+    ctx.fillText(yMin.toPrecision(3), pad.l, H - pad.b + 10);
+    if (x.length) {
+      ctx.textAlign = 'right';
+      const last = x[x.length - 1];
+      ctx.fillText(typeof last === 'number' ? last.toFixed(2) : String(last), W - pad.r, H - 1);
+    }
+  }
+
+  function _vizEmpty(div, title) {
+    div.innerHTML = `<div style="color:#6c7086;padding:16px;text-align:center;font-size:10px;">${title || 'No data'}<br>⏳ Run to populate</div>`;
   }
 
   // ══════════════════════════════════════════════════════════════
@@ -1713,6 +2116,15 @@
         'Sleep Test and TX Burst Test are complete measurement profiles ready to run.',
         'Shell Command can trigger external tools, flashing, or build scripts.',
         'Serial Send supports AT commands, UART protocols, and debug probes.',
+      ]
+    },
+    'CAN Bus': {
+      icon: '🔌', desc: 'CAN bus communication, capture, decoding, and reverse-engineering analysis blocks.',
+      tips: [
+        'Use CAN Receive to capture traffic, then pipe into CAN Decode for CANopen layer info.',
+        'CAN Analyze performs deep reverse-engineering: counter detection, CRC guessing, bit transitions, signal extraction.',
+        'CAN Replay re-transmits captured traffic — useful for regression testing and fuzzing.',
+        'Supports PCAN, SocketCAN, Vector, Kvaser, IXXAT, and virtual (simulation) interfaces.',
       ]
     }
   };

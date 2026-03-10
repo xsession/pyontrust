@@ -1,0 +1,167 @@
+# ProtoSim Configuration for Codelayer Locator Base
+# Board: TI MSPM0G3507 based CANopen development board
+#
+# This configuration enables hardware-in-the-loop simulation using
+# ProtoSim's Renode MCU emulation with optional analog co-simulation.
+
+project:
+  name: "Locator Base HIL Simulation"
+  description: "CANopen development board simulation for driver testing"
+  
+mcu:
+  platform: "ti_mspm0g3507"       # Renode platform ID
+  firmware: "build/zephyr/zephyr.elf"
+  renode_port: 12345
+  machine_name: "locator_base"
+  cpu_frequency: 80_000_000      # 80 MHz
+  
+# Pin mappings from MCU to simulation nets
+pin_mapping:
+  # I2C0
+  PA0:
+    net: "/I2C0_SDA"
+    type: "i2c_sda"
+    peripheral: "I2C0"
+  PA1:
+    net: "/I2C0_SCL"
+    type: "i2c_scl"
+    peripheral: "I2C0"
+    
+  # Digital Outputs
+  PA2:
+    net: "/DOUT0"
+    type: "digital_out"
+  PA4:
+    net: "/DOUT1"
+    type: "digital_out"
+  PA9:
+    net: "/DOUT2"
+    type: "digital_out"
+  PA25:
+    net: "/DOUT3"
+    type: "digital_out"
+    
+  # SPI0
+  PA3:
+    net: "/SPI0_CS1"
+    type: "spi_cs"
+    peripheral: "SPI0"
+  PA8:
+    net: "/SPI0_CS0"
+    type: "spi_cs"
+    peripheral: "SPI0"
+  PA12:
+    net: "/SPI0_SCK"
+    type: "spi_sck"
+    peripheral: "SPI0"
+  PA13:
+    net: "/SPI0_MISO"
+    type: "spi_miso"
+    peripheral: "SPI0"
+  PA14:
+    net: "/SPI0_MOSI"
+    type: "spi_mosi"
+    peripheral: "SPI0"
+  PA24:
+    net: "/SPI0_CS2"
+    type: "spi_cs"
+    peripheral: "SPI0"
+    
+  # PWM Outputs
+  PA7:
+    net: "/PWM_TIMG8_C0"
+    type: "pwm"
+    timer: "TIMG8_CH0"
+  PA21:
+    net: "/PWM_TIMG6_C0"
+    type: "pwm"
+    timer: "TIMG6_CH0"
+  PA22:
+    net: "/PWM_TIMG6_C1"
+    type: "pwm"
+    timer: "TIMG6_CH1"
+  PA23:
+    net: "/PWM_TIMG0_C0"
+    type: "pwm"
+    timer: "TIMG0_CH0"
+    
+  # UART0
+  PA10:
+    net: "/UART0_TX"
+    type: "uart_tx"
+    peripheral: "UART0"
+  PA11:
+    net: "/UART0_RX"
+    type: "uart_rx"
+    peripheral: "UART0"
+    
+  # Analog/Digital Inputs
+  PA15:
+    net: "/AIN0_DIN0"
+    type: "adc"
+    channel: 0
+    voltage_high: 3.3
+  PA16:
+    net: "/AIN1_DIN1"
+    type: "adc"
+    channel: 1
+  PA17:
+    net: "/AIN2_DIN2"
+    type: "adc"
+    channel: 2
+  PA18:
+    net: "/AIN3_DIN3"
+    type: "adc"
+    channel: 3
+    
+  # CAN Bus
+  PA26:
+    net: "/CAN_TX"
+    type: "can_tx"
+    peripheral: "MCAN0"
+  PA27:
+    net: "/CAN_RX"
+    type: "can_rx"
+    peripheral: "MCAN0"
+
+simulation:
+  duration: "10s"
+  sync_interval: "100us"         # Co-simulation sync every 100µs
+  realtime: false                # Run as fast as possible
+  log_level: "INFO"
+  
+  # Logic analyzer configuration
+  logic_analyzer:
+    enabled: true
+    channels: 16
+    sample_rate_hz: 10_000_000   # 10 MHz effective sampling
+    channel_names: "DOUT0,DOUT1,DOUT2,DOUT3,DIN0,DIN1,DIN2,DIN3,SPI_SCK,SPI_MOSI,SPI_MISO,SPI_CS,UART_TX,UART_RX,I2C_SDA,I2C_SCL"
+    
+  # Data logging configuration  
+  logging:
+    enabled: true
+    output_dir: "./sim_logs"
+    formats:
+      - vcd                      # Value Change Dump (GTKWave/PulseView)
+      - csv                      # CSV for analysis
+      - json                     # JSON for programmatic access
+    channels:
+      - pin: "PA2"
+        name: "dout0"
+      - pin: "PA7"
+        name: "pwm0"
+      - pin: "PA10"
+        name: "uart_tx"
+      - pin: "PA15"
+        name: "adc0"
+
+# Optional: LTSpice analog co-simulation (disabled by default)
+ltspice:
+  enabled: false
+  path: ""                       # Set to LTSpice executable path to enable
+  timestep: "1u"
+  max_timestep: "10u"
+
+# Automation scenarios for testing
+automation:
+  scenarios_dir: "./scenarios"

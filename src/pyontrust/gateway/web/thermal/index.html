@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🌡️ Thermal Measurement — pyontrust</title>
+<style>
+:root {
+  --bg: #1e1e2e; --bg2: #252538; --bg3: #2d2d44; --bg4: #353550;
+  --fg: #cdd6f4; --fg-dim: #6c7086;
+  --accent: #89b4fa; --green: #a6e3a1; --red: #f38ba8;
+  --yellow: #f9e2af; --peach: #fab387; --mauve: #cba6f7;
+  --teal: #94e2d5; --border: #45475a; --radius: 6px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: var(--bg); color: var(--fg); overflow-x: hidden;
+}
+
+/* ── Layout ── */
+.container { max-width: 1400px; margin: 0 auto; padding: 16px 20px; }
+header {
+  display: flex; align-items: center; gap: 16px;
+  padding-bottom: 14px; border-bottom: 2px solid var(--accent); margin-bottom: 16px;
+}
+header h1 { color: var(--accent); font-size: 22px; }
+header .status-pill {
+  padding: 3px 12px; border-radius: 12px; font-size: 11px; font-weight: 600;
+}
+header .status-pill.connected    { background: rgba(166,227,161,.15); color: var(--green); }
+header .status-pill.disconnected { background: rgba(243,139,168,.15); color: var(--red); }
+header .status-pill.simulated    { background: rgba(249,226,175,.15); color: var(--yellow); }
+
+/* ── Tabs ── */
+.tabs {
+  display: flex; gap: 0; border-bottom: 2px solid var(--border); margin-bottom: 16px;
+}
+.tab-btn {
+  padding: 8px 20px; background: none; color: var(--fg-dim); border: none;
+  cursor: pointer; font-size: 13px; font-weight: 600; border-bottom: 2px solid transparent;
+  transition: .15s;
+}
+.tab-btn:hover { color: var(--fg); }
+.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* ── Cards ── */
+.card {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 16px; margin-bottom: 14px;
+}
+.card h3 { color: var(--mauve); font-size: 14px; margin-bottom: 10px; }
+
+/* ── Forms ── */
+.form-row {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px; margin-bottom: 10px;
+}
+.form-group { display: flex; flex-direction: column; gap: 3px; }
+.form-group label { font-size: 11px; color: var(--fg-dim); font-weight: 600; }
+.form-group input, .form-group select, .form-group textarea {
+  background: var(--bg3); border: 1px solid var(--border); color: var(--fg);
+  padding: 6px 10px; border-radius: 4px; font-size: 12px; font-family: monospace;
+}
+.form-group input:focus, .form-group select:focus {
+  outline: none; border-color: var(--accent);
+}
+
+/* ── Buttons ── */
+.btn {
+  padding: 8px 20px; border: none; border-radius: var(--radius);
+  font-weight: 600; font-size: 13px; cursor: pointer; transition: .15s;
+}
+.btn-primary { background: var(--accent); color: var(--bg); }
+.btn-primary:hover { filter: brightness(1.15); }
+.btn-danger  { background: var(--red); color: var(--bg); }
+.btn-danger:hover { filter: brightness(1.15); }
+.btn-secondary { background: var(--bg3); color: var(--fg); border: 1px solid var(--border); }
+.btn-secondary:hover { border-color: var(--accent); }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+.btn-bar { display: flex; gap: 8px; margin-top: 12px; }
+
+/* ── Stats grid ── */
+.stats-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px; margin: 12px 0;
+}
+.stat-box {
+  background: var(--bg3); border-radius: var(--radius); padding: 12px;
+  text-align: center;
+}
+.stat-box .val { font-size: 22px; font-weight: 700; color: var(--accent); font-family: monospace; }
+.stat-box .lbl { font-size: 10px; color: var(--fg-dim); margin-top: 2px; }
+
+/* ── Progress bar ── */
+.progress-bar {
+  height: 6px; background: var(--bg3); border-radius: 3px; margin: 12px 0; overflow: hidden;
+}
+.progress-bar .fill {
+  height: 100%; background: var(--accent); border-radius: 3px; transition: width .3s;
+}
+
+/* ── Zone editor ── */
+.zone-list { margin: 8px 0; }
+.zone-item {
+  display: grid; grid-template-columns: 120px repeat(6, 60px) 30px;
+  gap: 6px; align-items: center; margin-bottom: 6px;
+  background: var(--bg3); padding: 6px 8px; border-radius: 4px; font-size: 11px;
+}
+.zone-item input {
+  background: var(--bg); border: 1px solid var(--border); color: var(--fg);
+  padding: 3px 5px; border-radius: 3px; font-size: 11px; font-family: monospace;
+  width: 100%;
+}
+.zone-item .del-btn {
+  background: none; border: none; color: var(--red); cursor: pointer;
+  font-size: 16px; padding: 0;
+}
+.zone-item .del-btn:hover { color: var(--peach); }
+.zone-header {
+  display: grid; grid-template-columns: 120px repeat(6, 60px) 30px;
+  gap: 6px; font-size: 10px; color: var(--fg-dim); font-weight: 600;
+  padding: 0 8px; margin-bottom: 4px;
+}
+
+/* ── Live snapshot ── */
+.snapshot-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+}
+@media (max-width: 900px) { .snapshot-grid { grid-template-columns: 1fr; } }
+
+/* ── Reports list ── */
+.report-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 12px; background: var(--bg3); border-radius: 4px; margin-bottom: 6px;
+}
+.report-item a { color: var(--accent); text-decoration: none; font-size: 13px; }
+.report-item a:hover { text-decoration: underline; }
+.report-item .meta { color: var(--fg-dim); font-size: 11px; }
+
+/* ── Verdict badge ── */
+.badge { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 700; }
+.badge.pass    { background: rgba(166,227,161,.15); color: var(--green); }
+.badge.fail    { background: rgba(243,139,168,.15); color: var(--red); }
+.badge.running { background: rgba(137,180,250,.15); color: var(--accent); }
+
+/* ── Log area ── */
+#live-log {
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 10px; font-family: monospace; font-size: 11px; color: var(--teal);
+  max-height: 200px; overflow-y: auto; white-space: pre-wrap; margin-top: 8px;
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+<!-- ═══ Header ═══ -->
+<header>
+  <h1>🌡️ Thermal Measurement</h1>
+  <span id="cam-status" class="status-pill disconnected">checking…</span>
+  <span style="flex:1"></span>
+  <button class="btn btn-secondary" onclick="refreshStatus()">↻ Refresh</button>
+</header>
+
+<!-- ═══ Tabs ═══ -->
+<div class="tabs">
+  <button class="tab-btn active" data-tab="measure">📐 Measure</button>
+  <button class="tab-btn" data-tab="live">📡 Live View</button>
+  <button class="tab-btn" data-tab="results">📊 Results</button>
+  <button class="tab-btn" data-tab="reports">📄 Reports</button>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<!--  TAB: Measure                                                      -->
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<div class="tab-panel active" id="tab-measure">
+
+  <!-- Mode selection -->
+  <div class="card">
+    <h3>Measurement Mode</h3>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Mode</label>
+        <select id="cfg-mode" onchange="updateModeUI()">
+          <option value="continuous">📈 Continuous Monitoring</option>
+          <option value="soak">🔥 Thermal Soak Test</option>
+          <option value="delta">Δ Delta Measurement</option>
+          <option value="gradient">🌊 Gradient Scan</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Camera</label>
+        <select id="cfg-camera-mode">
+          <option value="simulated">🔵 Simulated</option>
+          <option value="seek">🔴 Seek Thermal (Hardware)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Board ID</label>
+        <input id="cfg-board-id" value="DUT-001" placeholder="PCB identifier">
+      </div>
+    </div>
+  </div>
+
+  <!-- Timing -->
+  <div class="card">
+    <h3>⏱️ Timing</h3>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Duration (s)</label>
+        <input id="cfg-duration" type="number" value="30" min="1" step="1">
+      </div>
+      <div class="form-group">
+        <label>Capture Interval (s)</label>
+        <input id="cfg-interval" type="number" value="0.5" min="0.1" step="0.1">
+      </div>
+      <div class="form-group">
+        <label>Warm-up Frames</label>
+        <input id="cfg-warmup" type="number" value="5" min="0" step="1">
+      </div>
+    </div>
+
+    <!-- Soak-specific -->
+    <div id="soak-opts" style="display:none">
+      <div class="form-row" style="margin-top:8px">
+        <div class="form-group">
+          <label>Stable Window (s)</label>
+          <input id="cfg-soak-window" type="number" value="10" min="1">
+        </div>
+        <div class="form-group">
+          <label>Stable Threshold (°C)</label>
+          <input id="cfg-soak-thresh" type="number" value="0.5" min="0.01" step="0.1">
+        </div>
+        <div class="form-group">
+          <label>Timeout (s)</label>
+          <input id="cfg-soak-timeout" type="number" value="300" min="10">
+        </div>
+      </div>
+    </div>
+
+    <!-- Delta-specific -->
+    <div id="delta-opts" style="display:none">
+      <div class="form-row" style="margin-top:8px">
+        <div class="form-group">
+          <label>Baseline Frames</label>
+          <input id="cfg-delta-baseline" type="number" value="10" min="1">
+        </div>
+        <div class="form-group">
+          <label>Stimulus Frames</label>
+          <input id="cfg-delta-stimulus" type="number" value="10" min="1">
+        </div>
+        <div class="form-group">
+          <label>Pause (s)</label>
+          <input id="cfg-delta-pause" type="number" value="5" min="0" step="0.5">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Simulated camera options -->
+  <div class="card" id="sim-opts-card">
+    <h3>🔵 Simulated Camera Settings</h3>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Base Temp (°C)</label>
+        <input id="cfg-sim-base" type="number" value="25" step="0.5">
+      </div>
+      <div class="form-group">
+        <label>Noise σ (°C)</label>
+        <input id="cfg-sim-noise" type="number" value="0.3" step="0.1" min="0">
+      </div>
+      <div class="form-group">
+        <label>Inject Hotspot</label>
+        <select id="cfg-sim-hotspot">
+          <option value="false">No</option>
+          <option value="true">Yes</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Hotspot Temp (°C)</label>
+        <input id="cfg-sim-hotspot-temp" type="number" value="85" step="1">
+      </div>
+    </div>
+  </div>
+
+  <!-- Limits -->
+  <div class="card">
+    <h3>🚧 Thermal Limits</h3>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Global Max (°C)</label>
+        <input id="cfg-max-temp" type="number" value="85" step="1">
+      </div>
+      <div class="form-group">
+        <label>Max Gradient (°C/mm)</label>
+        <input id="cfg-max-gradient" type="number" value="0" step="0.1" min="0" title="0 = disabled">
+      </div>
+      <div class="form-group">
+        <label>Pixel Pitch (mm)</label>
+        <input id="cfg-pixel-pitch" type="number" value="0.17" step="0.01" min="0.01">
+      </div>
+    </div>
+  </div>
+
+  <!-- Zones -->
+  <div class="card">
+    <h3>🎯 Thermal Zones</h3>
+    <div class="zone-header">
+      <span>Name</span><span>X</span><span>Y</span><span>W</span><span>H</span>
+      <span>Warn°C</span><span>Max°C</span><span></span>
+    </div>
+    <div class="zone-list" id="zone-list"></div>
+    <button class="btn btn-secondary" onclick="addZone()" style="margin-top:6px">+ Add Zone</button>
+  </div>
+
+  <!-- Start / Stop -->
+  <div class="card" id="run-card">
+    <div class="btn-bar">
+      <button class="btn btn-primary" id="btn-start" onclick="startMeasurement()">▶ Start Measurement</button>
+      <button class="btn btn-danger"  id="btn-stop"  onclick="stopMeasurement()" disabled>■ Stop</button>
+    </div>
+
+    <!-- Progress -->
+    <div id="progress-section" style="display:none; margin-top:14px;">
+      <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--fg-dim);">
+        <span id="prog-text">Frame 0 / 0</span>
+        <span id="prog-elapsed">0.0s</span>
+      </div>
+      <div class="progress-bar"><div class="fill" id="prog-fill" style="width:0%"></div></div>
+      <div class="stats-grid" id="live-stats"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<!--  TAB: Live View                                                    -->
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<div class="tab-panel" id="tab-live">
+  <div class="card">
+    <h3>📡 Single Frame Capture</h3>
+    <p style="font-size:12px; color:var(--fg-dim); margin-bottom:10px;">
+      Capture a single thermal frame from the camera and view instant analysis.
+    </p>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Camera</label>
+        <select id="live-camera-mode">
+          <option value="simulated">🔵 Simulated</option>
+          <option value="seek">🔴 Seek Thermal</option>
+        </select>
+      </div>
+    </div>
+    <button class="btn btn-primary" id="btn-capture" onclick="captureSingle()">📸 Capture Frame</button>
+  </div>
+
+  <div id="live-result" style="display:none;">
+    <div class="snapshot-grid">
+      <div class="card">
+        <h3>Frame Data</h3>
+        <div class="stats-grid" id="live-frame-stats"></div>
+      </div>
+      <div class="card">
+        <h3>Zone Readings</h3>
+        <div id="live-zone-readings"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<!--  TAB: Results                                                      -->
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<div class="tab-panel" id="tab-results">
+  <div class="card" id="result-card">
+    <h3>📊 Latest Result</h3>
+    <p id="result-placeholder" style="color:var(--fg-dim); font-size:13px;">
+      No measurement result yet. Run a measurement from the Measure tab.
+    </p>
+    <div id="result-content" style="display:none;"></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<!--  TAB: Reports                                                      -->
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<div class="tab-panel" id="tab-reports">
+  <div class="card">
+    <h3>📄 Saved Reports</h3>
+    <button class="btn btn-secondary" onclick="loadReports()" style="margin-bottom:10px">↻ Refresh</button>
+    <div id="reports-list">
+      <p style="color:var(--fg-dim); font-size:13px;">Loading…</p>
+    </div>
+  </div>
+</div>
+
+</div><!-- /container -->
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════
+ *  Tab switching
+ * ═══════════════════════════════════════════════════════════════════ */
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    if (btn.dataset.tab === 'reports') loadReports();
+    if (btn.dataset.tab === 'results') loadResult();
+  });
+});
+
+/* ═══════════════════════════════════════════════════════════════════
+ *  Mode-dependent UI
+ * ═══════════════════════════════════════════════════════════════════ */
+function updateModeUI() {
+  const mode = document.getElementById('cfg-mode').value;
+  document.getElementById('soak-opts').style.display  = mode === 'soak'  ? 'block' : 'none';
+  document.getElementById('delta-opts').style.display  = mode === 'delta' ? 'block' : 'none';
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ *  Zone editor
+ * ═══════════════════════════════════════════════════════════════════ */
+let zones = [
+  { name: 'MCU', x: 40, y: 30, w: 30, h: 30, warn: 60, max: 85 },
+];
+
+function renderZones() {
+  const list = document.getElementById('zone-list');
+  list.innerHTML = zones.map((z, i) =>
+    `<div class="zone-item">
+      <input value="${z.name}" onchange="zones[${i}].name=this.value">
+      <input type="number" value="${z.x}" onchange="zones[${i}].x=+this.value">
+      <input type="number" value="${z.y}" onchange="zones[${i}].y=+this.value">
+      <input type="number" value="${z.w}" onchange="zones[${i}].w=+this.value">
+      <input type="number" value="${z.h}" onchange="zones[${i}].h=+this.value">
+      <input type="number" value="${z.warn}" onchange="zones[${i}].warn=+this.value">
+      <input type="number" value="${z.max}" onchange="zones[${i}].max=+this.value">
+      <button class="del-btn" onclick="zones.splice(${i},1);renderZones()">✕</button>
+    </div>`
+  ).join('');
+}
+
+function addZone() {
+  zones.push({ name: `Zone_${zones.length+1}`, x: 0, y: 0, w: 30, h: 30, warn: 60, max: 85 });
+  renderZones();
+}
+
+renderZones();
+
+/* ═══════════════════════════════════════════════════════════════════
+ *  Build config dict from UI
+ * ═══════════════════════════════════════════════════════════════════ */
+function buildConfig() {
+  const mode = document.getElementById('cfg-mode').value;
+  const camMode = document.getElementById('cfg-camera-mode').value;
+
+  const cam = { mode: camMode };
+  if (camMode === 'simulated') {
+    cam.base_temp_c = +document.getElementById('cfg-sim-base').value;
+    cam.noise_stddev_c = +document.getElementById('cfg-sim-noise').value;
+    cam.inject_hotspot = document.getElementById('cfg-sim-hotspot').value === 'true';
+    cam.hotspot_temp_c = +document.getElementById('cfg-sim-hotspot-temp').value;
+  }
+
+  const cfg = {
+    mode: mode,
+    duration_s: +document.getElementById('cfg-duration').value,
+    capture_interval_s: +document.getElementById('cfg-interval').value,
+    warmup_frames: +document.getElementById('cfg-warmup').value,
+    camera: cam,
+    board_id: document.getElementById('cfg-board-id').value,
+    global_max_temp_c: +document.getElementById('cfg-max-temp').value,
+    max_gradient_c_per_mm: +document.getElementById('cfg-max-gradient').value,
+    pixel_pitch_mm: +document.getElementById('cfg-pixel-pitch').value,
+    zones: zones.map(z => ({
+      name: z.name, x: z.x, y: z.y, width: z.w, height: z.h,
+      warn_temp_c: z.warn, max_temp_c: z.max,
+    })),
+  };
+
+  if (mode === 'soak') {
+    cfg.soak_stable_window_s  = +document.getElementById('cfg-soak-window').value;
+    cfg.soak_stable_threshold_c = +document.getElementById('cfg-soak-thresh').value;
+    cfg.soak_timeout_s = +document.getElementById('cfg-soak-timeout').value;
+  }
+  if (mode === 'delta') {
+    cfg.delta_baseline_frames = +document.getElementById('cfg-delta-baseline').value;
+    cfg.delta_stimulus_frames = +document.getElementById('cfg-delta-stimulus').value;
+    cfg.delta_pause_s = +document.getElementById('cfg-delta-pause').value;
+  }
+
+  return cfg;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ *  Camera status
+ * ═══════════════════════════════════════════════════════════════════ */
+async function refreshStatus() {
+  try {
+    const r = await fetch('/thermal/api/status');
+    const d = await r.json();
+    const pill = document.getElementById('cam-status');
+
+    if (d.camera_status === 'connected') {
+      pill.className = 'status-pill connected';
+      pill.textContent = '● ' + (d.camera_info.type || 'Connected');
+    } else if (d.camera_status === 'not_connected') {
+      pill.className = 'status-pill disconnected';
+      pill.textContent = '○ No Camera';
+    } else {
+      pill.className = 'status-pill simulated';
+      pill.textContent = '◉ Simulated Only';
+    }
+
+    if (d.measurement_running) {
+      document.getElementById('btn-start').disabled = true;
+      document.getElementById('btn-stop').disabled = false;
+      startPolling();
+    }
+  } catch (e) {
+    document.getElementById('cam-status').textContent = '? Error';
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ *  Start / Stop measurement
+ * ═══════════════════════════════════════════════════════════════════ */
+let pollTimer = null;
+
+async function startMeasurement() {
+  const cfg = buildConfig();
+  document.getElementById('btn-start').disabled = true;
+  document.getElementById('btn-stop').disabled = false;
+  document.getElementById('progress-section').style.display = 'block';
+
+  try {
+    const r = await fetch('/thermal/api/start', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(cfg),
+    });
+    const d = await r.json();
+    if (d.error) {
+      alert('Error: ' + d.error);
+      resetUI();
+      return;
+    }
+    startPolling();
+  } catch (e) {
+    alert('Failed to start: ' + e);
+    resetUI();
+  }
+}
+
+async function stopMeasurement() {
+  try {
+    await fetch('/thermal/api/stop', { method: 'POST' });
+  } catch (e) {}
+}
+
+function startPolling() {
+  if (pollTimer) return;
+  pollTimer = setInterval(pollProgress, 500);
+}
+
+async function pollProgress() {
+  try {
+    const r = await fetch('/thermal/api/progress');
+    const d = await r.json();
+
+    const pct = d.total > 0 ? Math.min(100, d.frame / d.total * 100) : 0;
+    document.getElementById('prog-fill').style.width = pct.toFixed(1) + '%';
+    document.getElementById('prog-text').textContent = `Frame ${d.frame} / ${d.total || '?'}`;
+    document.getElementById('prog-elapsed').textContent = d.elapsed_s.toFixed(1) + 's';
+
+    if (d.latest_snapshot) {
+      const s = d.latest_snapshot;
+      document.getElementById('live-stats').innerHTML = `
+        <div class="stat-box"><div class="val">${s.global_min_c?.toFixed(1) || '—'}°C</div><div class="lbl">Min</div></div>
+        <div class="stat-box"><div class="val">${s.global_mean_c?.toFixed(1) || '—'}°C</div><div class="lbl">Mean</div></div>
+        <div class="stat-box"><div class="val">${s.global_max_c?.toFixed(1) || '—'}°C</div><div class="lbl">Max</div></div>
+        <div class="stat-box"><div class="val">${s.verdict || '—'}</div><div class="lbl">Verdict</div></div>
+      `;
+    }
+
+    if (!d.running) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+      resetUI();
+      loadResult();
+      // Switch to results tab
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      document.querySelector('[data-tab="results"]').classList.add('active');
+      document.getElementById('tab-results').classList.add('active');
+    }
+  } catch (e) {
+    // ignore transient fetch errors
+  }
+}
+
+function resetUI() {
+  document.getElementById('btn-start').disabled = false;
+  document.getElementById('btn-stop').disabled = true;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ *  Single capture (Live tab)
+ * ═══════════════════════════════════════════════════════════════════ */
+async function captureSingle() {
+  document.getElementById('btn-capture').disabled = true;
+  try {
+    const cam = { mode: document.getElementById('live-camera-mode').value };
+    if (cam.mode === 'simulated') {
+      cam.base_temp_c = 25;
+      cam.inject_hotspot = true;
+      cam.hotspot_temp_c = 75;
+    }
+    const zonesData = zones.map(z => ({
+      name: z.name, x: z.x, y: z.y, width: z.w, height: z.h,
+      warn_temp_c: z.warn, max_temp_c: z.max,
+    }));
+
+    const r = await fetch('/thermal/api/capture_single', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ camera: cam, zones: zonesData }),
+    });
+    const d = await r.json();
+    if (d.error) { alert(d.error); return; }
+
+    document.getElementById('live-result').style.display = 'block';
+    const s = d.snapshot;
+    document.getElementById('live-frame-stats').innerHTML = `
+      <div class="stat-box"><div class="val">${s.global_min_c.toFixed(1)}°C</div><div class="lbl">Min</div></div>
+      <div class="stat-box"><div class="val">${s.global_mean_c.toFixed(1)}°C</div><div class="lbl">Mean</div></div>
+      <div class="stat-box"><div class="val">${s.global_max_c.toFixed(1)}°C</div><div class="lbl">Max</div></div>
+      <div class="stat-box"><div class="val">${s.verdict}</div><div class="lbl">Verdict</div></div>
+      <div class="stat-box"><div class="val">(${s.hotspot.x}, ${s.hotspot.y})</div><div class="lbl">Hotspot</div></div>
+    `;
+
+    let zoneHtml = '';
+    if (s.zones && s.zones.length > 0) {
+      zoneHtml = '<table><thead><tr><th>Zone</th><th>Mean</th><th>Max</th><th>Verdict</th></tr></thead><tbody>';
+      for (const z of s.zones) {
+        zoneHtml += `<tr><td>${z.zone_name}</td><td>${z.mean_temp_c.toFixed(1)}°C</td>
+          <td>${z.max_temp_c.toFixed(1)}°C</td>
+          <td><span class="badge ${z.verdict === 'NORMAL' ? 'pass' : 'fail'}">${z.verdict}</span></td></tr>`;
+      }
+      zoneHtml += '</tbody></table>';
+    } else {
+      zoneHtml = '<p style="color:var(--fg-dim); font-size:12px;">No zones defined</p>';
+    }
+    document.getElementById('live-zone-readings').innerHTML = zoneHtml;
+
+  } catch (e) {
+    alert('Capture failed: ' + e);
+  } finally {
+    document.getElementById('btn-capture').disabled = false;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ *  Results tab
+ * ═══════════════════════════════════════════════════════════════════ */
+async function loadResult() {
+  try {
+    const r = await fetch('/thermal/api/result');
+    if (r.status === 404) return;
+    const d = await r.json();
+    if (d.status === 'no_result' || d.error) return;
+
+    document.getElementById('result-placeholder').style.display = 'none';
+    const el = document.getElementById('result-content');
+    el.style.display = 'block';
+
+    const passed = d.passed;
+    const vClass = passed ? 'pass' : 'fail';
+    const vText = passed ? '✓ PASS' : '✕ FAIL';
+    let failHtml = '';
+    if (d.fail_reasons && d.fail_reasons.length > 0) {
+      failHtml = '<ul style="margin-top:6px;padding-left:16px;">' +
+        d.fail_reasons.map(r => `<li style="color:var(--red);font-size:12px;">${r}</li>`).join('') +
+        '</ul>';
+    }
+
+    let zoneTable = '';
+    if (d.zone_stats && d.zone_stats.length) {
+      zoneTable = '<h3 style="color:var(--teal);margin:14px 0 8px;">Zone Statistics</h3>';
+      zoneTable += '<table><thead><tr><th>Zone</th><th>Mean</th><th>Max</th><th>Min</th><th>Rise</th><th>Verdict</th></tr></thead><tbody>';
+      for (const z of d.zone_stats) {
+        zoneTable += `<tr><td>${z.zone_name}</td><td>${z.mean_temp_c}°C</td>
+          <td>${z.max_temp_c}°C</td><td>${z.min_temp_c}°C</td>
+          <td>${z.temp_rise_c >= 0 ? '+' : ''}${z.temp_rise_c}°C</td>
+          <td><span class="badge ${z.worst_verdict === 'NORMAL' ? 'pass' : 'fail'}">${z.worst_verdict}</span></td></tr>`;
+      }
+      zoneTable += '</tbody></table>';
+    }
+
+    const reportLink = d.report_path
+      ? `<a href="/thermal/api/report/${d.report_path.split(/[\\/]/).pop()}" target="_blank" class="btn btn-secondary" style="margin-top:10px;">📄 Open HTML Report</a>`
+      : '';
+
+    el.innerHTML = `
+      <div class="badge ${vClass}" style="font-size:16px;padding:8px 20px;margin-bottom:14px;">${vText}</div>
+      ${failHtml}
+      <div class="stats-grid">
+        <div class="stat-box"><div class="val">${d.mode}</div><div class="lbl">Mode</div></div>
+        <div class="stat-box"><div class="val">${d.global_min_c}°C</div><div class="lbl">Min</div></div>
+        <div class="stat-box"><div class="val">${d.global_mean_c}°C</div><div class="lbl">Mean</div></div>
+        <div class="stat-box"><div class="val">${d.global_max_c}°C</div><div class="lbl">Max</div></div>
+        <div class="stat-box"><div class="val">${d.total_frames}</div><div class="lbl">Frames</div></div>
+        <div class="stat-box"><div class="val">${d.duration_s}s</div><div class="lbl">Duration</div></div>
+      </div>
+      ${zoneTable}
+      ${reportLink}
+    `;
+  } catch (e) {}
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ *  Reports tab
+ * ═══════════════════════════════════════════════════════════════════ */
+async function loadReports() {
+  try {
+    const r = await fetch('/thermal/api/reports');
+    const d = await r.json();
+    const el = document.getElementById('reports-list');
+
+    if (!d.reports || d.reports.length === 0) {
+      el.innerHTML = '<p style="color:var(--fg-dim); font-size:13px;">No reports saved yet.</p>';
+      return;
+    }
+
+    el.innerHTML = d.reports.map(rp => {
+      const date = new Date(rp.modified * 1000).toLocaleString();
+      return `<div class="report-item">
+        <a href="/thermal/api/report/${rp.name}" target="_blank">📄 ${rp.name}</a>
+        <span class="meta">${rp.size_kb} KB · ${date}</span>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    document.getElementById('reports-list').innerHTML =
+      '<p style="color:var(--red);">Failed to load reports</p>';
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ *  Init
+ * ═══════════════════════════════════════════════════════════════════ */
+refreshStatus();
+</script>
+</body>
+</html>

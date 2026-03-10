@@ -1,0 +1,163 @@
+# Locator Base Blink Test Scenario
+# This scenario tests the LED blink functionality of the locator_base board
+# Can run with either real AD3 hardware or ProtoSim simulation
+
+scenario:
+  name: "Locator Base LED Blink Test"
+  version: "1.0"
+  description: |
+    Verifies LED blink functionality on the Locator Base board.
+    Tests LED toggle timing and verifies PWM-controlled LED brightness.
+
+# Target configuration
+target:
+  board: locator_base
+  mcu: MSPM0G3507
+  firmware: "${WORKSPACE}/locator_base/build/zephyr/zephyr.elf"
+  
+# Backend selection (auto, hardware, simulation, mock)
+backend: auto
+
+# Pin mappings for this test
+pins:
+  led_status:
+    mcu_pin: PA0
+    ad3_dio: DIO0
+    description: "Status LED"
+    
+  led_user:
+    mcu_pin: PA28
+    ad3_dio: DIO1
+    description: "User LED"
+    
+  button:
+    mcu_pin: PA18
+    ad3_dio: DIO2
+    direction: output  # AD3 drives this as input to MCU
+    description: "User button"
+
+# Test sequences
+tests:
+  - name: "LED Initial State"
+    description: "Verify LEDs are off after reset"
+    steps:
+      - wait: 100ms
+      - assert:
+          pin: led_status
+          state: low
+          message: "Status LED should be off initially"
+      - assert:
+          pin: led_user
+          state: low
+          message: "User LED should be off initially"
+
+  - name: "Status LED Blink"
+    description: "Verify status LED blinks at expected rate"
+    steps:
+      - wait: 500ms  # Wait for first blink cycle
+      - capture:
+          pin: led_status
+          duration: 2s
+          sample_rate: 10kHz
+          output: "${OUTPUT}/led_status_capture.vcd"
+      - analyze:
+          capture: led_status
+          checks:
+            - frequency:
+                expected: 1Hz
+                tolerance: 10%
+            - duty_cycle:
+                expected: 50%
+                tolerance: 5%
+
+  - name: "Button Toggle"
+    description: "Verify button toggles user LED"
+    steps:
+      - set:
+          pin: button
+          state: low
+      - wait: 50ms
+      - set:
+          pin: button
+          state: high  # Press button
+      - wait: 50ms
+      - set:
+          pin: button
+          state: low   # Release button
+      - wait: 50ms
+      - assert:
+          pin: led_user
+          state: high
+          message: "User LED should toggle on after button press"
+      - set:
+          pin: button
+          state: high  # Press again
+      - wait: 50ms
+      - set:
+          pin: button
+          state: low
+      - wait: 50ms
+      - assert:
+          pin: led_user
+          state: low
+          message: "User LED should toggle off after second press"
+
+  - name: "PWM LED Dimming"
+    description: "Test PWM-controlled LED brightness ramp"
+    steps:
+      - capture:
+          pin: led_status
+          duration: 5s
+          sample_rate: 100kHz  # Higher rate for PWM
+          output: "${OUTPUT}/led_pwm_capture.vcd"
+      - analyze:
+          capture: led_status
+          checks:
+            - pwm_frequency:
+                expected: 1kHz
+                tolerance: 5%
+            - duty_cycle_range:
+                min: 0%
+                max: 100%
+                description: "Verify full brightness ramp"
+
+# Data logging configuration
+logging:
+  formats:
+    - vcd   # GTKWave compatible
+    - csv   # Spreadsheet analysis
+    - json  # Programmatic access
+    
+  signals:
+    - name: "led_status"
+      type: digital
+      
+    - name: "led_user"
+      type: digital
+      
+    - name: "button"
+      type: digital
+      direction: stimulus
+      
+  output_dir: "${OUTPUT}/logs"
+  
+# Pass/fail criteria
+criteria:
+  all_tests_pass: true
+  max_timing_error: 10%
+  min_duty_cycle_accuracy: 5%
+
+# Hooks for custom actions
+hooks:
+  before_all:
+    - action: log
+      message: "Starting Locator Base blink test suite"
+      
+  after_each:
+    - action: screenshot
+      condition: on_failure
+      
+  after_all:
+    - action: generate_report
+      format: html
+      output: "${OUTPUT}/test_report.html"

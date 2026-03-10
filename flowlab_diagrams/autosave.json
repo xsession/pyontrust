@@ -232,6 +232,35 @@
         "value": "3.14",
         "dtype": "float"
       }
+    },
+    {
+      "id": "b25",
+      "type": "constant",
+      "x": 368,
+      "y": 325,
+      "params": {
+        "value": "3.14",
+        "dtype": "float"
+      }
+    },
+    {
+      "id": "b26",
+      "type": "display",
+      "x": 368,
+      "y": 325,
+      "params": {
+        "format": "auto"
+      }
+    },
+    {
+      "id": "b27",
+      "type": "constant",
+      "x": 368,
+      "y": 325,
+      "params": {
+        "value": "3.14",
+        "dtype": "float"
+      }
     }
   ],
   "wires": []
