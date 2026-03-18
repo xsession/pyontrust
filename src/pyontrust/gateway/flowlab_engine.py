@@ -688,8 +688,22 @@ def _blk_display(params: dict, inputs: dict, ctx: ExecContext) -> dict:
 
 def _blk_plot_trace(params: dict, inputs: dict, ctx: ExecContext) -> dict:
     trace = inputs.get("trace", {})
-    y_data = trace.get("current_a", [])
-    x_data = trace.get("time_s", [])
+    # Normalise: accept a dict with time_s/current_a keys, a plain list
+    # of y-values, or a list-of-dicts [{t:…, v:…}, …].
+    if isinstance(trace, list):
+        if trace and isinstance(trace[0], dict):
+            # List of point dicts — try common key names
+            y_data = [p.get("current_a", p.get("y", p.get("value", 0))) for p in trace]
+            x_data = [p.get("time_s", p.get("x", p.get("t", i))) for i, p in enumerate(trace)]
+        else:
+            y_data = list(trace)
+            x_data = list(range(len(y_data)))
+    elif isinstance(trace, dict):
+        y_data = trace.get("current_a", trace.get("y", []))
+        x_data = trace.get("time_s", trace.get("x", []))
+    else:
+        y_data = []
+        x_data = []
     n = len(y_data)
     title = str(params.get("title", "Trace"))
     y_label = str(params.get("y_label", "Current (A)"))

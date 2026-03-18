@@ -56,6 +56,38 @@ class TestPlotTraceViz(unittest.TestCase):
         self.assertEqual(viz["type"], "trace")
         self.assertEqual(len(viz["y"]), 0)
 
+    def test_trace_from_plain_list(self):
+        """plot_trace accepts a plain list of y-values as trace input."""
+        ctx = ExecContext()
+        out = FlowLabEngine.block_registry["plot_trace"](
+            {"title": "List"}, {"trace": [1.0, 2.0, 3.0, 4.0]}, ctx)
+        viz = out["_viz"]
+        self.assertEqual(viz["type"], "trace")
+        self.assertEqual(viz["y"], [1.0, 2.0, 3.0, 4.0])
+        self.assertEqual(viz["x"], [0, 1, 2, 3])
+
+    def test_trace_from_list_of_dicts(self):
+        """plot_trace accepts a list of point dicts."""
+        ctx = ExecContext()
+        points = [
+            {"time_s": 0.0, "current_a": 0.01},
+            {"time_s": 0.5, "current_a": 0.02},
+            {"time_s": 1.0, "current_a": 0.03},
+        ]
+        out = FlowLabEngine.block_registry["plot_trace"](
+            {"title": "Dicts"}, {"trace": points}, ctx)
+        viz = out["_viz"]
+        self.assertEqual(viz["y"], [0.01, 0.02, 0.03])
+        self.assertEqual(viz["x"], [0.0, 0.5, 1.0])
+
+    def test_trace_from_empty_list(self):
+        """plot_trace handles an empty list gracefully."""
+        ctx = ExecContext()
+        out = FlowLabEngine.block_registry["plot_trace"](
+            {"title": "Empty List"}, {"trace": []}, ctx)
+        viz = out["_viz"]
+        self.assertEqual(len(viz["y"]), 0)
+
 
 class TestPlotXYViz(unittest.TestCase):
 
