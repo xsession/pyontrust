@@ -1,0 +1,37 @@
+<html><head>
+<title>Locator Base Ethernet Control Interface</title>
+<style>
+body { font-family: sans-serif; background: #1e1e2e; color: #cdd6f4; padding: 2em; }
+h1 { color: #89b4fa; } h2 { color: #a6e3a1; } h3 { color: #f9e2af; }
+table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+th, td { border: 1px solid #45475a; padding: 8px; text-align: left; }
+th { background: #313244; } tr:nth-child(even) { background: #313244; }
+code { background: #313244; padding: 2px 6px; border-radius: 3px; }
+</style></head><body>
+<h1>Locator Base Ethernet Control Interface</h1>
+<p>Transport: <code>tcp/udp</code></p>
+<h2>Version History</h2><table>
+<tr><th>FW Version</th><th>Date</th><th>Author</th><th>Changes</th></tr>
+<tr><td>1.0</td><td>2026.03.09</td><td>dev</td><td>- Initial TCP command protocol and UDP telemetry.
+</td></tr>
+</table>
+<h2>TCP — Port 5200</h2>
+<table><tr><th>Command</th><th>ID</th><th>Direction</th><th>Doc</th></tr>
+<tr><td>ping</td><td>0x0000</td><td>request-response</td><td>Connectivity check.</td></tr>
+<tr><td>get_device_info</td><td>0x0001</td><td>request-response</td><td>Query device identification and uptime.</td></tr>
+<tr><td>get_status</td><td>0x0002</td><td>request-response</td><td>Query overall device status.</td></tr>
+<tr><td>set_led</td><td>0x0010</td><td>request-response</td><td>Set LEDs by bitmask.</td></tr>
+<tr><td>set_gpio</td><td>0x0011</td><td>request-response</td><td>Set digital output pins.</td></tr>
+<tr><td>get_gpio</td><td>0x0012</td><td>request-response</td><td>Read all GPIO states.</td></tr>
+<tr><td>start_measurement</td><td>0x0020</td><td>request-response</td><td>Start an ADC measurement capture.</td></tr>
+<tr><td>get_measurement</td><td>0x0021</td><td>request-response</td><td>Read captured measurement data.</td></tr>
+<tr><td>can_send</td><td>0x0030</td><td>request-response</td><td>Transmit a CAN frame via the MCU&#x27;s MCAN peripheral.</td></tr>
+<tr><td>can_subscribe</td><td>0x0031</td><td>request-response</td><td>Subscribe to CAN frames. Matching frames sent as async notifications over TCP.</td></tr>
+</table>
+<h2>UDP — Port 5201</h2>
+<table><tr><th>Message</th><th>ID</th><th>Rate</th><th>Doc</th></tr>
+<tr><td>heartbeat</td><td>0x0100</td><td>1 Hz</td><td>1 Hz heartbeat broadcast for device discovery.</td></tr>
+<tr><td>telemetry</td><td>0x0101</td><td>10 Hz</td><td>10 Hz periodic telemetry broadcast.</td></tr>
+<tr><td>can_frame</td><td>0x0102</td><td>0 Hz</td><td>Forwarded CAN frame (from can_subscribe filter).</td></tr>
+</table>
+</body></html>

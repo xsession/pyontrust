@@ -1,0 +1,21 @@
+#ifndef {{ guard }}
+#define {{ guard }}
+
+/* {{ title }} — auto-generated */
+
+{% for inc in includes %}
+#include {{ inc }}
+{% endfor %}
+
+{% for group in groups %}
+{% for d in group.defines %}
+#define {{ d.name | ljust(55) }} {{ d.value }}
+{% endfor %}
+
+{% endfor %}
+{% for group in groups %}
+#define {{ group.macro_name }}( STRUCT )\
+{{ group.entries_block }}
+
+{% endfor %}
+#endif /* {{ guard }} */

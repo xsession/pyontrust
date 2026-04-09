@@ -129,6 +129,7 @@ def create_app(
     from pyontrust.gateway.blueprints.diagnostic import bp as diag_bp
     from pyontrust.gateway.blueprints.can_diag import bp as can_bp
     from pyontrust.gateway.blueprints.thermal_measurement import bp as thermal_bp
+    from pyontrust.gateway.blueprints.ifdoc import bp as ifdoc_bp
 
     app.register_blueprint(shell_bp)  # serves / and /static/shell/
     app.register_blueprint(diag_bp, url_prefix="/diag")
@@ -140,6 +141,7 @@ def create_app(
     app.register_blueprint(flowlab_bp, url_prefix="/flowlab")
     app.register_blueprint(can_bp, url_prefix="/can")
     app.register_blueprint(thermal_bp, url_prefix="/thermal")
+    app.register_blueprint(ifdoc_bp, url_prefix="/ifdoc")
 
     # ── Auto-discover plugin Blueprints ─────────────────────────────
     try:

@@ -1,0 +1,437 @@
+<!-- Auto-generated GUI widget block                             -->
+<!-- Title:     Locator Base RS-485 Modbus Interface                                      -->
+<!-- Transport: rs485                                  -->
+<!-- Include:   include "gui/rs485_locatorbasemodbus_gui.html.j2"  in your Jinja app  -->
+
+<style>
+  .ifdoc-panel { background:#1e1e2e; color:#cdd6f4; border:1px solid #45475a; border-radius:8px; padding:1em; margin:0.5em 0; font-family:monospace; font-size:13px; }
+  .ifdoc-panel h3 { color:#89b4fa; margin:0 0 0.5em 0; font-size:15px; }
+  .ifdoc-panel h4 { color:#a6e3a1; margin:0.8em 0 0.3em 0; font-size:13px; }
+  .ifdoc-panel table { border-collapse:collapse; width:100%; }
+  .ifdoc-panel th, .ifdoc-panel td { border:1px solid #45475a; padding:4px 8px; text-align:left; }
+  .ifdoc-panel th { background:#313244; color:#cdd6f4; }
+  .ifdoc-panel tr:nth-child(even) { background:#313244; }
+  .ifdoc-panel .ifdoc-row { display:flex; gap:8px; align-items:center; margin:4px 0; flex-wrap:wrap; }
+  .ifdoc-panel input, .ifdoc-panel select { background:#313244; color:#cdd6f4; border:1px solid #585b70; border-radius:4px; padding:3px 6px; font-size:12px; font-family:monospace; }
+  .ifdoc-panel input[type=number] { width:80px; }
+  .ifdoc-panel input[type=text] { width:120px; }
+  .ifdoc-panel button { background:#89b4fa; color:#1e1e2e; border:none; border-radius:4px; padding:4px 12px; cursor:pointer; font-size:12px; font-weight:bold; }
+  .ifdoc-panel button:hover { background:#74c7ec; }
+  .ifdoc-panel button.danger { background:#f38ba8; }
+  .ifdoc-panel button.danger:hover { background:#eba0ac; }
+  .ifdoc-panel .ifdoc-result { background:#181825; border:1px solid #45475a; border-radius:4px; padding:4px 8px; margin:4px 0; min-height:1.4em; white-space:pre-wrap; word-break:break-all; color:#a6e3a1; font-size:12px; }
+  .ifdoc-panel label { color:#bac2de; font-size:12px; min-width:70px; }
+  .ifdoc-panel .ifdoc-badge { display:inline-block; background:#45475a; color:#f9e2af; border-radius:3px; padding:1px 6px; font-size:11px; margin-left:6px; }
+</style>
+
+<div class="ifdoc-panel" id="locatorbasemodbus-modbus-panel">
+  <h3>Locator Base RS-485 Modbus Interface</h3>
+  <p>Slave ID: <code>0x10</code></p>
+  <h4>Holding Registers</h4>
+  <table><tr><th>Addr</th><th>Name</th><th>R/W</th><th style="width:100%">Actions</th></tr>
+  <tr title="Bit-mapped device status word.">
+    <td>0x0000</td><td>device_status</td>
+    <td>read</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasemodbus/modbus/holding/0x0000', document.getElementById('locatorbasemodbus_holding_device_status_r'))">Read</button>
+        <div class="ifdoc-result" id="locatorbasemodbus_holding_device_status_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="LED on/off bitmask (bit 0 = LED0, bit 1 = LED1, ...).">
+    <td>0x0001</td><td>led_control</td>
+    <td>read, write</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasemodbus/modbus/holding/0x0001', document.getElementById('locatorbasemodbus_holding_led_control_r'))">Read</button>
+        <input type="number" id="locatorbasemodbus_holding_led_control_v" placeholder="value" style="width:70px">
+        <button onclick="ifdocFetch('/api/locatorbasemodbus/modbus/holding/0x0001', {value: Number(document.getElementById('locatorbasemodbus_holding_led_control_v').value)}, document.getElementById('locatorbasemodbus_holding_led_control_r'))">Write</button>
+        <div class="ifdoc-result" id="locatorbasemodbus_holding_led_control_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Firmware major version number.">
+    <td>0x0002</td><td>fw_version_major</td>
+    <td>read</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasemodbus/modbus/holding/0x0002', document.getElementById('locatorbasemodbus_holding_fw_version_major_r'))">Read</button>
+        <div class="ifdoc-result" id="locatorbasemodbus_holding_fw_version_major_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Firmware minor version number.">
+    <td>0x0003</td><td>fw_version_minor</td>
+    <td>read</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasemodbus/modbus/holding/0x0003', document.getElementById('locatorbasemodbus_holding_fw_version_minor_r'))">Read</button>
+        <div class="ifdoc-result" id="locatorbasemodbus_holding_fw_version_minor_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Modbus slave address (1–247). Takes effect after save + reboot.">
+    <td>0x0004</td><td>node_id</td>
+    <td>read, write</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasemodbus/modbus/holding/0x0004', document.getElementById('locatorbasemodbus_holding_node_id_r'))">Read</button>
+        <input type="number" id="locatorbasemodbus_holding_node_id_v" placeholder="value" style="width:70px">
+        <button onclick="ifdocFetch('/api/locatorbasemodbus/modbus/holding/0x0004', {value: Number(document.getElementById('locatorbasemodbus_holding_node_id_v').value)}, document.getElementById('locatorbasemodbus_holding_node_id_r'))">Write</button>
+        <div class="ifdoc-result" id="locatorbasemodbus_holding_node_id_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Baud rate selection. See baud_rate_ten enum.">
+    <td>0x0005</td><td>baud_rate_code</td>
+    <td>read, write</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasemodbus/modbus/holding/0x0005', document.getElementById('locatorbasemodbus_holding_baud_rate_code_r'))">Read</button>
+        <input type="number" id="locatorbasemodbus_holding_baud_rate_code_v" placeholder="value" style="width:70px">
+        <button onclick="ifdocFetch('/api/locatorbasemodbus/modbus/holding/0x0005', {value: Number(document.getElementById('locatorbasemodbus_holding_baud_rate_code_v').value)}, document.getElementById('locatorbasemodbus_holding_baud_rate_code_r'))">Write</button>
+        <div class="ifdoc-result" id="locatorbasemodbus_holding_baud_rate_code_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="0 = none, 1 = even, 2 = odd.">
+    <td>0x0006</td><td>parity_mode</td>
+    <td>read, write</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasemodbus/modbus/holding/0x0006', document.getElementById('locatorbasemodbus_holding_parity_mode_r'))">Read</button>
+        <input type="number" id="locatorbasemodbus_holding_parity_mode_v" placeholder="value" style="width:70px">
+        <button onclick="ifdocFetch('/api/locatorbasemodbus/modbus/holding/0x0006', {value: Number(document.getElementById('locatorbasemodbus_holding_parity_mode_v').value)}, document.getElementById('locatorbasemodbus_holding_parity_mode_r'))">Write</button>
+        <div class="ifdoc-result" id="locatorbasemodbus_holding_parity_mode_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Write 0x1234 to persist holding registers 0x0004–0x0006 to flash.">
+    <td>0x0007</td><td>save_config</td>
+    <td>write</td>
+    <td>
+      <div class="ifdoc-row">
+        <input type="number" id="locatorbasemodbus_holding_save_config_v" placeholder="value" style="width:70px">
+        <button onclick="ifdocFetch('/api/locatorbasemodbus/modbus/holding/0x0007', {value: Number(document.getElementById('locatorbasemodbus_holding_save_config_v').value)}, document.getElementById('locatorbasemodbus_holding_save_config_r'))">Write</button>
+        <div class="ifdoc-result" id="locatorbasemodbus_holding_save_config_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="PWM channel 0 frequency in Hz (PA7 / TIMG8_CH0).">
+    <td>0x0010</td><td>pwm0_freq_hz</td>
+    <td>read, write</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasemodbus/modbus/holding/0x0010', document.getElementById('locatorbasemodbus_holding_pwm0_freq_hz_r'))">Read</button>
+        <input type="number" id="locatorbasemodbus_holding_pwm0_freq_hz_v" placeholder="value" style="width:70px">
+        <button onclick="ifdocFetch('/api/locatorbasemodbus/modbus/holding/0x0010', {value: Number(document.getElementById('locatorbasemodbus_holding_pwm0_freq_hz_v').value)}, document.getElementById('locatorbasemodbus_holding_pwm0_freq_hz_r'))">Write</button>
+        <div class="ifdoc-result" id="locatorbasemodbus_holding_pwm0_freq_hz_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="PWM channel 0 duty cycle 0–100.">
+    <td>0x0011</td><td>pwm0_duty_pct</td>
+    <td>read, write</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasemodbus/modbus/holding/0x0011', document.getElementById('locatorbasemodbus_holding_pwm0_duty_pct_r'))">Read</button>
+        <input type="number" id="locatorbasemodbus_holding_pwm0_duty_pct_v" placeholder="value" style="width:70px">
+        <button onclick="ifdocFetch('/api/locatorbasemodbus/modbus/holding/0x0011', {value: Number(document.getElementById('locatorbasemodbus_holding_pwm0_duty_pct_v').value)}, document.getElementById('locatorbasemodbus_holding_pwm0_duty_pct_r'))">Write</button>
+        <div class="ifdoc-result" id="locatorbasemodbus_holding_pwm0_duty_pct_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="PWM channel 1 frequency in Hz (PA21 / TIMG6_CH0).">
+    <td>0x0012</td><td>pwm1_freq_hz</td>
+    <td>read, write</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasemodbus/modbus/holding/0x0012', document.getElementById('locatorbasemodbus_holding_pwm1_freq_hz_r'))">Read</button>
+        <input type="number" id="locatorbasemodbus_holding_pwm1_freq_hz_v" placeholder="value" style="width:70px">
+        <button onclick="ifdocFetch('/api/locatorbasemodbus/modbus/holding/0x0012', {value: Number(document.getElementById('locatorbasemodbus_holding_pwm1_freq_hz_v').value)}, document.getElementById('locatorbasemodbus_holding_pwm1_freq_hz_r'))">Write</button>
+        <div class="ifdoc-result" id="locatorbasemodbus_holding_pwm1_freq_hz_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="PWM channel 1 duty cycle 0–100.">
+    <td>0x0013</td><td>pwm1_duty_pct</td>
+    <td>read, write</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasemodbus/modbus/holding/0x0013', document.getElementById('locatorbasemodbus_holding_pwm1_duty_pct_r'))">Read</button>
+        <input type="number" id="locatorbasemodbus_holding_pwm1_duty_pct_v" placeholder="value" style="width:70px">
+        <button onclick="ifdocFetch('/api/locatorbasemodbus/modbus/holding/0x0013', {value: Number(document.getElementById('locatorbasemodbus_holding_pwm1_duty_pct_v').value)}, document.getElementById('locatorbasemodbus_holding_pwm1_duty_pct_r'))">Write</button>
+        <div class="ifdoc-result" id="locatorbasemodbus_holding_pwm1_duty_pct_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="PWM channel 2 frequency in Hz (PA22 / TIMG6_CH1).">
+    <td>0x0014</td><td>pwm2_freq_hz</td>
+    <td>read, write</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasemodbus/modbus/holding/0x0014', document.getElementById('locatorbasemodbus_holding_pwm2_freq_hz_r'))">Read</button>
+        <input type="number" id="locatorbasemodbus_holding_pwm2_freq_hz_v" placeholder="value" style="width:70px">
+        <button onclick="ifdocFetch('/api/locatorbasemodbus/modbus/holding/0x0014', {value: Number(document.getElementById('locatorbasemodbus_holding_pwm2_freq_hz_v').value)}, document.getElementById('locatorbasemodbus_holding_pwm2_freq_hz_r'))">Write</button>
+        <div class="ifdoc-result" id="locatorbasemodbus_holding_pwm2_freq_hz_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="PWM channel 2 duty cycle 0–100.">
+    <td>0x0015</td><td>pwm2_duty_pct</td>
+    <td>read, write</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasemodbus/modbus/holding/0x0015', document.getElementById('locatorbasemodbus_holding_pwm2_duty_pct_r'))">Read</button>
+        <input type="number" id="locatorbasemodbus_holding_pwm2_duty_pct_v" placeholder="value" style="width:70px">
+        <button onclick="ifdocFetch('/api/locatorbasemodbus/modbus/holding/0x0015', {value: Number(document.getElementById('locatorbasemodbus_holding_pwm2_duty_pct_v').value)}, document.getElementById('locatorbasemodbus_holding_pwm2_duty_pct_r'))">Write</button>
+        <div class="ifdoc-result" id="locatorbasemodbus_holding_pwm2_duty_pct_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="PWM channel 3 frequency in Hz (PA23 / TIMG0_CH0).">
+    <td>0x0016</td><td>pwm3_freq_hz</td>
+    <td>read, write</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasemodbus/modbus/holding/0x0016', document.getElementById('locatorbasemodbus_holding_pwm3_freq_hz_r'))">Read</button>
+        <input type="number" id="locatorbasemodbus_holding_pwm3_freq_hz_v" placeholder="value" style="width:70px">
+        <button onclick="ifdocFetch('/api/locatorbasemodbus/modbus/holding/0x0016', {value: Number(document.getElementById('locatorbasemodbus_holding_pwm3_freq_hz_v').value)}, document.getElementById('locatorbasemodbus_holding_pwm3_freq_hz_r'))">Write</button>
+        <div class="ifdoc-result" id="locatorbasemodbus_holding_pwm3_freq_hz_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="PWM channel 3 duty cycle 0–100.">
+    <td>0x0017</td><td>pwm3_duty_pct</td>
+    <td>read, write</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasemodbus/modbus/holding/0x0017', document.getElementById('locatorbasemodbus_holding_pwm3_duty_pct_r'))">Read</button>
+        <input type="number" id="locatorbasemodbus_holding_pwm3_duty_pct_v" placeholder="value" style="width:70px">
+        <button onclick="ifdocFetch('/api/locatorbasemodbus/modbus/holding/0x0017', {value: Number(document.getElementById('locatorbasemodbus_holding_pwm3_duty_pct_v').value)}, document.getElementById('locatorbasemodbus_holding_pwm3_duty_pct_r'))">Write</button>
+        <div class="ifdoc-result" id="locatorbasemodbus_holding_pwm3_duty_pct_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Digital output state bitmask (bits 0–3 = DOUT0–DOUT3).">
+    <td>0x0020</td><td>dout_mask</td>
+    <td>read, write</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasemodbus/modbus/holding/0x0020', document.getElementById('locatorbasemodbus_holding_dout_mask_r'))">Read</button>
+        <input type="number" id="locatorbasemodbus_holding_dout_mask_v" placeholder="value" style="width:70px">
+        <button onclick="ifdocFetch('/api/locatorbasemodbus/modbus/holding/0x0020', {value: Number(document.getElementById('locatorbasemodbus_holding_dout_mask_v').value)}, document.getElementById('locatorbasemodbus_holding_dout_mask_r'))">Write</button>
+        <div class="ifdoc-result" id="locatorbasemodbus_holding_dout_mask_r"></div>
+      </div>
+    </td>
+  </tr>
+  </table>
+  <h4>Input Registers</h4>
+  <table><tr><th>Addr</th><th>Name</th><th>R/W</th><th style="width:100%">Actions</th></tr>
+  <tr title="On-board temperature sensor × 10.">
+    <td>0x0000</td><td>board_temperature</td>
+    <td>read</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasemodbus/modbus/input/0x0000', document.getElementById('locatorbasemodbus_input_board_temperature_r'))">Read</button>
+        <div class="ifdoc-result" id="locatorbasemodbus_input_board_temperature_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Supply rail voltage in millivolts.">
+    <td>0x0001</td><td>supply_voltage</td>
+    <td>read</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasemodbus/modbus/input/0x0001', document.getElementById('locatorbasemodbus_input_supply_voltage_r'))">Read</button>
+        <div class="ifdoc-result" id="locatorbasemodbus_input_supply_voltage_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="ADC channel 0 (PA15) converted to millivolts.">
+    <td>0x0002</td><td>adc_ch0</td>
+    <td>read</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasemodbus/modbus/input/0x0002', document.getElementById('locatorbasemodbus_input_adc_ch0_r'))">Read</button>
+        <div class="ifdoc-result" id="locatorbasemodbus_input_adc_ch0_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="ADC channel 1 (PA16) converted to millivolts.">
+    <td>0x0003</td><td>adc_ch1</td>
+    <td>read</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasemodbus/modbus/input/0x0003', document.getElementById('locatorbasemodbus_input_adc_ch1_r'))">Read</button>
+        <div class="ifdoc-result" id="locatorbasemodbus_input_adc_ch1_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="ADC channel 2 (PA17) converted to millivolts.">
+    <td>0x0004</td><td>adc_ch2</td>
+    <td>read</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasemodbus/modbus/input/0x0004', document.getElementById('locatorbasemodbus_input_adc_ch2_r'))">Read</button>
+        <div class="ifdoc-result" id="locatorbasemodbus_input_adc_ch2_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="ADC channel 3 (PA18) converted to millivolts.">
+    <td>0x0005</td><td>adc_ch3</td>
+    <td>read</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasemodbus/modbus/input/0x0005', document.getElementById('locatorbasemodbus_input_adc_ch3_r'))">Read</button>
+        <div class="ifdoc-result" id="locatorbasemodbus_input_adc_ch3_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Digital input state bitmask (bits 0–3 = DIN0–DIN3).">
+    <td>0x0006</td><td>din_state</td>
+    <td>read</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasemodbus/modbus/input/0x0006', document.getElementById('locatorbasemodbus_input_din_state_r'))">Read</button>
+        <div class="ifdoc-result" id="locatorbasemodbus_input_din_state_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Seconds since last boot (rolls at 65535).">
+    <td>0x0007</td><td>uptime_s</td>
+    <td>read</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasemodbus/modbus/input/0x0007', document.getElementById('locatorbasemodbus_input_uptime_s_r'))">Read</button>
+        <div class="ifdoc-result" id="locatorbasemodbus_input_uptime_s_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Total CAN frames received since boot.">
+    <td>0x0008</td><td>can_rx_count</td>
+    <td>read</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasemodbus/modbus/input/0x0008', document.getElementById('locatorbasemodbus_input_can_rx_count_r'))">Read</button>
+        <div class="ifdoc-result" id="locatorbasemodbus_input_can_rx_count_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Total CAN frames transmitted since boot.">
+    <td>0x0009</td><td>can_tx_count</td>
+    <td>read</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasemodbus/modbus/input/0x0009', document.getElementById('locatorbasemodbus_input_can_tx_count_r'))">Read</button>
+        <div class="ifdoc-result" id="locatorbasemodbus_input_can_tx_count_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Cumulative error counter since boot.">
+    <td>0x000a</td><td>error_count</td>
+    <td>read</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasemodbus/modbus/input/0x000a', document.getElementById('locatorbasemodbus_input_error_count_r'))">Read</button>
+        <div class="ifdoc-result" id="locatorbasemodbus_input_error_count_r"></div>
+      </div>
+    </td>
+  </tr>
+  </table>
+  <h4>Discrete Registers</h4>
+  <table><tr><th>Addr</th><th>Name</th><th>R/W</th><th style="width:100%">Actions</th></tr>
+  <tr title="Digital input 0 (PA15).">
+    <td>0x0000</td><td>din0</td>
+    <td>R</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasemodbus/modbus/discrete/0x0000', document.getElementById('locatorbasemodbus_discrete_din0_r'))">Read</button>
+        <div class="ifdoc-result" id="locatorbasemodbus_discrete_din0_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Digital input 1 (PA16).">
+    <td>0x0001</td><td>din1</td>
+    <td>R</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasemodbus/modbus/discrete/0x0001', document.getElementById('locatorbasemodbus_discrete_din1_r'))">Read</button>
+        <div class="ifdoc-result" id="locatorbasemodbus_discrete_din1_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Digital input 2 (PA17).">
+    <td>0x0002</td><td>din2</td>
+    <td>R</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasemodbus/modbus/discrete/0x0002', document.getElementById('locatorbasemodbus_discrete_din2_r'))">Read</button>
+        <div class="ifdoc-result" id="locatorbasemodbus_discrete_din2_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Digital input 3 (PA18 / button).">
+    <td>0x0003</td><td>din3</td>
+    <td>R</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasemodbus/modbus/discrete/0x0003', document.getElementById('locatorbasemodbus_discrete_din3_r'))">Read</button>
+        <div class="ifdoc-result" id="locatorbasemodbus_discrete_din3_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="CAN bus operational (not bus-off).">
+    <td>0x0004</td><td>can_bus_ok</td>
+    <td>R</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasemodbus/modbus/discrete/0x0004', document.getElementById('locatorbasemodbus_discrete_can_bus_ok_r'))">Read</button>
+        <div class="ifdoc-result" id="locatorbasemodbus_discrete_can_bus_ok_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Temperature warning threshold exceeded.">
+    <td>0x0005</td><td>temp_warning</td>
+    <td>R</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasemodbus/modbus/discrete/0x0005', document.getElementById('locatorbasemodbus_discrete_temp_warning_r'))">Read</button>
+        <div class="ifdoc-result" id="locatorbasemodbus_discrete_temp_warning_r"></div>
+      </div>
+    </td>
+  </tr>
+  </table>
+</div>
+
+<script>
+(function() {
+  const API_BASE = "{{ api_base|default('') }}";
+
+  window.ifdocFetch = function(endpoint, params, resultEl) {
+    resultEl.textContent = "…";
+    const url = API_BASE + endpoint;
+    const opts = params
+      ? {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(params)}
+      : {method: "GET"};
+    fetch(url, opts)
+      .then(r => r.json())
+      .then(d => { resultEl.textContent = JSON.stringify(d, null, 2); })
+      .catch(e => { resultEl.textContent = "ERROR: " + e; });
+  };
+
+  window.ifdocRead = function(endpoint, resultEl) {
+    ifdocFetch(endpoint, null, resultEl);
+  };
+
+  window.ifdocWrite = function(endpoint, formEl, resultEl) {
+    const fd = new FormData(formEl);
+    const params = {};
+    for (const [k, v] of fd.entries()) {
+      params[k] = isNaN(Number(v)) ? v : Number(v);
+    }
+    ifdocFetch(endpoint, params, resultEl);
+  };
+})();
+</script>

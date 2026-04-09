@@ -1,0 +1,77 @@
+<html><head>
+<title>Locator Base SPI Peripheral Bus Interface</title>
+<style>
+body { font-family: sans-serif; background: #1e1e2e; color: #cdd6f4; padding: 2em; }
+h1 { color: #89b4fa; } h2 { color: #a6e3a1; } h3 { color: #f9e2af; }
+table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+th, td { border: 1px solid #45475a; padding: 8px; text-align: left; }
+th { background: #313244; } tr:nth-child(even) { background: #313244; }
+code { background: #313244; padding: 2px 6px; border-radius: 3px; }
+</style></head><body>
+<h1>Locator Base SPI Peripheral Bus Interface</h1>
+<p>Transport: <code>spi</code></p>
+<h2>Version History</h2><table>
+<tr><th>FW Version</th><th>Date</th><th>Author</th><th>Changes</th></tr>
+<tr><td>1.0</td><td>2026.03.09</td><td>dev</td><td>- Initial SPI device descriptions.
+</td></tr>
+</table>
+<h2>dac_output — CS: dac (MCP4921)</h2>
+<p>Single-channel 12-bit DAC for analog test stimulus. Output range 0–4.096V (with external Vref).
+</p>
+<h3>Transactions</h3>
+<table><tr><th>Name</th><th>Type</th><th>Word Size</th><th>Doc</th></tr>
+<tr><td>write_dac</td><td>write</td><td>16</td><td>Write 12-bit output value. CS must be toggled per write.</td></tr>
+</table>
+<h2>adc_input — CS: adc_ext (ADS8681)</h2>
+<p>16-bit SAR ADC for high-resolution analog measurement. 1 MSPS, ±12.288V input range (programmable).
+</p>
+<h3>Transactions</h3>
+<table><tr><th>Name</th><th>Type</th><th>Word Size</th><th>Doc</th></tr>
+<tr><td>read_sample</td><td>read</td><td>24</td><td>Read single conversion result. Assert CS, clock 24 bits.</td></tr>
+<tr><td>write_register</td><td>write</td><td>32</td><td>Write configuration register.</td></tr>
+<tr><td>read_register</td><td>read-write</td><td>32</td><td>Read configuration register.</td></tr>
+</table>
+<h3>Registers</h3>
+<table><tr><th>Addr</th><th>Name</th><th>Type</th><th>R/W</th><th>Doc</th></tr>
+<tr><td>0x00</td><td>device_id</td><td>uint16</td><td>read</td><td>Device ID register.</td></tr>
+<tr><td>0x01</td><td>rst_pwrctl</td><td>EXT__ads8681_rst_pwrctl_tun</td><td>read, write</td><td>Reset and power control.</td></tr>
+<tr><td>0x02</td><td>sdi_ctl</td><td>uint16</td><td>read, write</td><td>SDI data input control.</td></tr>
+<tr><td>0x03</td><td>sdo_ctl</td><td>EXT__ads8681_sdo_ctl_tun</td><td>read, write</td><td>SDO data output control.</td></tr>
+<tr><td>0x04</td><td>dataout_ctl</td><td>uint16</td><td>read, write</td><td>Data output control.</td></tr>
+<tr><td>0x05</td><td>range_sel</td><td>EXT__ads8681_range_ten</td><td>read, write</td><td>Input range selection.</td></tr>
+<tr><td>0x14</td><td>alarm_h_th</td><td>uint16</td><td>read, write</td><td>High alarm threshold.</td></tr>
+<tr><td>0x18</td><td>alarm_l_th</td><td>uint16</td><td>read, write</td><td>Low alarm threshold.</td></tr>
+</table>
+<h2>nor_flash — CS: flash (W25Q128JV)</h2>
+<p>128 Mbit (16 MB) SPI NOR flash for firmware storage, data logging, and configuration backup. 64KB erase sectors, 256-byte page program.
+</p>
+<h3>Commands</h3>
+<table><tr><th>Name</th><th>Opcode</th><th>Addr Bytes</th><th>Doc</th></tr>
+<tr><td>read_jedec_id</td><td>0x9f</td><td>—</td><td>Read JEDEC manufacturer (0xEF), memory type (0x40), capacity (0x18).</td></tr>
+<tr><td>read_unique_id</td><td>0x4b</td><td>—</td><td>64-bit unique serial number.</td></tr>
+<tr><td>read_status_1</td><td>0x05</td><td>—</td><td>Status register 1 (BUSY, WEL, BP bits).</td></tr>
+<tr><td>read_status_2</td><td>0x35</td><td>—</td><td>Status register 2 (QE, SRL, CMP bits).</td></tr>
+<tr><td>read_status_3</td><td>0x15</td><td>—</td><td>Status register 3 (WPS, DRV bits).</td></tr>
+<tr><td>write_status_1</td><td>0x01</td><td>—</td><td>Write status register 1.</td></tr>
+<tr><td>write_enable</td><td>0x06</td><td>—</td><td>Set Write Enable Latch (WEL). Required before program/erase.</td></tr>
+<tr><td>write_disable</td><td>0x04</td><td>—</td><td>Clear Write Enable Latch.</td></tr>
+<tr><td>read_data</td><td>0x03</td><td>3</td><td>Read data starting at 24-bit address. Up to SPI clock limit.</td></tr>
+<tr><td>fast_read</td><td>0x0b</td><td>3</td><td>Fast read with dummy byte. Supports higher clock speeds.</td></tr>
+<tr><td>page_program</td><td>0x02</td><td>3</td><td>Program up to 256 bytes within a page. Requires write_enable first.</td></tr>
+<tr><td>sector_erase_4k</td><td>0x20</td><td>3</td><td>Erase 4 KB sector.</td></tr>
+<tr><td>block_erase_32k</td><td>0x52</td><td>3</td><td>Erase 32 KB block.</td></tr>
+<tr><td>block_erase_64k</td><td>0xd8</td><td>3</td><td>Erase 64 KB block.</td></tr>
+<tr><td>chip_erase</td><td>0xc7</td><td>—</td><td>Erase entire chip. Takes ~40 seconds.</td></tr>
+<tr><td>power_down</td><td>0xb9</td><td>—</td><td>Enter deep power-down mode (~1µA standby).</td></tr>
+<tr><td>release_power_down</td><td>0xab</td><td>—</td><td>Release power-down and read device ID.</td></tr>
+</table>
+<h3>Memory Map</h3>
+<p>Total: 16,777,216 bytes, Sector: 4,096 bytes, Page: 256 bytes</p>
+<table><tr><th>Region</th><th>Start</th><th>Size</th><th>Doc</th></tr>
+<tr><td>bootloader</td><td>0x000000</td><td>0x010000</td><td>64 KB bootloader</td></tr>
+<tr><td>firmware_a</td><td>0x010000</td><td>0x100000</td><td>1 MB firmware slot A</td></tr>
+<tr><td>firmware_b</td><td>0x110000</td><td>0x100000</td><td>1 MB firmware slot B</td></tr>
+<tr><td>config</td><td>0x210000</td><td>0x010000</td><td>64 KB persistent config</td></tr>
+<tr><td>data_log</td><td>0x220000</td><td>0xde0000</td><td>~14 MB data logging area</td></tr>
+</table>
+</body></html>

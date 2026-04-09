@@ -1,0 +1,182 @@
+<!-- Auto-generated GUI widget block                             -->
+<!-- Title:     Locator Base Ethernet Control Interface                                      -->
+<!-- Transport: tcp/udp                                  -->
+<!-- Include:   include "gui/tcp/udp_locatorbasetcp_gui.html.j2"  in your Jinja app  -->
+
+<style>
+  .ifdoc-panel { background:#1e1e2e; color:#cdd6f4; border:1px solid #45475a; border-radius:8px; padding:1em; margin:0.5em 0; font-family:monospace; font-size:13px; }
+  .ifdoc-panel h3 { color:#89b4fa; margin:0 0 0.5em 0; font-size:15px; }
+  .ifdoc-panel h4 { color:#a6e3a1; margin:0.8em 0 0.3em 0; font-size:13px; }
+  .ifdoc-panel table { border-collapse:collapse; width:100%; }
+  .ifdoc-panel th, .ifdoc-panel td { border:1px solid #45475a; padding:4px 8px; text-align:left; }
+  .ifdoc-panel th { background:#313244; color:#cdd6f4; }
+  .ifdoc-panel tr:nth-child(even) { background:#313244; }
+  .ifdoc-panel .ifdoc-row { display:flex; gap:8px; align-items:center; margin:4px 0; flex-wrap:wrap; }
+  .ifdoc-panel input, .ifdoc-panel select { background:#313244; color:#cdd6f4; border:1px solid #585b70; border-radius:4px; padding:3px 6px; font-size:12px; font-family:monospace; }
+  .ifdoc-panel input[type=number] { width:80px; }
+  .ifdoc-panel input[type=text] { width:120px; }
+  .ifdoc-panel button { background:#89b4fa; color:#1e1e2e; border:none; border-radius:4px; padding:4px 12px; cursor:pointer; font-size:12px; font-weight:bold; }
+  .ifdoc-panel button:hover { background:#74c7ec; }
+  .ifdoc-panel button.danger { background:#f38ba8; }
+  .ifdoc-panel button.danger:hover { background:#eba0ac; }
+  .ifdoc-panel .ifdoc-result { background:#181825; border:1px solid #45475a; border-radius:4px; padding:4px 8px; margin:4px 0; min-height:1.4em; white-space:pre-wrap; word-break:break-all; color:#a6e3a1; font-size:12px; }
+  .ifdoc-panel label { color:#bac2de; font-size:12px; min-width:70px; }
+  .ifdoc-panel .ifdoc-badge { display:inline-block; background:#45475a; color:#f9e2af; border-radius:3px; padding:1px 6px; font-size:11px; margin-left:6px; }
+</style>
+
+<div class="ifdoc-panel" id="locatorbasetcp-tcpudp-panel">
+  <h3>Locator Base Ethernet Control Interface</h3>
+  <h4>TCP Commands (port 5200)</h4>
+  <div class="ifdoc-row" title="Connectivity check.">
+    <label>ping</label>
+    <span class="ifdoc-badge">0x0000</span>
+    <button onclick="ifdocRead('/api/locatorbasetcp/tcp/ping', document.getElementById('locatorbasetcp_tcp_ping_r'))">Send</button>
+    <div class="ifdoc-result" id="locatorbasetcp_tcp_ping_r"></div>
+  </div>
+  <div class="ifdoc-row" title="Query device identification and uptime.">
+    <label>get_device_info</label>
+    <span class="ifdoc-badge">0x0001</span>
+    <button onclick="ifdocRead('/api/locatorbasetcp/tcp/get_device_info', document.getElementById('locatorbasetcp_tcp_get_device_info_r'))">Send</button>
+    <div class="ifdoc-result" id="locatorbasetcp_tcp_get_device_info_r"></div>
+  </div>
+  <div class="ifdoc-row" title="Query overall device status.">
+    <label>get_status</label>
+    <span class="ifdoc-badge">0x0002</span>
+    <button onclick="ifdocRead('/api/locatorbasetcp/tcp/get_status', document.getElementById('locatorbasetcp_tcp_get_status_r'))">Send</button>
+    <div class="ifdoc-result" id="locatorbasetcp_tcp_get_status_r"></div>
+  </div>
+  <div class="ifdoc-row" title="Set LEDs by bitmask.">
+    <label>set_led</label>
+    <span class="ifdoc-badge">0x0010</span>
+    <form id="locatorbasetcp_tcp_set_led_f" onsubmit="return false;" style="display:contents">
+      <input type="number" name="led_mask" placeholder="led_mask">
+      <input type="number" name="led_val" placeholder="led_val">
+      <button onclick="ifdocWrite('/api/locatorbasetcp/tcp/set_led', document.getElementById('locatorbasetcp_tcp_set_led_f'), document.getElementById('locatorbasetcp_tcp_set_led_r'))">Send</button>
+    </form>
+    <div class="ifdoc-result" id="locatorbasetcp_tcp_set_led_r"></div>
+  </div>
+  <div class="ifdoc-row" title="Set digital output pins.">
+    <label>set_gpio</label>
+    <span class="ifdoc-badge">0x0011</span>
+    <form id="locatorbasetcp_tcp_set_gpio_f" onsubmit="return false;" style="display:contents">
+      <input type="number" name="pin_mask" placeholder="pin_mask">
+      <input type="number" name="pin_val" placeholder="pin_val">
+      <button onclick="ifdocWrite('/api/locatorbasetcp/tcp/set_gpio', document.getElementById('locatorbasetcp_tcp_set_gpio_f'), document.getElementById('locatorbasetcp_tcp_set_gpio_r'))">Send</button>
+    </form>
+    <div class="ifdoc-result" id="locatorbasetcp_tcp_set_gpio_r"></div>
+  </div>
+  <div class="ifdoc-row" title="Read all GPIO states.">
+    <label>get_gpio</label>
+    <span class="ifdoc-badge">0x0012</span>
+    <button onclick="ifdocRead('/api/locatorbasetcp/tcp/get_gpio', document.getElementById('locatorbasetcp_tcp_get_gpio_r'))">Send</button>
+    <div class="ifdoc-result" id="locatorbasetcp_tcp_get_gpio_r"></div>
+  </div>
+  <div class="ifdoc-row" title="Start an ADC measurement capture.">
+    <label>start_measurement</label>
+    <span class="ifdoc-badge">0x0020</span>
+    <form id="locatorbasetcp_tcp_start_measurement_f" onsubmit="return false;" style="display:contents">
+      <input type="number" name="channel" placeholder="channel">
+      <input type="number" name="duration_ms" placeholder="duration_ms">
+      <input type="number" name="rate_hz" placeholder="rate_hz">
+      <button onclick="ifdocWrite('/api/locatorbasetcp/tcp/start_measurement', document.getElementById('locatorbasetcp_tcp_start_measurement_f'), document.getElementById('locatorbasetcp_tcp_start_measurement_r'))">Send</button>
+    </form>
+    <div class="ifdoc-result" id="locatorbasetcp_tcp_start_measurement_r"></div>
+  </div>
+  <div class="ifdoc-row" title="Read captured measurement data.">
+    <label>get_measurement</label>
+    <span class="ifdoc-badge">0x0021</span>
+    <form id="locatorbasetcp_tcp_get_measurement_f" onsubmit="return false;" style="display:contents">
+      <input type="number" name="meas_id" placeholder="meas_id">
+      <input type="number" name="offset" placeholder="offset">
+      <input type="number" name="count" placeholder="count">
+      <button onclick="ifdocWrite('/api/locatorbasetcp/tcp/get_measurement', document.getElementById('locatorbasetcp_tcp_get_measurement_f'), document.getElementById('locatorbasetcp_tcp_get_measurement_r'))">Send</button>
+    </form>
+    <div class="ifdoc-result" id="locatorbasetcp_tcp_get_measurement_r"></div>
+  </div>
+  <div class="ifdoc-row" title="Transmit a CAN frame via the MCU&#x27;s MCAN peripheral.">
+    <label>can_send</label>
+    <span class="ifdoc-badge">0x0030</span>
+    <form id="locatorbasetcp_tcp_can_send_f" onsubmit="return false;" style="display:contents">
+      <input type="number" name="arb_id" placeholder="arb_id">
+      <input type="number" name="is_extended" placeholder="is_extended">
+      <input type="number" name="dlc" placeholder="dlc">
+      <input type="text" name="data" placeholder="data">
+      <button onclick="ifdocWrite('/api/locatorbasetcp/tcp/can_send', document.getElementById('locatorbasetcp_tcp_can_send_f'), document.getElementById('locatorbasetcp_tcp_can_send_r'))">Send</button>
+    </form>
+    <div class="ifdoc-result" id="locatorbasetcp_tcp_can_send_r"></div>
+  </div>
+  <div class="ifdoc-row" title="Subscribe to CAN frames. Matching frames sent as async notifications over TCP.">
+    <label>can_subscribe</label>
+    <span class="ifdoc-badge">0x0031</span>
+    <form id="locatorbasetcp_tcp_can_subscribe_f" onsubmit="return false;" style="display:contents">
+      <input type="number" name="filter_id" placeholder="filter_id">
+      <input type="number" name="filter_mask" placeholder="filter_mask">
+      <button onclick="ifdocWrite('/api/locatorbasetcp/tcp/can_subscribe', document.getElementById('locatorbasetcp_tcp_can_subscribe_f'), document.getElementById('locatorbasetcp_tcp_can_subscribe_r'))">Send</button>
+    </form>
+    <div class="ifdoc-result" id="locatorbasetcp_tcp_can_subscribe_r"></div>
+  </div>
+  <h4>UDP Telemetry (port 5201)</h4>
+  <table><tr><th>Message</th><th>ID</th><th>Rate</th><th>Live</th></tr>
+  <tr>
+    <td>heartbeat</td>
+    <td><code>0x0100</code></td>
+    <td>1 Hz</td>
+    <td><div class="ifdoc-result" id="locatorbasetcp_udp_heartbeat_r">—</div></td>
+  </tr>
+  <tr>
+    <td>telemetry</td>
+    <td><code>0x0101</code></td>
+    <td>10 Hz</td>
+    <td><div class="ifdoc-result" id="locatorbasetcp_udp_telemetry_r">—</div></td>
+  </tr>
+  <tr>
+    <td>can_frame</td>
+    <td><code>0x0102</code></td>
+    <td>0 Hz</td>
+    <td><div class="ifdoc-result" id="locatorbasetcp_udp_can_frame_r">—</div></td>
+  </tr>
+  </table>
+  <script>
+  (function() {
+    const es = new EventSource("{{ api_base|default('') }}/api/locatorbasetcp/udp/stream");
+    es.onmessage = function(ev) {
+      try {
+        const d = JSON.parse(ev.data);
+        const el = document.getElementById("locatorbasetcp_udp_" + d.type + "_r");
+        if (el) el.textContent = JSON.stringify(d.payload, null, 2);
+      } catch(e) {}
+    };
+  })();
+  </script>
+</div>
+
+<script>
+(function() {
+  const API_BASE = "{{ api_base|default('') }}";
+
+  window.ifdocFetch = function(endpoint, params, resultEl) {
+    resultEl.textContent = "…";
+    const url = API_BASE + endpoint;
+    const opts = params
+      ? {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(params)}
+      : {method: "GET"};
+    fetch(url, opts)
+      .then(r => r.json())
+      .then(d => { resultEl.textContent = JSON.stringify(d, null, 2); })
+      .catch(e => { resultEl.textContent = "ERROR: " + e; });
+  };
+
+  window.ifdocRead = function(endpoint, resultEl) {
+    ifdocFetch(endpoint, null, resultEl);
+  };
+
+  window.ifdocWrite = function(endpoint, formEl, resultEl) {
+    const fd = new FormData(formEl);
+    const params = {};
+    for (const [k, v] of fd.entries()) {
+      params[k] = isNaN(Number(v)) ? v : Number(v);
+    }
+    ifdocFetch(endpoint, params, resultEl);
+  };
+})();
+</script>

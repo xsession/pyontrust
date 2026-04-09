@@ -1,0 +1,58 @@
+<!-- Auto-generated GUI widget block                             -->
+<!-- Title:     << title >>                                      -->
+<!-- Transport: << transport >>                                  -->
+<!-- Include:   include "gui/<< filename >>"  in your Jinja app  -->
+
+<style>
+  .ifdoc-panel { background:#1e1e2e; color:#cdd6f4; border:1px solid #45475a; border-radius:8px; padding:1em; margin:0.5em 0; font-family:monospace; font-size:13px; }
+  .ifdoc-panel h3 { color:#89b4fa; margin:0 0 0.5em 0; font-size:15px; }
+  .ifdoc-panel h4 { color:#a6e3a1; margin:0.8em 0 0.3em 0; font-size:13px; }
+  .ifdoc-panel table { border-collapse:collapse; width:100%; }
+  .ifdoc-panel th, .ifdoc-panel td { border:1px solid #45475a; padding:4px 8px; text-align:left; }
+  .ifdoc-panel th { background:#313244; color:#cdd6f4; }
+  .ifdoc-panel tr:nth-child(even) { background:#313244; }
+  .ifdoc-panel .ifdoc-row { display:flex; gap:8px; align-items:center; margin:4px 0; flex-wrap:wrap; }
+  .ifdoc-panel input, .ifdoc-panel select { background:#313244; color:#cdd6f4; border:1px solid #585b70; border-radius:4px; padding:3px 6px; font-size:12px; font-family:monospace; }
+  .ifdoc-panel input[type=number] { width:80px; }
+  .ifdoc-panel input[type=text] { width:120px; }
+  .ifdoc-panel button { background:#89b4fa; color:#1e1e2e; border:none; border-radius:4px; padding:4px 12px; cursor:pointer; font-size:12px; font-weight:bold; }
+  .ifdoc-panel button:hover { background:#74c7ec; }
+  .ifdoc-panel button.danger { background:#f38ba8; }
+  .ifdoc-panel button.danger:hover { background:#eba0ac; }
+  .ifdoc-panel .ifdoc-result { background:#181825; border:1px solid #45475a; border-radius:4px; padding:4px 8px; margin:4px 0; min-height:1.4em; white-space:pre-wrap; word-break:break-all; color:#a6e3a1; font-size:12px; }
+  .ifdoc-panel label { color:#bac2de; font-size:12px; min-width:70px; }
+  .ifdoc-panel .ifdoc-badge { display:inline-block; background:#45475a; color:#f9e2af; border-radius:3px; padding:1px 6px; font-size:11px; margin-left:6px; }
+</style>
+
+<< panel_content >>
+
+<script>
+(function() {
+  const API_BASE = "{{ api_base|default('') }}";
+
+  window.ifdocFetch = function(endpoint, params, resultEl) {
+    resultEl.textContent = "…";
+    const url = API_BASE + endpoint;
+    const opts = params
+      ? {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(params)}
+      : {method: "GET"};
+    fetch(url, opts)
+      .then(r => r.json())
+      .then(d => { resultEl.textContent = JSON.stringify(d, null, 2); })
+      .catch(e => { resultEl.textContent = "ERROR: " + e; });
+  };
+
+  window.ifdocRead = function(endpoint, resultEl) {
+    ifdocFetch(endpoint, null, resultEl);
+  };
+
+  window.ifdocWrite = function(endpoint, formEl, resultEl) {
+    const fd = new FormData(formEl);
+    const params = {};
+    for (const [k, v] of fd.entries()) {
+      params[k] = isNaN(Number(v)) ? v : Number(v);
+    }
+    ifdocFetch(endpoint, params, resultEl);
+  };
+})();
+</script>

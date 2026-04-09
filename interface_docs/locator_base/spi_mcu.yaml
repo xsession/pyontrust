@@ -1,0 +1,279 @@
+# ─────────────────────────────────────────────────────────────────
+#  Locator Base — SPI Peripheral Bus Interface  (spi_mcu.yaml)
+#  Board: TI MSPM0G3507 — SPI0
+# ─────────────────────────────────────────────────────────────────
+
+interface:
+  title: Locator Base SPI Peripheral Bus Interface
+  transport: spi
+
+  version history:
+    - fw-version: "1.0"
+      date: '2026.03.09'
+      author: dev
+      changes: >
+        - Initial SPI device descriptions.
+
+  TODO:
+    - Add SD-card SPI interface (CS3)
+    - Add DMA transfer documentation
+
+  spi:
+    physical:
+      sck_pin:  PA12         # MCU SCK  → AD3 DIO8
+      mosi_pin: PA14         # MCU PICO → AD3 DIO9
+      miso_pin: PA13         # MCU POCI → AD3 DIO10
+      peripheral: SPI0
+      cs_pins:
+        - { pin: PA8,  device: dac,      doc: "CS0 — DAC output",    ad3_dio: DIO11 }
+        - { pin: PA3,  device: adc_ext,  doc: "CS1 — External ADC",  ad3_dio: null }
+        - { pin: PA24, device: flash,    doc: "CS2 — NOR Flash",     ad3_dio: null }
+      clock_hz: 10_000_000
+      mode: 0                # CPOL=0, CPHA=0
+      bit_order: msb-first
+      word_size: 8
+      voltage_level: "3.3V LVCMOS"
+
+    devices:
+      # ── 12-bit DAC (MCP4921 compatible) ─────────────────
+      - cs: dac
+        name: dac_output
+        part: "MCP4921"
+        max_clock_hz: 20_000_000
+        doc: >
+          Single-channel 12-bit DAC for analog test stimulus.
+          Output range 0–4.096V (with external Vref).
+
+        transactions:
+          write_dac:
+            type: write
+            word_size: 16     # Single 16-bit transfer
+            frame:
+              fields:
+                - { name: "not_A_B",  type: bit1,  doc: "Channel select: 0 = A (only channel)" }
+                - { name: "BUF",      type: bit1,  doc: "Vref buffered: 0 = unbuffered, 1 = buffered" }
+                - { name: "not_GA",   type: bit1,  doc: "Gain: 0 = 2×, 1 = 1×" }
+                - { name: "not_SHDN", type: bit1,  doc: "Shutdown: 0 = shutdown, 1 = active" }
+                - { name: "data",     type: uint12, doc: "DAC value 0–4095" }
+            doc: "Write 12-bit output value. CS must be toggled per write."
+
+      # ── 16-bit ADC (ADS8681 compatible) ─────────────────
+      - cs: adc_ext
+        name: adc_input
+        part: "ADS8681"
+        max_clock_hz: 17_000_000
+        doc: >
+          16-bit SAR ADC for high-resolution analog measurement.
+          1 MSPS, ±12.288V input range (programmable).
+
+        transactions:
+          read_sample:
+            type: read
+            word_size: 24     # 24 clock cycles per conversion
+            frame:
+              fields:
+                - { name: status, type: uint4,  doc: "Status nibble (0000 = valid)" }
+                - { name: data,   type: uint16, doc: "16-bit conversion result" }
+                - { name: pad,    type: uint4,  doc: "Padding (ignore)" }
+            doc: "Read single conversion result. Assert CS, clock 24 bits."
+
+          write_register:
+            type: write
+            word_size: 32
+            frame:
+              fields:
+                - { name: cmd,      type: uint8,  doc: "0x68 = write register" }
+                - { name: addr,     type: uint8,  doc: "Register address" }
+                - { name: data_hi,  type: uint8,  doc: "Register data MSB" }
+                - { name: data_lo,  type: uint8,  doc: "Register data LSB" }
+            doc: "Write configuration register."
+
+          read_register:
+            type: read-write
+            word_size: 32
+            frame:
+              fields:
+                - { name: cmd,      type: uint8,  doc: "0x48 = read register" }
+                - { name: addr,     type: uint8,  doc: "Register address" }
+                - { name: dummy,    type: uint16, doc: "Don't care (clocks out data)" }
+            response:
+              fields:
+                - { name: echo,     type: uint16, doc: "Echo of cmd+addr" }
+                - { name: reg_data, type: uint16, doc: "Register data" }
+            doc: "Read configuration register."
+
+        registers:
+          - addr: 0x00
+            name: device_id
+            type: uint16
+            flags: [read]
+            reset_value: 0x8681
+            doc: "Device ID register."
+
+          - addr: 0x01
+            name: rst_pwrctl
+            type: EXT__ads8681_rst_pwrctl_tun
+            flags: [read, write]
+            doc: "Reset and power control."
+
+          - addr: 0x02
+            name: sdi_ctl
+            type: uint16
+            flags: [read, write]
+            doc: "SDI data input control."
+
+          - addr: 0x03
+            name: sdo_ctl
+            type: EXT__ads8681_sdo_ctl_tun
+            flags: [read, write]
+            doc: "SDO data output control."
+
+          - addr: 0x04
+            name: dataout_ctl
+            type: uint16
+            flags: [read, write]
+            doc: "Data output control."
+
+          - addr: 0x05
+            name: range_sel
+            type: EXT__ads8681_range_ten
+            flags: [read, write]
+            doc: "Input range selection."
+
+          - addr: 0x14
+            name: alarm_h_th
+            type: uint16
+            flags: [read, write]
+            doc: "High alarm threshold."
+
+          - addr: 0x18
+            name: alarm_l_th
+            type: uint16
+            flags: [read, write]
+            doc: "Low alarm threshold."
+
+      # ── SPI NOR Flash (W25Q128JV compatible) ────────────
+      - cs: flash
+        name: nor_flash
+        part: "W25Q128JV"
+        max_clock_hz: 133_000_000
+        doc: >
+          128 Mbit (16 MB) SPI NOR flash for firmware storage,
+          data logging, and configuration backup.
+          64KB erase sectors, 256-byte page program.
+
+        commands:
+          # ── Identification ──────────────────────────────
+          read_jedec_id:
+            opcode: 0x9F
+            response_len: 3
+            doc: "Read JEDEC manufacturer (0xEF), memory type (0x40), capacity (0x18)."
+
+          read_unique_id:
+            opcode: 0x4B
+            dummy_bytes: 4
+            response_len: 8
+            doc: "64-bit unique serial number."
+
+          # ── Status registers ────────────────────────────
+          read_status_1:
+            opcode: 0x05
+            response_len: 1
+            doc: "Status register 1 (BUSY, WEL, BP bits)."
+
+          read_status_2:
+            opcode: 0x35
+            response_len: 1
+            doc: "Status register 2 (QE, SRL, CMP bits)."
+
+          read_status_3:
+            opcode: 0x15
+            response_len: 1
+            doc: "Status register 3 (WPS, DRV bits)."
+
+          write_status_1:
+            opcode: 0x01
+            payload_len: 1
+            doc: "Write status register 1."
+
+          write_enable:
+            opcode: 0x06
+            doc: "Set Write Enable Latch (WEL). Required before program/erase."
+
+          write_disable:
+            opcode: 0x04
+            doc: "Clear Write Enable Latch."
+
+          # ── Read ────────────────────────────────────────
+          read_data:
+            opcode: 0x03
+            addr_bytes: 3
+            doc: "Read data starting at 24-bit address. Up to SPI clock limit."
+
+          fast_read:
+            opcode: 0x0B
+            addr_bytes: 3
+            dummy_bytes: 1
+            doc: "Fast read with dummy byte. Supports higher clock speeds."
+
+          # ── Program ─────────────────────────────────────
+          page_program:
+            opcode: 0x02
+            addr_bytes: 3
+            max_payload: 256
+            typical_time_ms: 0.7
+            max_time_ms: 3
+            doc: "Program up to 256 bytes within a page. Requires write_enable first."
+
+          # ── Erase ───────────────────────────────────────
+          sector_erase_4k:
+            opcode: 0x20
+            addr_bytes: 3
+            typical_time_ms: 45
+            max_time_ms: 400
+            doc: "Erase 4 KB sector."
+
+          block_erase_32k:
+            opcode: 0x52
+            addr_bytes: 3
+            typical_time_ms: 120
+            max_time_ms: 1600
+            doc: "Erase 32 KB block."
+
+          block_erase_64k:
+            opcode: 0xD8
+            addr_bytes: 3
+            typical_time_ms: 150
+            max_time_ms: 2000
+            doc: "Erase 64 KB block."
+
+          chip_erase:
+            opcode: 0xC7
+            typical_time_ms: 40000
+            max_time_ms: 200000
+            doc: "Erase entire chip. Takes ~40 seconds."
+
+          # ── Power management ────────────────────────────
+          power_down:
+            opcode: 0xB9
+            doc: "Enter deep power-down mode (~1µA standby)."
+
+          release_power_down:
+            opcode: 0xAB
+            dummy_bytes: 3
+            response_len: 1
+            doc: "Release power-down and read device ID."
+
+        memory_map:
+          total_size: 16777216   # 16 MB
+          sector_size: 4096      # 4 KB
+          block_size_32k: 32768
+          block_size_64k: 65536
+          page_size: 256
+          sectors: 4096
+          regions:
+            - { name: bootloader,  start: 0x000000, size: 0x010000, doc: "64 KB bootloader" }
+            - { name: firmware_a,  start: 0x010000, size: 0x100000, doc: "1 MB firmware slot A" }
+            - { name: firmware_b,  start: 0x110000, size: 0x100000, doc: "1 MB firmware slot B" }
+            - { name: config,      start: 0x210000, size: 0x010000, doc: "64 KB persistent config" }
+            - { name: data_log,    start: 0x220000, size: 0xDE0000, doc: "~14 MB data logging area" }

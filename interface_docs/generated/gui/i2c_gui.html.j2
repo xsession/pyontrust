@@ -1,0 +1,267 @@
+<!-- Auto-generated GUI widget block                             -->
+<!-- Title:     Locator Base I2C Sensor Bus Interface                                      -->
+<!-- Transport: i2c                                  -->
+<!-- Include:   include "gui/i2c_locatorbasei2c_gui.html.j2"  in your Jinja app  -->
+
+<style>
+  .ifdoc-panel { background:#1e1e2e; color:#cdd6f4; border:1px solid #45475a; border-radius:8px; padding:1em; margin:0.5em 0; font-family:monospace; font-size:13px; }
+  .ifdoc-panel h3 { color:#89b4fa; margin:0 0 0.5em 0; font-size:15px; }
+  .ifdoc-panel h4 { color:#a6e3a1; margin:0.8em 0 0.3em 0; font-size:13px; }
+  .ifdoc-panel table { border-collapse:collapse; width:100%; }
+  .ifdoc-panel th, .ifdoc-panel td { border:1px solid #45475a; padding:4px 8px; text-align:left; }
+  .ifdoc-panel th { background:#313244; color:#cdd6f4; }
+  .ifdoc-panel tr:nth-child(even) { background:#313244; }
+  .ifdoc-panel .ifdoc-row { display:flex; gap:8px; align-items:center; margin:4px 0; flex-wrap:wrap; }
+  .ifdoc-panel input, .ifdoc-panel select { background:#313244; color:#cdd6f4; border:1px solid #585b70; border-radius:4px; padding:3px 6px; font-size:12px; font-family:monospace; }
+  .ifdoc-panel input[type=number] { width:80px; }
+  .ifdoc-panel input[type=text] { width:120px; }
+  .ifdoc-panel button { background:#89b4fa; color:#1e1e2e; border:none; border-radius:4px; padding:4px 12px; cursor:pointer; font-size:12px; font-weight:bold; }
+  .ifdoc-panel button:hover { background:#74c7ec; }
+  .ifdoc-panel button.danger { background:#f38ba8; }
+  .ifdoc-panel button.danger:hover { background:#eba0ac; }
+  .ifdoc-panel .ifdoc-result { background:#181825; border:1px solid #45475a; border-radius:4px; padding:4px 8px; margin:4px 0; min-height:1.4em; white-space:pre-wrap; word-break:break-all; color:#a6e3a1; font-size:12px; }
+  .ifdoc-panel label { color:#bac2de; font-size:12px; min-width:70px; }
+  .ifdoc-panel .ifdoc-badge { display:inline-block; background:#45475a; color:#f9e2af; border-radius:3px; padding:1px 6px; font-size:11px; margin-left:6px; }
+</style>
+
+<div class="ifdoc-panel" id="locatorbasei2c-i2c-panel">
+  <h3>Locator Base I2C Sensor Bus Interface</h3>
+  <h4>temp_sensor — 0x48 (TMP117)</h4>
+  <table><tr><th>Addr</th><th>Register</th><th style="width:100%">Actions</th></tr>
+  <tr title="Temperature result. Raw × 0.0078125 = °C.">
+    <td>0x00</td><td>temperature</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasei2c/i2c/0x48/0x00', document.getElementById('locatorbasei2c_temp_sensor_temperature_r'))">Read</button>
+        <div class="ifdoc-result" id="locatorbasei2c_temp_sensor_temperature_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Configuration and control register.">
+    <td>0x01</td><td>config</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasei2c/i2c/0x48/0x01', document.getElementById('locatorbasei2c_temp_sensor_config_r'))">Read</button>
+        <input type="number" id="locatorbasei2c_temp_sensor_config_v" placeholder="value" style="width:80px">
+        <button onclick="ifdocFetch('/api/locatorbasei2c/i2c/0x48/0x01', {value: Number(document.getElementById('locatorbasei2c_temp_sensor_config_v').value)}, document.getElementById('locatorbasei2c_temp_sensor_config_r'))">Write</button>
+        <div class="ifdoc-result" id="locatorbasei2c_temp_sensor_config_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="High-temperature alert threshold.">
+    <td>0x02</td><td>t_high_limit</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasei2c/i2c/0x48/0x02', document.getElementById('locatorbasei2c_temp_sensor_t_high_limit_r'))">Read</button>
+        <input type="number" id="locatorbasei2c_temp_sensor_t_high_limit_v" placeholder="value" style="width:80px">
+        <button onclick="ifdocFetch('/api/locatorbasei2c/i2c/0x48/0x02', {value: Number(document.getElementById('locatorbasei2c_temp_sensor_t_high_limit_v').value)}, document.getElementById('locatorbasei2c_temp_sensor_t_high_limit_r'))">Write</button>
+        <div class="ifdoc-result" id="locatorbasei2c_temp_sensor_t_high_limit_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Low-temperature alert threshold.">
+    <td>0x03</td><td>t_low_limit</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasei2c/i2c/0x48/0x03', document.getElementById('locatorbasei2c_temp_sensor_t_low_limit_r'))">Read</button>
+        <input type="number" id="locatorbasei2c_temp_sensor_t_low_limit_v" placeholder="value" style="width:80px">
+        <button onclick="ifdocFetch('/api/locatorbasei2c/i2c/0x48/0x03', {value: Number(document.getElementById('locatorbasei2c_temp_sensor_t_low_limit_v').value)}, document.getElementById('locatorbasei2c_temp_sensor_t_low_limit_r'))">Write</button>
+        <div class="ifdoc-result" id="locatorbasei2c_temp_sensor_t_low_limit_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Write 0x8000 to unlock EEPROM for writing.">
+    <td>0x04</td><td>eeprom_unlock</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasei2c/i2c/0x48/0x04', document.getElementById('locatorbasei2c_temp_sensor_eeprom_unlock_r'))">Read</button>
+        <input type="number" id="locatorbasei2c_temp_sensor_eeprom_unlock_v" placeholder="value" style="width:80px">
+        <button onclick="ifdocFetch('/api/locatorbasei2c/i2c/0x48/0x04', {value: Number(document.getElementById('locatorbasei2c_temp_sensor_eeprom_unlock_v').value)}, document.getElementById('locatorbasei2c_temp_sensor_eeprom_unlock_r'))">Write</button>
+        <div class="ifdoc-result" id="locatorbasei2c_temp_sensor_eeprom_unlock_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="EEPROM user storage word 1.">
+    <td>0x05</td><td>eeprom1</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasei2c/i2c/0x48/0x05', document.getElementById('locatorbasei2c_temp_sensor_eeprom1_r'))">Read</button>
+        <input type="number" id="locatorbasei2c_temp_sensor_eeprom1_v" placeholder="value" style="width:80px">
+        <button onclick="ifdocFetch('/api/locatorbasei2c/i2c/0x48/0x05', {value: Number(document.getElementById('locatorbasei2c_temp_sensor_eeprom1_v').value)}, document.getElementById('locatorbasei2c_temp_sensor_eeprom1_r'))">Write</button>
+        <div class="ifdoc-result" id="locatorbasei2c_temp_sensor_eeprom1_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="EEPROM user storage word 2.">
+    <td>0x06</td><td>eeprom2</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasei2c/i2c/0x48/0x06', document.getElementById('locatorbasei2c_temp_sensor_eeprom2_r'))">Read</button>
+        <input type="number" id="locatorbasei2c_temp_sensor_eeprom2_v" placeholder="value" style="width:80px">
+        <button onclick="ifdocFetch('/api/locatorbasei2c/i2c/0x48/0x06', {value: Number(document.getElementById('locatorbasei2c_temp_sensor_eeprom2_v').value)}, document.getElementById('locatorbasei2c_temp_sensor_eeprom2_r'))">Write</button>
+        <div class="ifdoc-result" id="locatorbasei2c_temp_sensor_eeprom2_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="User temperature offset correction.">
+    <td>0x07</td><td>temperature_offset</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasei2c/i2c/0x48/0x07', document.getElementById('locatorbasei2c_temp_sensor_temperature_offset_r'))">Read</button>
+        <input type="number" id="locatorbasei2c_temp_sensor_temperature_offset_v" placeholder="value" style="width:80px">
+        <button onclick="ifdocFetch('/api/locatorbasei2c/i2c/0x48/0x07', {value: Number(document.getElementById('locatorbasei2c_temp_sensor_temperature_offset_v').value)}, document.getElementById('locatorbasei2c_temp_sensor_temperature_offset_r'))">Write</button>
+        <div class="ifdoc-result" id="locatorbasei2c_temp_sensor_temperature_offset_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Device ID. Should read 0x0117.">
+    <td>0x0f</td><td>device_id</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasei2c/i2c/0x48/0x0f', document.getElementById('locatorbasei2c_temp_sensor_device_id_r'))">Read</button>
+        <div class="ifdoc-result" id="locatorbasei2c_temp_sensor_device_id_r"></div>
+      </div>
+    </td>
+  </tr>
+  </table>
+  <h4>eeprom — 0x50 (AT24C02)</h4>
+  <table><tr><th>Addr</th><th>Register</th><th style="width:100%">Actions</th></tr>
+  <tr title="Calibration data header (magic + version + CRC).">
+    <td>0x00</td><td>cal_header</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasei2c/i2c/0x50/0x00', document.getElementById('locatorbasei2c_eeprom_cal_header_r'))">Read</button>
+        <input type="number" id="locatorbasei2c_eeprom_cal_header_v" placeholder="value" style="width:80px">
+        <button onclick="ifdocFetch('/api/locatorbasei2c/i2c/0x50/0x00', {value: Number(document.getElementById('locatorbasei2c_eeprom_cal_header_v').value)}, document.getElementById('locatorbasei2c_eeprom_cal_header_r'))">Write</button>
+        <div class="ifdoc-result" id="locatorbasei2c_eeprom_cal_header_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Calibration coefficients block.">
+    <td>0x08</td><td>cal_data</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasei2c/i2c/0x50/0x08', document.getElementById('locatorbasei2c_eeprom_cal_data_r'))">Read</button>
+        <input type="number" id="locatorbasei2c_eeprom_cal_data_v" placeholder="value" style="width:80px">
+        <button onclick="ifdocFetch('/api/locatorbasei2c/i2c/0x50/0x08', {value: Number(document.getElementById('locatorbasei2c_eeprom_cal_data_v').value)}, document.getElementById('locatorbasei2c_eeprom_cal_data_r'))">Write</button>
+        <div class="ifdoc-result" id="locatorbasei2c_eeprom_cal_data_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Board serial number and revision (8 bytes).">
+    <td>0xf8</td><td>board_info</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasei2c/i2c/0x50/0xf8', document.getElementById('locatorbasei2c_eeprom_board_info_r'))">Read</button>
+        <input type="number" id="locatorbasei2c_eeprom_board_info_v" placeholder="value" style="width:80px">
+        <button onclick="ifdocFetch('/api/locatorbasei2c/i2c/0x50/0xf8', {value: Number(document.getElementById('locatorbasei2c_eeprom_board_info_v').value)}, document.getElementById('locatorbasei2c_eeprom_board_info_r'))">Write</button>
+        <div class="ifdoc-result" id="locatorbasei2c_eeprom_board_info_r"></div>
+      </div>
+    </td>
+  </tr>
+  </table>
+  <h4>gpio_expander — 0x20 (PCF8574)</h4>
+  <table><tr><th>Addr</th><th>Register</th><th style="width:100%">Actions</th></tr>
+  <tr title="Read = input pin state. Write = output latch. Bits written as 1 are pulled high (quasi-bidirectional).
+">
+    <td>—</td><td>port</td>
+    <td>
+      <div class="ifdoc-row">
+        <div class="ifdoc-result" id="locatorbasei2c_gpio_expander_port_r"></div>
+      </div>
+    </td>
+  </tr>
+  </table>
+  <h4>power_monitor — 0x40 (INA219)</h4>
+  <table><tr><th>Addr</th><th>Register</th><th style="width:100%">Actions</th></tr>
+  <tr title="Configuration register.">
+    <td>0x00</td><td>config</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasei2c/i2c/0x40/0x00', document.getElementById('locatorbasei2c_power_monitor_config_r'))">Read</button>
+        <input type="number" id="locatorbasei2c_power_monitor_config_v" placeholder="value" style="width:80px">
+        <button onclick="ifdocFetch('/api/locatorbasei2c/i2c/0x40/0x00', {value: Number(document.getElementById('locatorbasei2c_power_monitor_config_v').value)}, document.getElementById('locatorbasei2c_power_monitor_config_r'))">Write</button>
+        <div class="ifdoc-result" id="locatorbasei2c_power_monitor_config_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Shunt voltage measurement.">
+    <td>0x01</td><td>shunt_voltage</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasei2c/i2c/0x40/0x01', document.getElementById('locatorbasei2c_power_monitor_shunt_voltage_r'))">Read</button>
+        <div class="ifdoc-result" id="locatorbasei2c_power_monitor_shunt_voltage_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Bus voltage measurement.">
+    <td>0x02</td><td>bus_voltage</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasei2c/i2c/0x40/0x02', document.getElementById('locatorbasei2c_power_monitor_bus_voltage_r'))">Read</button>
+        <div class="ifdoc-result" id="locatorbasei2c_power_monitor_bus_voltage_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Power = current × bus_voltage. LSB set by cal register.">
+    <td>0x03</td><td>power</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasei2c/i2c/0x40/0x03', document.getElementById('locatorbasei2c_power_monitor_power_r'))">Read</button>
+        <div class="ifdoc-result" id="locatorbasei2c_power_monitor_power_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Measured current.">
+    <td>0x04</td><td>current</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasei2c/i2c/0x40/0x04', document.getElementById('locatorbasei2c_power_monitor_current_r'))">Read</button>
+        <div class="ifdoc-result" id="locatorbasei2c_power_monitor_current_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Calibration value. Sets current and power LSB.">
+    <td>0x05</td><td>calibration</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasei2c/i2c/0x40/0x05', document.getElementById('locatorbasei2c_power_monitor_calibration_r'))">Read</button>
+        <input type="number" id="locatorbasei2c_power_monitor_calibration_v" placeholder="value" style="width:80px">
+        <button onclick="ifdocFetch('/api/locatorbasei2c/i2c/0x40/0x05', {value: Number(document.getElementById('locatorbasei2c_power_monitor_calibration_v').value)}, document.getElementById('locatorbasei2c_power_monitor_calibration_r'))">Write</button>
+        <div class="ifdoc-result" id="locatorbasei2c_power_monitor_calibration_r"></div>
+      </div>
+    </td>
+  </tr>
+  </table>
+</div>
+
+<script>
+(function() {
+  const API_BASE = "{{ api_base|default('') }}";
+
+  window.ifdocFetch = function(endpoint, params, resultEl) {
+    resultEl.textContent = "…";
+    const url = API_BASE + endpoint;
+    const opts = params
+      ? {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(params)}
+      : {method: "GET"};
+    fetch(url, opts)
+      .then(r => r.json())
+      .then(d => { resultEl.textContent = JSON.stringify(d, null, 2); })
+      .catch(e => { resultEl.textContent = "ERROR: " + e; });
+  };
+
+  window.ifdocRead = function(endpoint, resultEl) {
+    ifdocFetch(endpoint, null, resultEl);
+  };
+
+  window.ifdocWrite = function(endpoint, formEl, resultEl) {
+    const fd = new FormData(formEl);
+    const params = {};
+    for (const [k, v] of fd.entries()) {
+      params[k] = isNaN(Number(v)) ? v : Number(v);
+    }
+    ifdocFetch(endpoint, params, resultEl);
+  };
+})();
+</script>

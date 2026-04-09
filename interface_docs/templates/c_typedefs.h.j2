@@ -1,0 +1,34 @@
+#ifndef {{ guard }}
+#define {{ guard }}
+
+/* Auto-generated — do not edit */
+
+{% for inc in includes %}
+#include {{ inc }}
+{% endfor %}
+
+{% for t in types %}
+{% if t.format == "enum" %}
+typedef enum {
+{% for v in t.enum_values %}
+    {{ v.name }} = {{ v.hex_value }},
+{% endfor %}
+} {{ t.name }}_t;
+
+{% elif t.format == "bitfield" %}
+typedef struct __attribute__((packed)) {
+{% for f in t.fields %}
+    uint{{ t.size }}_t {{ f.name }} : {{ f.bits }};
+{% endfor %}
+} {{ t.name }}_t;
+
+{% elif t.format == "union" %}
+typedef union {
+{% for f in t.fields %}
+    {{ f.c_type }} {{ f.name }};
+{% endfor %}
+} {{ t.name }}_t;
+
+{% endif %}
+{% endfor %}
+#endif /* {{ guard }} */

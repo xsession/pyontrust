@@ -1,0 +1,71 @@
+#ifndef {{ guard }}
+#define {{ guard }}
+
+/* {{ title }} — auto-generated */
+
+{% for inc in includes %}
+#include {{ inc }}
+{% endfor %}
+
+{% if transport == "uart" %}
+/* Physical: TX={{ uart.tx_pin }}, RX={{ uart.rx_pin }}, Baud={{ uart.baud_rate }} */
+#define UART_BAUD_RATE       {{ uart.baud_rate }}
+#define UART_START_BYTE      {{ uart.start_byte }}
+#define UART_END_BYTE        {{ uart.end_byte }}
+
+{% for cmd in uart.commands %}
+#define CMD_{{ cmd.name | ljust(40) }} {{ cmd.id }}
+{% endfor %}
+
+{% elif transport == "rs485" %}
+#define MODBUS_SLAVE_ID      {{ modbus.slave_id }}
+
+{% for rg in modbus.register_groups %}
+{% for reg in rg.registers %}
+#define {{ rg.prefix }}_{{ reg.name | ljust(40) }} {{ reg.addr }}
+{% endfor %}
+
+{% endfor %}
+{% elif transport == "i2c" %}
+{% for device in i2c.devices %}
+#define I2C_ADDR_{{ device.name | ljust(36) }} {{ device.addr }}
+{% for reg in device.registers %}
+#define {{ device.name }}_REG_{{ reg.name | ljust(28) }} {{ reg.addr }}
+{% endfor %}
+
+{% endfor %}
+{% elif transport == "spi" %}
+#define SPI_CLOCK_HZ         {{ spi.clock_hz }}
+#define SPI_MODE             {{ spi.mode }}
+
+{% for cs in spi.cs_pins %}
+#define SPI_CS_{{ cs.device }}_PIN      {{ cs.pin }}
+{% endfor %}
+
+{% for device in spi.devices %}
+{% for cmd in device.commands %}
+#define {{ device.name }}_CMD_{{ cmd.name | ljust(24) }} {{ cmd.opcode }}
+{% endfor %}
+{% for reg in device.registers %}
+#define {{ device.name }}_REG_{{ reg.name | ljust(24) }} {{ reg.addr }}
+{% endfor %}
+
+{% endfor %}
+{% elif transport in ["tcp", "udp", "tcp/udp"] %}
+{% if tcp %}
+#define TCP_PORT             {{ tcp.port }}
+{% for cmd in tcp.commands %}
+#define TCP_CMD_{{ cmd.name | ljust(32) }} {{ cmd.id }}
+{% endfor %}
+
+{% endif %}
+{% if udp %}
+#define UDP_PORT             {{ udp.port }}
+{% for msg in udp.messages %}
+#define UDP_MSG_{{ msg.name | ljust(32) }} {{ msg.id }}
+{% endfor %}
+
+{% endif %}
+{% endif %}
+
+#endif /* {{ guard }} */

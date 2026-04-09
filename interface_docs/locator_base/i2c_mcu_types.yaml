@@ -1,0 +1,191 @@
+# ─────────────────────────────────────────────────────────────────
+#  Locator Base — I²C Types  (i2c_mcu_types.yaml)
+# ─────────────────────────────────────────────────────────────────
+
+types:
+
+  # ── TMP117 config register ────────────────────────────────
+  tmp117_config_tun:
+    size: 16
+    format: union
+    fields:
+      all:
+        size: 16
+        format: uint
+      bits: EXT__tmp117_config_tst
+    codegen:
+      py:
+        display: bits
+
+  tmp117_config_tst:
+    size: 16
+    format: bitfield
+    fields:
+      RESERVED_0:
+        size: 1
+        doc: "Reserved."
+      SOFT_RESET:
+        size: 1
+        doc: "Write 1 to trigger software reset."
+      DR_ALERT:
+        size: 1
+        doc: "ALERT pin function: 0 = alert, 1 = data ready."
+      POL:
+        size: 1
+        doc: "ALERT pin polarity: 0 = active low, 1 = active high."
+      T_NA:
+        size: 1
+        doc: "Therm/alert mode: 0 = alert, 1 = therm."
+      AVG:
+        size: 2
+        doc: "Averaging: 00 = none, 01 = 8, 10 = 32, 11 = 64."
+      CONV:
+        size: 3
+        doc: "Conversion cycle time (000 = 15.5ms, ..., 111 = 1s)."
+      MOD:
+        size: 2
+        doc: "Mode: 00 = continuous, 01 = shutdown, 10 = continuous, 11 = one-shot."
+      EEPROM_BUSY:
+        size: 1
+        doc: "Read-only: 1 = EEPROM write in progress."
+      DATA_READY:
+        size: 1
+        doc: "Read-only: 1 = new temperature data available."
+      LOW_ALERT:
+        size: 1
+        doc: "Read-only: low-temperature alert flag."
+      HIGH_ALERT:
+        size: 1
+        doc: "Read-only: high-temperature alert flag (MSB first)."
+
+  # ── Calibration EEPROM header ─────────────────────────────
+  cal_header_tst:
+    size: 64
+    format: bitfield
+    fields:
+      MAGIC:
+        size: 16
+        doc: "Magic word: 0xCA1B = valid calibration block."
+      VERSION:
+        size: 8
+        doc: "Calibration data format version."
+      LENGTH:
+        size: 8
+        doc: "Length of cal_data block in bytes."
+      CRC16:
+        size: 16
+        doc: "CRC-16-CCITT over cal_data."
+      RESERVED:
+        size: 16
+        doc: "Reserved."
+
+  # ── GPIO expander port ────────────────────────────────────
+  gpio_expander_tun:
+    size: 8
+    format: union
+    fields:
+      all:
+        size: 8
+        format: uint
+      bits: EXT__gpio_expander_tst
+    codegen:
+      py:
+        display: bits
+
+  gpio_expander_tst:
+    size: 8
+    format: bitfield
+    fields:
+      P0:
+        size: 1
+        doc: "Port bit 0."
+      P1:
+        size: 1
+        doc: "Port bit 1."
+      P2:
+        size: 1
+        doc: "Port bit 2."
+      P3:
+        size: 1
+        doc: "Port bit 3."
+      P4:
+        size: 1
+        doc: "Port bit 4."
+      P5:
+        size: 1
+        doc: "Port bit 5."
+      P6:
+        size: 1
+        doc: "Port bit 6."
+      P7:
+        size: 1
+        doc: "Port bit 7."
+
+  # ── INA219 config register ────────────────────────────────
+  ina219_config_tun:
+    size: 16
+    format: union
+    fields:
+      all:
+        size: 16
+        format: uint
+      bits: EXT__ina219_config_tst
+    codegen:
+      py:
+        display: bits
+
+  ina219_config_tst:
+    size: 16
+    format: bitfield
+    fields:
+      MODE:
+        size: 3
+        doc: "Operating mode (0–7). 7 = shunt + bus continuous."
+      SADC:
+        size: 4
+        doc: "Shunt ADC resolution / averaging."
+      BADC:
+        size: 4
+        doc: "Bus ADC resolution / averaging."
+      PG:
+        size: 2
+        doc: "Programmable gain: 00 = ±40mV, 11 = ±320mV."
+      BRNG:
+        size: 1
+        doc: "Bus voltage range: 0 = 16V, 1 = 32V."
+      RESERVED:
+        size: 1
+        doc: "Reserved."
+      RST:
+        size: 1
+        doc: "Write 1 to reset all registers."
+
+  # ── INA219 bus voltage register ───────────────────────────
+  ina219_bus_voltage_tun:
+    size: 16
+    format: union
+    fields:
+      all:
+        size: 16
+        format: uint
+      bits: EXT__ina219_bus_voltage_tst
+    codegen:
+      py:
+        display: bits
+
+  ina219_bus_voltage_tst:
+    size: 16
+    format: bitfield
+    fields:
+      OVF:
+        size: 1
+        doc: "Math overflow flag."
+      CNVR:
+        size: 1
+        doc: "Conversion ready flag."
+      RESERVED:
+        size: 1
+        doc: "Reserved."
+      BD:
+        size: 13
+        doc: "Bus voltage data (× 4mV)."

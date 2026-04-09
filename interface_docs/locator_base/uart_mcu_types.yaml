@@ -1,0 +1,54 @@
+# ─────────────────────────────────────────────────────────────────
+#  Locator Base — UART Types  (uart_mcu_types.yaml)
+# ─────────────────────────────────────────────────────────────────
+
+types:
+
+  # ── UART frame header ──────────────────────────────────────
+  uart_frame_header_tst:
+    size: 32
+    format: bitfield
+    fields:
+      START:
+        size: 8
+        doc: >
+          Start-of-frame byte. Always 0xAA.
+      CMD_ID:
+        size: 8
+        doc: >
+          Command identifier.
+      PAYLOAD_LEN:
+        size: 8
+        doc: >
+          Number of payload bytes following this header.
+      SEQ:
+        size: 8
+        doc: >
+          Sequence counter for request/response matching.
+
+  # ── Event code enum ────────────────────────────────────────
+  uart_event_code_ten:
+    size: 8
+    format: enum
+    values:
+      EVT_BUTTON_PRESS:    0x01
+      EVT_BUTTON_RELEASE:  0x02
+      EVT_TEMP_WARNING:    0x10
+      EVT_TEMP_CRITICAL:   0x11
+      EVT_VOLTAGE_LOW:     0x20
+      EVT_VOLTAGE_HIGH:    0x21
+      EVT_CAN_BUS_OFF:     0x30
+      EVT_WATCHDOG:        0xFE
+      EVT_FAULT:           0xFF
+
+  # ── ACK / NAK codes ───────────────────────────────────────
+  uart_ack_ten:
+    size: 8
+    format: enum
+    values:
+      ACK:                 0x06
+      NAK:                 0x15
+      NAK_INVALID_CMD:     0x80
+      NAK_INVALID_PARAM:   0x81
+      NAK_BUSY:            0x82
+      NAK_CRC_ERROR:       0x83

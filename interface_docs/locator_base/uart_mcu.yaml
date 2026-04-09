@@ -1,0 +1,188 @@
+# ─────────────────────────────────────────────────────────────────
+#  Locator Base — UART Debug Interface  (uart_mcu.yaml)
+#  Board: TI MSPM0G3507 — UART0
+# ─────────────────────────────────────────────────────────────────
+
+interface:
+  title: Locator Base UART Debug Interface
+  transport: uart
+
+  version history:
+    - fw-version: "1.0"
+      date: '2026.03.09'
+      author: dev
+      changes: >
+        - Initial UART command set.
+
+  TODO:
+    - Add firmware-update command (XMODEM)
+    - Add binary log streaming mode
+
+  uart:
+    physical:
+      tx_pin: PA10          # MCU TX → AD3 DIO12
+      rx_pin: PA11          # MCU RX → AD3 DIO13
+      peripheral: UART0
+      baud_rate: 115200
+      data_bits: 8
+      parity: none
+      stop_bits: 1
+      flow_control: none
+      voltage_level: "3.3V LVCMOS"
+
+    framing:
+      start_byte: 0xAA
+      end_byte: 0x55
+      crc: crc16-ccitt
+      max_payload: 256
+      byte_order: little-endian
+      escape_byte: 0x1B      # Escape if payload contains start/end
+
+    commands:
+      # ── System ───────────────────────────────────────────
+      get_version:
+        id: 0x01
+        direction: request-response
+        request:
+          fields: []
+        response:
+          fields:
+            - { name: major,    type: uint8,  doc: "Major version number" }
+            - { name: minor,    type: uint8,  doc: "Minor version number" }
+            - { name: patch,    type: uint8,  doc: "Patch version number" }
+            - { name: build_id, type: uint16, doc: "Build counter" }
+        doc: "Query firmware version."
+
+      get_status:
+        id: 0x02
+        direction: request-response
+        request:
+          fields: []
+        response:
+          fields:
+            - { name: status,    type: EXT__device_status_tun, doc: "Device status word" }
+            - { name: uptime_s,  type: uint32,  doc: "Seconds since boot" }
+            - { name: temp_c10,  type: int16,   doc: "Board temperature × 10" }
+            - { name: vcc_mv,    type: uint16,  doc: "Supply voltage in mV" }
+        doc: "Query overall device status."
+
+      reset:
+        id: 0x03
+        direction: request-response
+        request:
+          fields:
+            - { name: mode, type: uint8, doc: "0 = soft reset, 1 = bootloader" }
+        response:
+          fields:
+            - { name: ack, type: uint8, doc: "0x06 = ACK" }
+        doc: "Reset the device. Response sent before reset."
+
+      # ── LED / GPIO ──────────────────────────────────────
+      set_led:
+        id: 0x10
+        direction: request-response
+        request:
+          fields:
+            - { name: led_id, type: uint8, doc: "LED index (0–3)" }
+            - { name: state,  type: uint8, doc: "0 = off, 1 = on, 2 = toggle" }
+        response:
+          fields:
+            - { name: ack, type: uint8, doc: "0x06 = ACK, 0x15 = NAK" }
+        doc: "Control individual LED."
+
+      get_led:
+        id: 0x11
+        direction: request-response
+        request:
+          fields:
+            - { name: led_id, type: uint8, doc: "LED index (0–3)" }
+        response:
+          fields:
+            - { name: state, type: uint8, doc: "0 = off, 1 = on" }
+        doc: "Read current LED state."
+
+      set_gpio:
+        id: 0x12
+        direction: request-response
+        request:
+          fields:
+            - { name: pin_mask, type: uint8,  doc: "Bitmask of output pins" }
+            - { name: value,    type: uint8,  doc: "Pin values (bit = 1 → high)" }
+        response:
+          fields:
+            - { name: ack, type: uint8 }
+        doc: "Set digital output pins."
+
+      get_gpio:
+        id: 0x13
+        direction: request-response
+        request:
+          fields: []
+        response:
+          fields:
+            - { name: dout_state, type: uint8, doc: "Current digital output states" }
+            - { name: din_state,  type: uint8, doc: "Current digital input states" }
+        doc: "Read all digital I/O states."
+
+      # ── ADC ─────────────────────────────────────────────
+      read_adc:
+        id: 0x20
+        direction: request-response
+        request:
+          fields:
+            - { name: channel, type: uint8, doc: "ADC channel (0–3)" }
+        response:
+          fields:
+            - { name: raw,    type: uint16, doc: "Raw 12-bit ADC value" }
+            - { name: mv,     type: uint16, doc: "Converted millivolt value" }
+        doc: "Read single ADC channel."
+
+      # ── PWM ─────────────────────────────────────────────
+      set_pwm:
+        id: 0x30
+        direction: request-response
+        request:
+          fields:
+            - { name: channel,   type: uint8,  doc: "PWM channel (0–3)" }
+            - { name: freq_hz,   type: uint32, doc: "Frequency in Hz" }
+            - { name: duty_pct,  type: uint8,  doc: "Duty cycle 0–100" }
+        response:
+          fields:
+            - { name: ack, type: uint8 }
+        doc: "Configure PWM output."
+
+      # ── Calibration ────────────────────────────────────
+      write_cal:
+        id: 0x40
+        direction: request-response
+        request:
+          fields:
+            - { name: offset, type: uint16, doc: "Byte offset in cal block" }
+            - { name: length, type: uint8,  doc: "Bytes to write (max 64)" }
+            - { name: data,   type: bytes,  doc: "Calibration data" }
+        response:
+          fields:
+            - { name: ack, type: uint8 }
+        doc: "Write calibration data to EEPROM."
+
+      read_cal:
+        id: 0x41
+        direction: request-response
+        request:
+          fields:
+            - { name: offset, type: uint16, doc: "Byte offset in cal block" }
+            - { name: length, type: uint8,  doc: "Bytes to read (max 64)" }
+        response:
+          fields:
+            - { name: data, type: bytes, doc: "Calibration data" }
+        doc: "Read calibration data from EEPROM."
+
+      # ── Async notifications (device → host) ────────────
+      async_event:
+        id: 0xE0
+        direction: notification
+        fields:
+          - { name: event_code, type: uint8,  doc: "Event type enum" }
+          - { name: timestamp,  type: uint32, doc: "Tick counter at event" }
+          - { name: payload,    type: bytes,  doc: "Event-specific data (0–16 bytes)" }
+        doc: "Asynchronous event from device (unsolicited)."

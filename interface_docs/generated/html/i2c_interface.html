@@ -1,0 +1,58 @@
+<html><head>
+<title>Locator Base I2C Sensor Bus Interface</title>
+<style>
+body { font-family: sans-serif; background: #1e1e2e; color: #cdd6f4; padding: 2em; }
+h1 { color: #89b4fa; } h2 { color: #a6e3a1; } h3 { color: #f9e2af; }
+table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+th, td { border: 1px solid #45475a; padding: 8px; text-align: left; }
+th { background: #313244; } tr:nth-child(even) { background: #313244; }
+code { background: #313244; padding: 2px 6px; border-radius: 3px; }
+</style></head><body>
+<h1>Locator Base I2C Sensor Bus Interface</h1>
+<p>Transport: <code>i2c</code></p>
+<h2>Version History</h2><table>
+<tr><th>FW Version</th><th>Date</th><th>Author</th><th>Changes</th></tr>
+<tr><td>1.0</td><td>2026.03.09</td><td>dev</td><td>- Initial I2C device register maps.
+</td></tr>
+</table>
+<h2>temp_sensor — 0x48 (TMP117)</h2>
+<p>High-accuracy digital temperature sensor. ±0.1°C from -20°C to +50°C.
+</p>
+<table><tr><th>Addr</th><th>Name</th><th>Type</th><th>R/W</th><th>Doc</th></tr>
+<tr><td>0x00</td><td>temperature</td><td>int16</td><td>read</td><td>Temperature result. Raw × 0.0078125 = °C.</td></tr>
+<tr><td>0x01</td><td>config</td><td>EXT__tmp117_config_tun</td><td>read, write</td><td>Configuration and control register.</td></tr>
+<tr><td>0x02</td><td>t_high_limit</td><td>int16</td><td>read, write</td><td>High-temperature alert threshold.</td></tr>
+<tr><td>0x03</td><td>t_low_limit</td><td>int16</td><td>read, write</td><td>Low-temperature alert threshold.</td></tr>
+<tr><td>0x04</td><td>eeprom_unlock</td><td>uint16</td><td>read, write</td><td>Write 0x8000 to unlock EEPROM for writing.</td></tr>
+<tr><td>0x05</td><td>eeprom1</td><td>uint16</td><td>read, write</td><td>EEPROM user storage word 1.</td></tr>
+<tr><td>0x06</td><td>eeprom2</td><td>uint16</td><td>read, write</td><td>EEPROM user storage word 2.</td></tr>
+<tr><td>0x07</td><td>temperature_offset</td><td>int16</td><td>read, write</td><td>User temperature offset correction.</td></tr>
+<tr><td>0x0f</td><td>device_id</td><td>uint16</td><td>read</td><td>Device ID. Should read 0x0117.</td></tr>
+</table>
+<h2>eeprom — 0x50 (AT24C02)</h2>
+<p>256-byte I²C EEPROM for calibration data and board-specific configuration storage.
+</p>
+<table><tr><th>Addr</th><th>Name</th><th>Type</th><th>R/W</th><th>Doc</th></tr>
+<tr><td>0x00</td><td>cal_header</td><td>EXT__cal_header_tst</td><td>read, write</td><td>Calibration data header (magic + version + CRC).</td></tr>
+<tr><td>0x08</td><td>cal_data</td><td>bytes</td><td>read, write</td><td>Calibration coefficients block.</td></tr>
+<tr><td>0xf8</td><td>board_info</td><td>bytes</td><td>read, write</td><td>Board serial number and revision (8 bytes).</td></tr>
+</table>
+<h2>gpio_expander — 0x20 (PCF8574)</h2>
+<p>8-bit I/O expander for auxiliary digital I/O. Directly read or write the 8-bit port.
+</p>
+<table><tr><th>Addr</th><th>Name</th><th>Type</th><th>R/W</th><th>Doc</th></tr>
+<tr><td>—</td><td>port</td><td>EXT__gpio_expander_tun</td><td>read, write</td><td>Read = input pin state. Write = output latch. Bits written as 1 are pulled high (quasi-bidirectional).
+</td></tr>
+</table>
+<h2>power_monitor — 0x40 (INA219)</h2>
+<p>Current and power monitor on the supply rail. Shunt resistor: 0.1 Ω.
+</p>
+<table><tr><th>Addr</th><th>Name</th><th>Type</th><th>R/W</th><th>Doc</th></tr>
+<tr><td>0x00</td><td>config</td><td>EXT__ina219_config_tun</td><td>read, write</td><td>Configuration register.</td></tr>
+<tr><td>0x01</td><td>shunt_voltage</td><td>int16</td><td>read</td><td>Shunt voltage measurement.</td></tr>
+<tr><td>0x02</td><td>bus_voltage</td><td>EXT__ina219_bus_voltage_tun</td><td>read</td><td>Bus voltage measurement.</td></tr>
+<tr><td>0x03</td><td>power</td><td>uint16</td><td>read</td><td>Power = current × bus_voltage. LSB set by cal register.</td></tr>
+<tr><td>0x04</td><td>current</td><td>int16</td><td>read</td><td>Measured current.</td></tr>
+<tr><td>0x05</td><td>calibration</td><td>uint16</td><td>read, write</td><td>Calibration value. Sets current and power LSB.</td></tr>
+</table>
+</body></html>

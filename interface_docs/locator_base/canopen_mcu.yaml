@@ -1,0 +1,213 @@
+# ─────────────────────────────────────────────────────────────────
+#  Locator Base — CANopen Interface  (canopen_mcu.yaml)
+#  Board: TI MSPM0G3507
+# ─────────────────────────────────────────────────────────────────
+
+interface:
+  title: Locator Base CANopen MCU Interface
+  transport: canopen
+
+  version history:
+    - fw-version: "1.0"
+      date: '2026.03.09'
+      author: dev
+      changes: >
+        - Initial CANopen object dictionary.
+
+  TODO:
+    - Add PDO mappings for real-time I/O
+    - Add heartbeat consumer entries
+
+  canopen:
+    nodes:
+      - id: 0x10
+        name: Locator Base Node
+        doc: >
+          Main control and monitor node for the locator base board.
+          Handles LED control, digital I/O, and status reporting.
+
+    physical:
+      tx_pin: PA26
+      rx_pin: PA27
+      peripheral: MCAN0
+      bitrate: 500000
+      transceiver: "SN65HVD230"
+
+    object dictionary:
+
+      # ── Device info ────────────────────────────────────────
+      info:
+        device_name:
+          mlx: 0x100800
+          flags: [read]
+          type: string
+          doc: >
+            Contains the device name. E.g.: "Locator Base"
+
+        hw_version:
+          mlx: 0x100900
+          flags: [read, write]
+          type: string
+          doc: >
+            Hardware version (PCB article ID). E.g.: "EL-30-10-00"
+
+        fw_version:
+          mlx: 0x100a00
+          flags: [read]
+          type: string
+          doc: >
+            Firmware version. Format: "FW vX.Y"
+
+      # ── Store parameters ───────────────────────────────────
+      store_parameters:
+        save_all_parameters:
+          mlx: 0x101001
+          type:
+            format: uint
+            size: 32
+          flags: [read, write]
+          doc: >
+            Write 0x65766173 ("save") to persist all parameters to flash.
+
+        save_comm_parameters:
+          mlx: 0x101002
+          type:
+            format: uint
+            size: 32
+          flags: [read, write]
+          doc: >
+            Persist communication-related parameters.
+
+        save_app_parameters:
+          mlx: 0x101003
+          type:
+            format: uint
+            size: 32
+          flags: [read, write]
+          doc: >
+            Persist application-related parameters.
+
+      # ── Service info ───────────────────────────────────────
+      service_info:
+        stored_node_id:
+          mlx: 0x100b00
+          flags: [read, write]
+          type:
+            format: uint
+            size: 16
+          doc: >
+            CAN node ID stored in flash. Default 0x10.
+
+        stored_can_speed:
+          mlx: 0x314420
+          flags: [read, write]
+          type:
+            format: uint
+            size: 16
+          doc: >
+            CAN baud rate stored in flash (kbps).
+
+        serial_num:
+          mlx: 0x312301
+          type: string
+          flags: [read, write]
+          doc: >
+            Manufacturer serial number. E.g.: "LB301000-0001V1"
+
+        lss_vid:
+          mlx: 0x312302
+          type:
+            format: uint
+            size: 32
+          flags: [read, write]
+          doc: >
+            LSS vendor ID.
+
+        lss_pid:
+          mlx: 0x312303
+          type:
+            format: uint
+            size: 32
+          flags: [read, write]
+          doc: >
+            LSS product ID.
+
+        lss_rev:
+          mlx: 0x312304
+          type:
+            format: uint
+            size: 32
+          flags: [read, write]
+          doc: >
+            LSS product revision.
+
+        lss_sn:
+          mlx: 0x312305
+          type:
+            format: uint
+            size: 32
+          flags: [read, write]
+          doc: >
+            LSS product serial number.
+
+      # ── Configuration ──────────────────────────────────────
+      config:
+        nick_name:
+          mlx: 0x312c00
+          type: string
+          flags: [read, write]
+          doc: >
+            User-assignable name to differentiate multiple boards.
+
+        cal_date:
+          mlx: 0x312c01
+          type: string
+          flags: [read, write]
+          doc: >
+            Last calibration date (ISO-8601).
+
+      # ── Digital I/O ────────────────────────────────────────
+      digital_outputs:
+        led_control:
+          mlx: 0x620001
+          type: EXT__led_control_tun
+          flags: [read, write]
+          doc: >
+            LED on/off control bitmask.
+
+      digital_inputs:
+        button_state:
+          mlx: 0x600001
+          type: EXT__button_state_tun
+          flags: [read]
+          doc: >
+            Current state of user buttons.
+
+      # ── Status ─────────────────────────────────────────────
+      status:
+        device_status:
+          mlx: 0x400001
+          type: EXT__device_status_tun
+          flags: [read]
+          doc: >
+            Bit-mapped device status word.
+
+        board_temperature:
+          mlx: 0x400002
+          type:
+            format: int
+            size: 16
+          unit: "0.1 °C"
+          flags: [read]
+          doc: >
+            On-board temperature sensor reading × 10.
+
+        supply_voltage:
+          mlx: 0x400003
+          type:
+            format: uint
+            size: 16
+          unit: mV
+          flags: [read]
+          doc: >
+            Supply rail voltage in millivolts.

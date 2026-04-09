@@ -1,0 +1,83 @@
+<html><head>
+<title>Locator Base CANopen MCU Interface</title>
+<style>
+body { font-family: sans-serif; background: #1e1e2e; color: #cdd6f4; padding: 2em; }
+h1 { color: #89b4fa; } h2 { color: #a6e3a1; } h3 { color: #f9e2af; }
+table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+th, td { border: 1px solid #45475a; padding: 8px; text-align: left; }
+th { background: #313244; } tr:nth-child(even) { background: #313244; }
+code { background: #313244; padding: 2px 6px; border-radius: 3px; }
+</style></head><body>
+<h1>Locator Base CANopen MCU Interface</h1>
+<p>Transport: <code>canopen</code></p>
+<h2>Version History</h2><table>
+<tr><th>FW Version</th><th>Date</th><th>Author</th><th>Changes</th></tr>
+<tr><td>1.0</td><td>2026.03.09</td><td>dev</td><td>- Initial CANopen object dictionary.
+</td></tr>
+</table>
+<h2>Nodes</h2>
+<h3>Locator Base Node — 0x10</h3>
+<p>Main control and monitor node for the locator base board. Handles LED control, digital I/O, and status reporting.
+</p>
+<h2>info</h2>
+<table><tr><th>Object</th><th>MLX</th><th>Type</th><th>R/W</th><th>Description</th></tr>
+<tr><td>device_name</td><td>0x100800</td><td>string</td><td>read</td><td>Contains the device name. E.g.: &quot;Locator Base&quot;
+</td></tr>
+<tr><td>hw_version</td><td>0x100900</td><td>string</td><td>read, write</td><td>Hardware version (PCB article ID). E.g.: &quot;EL-30-10-00&quot;
+</td></tr>
+<tr><td>fw_version</td><td>0x100a00</td><td>string</td><td>read</td><td>Firmware version. Format: &quot;FW vX.Y&quot;
+</td></tr>
+</table>
+<h2>store_parameters</h2>
+<table><tr><th>Object</th><th>MLX</th><th>Type</th><th>R/W</th><th>Description</th></tr>
+<tr><td>save_all_parameters</td><td>0x101001</td><td>{&#x27;format&#x27;: &#x27;uint&#x27;, &#x27;size&#x27;: 32}</td><td>read, write</td><td>Write 0x65766173 (&quot;save&quot;) to persist all parameters to flash.
+</td></tr>
+<tr><td>save_comm_parameters</td><td>0x101002</td><td>{&#x27;format&#x27;: &#x27;uint&#x27;, &#x27;size&#x27;: 32}</td><td>read, write</td><td>Persist communication-related parameters.
+</td></tr>
+<tr><td>save_app_parameters</td><td>0x101003</td><td>{&#x27;format&#x27;: &#x27;uint&#x27;, &#x27;size&#x27;: 32}</td><td>read, write</td><td>Persist application-related parameters.
+</td></tr>
+</table>
+<h2>service_info</h2>
+<table><tr><th>Object</th><th>MLX</th><th>Type</th><th>R/W</th><th>Description</th></tr>
+<tr><td>stored_node_id</td><td>0x100b00</td><td>{&#x27;format&#x27;: &#x27;uint&#x27;, &#x27;size&#x27;: 16}</td><td>read, write</td><td>CAN node ID stored in flash. Default 0x10.
+</td></tr>
+<tr><td>stored_can_speed</td><td>0x314420</td><td>{&#x27;format&#x27;: &#x27;uint&#x27;, &#x27;size&#x27;: 16}</td><td>read, write</td><td>CAN baud rate stored in flash (kbps).
+</td></tr>
+<tr><td>serial_num</td><td>0x312301</td><td>string</td><td>read, write</td><td>Manufacturer serial number. E.g.: &quot;LB301000-0001V1&quot;
+</td></tr>
+<tr><td>lss_vid</td><td>0x312302</td><td>{&#x27;format&#x27;: &#x27;uint&#x27;, &#x27;size&#x27;: 32}</td><td>read, write</td><td>LSS vendor ID.
+</td></tr>
+<tr><td>lss_pid</td><td>0x312303</td><td>{&#x27;format&#x27;: &#x27;uint&#x27;, &#x27;size&#x27;: 32}</td><td>read, write</td><td>LSS product ID.
+</td></tr>
+<tr><td>lss_rev</td><td>0x312304</td><td>{&#x27;format&#x27;: &#x27;uint&#x27;, &#x27;size&#x27;: 32}</td><td>read, write</td><td>LSS product revision.
+</td></tr>
+<tr><td>lss_sn</td><td>0x312305</td><td>{&#x27;format&#x27;: &#x27;uint&#x27;, &#x27;size&#x27;: 32}</td><td>read, write</td><td>LSS product serial number.
+</td></tr>
+</table>
+<h2>config</h2>
+<table><tr><th>Object</th><th>MLX</th><th>Type</th><th>R/W</th><th>Description</th></tr>
+<tr><td>nick_name</td><td>0x312c00</td><td>string</td><td>read, write</td><td>User-assignable name to differentiate multiple boards.
+</td></tr>
+<tr><td>cal_date</td><td>0x312c01</td><td>string</td><td>read, write</td><td>Last calibration date (ISO-8601).
+</td></tr>
+</table>
+<h2>digital_outputs</h2>
+<table><tr><th>Object</th><th>MLX</th><th>Type</th><th>R/W</th><th>Description</th></tr>
+<tr><td>led_control</td><td>0x620001</td><td>EXT__led_control_tun</td><td>read, write</td><td>LED on/off control bitmask.
+</td></tr>
+</table>
+<h2>digital_inputs</h2>
+<table><tr><th>Object</th><th>MLX</th><th>Type</th><th>R/W</th><th>Description</th></tr>
+<tr><td>button_state</td><td>0x600001</td><td>EXT__button_state_tun</td><td>read</td><td>Current state of user buttons.
+</td></tr>
+</table>
+<h2>status</h2>
+<table><tr><th>Object</th><th>MLX</th><th>Type</th><th>R/W</th><th>Description</th></tr>
+<tr><td>device_status</td><td>0x400001</td><td>EXT__device_status_tun</td><td>read</td><td>Bit-mapped device status word.
+</td></tr>
+<tr><td>board_temperature</td><td>0x400002</td><td>{&#x27;format&#x27;: &#x27;int&#x27;, &#x27;size&#x27;: 16}</td><td>read</td><td>On-board temperature sensor reading × 10.
+</td></tr>
+<tr><td>supply_voltage</td><td>0x400003</td><td>{&#x27;format&#x27;: &#x27;uint&#x27;, &#x27;size&#x27;: 16}</td><td>read</td><td>Supply rail voltage in millivolts.
+</td></tr>
+</table>
+</body></html>

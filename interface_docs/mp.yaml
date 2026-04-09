@@ -1,0 +1,235 @@
+# ─────────────────────────────────────────────────────────────────
+#  Locator Base — Code Generation Batch Manifest  (mp.yaml)
+#
+#  Usage:  python interface_docs/generate.py interface_docs/mp.yaml
+# ─────────────────────────────────────────────────────────────────
+
+# ── CANopen ──────────────────────────────────────────────────
+
+- source: locator_base/canopen_mcu.yaml
+  output: generated/c/canopen_mcu_can_if.h
+  format: c-objdict
+  dependencies:
+    - locator_base/canopen_mcu_types.yaml
+  includes:
+    - '<stdint.h>'
+    - '"canopen_mcu_types.h"'
+
+- source: locator_base/canopen_mcu_types.yaml
+  output: generated/c/canopen_mcu_types.h
+  format: c-typedefs
+  includes:
+    - '<stdint.h>'
+
+- source: locator_base/canopen_mcu.yaml
+  output: generated/py/canopen_driver.py
+  format: python
+  od_name: LocatorBase
+  dependencies:
+    - locator_base/canopen_mcu_types.yaml
+
+- source: locator_base/canopen_mcu.yaml
+  output: generated/html/canopen_interface.html
+  format: html
+  dependencies:
+    - locator_base/canopen_mcu_types.yaml
+
+# ── UART ─────────────────────────────────────────────────────
+
+- source: locator_base/uart_mcu.yaml
+  output: generated/c/uart_mcu_protocol.h
+  format: c-uart-protocol
+  dependencies:
+    - locator_base/uart_mcu_types.yaml
+    - locator_base/canopen_mcu_types.yaml    # shared device_status type
+  includes:
+    - '<stdint.h>'
+    - '"uart_mcu_types.h"'
+
+- source: locator_base/uart_mcu_types.yaml
+  output: generated/c/uart_mcu_types.h
+  format: c-typedefs
+  includes:
+    - '<stdint.h>'
+
+- source: locator_base/uart_mcu.yaml
+  output: generated/py/uart_driver.py
+  format: python
+  od_name: LocatorBaseUART
+  dependencies:
+    - locator_base/uart_mcu_types.yaml
+    - locator_base/canopen_mcu_types.yaml
+
+- source: locator_base/uart_mcu.yaml
+  output: generated/html/uart_interface.html
+  format: html
+  dependencies:
+    - locator_base/uart_mcu_types.yaml
+
+# ── RS-485 / Modbus ──────────────────────────────────────────
+
+- source: locator_base/rs485_mcu.yaml
+  output: generated/c/rs485_mcu_modbus.h
+  format: c-modbus-registers
+  dependencies:
+    - locator_base/rs485_mcu_types.yaml
+    - locator_base/canopen_mcu_types.yaml    # shared types
+  includes:
+    - '<stdint.h>'
+    - '"rs485_mcu_types.h"'
+    - '"canopen_mcu_types.h"'
+
+- source: locator_base/rs485_mcu_types.yaml
+  output: generated/c/rs485_mcu_types.h
+  format: c-typedefs
+  includes:
+    - '<stdint.h>'
+
+- source: locator_base/rs485_mcu.yaml
+  output: generated/py/rs485_driver.py
+  format: python
+  od_name: LocatorBaseModbus
+  dependencies:
+    - locator_base/rs485_mcu_types.yaml
+
+- source: locator_base/rs485_mcu.yaml
+  output: generated/html/rs485_interface.html
+  format: html
+  dependencies:
+    - locator_base/rs485_mcu_types.yaml
+
+# ── TCP / UDP ────────────────────────────────────────────────
+
+- source: locator_base/tcp_udp_mcu.yaml
+  output: generated/c/tcp_udp_mcu_protocol.h
+  format: c-tcp-protocol
+  dependencies:
+    - locator_base/tcp_udp_mcu_types.yaml
+    - locator_base/canopen_mcu_types.yaml
+  includes:
+    - '<stdint.h>'
+    - '"tcp_udp_mcu_types.h"'
+    - '"canopen_mcu_types.h"'
+
+- source: locator_base/tcp_udp_mcu_types.yaml
+  output: generated/c/tcp_udp_mcu_types.h
+  format: c-typedefs
+  includes:
+    - '<stdint.h>'
+
+- source: locator_base/tcp_udp_mcu.yaml
+  output: generated/py/tcp_udp_driver.py
+  format: python
+  od_name: LocatorBaseTCP
+  dependencies:
+    - locator_base/tcp_udp_mcu_types.yaml
+
+- source: locator_base/tcp_udp_mcu.yaml
+  output: generated/html/tcp_udp_interface.html
+  format: html
+  dependencies:
+    - locator_base/tcp_udp_mcu_types.yaml
+
+# ── I²C ──────────────────────────────────────────────────────
+
+- source: locator_base/i2c_mcu.yaml
+  output: generated/c/i2c_mcu_registers.h
+  format: c-i2c-registers
+  dependencies:
+    - locator_base/i2c_mcu_types.yaml
+  includes:
+    - '<stdint.h>'
+    - '"i2c_mcu_types.h"'
+
+- source: locator_base/i2c_mcu_types.yaml
+  output: generated/c/i2c_mcu_types.h
+  format: c-typedefs
+  includes:
+    - '<stdint.h>'
+
+- source: locator_base/i2c_mcu.yaml
+  output: generated/py/i2c_driver.py
+  format: python
+  od_name: LocatorBaseI2C
+  dependencies:
+    - locator_base/i2c_mcu_types.yaml
+
+- source: locator_base/i2c_mcu.yaml
+  output: generated/html/i2c_interface.html
+  format: html
+  dependencies:
+    - locator_base/i2c_mcu_types.yaml
+
+# ── SPI ──────────────────────────────────────────────────────
+
+- source: locator_base/spi_mcu.yaml
+  output: generated/c/spi_mcu_devices.h
+  format: c-spi-devices
+  dependencies:
+    - locator_base/spi_mcu_types.yaml
+  includes:
+    - '<stdint.h>'
+    - '"spi_mcu_types.h"'
+
+- source: locator_base/spi_mcu_types.yaml
+  output: generated/c/spi_mcu_types.h
+  format: c-typedefs
+  includes:
+    - '<stdint.h>'
+
+- source: locator_base/spi_mcu.yaml
+  output: generated/py/spi_driver.py
+  format: python
+  od_name: LocatorBaseSPI
+  dependencies:
+    - locator_base/spi_mcu_types.yaml
+
+- source: locator_base/spi_mcu.yaml
+  output: generated/html/spi_interface.html
+  format: html
+  dependencies:
+    - locator_base/spi_mcu_types.yaml
+
+# ── GUI Jinja2 widget blocks ────────────────────────────────
+
+- source: locator_base/canopen_mcu.yaml
+  output: generated/gui/canopen_gui.html.j2
+  format: gui-jinja
+  od_name: LocatorBase
+  dependencies:
+    - locator_base/canopen_mcu_types.yaml
+
+- source: locator_base/uart_mcu.yaml
+  output: generated/gui/uart_gui.html.j2
+  format: gui-jinja
+  od_name: LocatorBaseUART
+  dependencies:
+    - locator_base/uart_mcu_types.yaml
+
+- source: locator_base/rs485_mcu.yaml
+  output: generated/gui/rs485_gui.html.j2
+  format: gui-jinja
+  od_name: LocatorBaseModbus
+  dependencies:
+    - locator_base/rs485_mcu_types.yaml
+
+- source: locator_base/tcp_udp_mcu.yaml
+  output: generated/gui/tcp_udp_gui.html.j2
+  format: gui-jinja
+  od_name: LocatorBaseTCP
+  dependencies:
+    - locator_base/tcp_udp_mcu_types.yaml
+
+- source: locator_base/i2c_mcu.yaml
+  output: generated/gui/i2c_gui.html.j2
+  format: gui-jinja
+  od_name: LocatorBaseI2C
+  dependencies:
+    - locator_base/i2c_mcu_types.yaml
+
+- source: locator_base/spi_mcu.yaml
+  output: generated/gui/spi_gui.html.j2
+  format: gui-jinja
+  od_name: LocatorBaseSPI
+  dependencies:
+    - locator_base/spi_mcu_types.yaml

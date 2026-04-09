@@ -1,0 +1,200 @@
+# ─────────────────────────────────────────────────────────────────
+#  Locator Base — I²C Sensor Bus Interface  (i2c_mcu.yaml)
+#  Board: TI MSPM0G3507 — I2C0
+# ─────────────────────────────────────────────────────────────────
+
+interface:
+  title: Locator Base I2C Sensor Bus Interface
+  transport: i2c
+
+  version history:
+    - fw-version: "1.0"
+      date: '2026.03.09'
+      author: dev
+      changes: >
+        - Initial I2C device register maps.
+
+  TODO:
+    - Add I2C multiplexer (TCA9548A) support
+    - Add fuel gauge IC register map
+
+  i2c:
+    physical:
+      sda_pin: PA0           # MCU SDA → AD3 DIO14
+      scl_pin: PA1           # MCU SCL → AD3 DIO15
+      peripheral: I2C0
+      speed: 400kHz          # standard (100k) | fast (400k) | fast-plus (1M)
+      pull_ups: "4.7 kΩ external to 3.3V"
+      address_bits: 7
+      voltage_level: "3.3V (level shifter needed for 5V devices)"
+
+    devices:
+      # ── Temperature sensor (TMP117 compatible) ──────────
+      - address: 0x48
+        name: temp_sensor
+        part: "TMP117"
+        doc: >
+          High-accuracy digital temperature sensor.
+          ±0.1°C from -20°C to +50°C.
+
+        registers:
+          - addr: 0x00
+            name: temperature
+            type: int16
+            flags: [read]
+            unit: "0.0078125 °C / LSB"
+            reset_value: 0x8000
+            doc: "Temperature result. Raw × 0.0078125 = °C."
+
+          - addr: 0x01
+            name: config
+            type: EXT__tmp117_config_tun
+            flags: [read, write]
+            reset_value: 0x0220
+            doc: "Configuration and control register."
+
+          - addr: 0x02
+            name: t_high_limit
+            type: int16
+            flags: [read, write]
+            unit: "0.0078125 °C / LSB"
+            reset_value: 0x6000
+            doc: "High-temperature alert threshold."
+
+          - addr: 0x03
+            name: t_low_limit
+            type: int16
+            flags: [read, write]
+            unit: "0.0078125 °C / LSB"
+            reset_value: 0x8000
+            doc: "Low-temperature alert threshold."
+
+          - addr: 0x04
+            name: eeprom_unlock
+            type: uint16
+            flags: [read, write]
+            doc: "Write 0x8000 to unlock EEPROM for writing."
+
+          - addr: 0x05
+            name: eeprom1
+            type: uint16
+            flags: [read, write]
+            doc: "EEPROM user storage word 1."
+
+          - addr: 0x06
+            name: eeprom2
+            type: uint16
+            flags: [read, write]
+            doc: "EEPROM user storage word 2."
+
+          - addr: 0x07
+            name: temperature_offset
+            type: int16
+            flags: [read, write]
+            unit: "0.0078125 °C / LSB"
+            doc: "User temperature offset correction."
+
+          - addr: 0x0F
+            name: device_id
+            type: uint16
+            flags: [read]
+            reset_value: 0x0117
+            doc: "Device ID. Should read 0x0117."
+
+      # ── Calibration EEPROM (AT24C02 compatible) ─────────
+      - address: 0x50
+        name: eeprom
+        part: "AT24C02"
+        doc: >
+          256-byte I²C EEPROM for calibration data and
+          board-specific configuration storage.
+
+        registers:
+          - addr: 0x00
+            name: cal_header
+            type: EXT__cal_header_tst
+            length: 8
+            flags: [read, write]
+            doc: "Calibration data header (magic + version + CRC)."
+
+          - addr: 0x08
+            name: cal_data
+            type: bytes
+            length: 240
+            flags: [read, write]
+            page_size: 8
+            write_cycle_ms: 5
+            doc: "Calibration coefficients block."
+
+          - addr: 0xF8
+            name: board_info
+            type: bytes
+            length: 8
+            flags: [read, write]
+            doc: "Board serial number and revision (8 bytes)."
+
+      # ── GPIO Expander (PCF8574 compatible) ──────────────
+      - address: 0x20
+        name: gpio_expander
+        part: "PCF8574"
+        doc: >
+          8-bit I/O expander for auxiliary digital I/O.
+          Directly read or write the 8-bit port.
+
+        registers:
+          - addr: null   # Single-byte read/write, no register address
+            name: port
+            type: EXT__gpio_expander_tun
+            flags: [read, write]
+            doc: >
+              Read = input pin state. Write = output latch.
+              Bits written as 1 are pulled high (quasi-bidirectional).
+
+      # ── Current/Power monitor (INA219 compatible) ───────
+      - address: 0x40
+        name: power_monitor
+        part: "INA219"
+        doc: >
+          Current and power monitor on the supply rail.
+          Shunt resistor: 0.1 Ω.
+
+        registers:
+          - addr: 0x00
+            name: config
+            type: EXT__ina219_config_tun
+            flags: [read, write]
+            reset_value: 0x399F
+            doc: "Configuration register."
+
+          - addr: 0x01
+            name: shunt_voltage
+            type: int16
+            flags: [read]
+            unit: "10 µV / LSB"
+            doc: "Shunt voltage measurement."
+
+          - addr: 0x02
+            name: bus_voltage
+            type: EXT__ina219_bus_voltage_tun
+            flags: [read]
+            unit: "4 mV / LSB (bits 15:3)"
+            doc: "Bus voltage measurement."
+
+          - addr: 0x03
+            name: power
+            type: uint16
+            flags: [read]
+            doc: "Power = current × bus_voltage. LSB set by cal register."
+
+          - addr: 0x04
+            name: current
+            type: int16
+            flags: [read]
+            unit: "Depends on calibration register"
+            doc: "Measured current."
+
+          - addr: 0x05
+            name: calibration
+            type: uint16
+            flags: [read, write]
+            doc: "Calibration value. Sets current and power LSB."

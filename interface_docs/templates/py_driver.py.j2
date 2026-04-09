@@ -1,0 +1,143 @@
+"""Auto-generated driver stub for: {{ title }}"""
+
+from __future__ import annotations
+from dataclasses import dataclass
+
+{% if transport == "canopen" %}
+class {{ od_name }}OD:
+    """CANopen object dictionary for {{ title }}."""
+
+{% for c in constants %}
+    {{ c.name }} = {{ c.value }}
+{% endfor %}
+
+    def __init__(self, node) -> None:
+        self._node = node
+
+{% for m in methods %}
+{% if m.type == "read" %}
+    def read_{{ m.name }}(self):
+        return self._node.sdo_read({{ m.mlx }})
+
+{% elif m.type == "write" %}
+    def write_{{ m.name }}(self, value):
+        self._node.sdo_write({{ m.mlx }}, value)
+
+{% endif %}
+{% endfor %}
+{% elif transport == "uart" %}
+class {{ od_name }}Driver:
+    """UART driver for {{ title }}."""
+
+    BAUD_RATE = {{ uart.baud_rate }}
+
+{% for c in uart.cmd_constants %}
+    CMD_{{ c.name }} = {{ c.id }}
+{% endfor %}
+
+    def __init__(self, port: str) -> None:
+        self._port = port
+        self._serial = None
+
+{% for cmd in uart.commands %}
+    def {{ cmd.name }}({{ cmd.sig }}):
+        """{{ cmd.doc }}"""
+        raise NotImplementedError
+
+{% endfor %}
+{% elif transport == "rs485" %}
+class {{ od_name }}Driver:
+    """Modbus RTU driver for {{ title }}."""
+
+    SLAVE_ID = {{ modbus.slave_id }}
+
+{% for c in modbus.reg_constants %}
+    {{ c.prefix }}_{{ c.name }} = {{ c.addr }}
+{% endfor %}
+
+    def __init__(self, port: str, slave_id: int = {{ modbus.slave_id }}) -> None:
+        self._port = port
+        self._slave_id = slave_id
+
+{% for m in modbus.holding_methods %}
+{% if m.type == "read" %}
+    def read_{{ m.name }}(self) -> int:
+        """{{ m.doc }}"""
+        raise NotImplementedError
+
+{% elif m.type == "write" %}
+    def write_{{ m.name }}(self, value: int) -> None:
+        """{{ m.doc }}"""
+        raise NotImplementedError
+
+{% endif %}
+{% endfor %}
+{% for m in modbus.input_methods %}
+    def read_{{ m.name }}(self) -> int:
+        """{{ m.doc }}"""
+        raise NotImplementedError
+
+{% endfor %}
+{% elif transport in ["tcp/udp", "tcp", "udp"] %}
+class {{ od_name }}Driver:
+    """TCP/UDP driver for {{ title }}."""
+
+{% if tcpudp.tcp_port is not none %}
+    TCP_PORT = {{ tcpudp.tcp_port }}
+{% endif %}
+{% if tcpudp.udp_port is not none %}
+    UDP_PORT = {{ tcpudp.udp_port }}
+{% endif %}
+
+{% for c in tcpudp.cmd_constants %}
+    TCP_CMD_{{ c.name }} = {{ c.id }}
+{% endfor %}
+
+    def __init__(self, host: str, port: int = {{ tcpudp.default_port }}) -> None:
+        self._host = host
+        self._port = port
+
+{% for cmd in tcpudp.commands %}
+    def {{ cmd.name }}({{ cmd.sig }}):
+        """{{ cmd.doc }}"""
+        raise NotImplementedError
+
+{% endfor %}
+{% elif transport == "i2c" %}
+class {{ od_name }}Driver:
+    """I2C driver for {{ title }}."""
+
+{% for c in i2c.addr_constants %}
+    ADDR_{{ c.name }} = {{ c.addr }}
+{% endfor %}
+
+    def __init__(self, bus) -> None:
+        self._bus = bus
+
+{% for m in i2c.methods %}
+{% if m.type == "read" %}
+    def read_{{ m.dev }}_{{ m.reg }}(self):
+        """{{ m.doc }}"""
+        raise NotImplementedError
+
+{% elif m.type == "write" %}
+    def write_{{ m.dev }}_{{ m.reg }}(self, value):
+        """{{ m.doc }}"""
+        raise NotImplementedError
+
+{% endif %}
+{% endfor %}
+{% elif transport == "spi" %}
+class {{ od_name }}Driver:
+    """SPI driver for {{ title }}."""
+
+    def __init__(self, bus) -> None:
+        self._bus = bus
+
+{% for m in spi.methods %}
+    def {{ m.dev }}_{{ m.name }}(self, *args):
+        """{{ m.doc }}"""
+        raise NotImplementedError
+
+{% endfor %}
+{% endif %}

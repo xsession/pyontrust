@@ -1,0 +1,164 @@
+<!-- Auto-generated GUI widget block                             -->
+<!-- Title:     Locator Base UART Debug Interface                                      -->
+<!-- Transport: uart                                  -->
+<!-- Include:   include "gui/uart_locatorbaseuart_gui.html.j2"  in your Jinja app  -->
+
+<style>
+  .ifdoc-panel { background:#1e1e2e; color:#cdd6f4; border:1px solid #45475a; border-radius:8px; padding:1em; margin:0.5em 0; font-family:monospace; font-size:13px; }
+  .ifdoc-panel h3 { color:#89b4fa; margin:0 0 0.5em 0; font-size:15px; }
+  .ifdoc-panel h4 { color:#a6e3a1; margin:0.8em 0 0.3em 0; font-size:13px; }
+  .ifdoc-panel table { border-collapse:collapse; width:100%; }
+  .ifdoc-panel th, .ifdoc-panel td { border:1px solid #45475a; padding:4px 8px; text-align:left; }
+  .ifdoc-panel th { background:#313244; color:#cdd6f4; }
+  .ifdoc-panel tr:nth-child(even) { background:#313244; }
+  .ifdoc-panel .ifdoc-row { display:flex; gap:8px; align-items:center; margin:4px 0; flex-wrap:wrap; }
+  .ifdoc-panel input, .ifdoc-panel select { background:#313244; color:#cdd6f4; border:1px solid #585b70; border-radius:4px; padding:3px 6px; font-size:12px; font-family:monospace; }
+  .ifdoc-panel input[type=number] { width:80px; }
+  .ifdoc-panel input[type=text] { width:120px; }
+  .ifdoc-panel button { background:#89b4fa; color:#1e1e2e; border:none; border-radius:4px; padding:4px 12px; cursor:pointer; font-size:12px; font-weight:bold; }
+  .ifdoc-panel button:hover { background:#74c7ec; }
+  .ifdoc-panel button.danger { background:#f38ba8; }
+  .ifdoc-panel button.danger:hover { background:#eba0ac; }
+  .ifdoc-panel .ifdoc-result { background:#181825; border:1px solid #45475a; border-radius:4px; padding:4px 8px; margin:4px 0; min-height:1.4em; white-space:pre-wrap; word-break:break-all; color:#a6e3a1; font-size:12px; }
+  .ifdoc-panel label { color:#bac2de; font-size:12px; min-width:70px; }
+  .ifdoc-panel .ifdoc-badge { display:inline-block; background:#45475a; color:#f9e2af; border-radius:3px; padding:1px 6px; font-size:11px; margin-left:6px; }
+</style>
+
+<div class="ifdoc-panel" id="locatorbaseuart-uart-panel">
+  <h3>Locator Base UART Debug Interface</h3>
+  <h4>Commands</h4>
+  <div class="ifdoc-row" title="Query firmware version.">
+    <label>get_version</label>
+    <span class="ifdoc-badge">0x01</span>
+    <button onclick="ifdocRead('/api/locatorbaseuart/uart/get_version', document.getElementById('locatorbaseuart_get_version_r'))">Send</button>
+    <div class="ifdoc-result" id="locatorbaseuart_get_version_r"></div>
+  </div>
+  <div class="ifdoc-row" title="Query overall device status.">
+    <label>get_status</label>
+    <span class="ifdoc-badge">0x02</span>
+    <button onclick="ifdocRead('/api/locatorbaseuart/uart/get_status', document.getElementById('locatorbaseuart_get_status_r'))">Send</button>
+    <div class="ifdoc-result" id="locatorbaseuart_get_status_r"></div>
+  </div>
+  <div class="ifdoc-row" title="Reset the device. Response sent before reset.">
+    <label>reset</label>
+    <span class="ifdoc-badge">0x03</span>
+    <form id="locatorbaseuart_reset_f" onsubmit="return false;" style="display:contents">
+      <input type="number" name="mode" placeholder="mode" title="0 = soft reset, 1 = bootloader">
+      <button onclick="ifdocWrite('/api/locatorbaseuart/uart/reset', document.getElementById('locatorbaseuart_reset_f'), document.getElementById('locatorbaseuart_reset_r'))">Send</button>
+    </form>
+    <div class="ifdoc-result" id="locatorbaseuart_reset_r"></div>
+  </div>
+  <div class="ifdoc-row" title="Control individual LED.">
+    <label>set_led</label>
+    <span class="ifdoc-badge">0x10</span>
+    <form id="locatorbaseuart_set_led_f" onsubmit="return false;" style="display:contents">
+      <input type="number" name="led_id" placeholder="led_id" title="LED index (0–3)">
+      <input type="number" name="state" placeholder="state" title="0 = off, 1 = on, 2 = toggle">
+      <button onclick="ifdocWrite('/api/locatorbaseuart/uart/set_led', document.getElementById('locatorbaseuart_set_led_f'), document.getElementById('locatorbaseuart_set_led_r'))">Send</button>
+    </form>
+    <div class="ifdoc-result" id="locatorbaseuart_set_led_r"></div>
+  </div>
+  <div class="ifdoc-row" title="Read current LED state.">
+    <label>get_led</label>
+    <span class="ifdoc-badge">0x11</span>
+    <form id="locatorbaseuart_get_led_f" onsubmit="return false;" style="display:contents">
+      <input type="number" name="led_id" placeholder="led_id" title="LED index (0–3)">
+      <button onclick="ifdocWrite('/api/locatorbaseuart/uart/get_led', document.getElementById('locatorbaseuart_get_led_f'), document.getElementById('locatorbaseuart_get_led_r'))">Send</button>
+    </form>
+    <div class="ifdoc-result" id="locatorbaseuart_get_led_r"></div>
+  </div>
+  <div class="ifdoc-row" title="Set digital output pins.">
+    <label>set_gpio</label>
+    <span class="ifdoc-badge">0x12</span>
+    <form id="locatorbaseuart_set_gpio_f" onsubmit="return false;" style="display:contents">
+      <input type="number" name="pin_mask" placeholder="pin_mask" title="Bitmask of output pins">
+      <input type="number" name="value" placeholder="value" title="Pin values (bit = 1 → high)">
+      <button onclick="ifdocWrite('/api/locatorbaseuart/uart/set_gpio', document.getElementById('locatorbaseuart_set_gpio_f'), document.getElementById('locatorbaseuart_set_gpio_r'))">Send</button>
+    </form>
+    <div class="ifdoc-result" id="locatorbaseuart_set_gpio_r"></div>
+  </div>
+  <div class="ifdoc-row" title="Read all digital I/O states.">
+    <label>get_gpio</label>
+    <span class="ifdoc-badge">0x13</span>
+    <button onclick="ifdocRead('/api/locatorbaseuart/uart/get_gpio', document.getElementById('locatorbaseuart_get_gpio_r'))">Send</button>
+    <div class="ifdoc-result" id="locatorbaseuart_get_gpio_r"></div>
+  </div>
+  <div class="ifdoc-row" title="Read single ADC channel.">
+    <label>read_adc</label>
+    <span class="ifdoc-badge">0x20</span>
+    <form id="locatorbaseuart_read_adc_f" onsubmit="return false;" style="display:contents">
+      <input type="number" name="channel" placeholder="channel" title="ADC channel (0–3)">
+      <button onclick="ifdocWrite('/api/locatorbaseuart/uart/read_adc', document.getElementById('locatorbaseuart_read_adc_f'), document.getElementById('locatorbaseuart_read_adc_r'))">Send</button>
+    </form>
+    <div class="ifdoc-result" id="locatorbaseuart_read_adc_r"></div>
+  </div>
+  <div class="ifdoc-row" title="Configure PWM output.">
+    <label>set_pwm</label>
+    <span class="ifdoc-badge">0x30</span>
+    <form id="locatorbaseuart_set_pwm_f" onsubmit="return false;" style="display:contents">
+      <input type="number" name="channel" placeholder="channel" title="PWM channel (0–3)">
+      <input type="number" name="freq_hz" placeholder="freq_hz" title="Frequency in Hz">
+      <input type="number" name="duty_pct" placeholder="duty_pct" title="Duty cycle 0–100">
+      <button onclick="ifdocWrite('/api/locatorbaseuart/uart/set_pwm', document.getElementById('locatorbaseuart_set_pwm_f'), document.getElementById('locatorbaseuart_set_pwm_r'))">Send</button>
+    </form>
+    <div class="ifdoc-result" id="locatorbaseuart_set_pwm_r"></div>
+  </div>
+  <div class="ifdoc-row" title="Write calibration data to EEPROM.">
+    <label>write_cal</label>
+    <span class="ifdoc-badge">0x40</span>
+    <form id="locatorbaseuart_write_cal_f" onsubmit="return false;" style="display:contents">
+      <input type="number" name="offset" placeholder="offset" title="Byte offset in cal block">
+      <input type="number" name="length" placeholder="length" title="Bytes to write (max 64)">
+      <input type="text" name="data" placeholder="data" title="Calibration data">
+      <button onclick="ifdocWrite('/api/locatorbaseuart/uart/write_cal', document.getElementById('locatorbaseuart_write_cal_f'), document.getElementById('locatorbaseuart_write_cal_r'))">Send</button>
+    </form>
+    <div class="ifdoc-result" id="locatorbaseuart_write_cal_r"></div>
+  </div>
+  <div class="ifdoc-row" title="Read calibration data from EEPROM.">
+    <label>read_cal</label>
+    <span class="ifdoc-badge">0x41</span>
+    <form id="locatorbaseuart_read_cal_f" onsubmit="return false;" style="display:contents">
+      <input type="number" name="offset" placeholder="offset" title="Byte offset in cal block">
+      <input type="number" name="length" placeholder="length" title="Bytes to read (max 64)">
+      <button onclick="ifdocWrite('/api/locatorbaseuart/uart/read_cal', document.getElementById('locatorbaseuart_read_cal_f'), document.getElementById('locatorbaseuart_read_cal_r'))">Send</button>
+    </form>
+    <div class="ifdoc-result" id="locatorbaseuart_read_cal_r"></div>
+  </div>
+  <div class="ifdoc-row" title="Asynchronous event from device (unsolicited).">
+    <label>async_event</label>
+    <span class="ifdoc-badge">0xe0</span>
+    <button onclick="ifdocRead('/api/locatorbaseuart/uart/async_event', document.getElementById('locatorbaseuart_async_event_r'))">Send</button>
+    <div class="ifdoc-result" id="locatorbaseuart_async_event_r"></div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const API_BASE = "{{ api_base|default('') }}";
+
+  window.ifdocFetch = function(endpoint, params, resultEl) {
+    resultEl.textContent = "…";
+    const url = API_BASE + endpoint;
+    const opts = params
+      ? {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(params)}
+      : {method: "GET"};
+    fetch(url, opts)
+      .then(r => r.json())
+      .then(d => { resultEl.textContent = JSON.stringify(d, null, 2); })
+      .catch(e => { resultEl.textContent = "ERROR: " + e; });
+  };
+
+  window.ifdocRead = function(endpoint, resultEl) {
+    ifdocFetch(endpoint, null, resultEl);
+  };
+
+  window.ifdocWrite = function(endpoint, formEl, resultEl) {
+    const fd = new FormData(formEl);
+    const params = {};
+    for (const [k, v] of fd.entries()) {
+      params[k] = isNaN(Number(v)) ? v : Number(v);
+    }
+    ifdocFetch(endpoint, params, resultEl);
+  };
+})();
+</script>

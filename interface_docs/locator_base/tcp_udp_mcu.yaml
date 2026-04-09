@@ -1,0 +1,215 @@
+# ─────────────────────────────────────────────────────────────────
+#  Locator Base — TCP/UDP Interface  (tcp_udp_mcu.yaml)
+#  Board: TI MSPM0G3507 — Ethernet via SPI-to-Ethernet bridge
+# ─────────────────────────────────────────────────────────────────
+
+interface:
+  title: Locator Base Ethernet Control Interface
+  transport: tcp/udp
+
+  version history:
+    - fw-version: "1.0"
+      date: '2026.03.09'
+      author: dev
+      changes: >
+        - Initial TCP command protocol and UDP telemetry.
+
+  TODO:
+    - Add firmware-update over TCP (chunked transfer)
+    - Add multicast group for device discovery
+
+  tcp:
+    port: 5200
+    max_connections: 4
+    keepalive_s: 30
+
+    framing:
+      header:
+        length: 6
+        fields:
+          - { name: magic,       type: uint16, value: 0x4C42, doc: "'LB' magic bytes" }
+          - { name: msg_id,      type: uint16, doc: "Command identifier" }
+          - { name: payload_len, type: uint16, doc: "Bytes following header (excl. CRC)" }
+      crc: crc32
+      byte_order: big-endian
+      max_frame_size: 1024
+
+    commands:
+      # ── Discovery & Info ──────────────────────────────────
+      ping:
+        id: 0x0000
+        direction: request-response
+        request:
+          fields: []
+        response:
+          fields:
+            - { name: magic, type: uint32, value: 0x4C424F4B, doc: "'LBOK' alive marker" }
+        doc: "Connectivity check."
+
+      get_device_info:
+        id: 0x0001
+        direction: request-response
+        request:
+          fields: []
+        response:
+          fields:
+            - { name: fw_major,   type: uint8,  doc: "Firmware major version" }
+            - { name: fw_minor,   type: uint8,  doc: "Firmware minor version" }
+            - { name: fw_patch,   type: uint8,  doc: "Firmware patch version" }
+            - { name: hw_rev,     type: uint8,  doc: "Hardware revision" }
+            - { name: serial,     type: string,  max_len: 32, doc: "Serial number" }
+            - { name: uptime_s,   type: uint32, doc: "Seconds since boot" }
+        doc: "Query device identification and uptime."
+
+      get_status:
+        id: 0x0002
+        direction: request-response
+        request:
+          fields: []
+        response:
+          fields:
+            - { name: status,      type: EXT__device_status_tun, doc: "Status flags" }
+            - { name: temp_c10,    type: int16,   doc: "Board temperature × 10" }
+            - { name: vcc_mv,      type: uint16,  doc: "Supply voltage in mV" }
+            - { name: error_count, type: uint16,  doc: "Cumulative error count" }
+        doc: "Query overall device status."
+
+      # ── LED / GPIO Control ────────────────────────────────
+      set_led:
+        id: 0x0010
+        direction: request-response
+        request:
+          fields:
+            - { name: led_mask, type: uint8, doc: "Bitmask of LEDs to change" }
+            - { name: led_val,  type: uint8, doc: "Desired state per bit" }
+        response:
+          fields:
+            - { name: result, type: uint8, doc: "0 = OK, else error" }
+        doc: "Set LEDs by bitmask."
+
+      set_gpio:
+        id: 0x0011
+        direction: request-response
+        request:
+          fields:
+            - { name: pin_mask, type: uint8 }
+            - { name: pin_val,  type: uint8 }
+        response:
+          fields:
+            - { name: result, type: uint8 }
+        doc: "Set digital output pins."
+
+      get_gpio:
+        id: 0x0012
+        direction: request-response
+        request:
+          fields: []
+        response:
+          fields:
+            - { name: dout, type: uint8, doc: "Digital outputs state" }
+            - { name: din,  type: uint8, doc: "Digital inputs state" }
+        doc: "Read all GPIO states."
+
+      # ── Measurement ───────────────────────────────────────
+      start_measurement:
+        id: 0x0020
+        direction: request-response
+        request:
+          fields:
+            - { name: channel,     type: uint8,  doc: "ADC channel (0–3)" }
+            - { name: duration_ms, type: uint32, doc: "Capture duration in ms" }
+            - { name: rate_hz,     type: uint16, doc: "Sample rate in Hz" }
+        response:
+          fields:
+            - { name: result,  type: uint8,  doc: "0 = started, else error" }
+            - { name: meas_id, type: uint16, doc: "Measurement session ID" }
+        doc: "Start an ADC measurement capture."
+
+      get_measurement:
+        id: 0x0021
+        direction: request-response
+        request:
+          fields:
+            - { name: meas_id, type: uint16, doc: "Session ID from start_measurement" }
+            - { name: offset,  type: uint32, doc: "Sample offset to read from" }
+            - { name: count,   type: uint16, doc: "Number of samples to read" }
+        response:
+          fields:
+            - { name: status,      type: uint8,  doc: "0 = in_progress, 1 = done, 2 = error" }
+            - { name: total,       type: uint32, doc: "Total samples captured so far" }
+            - { name: sample_data, type: bytes,  doc: "Packed int16 samples" }
+        doc: "Read captured measurement data."
+
+      # ── CAN Bridge ────────────────────────────────────────
+      can_send:
+        id: 0x0030
+        direction: request-response
+        request:
+          fields:
+            - { name: arb_id,      type: uint32, doc: "CAN arbitration ID" }
+            - { name: is_extended, type: uint8,  doc: "1 = 29-bit ID, 0 = 11-bit" }
+            - { name: dlc,         type: uint8,  doc: "Data length (0–8)" }
+            - { name: data,        type: bytes,  doc: "CAN frame data" }
+        response:
+          fields:
+            - { name: result, type: uint8, doc: "0 = sent, else error" }
+        doc: "Transmit a CAN frame via the MCU's MCAN peripheral."
+
+      can_subscribe:
+        id: 0x0031
+        direction: request-response
+        request:
+          fields:
+            - { name: filter_id,   type: uint32, doc: "Acceptance filter ID (0 = all)" }
+            - { name: filter_mask, type: uint32, doc: "Acceptance mask" }
+        response:
+          fields:
+            - { name: result,  type: uint8,  doc: "0 = OK" }
+            - { name: sub_id,  type: uint8,  doc: "Subscription handle" }
+        doc: "Subscribe to CAN frames. Matching frames sent as async notifications over TCP."
+
+  # ── UDP Telemetry (device → host, broadcast) ──────────────
+  udp:
+    port: 5201
+    broadcast: true
+
+    framing:
+      header:
+        length: 4
+        fields:
+          - { name: msg_id,      type: uint16 }
+          - { name: payload_len, type: uint16 }
+      byte_order: big-endian
+
+    messages:
+      heartbeat:
+        id: 0x0100
+        direction: publish
+        rate_hz: 1
+        fields:
+          - { name: status,     type: EXT__device_status_tun }
+          - { name: uptime_s,   type: uint32 }
+          - { name: seq,        type: uint16, doc: "Incrementing sequence number" }
+        doc: "1 Hz heartbeat broadcast for device discovery."
+
+      telemetry:
+        id: 0x0101
+        direction: publish
+        rate_hz: 10
+        fields:
+          - { name: timestamp_ms, type: uint32, doc: "Milliseconds since boot" }
+          - { name: current_uA,   type: float32, doc: "Current measurement in microamps" }
+          - { name: voltage_mV,   type: uint16, doc: "Supply voltage in mV" }
+          - { name: temp_c10,     type: int16,  doc: "Board temperature × 10" }
+        doc: "10 Hz periodic telemetry broadcast."
+
+      can_frame:
+        id: 0x0102
+        direction: publish
+        rate_hz: 0       # event-driven
+        fields:
+          - { name: timestamp_ms, type: uint32 }
+          - { name: arb_id,       type: uint32 }
+          - { name: dlc,          type: uint8 }
+          - { name: data,         type: bytes, max_len: 8 }
+        doc: "Forwarded CAN frame (from can_subscribe filter)."

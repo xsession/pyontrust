@@ -1,0 +1,28 @@
+# ─────────────────────────────────────────────────────────────────
+#  Locator Base — TCP/UDP Types  (tcp_udp_mcu_types.yaml)
+# ─────────────────────────────────────────────────────────────────
+
+types:
+
+  # ── TCP result codes ───────────────────────────────────────
+  tcp_result_ten:
+    size: 8
+    format: enum
+    values:
+      OK:                    0x00
+      ERR_INVALID_CMD:       0x01
+      ERR_INVALID_PARAM:     0x02
+      ERR_BUSY:              0x03
+      ERR_NOT_FOUND:         0x04
+      ERR_TIMEOUT:           0x05
+      ERR_INTERNAL:          0xFF
+
+  # ── Measurement status ────────────────────────────────────
+  meas_status_ten:
+    size: 8
+    format: enum
+    values:
+      IN_PROGRESS:           0x00
+      DONE:                  0x01
+      ERROR:                 0x02
+      CANCELLED:             0x03

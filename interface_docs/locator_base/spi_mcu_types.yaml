@@ -1,0 +1,167 @@
+# ─────────────────────────────────────────────────────────────────
+#  Locator Base — SPI Types  (spi_mcu_types.yaml)
+# ─────────────────────────────────────────────────────────────────
+
+types:
+
+  # ── ADS8681 reset / power control ─────────────────────────
+  ads8681_rst_pwrctl_tun:
+    size: 16
+    format: union
+    fields:
+      all:
+        size: 16
+        format: uint
+      bits: EXT__ads8681_rst_pwrctl_tst
+    codegen:
+      py:
+        display: bits
+
+  ads8681_rst_pwrctl_tst:
+    size: 16
+    format: bitfield
+    fields:
+      RESERVED_LO:
+        size: 1
+        doc: "Reserved."
+      NAP_EN:
+        size: 1
+        doc: "Nap mode enable (low power between conversions)."
+      PWDN:
+        size: 1
+        doc: "Power down: 1 = active power-down."
+      RESERVED_MID:
+        size: 5
+        doc: "Reserved."
+      RST_N:
+        size: 1
+        doc: "Active-low reset. Write 0 to reset."
+      RESERVED_HI:
+        size: 7
+        doc: "Reserved."
+
+  # ── ADS8681 SDO control ──────────────────────────────────
+  ads8681_sdo_ctl_tun:
+    size: 16
+    format: union
+    fields:
+      all:
+        size: 16
+        format: uint
+      bits: EXT__ads8681_sdo_ctl_tst
+    codegen:
+      py:
+        display: bits
+
+  ads8681_sdo_ctl_tst:
+    size: 16
+    format: bitfield
+    fields:
+      SSC_EN:
+        size: 1
+        doc: "Source-synchronous clock enable."
+      SDO_MODE:
+        size: 2
+        doc: "SDO output mode: 00 = normal, 01 = SPI, 10 = invalid, 11 = invalid."
+      RESERVED:
+        size: 13
+        doc: "Reserved."
+
+  # ── ADS8681 input range selection ─────────────────────────
+  ads8681_range_ten:
+    size: 16
+    format: enum
+    values:
+      RANGE_3VREF:       0x0000   # ±3 × Vref  (±12.288V)
+      RANGE_2_5VREF:     0x0001   # ±2.5 × Vref (±10.24V)
+      RANGE_1_5VREF:     0x0002   # ±1.5 × Vref (±6.144V)
+      RANGE_1_25VREF:    0x0003   # ±1.25 × Vref (±5.12V)
+      RANGE_0_625VREF:   0x0004   # ±0.625 × Vref (±2.56V)
+      RANGE_UNI_3VREF:   0x0008   # 0–3 × Vref  (0–12.288V)
+      RANGE_UNI_2_5VREF: 0x0009   # 0–2.5 × Vref (0–10.24V)
+      RANGE_UNI_1_5VREF: 0x000A   # 0–1.5 × Vref (0–6.144V)
+      RANGE_UNI_1_25VREF: 0x000B  # 0–1.25 × Vref (0–5.12V)
+
+  # ── W25Q128 status register 1 ────────────────────────────
+  w25q_status1_tun:
+    size: 8
+    format: union
+    fields:
+      all:
+        size: 8
+        format: uint
+      bits: EXT__w25q_status1_tst
+    codegen:
+      py:
+        display: bits
+
+  w25q_status1_tst:
+    size: 8
+    format: bitfield
+    fields:
+      BUSY:
+        size: 1
+        doc: "Erase/write in progress."
+      WEL:
+        size: 1
+        doc: "Write enable latch."
+      BP0:
+        size: 1
+        doc: "Block protect bit 0."
+      BP1:
+        size: 1
+        doc: "Block protect bit 1."
+      BP2:
+        size: 1
+        doc: "Block protect bit 2."
+      TB:
+        size: 1
+        doc: "Top/bottom protect."
+      SEC:
+        size: 1
+        doc: "Sector/block protect."
+      SRP0:
+        size: 1
+        doc: "Status register protect 0."
+
+  # ── W25Q128 status register 2 ────────────────────────────
+  w25q_status2_tun:
+    size: 8
+    format: union
+    fields:
+      all:
+        size: 8
+        format: uint
+      bits: EXT__w25q_status2_tst
+    codegen:
+      py:
+        display: bits
+
+  w25q_status2_tst:
+    size: 8
+    format: bitfield
+    fields:
+      SRL:
+        size: 1
+        doc: "Status register lock."
+      QE:
+        size: 1
+        doc: "Quad SPI enable."
+      RESERVED:
+        size: 1
+        doc: "Reserved."
+      LB1:
+        size: 1
+        doc: "Security register lock bit 1."
+      LB2:
+        size: 1
+        doc: "Security register lock bit 2."
+      LB3:
+        size: 1
+        doc: "Security register lock bit 3."
+      CMP:
+        size: 1
+        doc: "Complement protect."
+      SUS:
+        size: 1
+        doc: "Erase/program suspend status."

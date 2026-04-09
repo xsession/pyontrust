@@ -320,6 +320,532 @@
 ]
 
 // ═══════════════════════════════════════════════════════════════════
+//  SLIDE 7b — Communication Interface Description (YAML)
+// ═══════════════════════════════════════════════════════════════════
+#page[
+  = Communication Interface Description
+
+  #v(6pt)
+  Interfaces are defined in *YAML* — single source of truth for docs, C headers, and Python drivers:
+
+  #v(4pt)
+  ```yaml
+  interface:
+    title: Locator Base MCU Interface
+    version history:
+      - fw-version: "1.0"
+        date: '2026.03.09'
+        author: dev
+        changes: >
+          - Initial CANopen object dictionary.
+
+    canopen:
+      nodes:
+        - id: 0x10
+          name: Locator Base Node
+          doc: >
+            Main control & monitor node for the
+            locator base board.
+
+      object dictionary:
+        info:
+          device_name:
+            mlx: 0x100800
+            flags: [read]
+            type: string
+            doc: >
+              Device name. E.g.: "Locator Base"
+          fw_version:
+            mlx: 0x100a00
+            flags: [read]
+            type: string
+            doc: >
+              Firmware version. Format: "FW vX.Y"
+  ```
+
+  #text(fill: peach)[
+    One YAML file → C header + Python driver + HTML docs + XML.
+  ]
+]
+
+// ═══════════════════════════════════════════════════════════════════
+//  SLIDE 7c — Object Dictionary & Types
+// ═══════════════════════════════════════════════════════════════════
+#page[
+  = Object Dictionary & Types
+
+  #v(6pt)
+  === SDO Object Dictionary
+
+  #table(
+    columns: (1.4fr, 0.8fr, 0.8fr, 0.5fr, 2fr),
+    stroke: 0.5pt + surface1,
+    inset: 8pt,
+    fill: (_, row) => if calc.odd(row) { surface0 } else { rgb("#1e1e2e") },
+    table.header(
+      [*Object Name*], [*MLX*], [*Type*], [*R/W*], [*Description*],
+    ),
+    [`device_name`],       [`0x100800`], [`string`],   [R],   [Device name of the node],
+    [`hw_version`],        [`0x100900`], [`string`],   [RW],  [Hardware version (PCB article ID)],
+    [`fw_version`],        [`0x100a00`], [`string`],   [R],   [Firmware version "FW vX.Y"],
+    [`stored_node_id`],    [`0x100b00`], [`uint16`],   [RW],  [CAN node ID stored in flash],
+    [`stored_can_speed`],  [`0x314420`], [`uint16`],   [RW],  [CAN baud rate stored in flash],
+    [`serial_num`],        [`0x312301`], [`string`],   [RW],  [Manufacturer serial number],
+  )
+
+  #v(6pt)
+  === Bitfield Types (separate `_types.yaml`)
+
+  ```yaml
+  types:
+    status_tun:
+      size: 32
+      format: union
+      fields:
+        all:  { size: 32, format: uint }
+        bits: EXT__status_tst
+
+    status_tst:
+      size: 32
+      format: bitfield
+      fields:
+        ACTIVE:   { size: 1, doc: "Node active flag" }
+        ERROR:    { size: 1, doc: "Error present" }
+        RESERVED: { size: 30, doc: "Reserved bits" }
+  ```
+]
+
+// ═══════════════════════════════════════════════════════════════════
+//  SLIDE 7d — Code Generation Pipeline
+// ═══════════════════════════════════════════════════════════════════
+#page[
+  = Code Generation Pipeline
+
+  #v(6pt)
+  ```
+  +------------------+     +----------------+     +-------------------+
+  |  mcu.yaml        |---->|                |---->|  generated/c/     |
+  |  mcu_types.yaml  |     |  yaml_doc.py   |     |    mcu_can_if.h   |
+  |  mcu_pdo.yaml    |     |  (batch: mp.y) |     |    mcu_types.h    |
+  +------------------+     +----------------+     |    mcu_pdo.h      |
+                                  |               +-------------------+
+                                  |               +-------------------+
+                                  +-------------->|  generated/py/    |
+                                  |               |    generated.py   |
+                                  |               +-------------------+
+                                  |               +-------------------+
+                                  +-------------->|  generated/html/  |
+                                                  |    html_chunk.html|
+                                                  +-------------------+
+  ```
+
+  #v(6pt)
+  #grid(
+    columns: (1fr, 1fr, 1fr),
+    gutter: 12pt,
+    note-box[
+      *C Header*\
+      `#define` MLX addresses\
+      `MLX_DEF_MACRO` structs\
+      Type-safe SDO access
+    ],
+    note-box[
+      *Python Driver*\
+      Typed SDO read/write\
+      Enum/bitfield decode\
+      Integrates with `can_service`
+    ],
+    note-box[
+      *HTML / Confluence*\
+      Version history table\
+      Node list & OD tables\
+      Auto-upload to wiki
+    ],
+  )
+
+  #v(8pt)
+  #note-box[
+    *Batch file* (`mp.yaml`) — lists all generation targets, dependencies, and
+    output paths. Run `yaml_doc.py mp.yaml` to regenerate everything.
+  ]
+]
+
+// ═══════════════════════════════════════════════════════════════════
+//  SLIDE 7e — UART Interface Description
+// ═══════════════════════════════════════════════════════════════════
+#page[
+  = UART Interface Description
+
+  #v(4pt)
+  ```yaml
+  interface:
+    title: Locator Base UART Debug Interface
+    transport: uart
+    version history:
+      - fw-version: "1.0"
+        date: '2026.03.09'
+        author: dev
+        changes: "Initial UART command set."
+
+    uart:
+      physical:
+        tx_pin: PA10
+        rx_pin: PA11
+        baud_rate: 115200
+        data_bits: 8
+        parity: none
+        stop_bits: 1
+        flow_control: none
+
+      framing:
+        start_byte: 0xAA
+        end_byte: 0x55
+        crc: crc16-ccitt
+        max_payload: 256
+        byte_order: little-endian
+
+      commands:
+        get_version:
+          id: 0x01
+          direction: request-response
+          request:  { fields: [] }
+          response: { fields: [
+            { name: major, type: uint8 },
+            { name: minor, type: uint8 } ] }
+          doc: "Query firmware version."
+
+        set_led:
+          id: 0x02
+          direction: request-response
+          request:  { fields: [
+            { name: led_id, type: uint8 },
+            { name: state,  type: uint8 } ] }
+          response: { fields: [
+            { name: ack, type: uint8 } ] }
+          doc: "Set LED on/off state."
+  ```
+]
+
+// ═══════════════════════════════════════════════════════════════════
+//  SLIDE 7f — RS-485 Interface Description
+// ═══════════════════════════════════════════════════════════════════
+#page[
+  = RS-485 Interface Description
+
+  #v(4pt)
+  ```yaml
+  interface:
+    title: Locator Base RS-485 Bus
+    transport: rs485
+    version history:
+      - fw-version: "1.0"
+        date: '2026.03.09'
+        author: dev
+        changes: "Initial Modbus register map."
+
+    rs485:
+      physical:
+        a_pin: PA5        # D+ / non-inverting
+        b_pin: PA6        # D- / inverting
+        de_pin: PA7       # driver-enable (auto)
+        baud_rate: 9600
+        data_bits: 8
+        parity: even
+        stop_bits: 1
+        termination: true  # 120 Ω on-board
+
+      modbus:
+        mode: rtu          # rtu | ascii
+        slave_id: 0x10
+        registers:
+          holding:
+            - addr: 0x0000
+              name: device_status
+              type: uint16
+              flags: [read]
+              doc: "Bit-mapped device status word."
+            - addr: 0x0001
+              name: led_control
+              type: uint16
+              flags: [read, write]
+              doc: "LED on/off bitmask (bit 0 = LED0)."
+            - addr: 0x0002
+              name: fw_version_major
+              type: uint16
+              flags: [read]
+              doc: "Firmware major version."
+            - addr: 0x0003
+              name: fw_version_minor
+              type: uint16
+              flags: [read]
+              doc: "Firmware minor version."
+          input:
+            - addr: 0x0000
+              name: temperature
+              type: int16
+              unit: "0.1 °C"
+              flags: [read]
+              doc: "Board temperature × 10."
+            - addr: 0x0001
+              name: supply_voltage
+              type: uint16
+              unit: mV
+              flags: [read]
+              doc: "Supply rail voltage in mV."
+  ```
+]
+
+// ═══════════════════════════════════════════════════════════════════
+//  SLIDE 7g — TCP / UDP Interface Description
+// ═══════════════════════════════════════════════════════════════════
+#page[
+  = TCP / UDP Interface Description
+
+  #v(4pt)
+  ```yaml
+  interface:
+    title: Locator Base Ethernet Control
+    transport: tcp/udp
+    version history:
+      - fw-version: "1.0"
+        date: '2026.03.09'
+        author: dev
+        changes: "Initial TCP command + UDP telemetry."
+
+    tcp:
+      port: 5200
+      framing:
+        header: { length: 4, fields: [
+          { name: msg_id,  type: uint16 },
+          { name: payload_len, type: uint16 } ] }
+        crc: crc32
+        byte_order: big-endian
+
+      commands:
+        get_status:
+          id: 0x0001
+          direction: request-response
+          request:  { fields: [] }
+          response: { fields: [
+            { name: state,   type: uint8 },
+            { name: uptime_s, type: uint32 } ] }
+          doc: "Query device operating status."
+        start_measurement:
+          id: 0x0010
+          direction: request-response
+          request:  { fields: [
+            { name: channel,    type: uint8 },
+            { name: duration_ms, type: uint32 } ] }
+          response: { fields: [
+            { name: ack, type: uint8 } ] }
+          doc: "Start a measurement on given channel."
+
+    udp:
+      port: 5201
+      messages:
+        telemetry:
+          id: 0x0100
+          direction: publish
+          rate_hz: 10
+          fields:
+            - { name: timestamp_ms, type: uint32 }
+            - { name: current_uA,   type: float32 }
+            - { name: temperature,   type: int16 }
+          doc: "Periodic telemetry broadcast."
+  ```
+]
+
+// ═══════════════════════════════════════════════════════════════════
+//  SLIDE 7h — I²C Interface Description
+// ═══════════════════════════════════════════════════════════════════
+#page[
+  = I²C Interface Description
+
+  #v(4pt)
+  ```yaml
+  interface:
+    title: Locator Base I2C Sensor Bus
+    transport: i2c
+    version history:
+      - fw-version: "1.0"
+        date: '2026.03.09'
+        author: dev
+        changes: "Initial I2C register map."
+
+    i2c:
+      physical:
+        sda_pin: PA0
+        scl_pin: PA1
+        speed: 400kHz       # standard | fast | fast-plus
+        pull_ups: "4.7 kΩ external"
+        address_bits: 7
+
+      devices:
+        - address: 0x48
+          name: temp_sensor
+          doc: "On-board temperature sensor (TMP117 compatible)."
+          registers:
+            - addr: 0x00
+              name: temperature
+              type: int16
+              flags: [read]
+              unit: "0.0078125 °C / LSB"
+              doc: "Temperature result register."
+            - addr: 0x01
+              name: config
+              type: uint16
+              flags: [read, write]
+              doc: "Configuration register."
+            - addr: 0x02
+              name: t_high_limit
+              type: int16
+              flags: [read, write]
+              doc: "High-temperature alert threshold."
+            - addr: 0x03
+              name: t_low_limit
+              type: int16
+              flags: [read, write]
+              doc: "Low-temperature alert threshold."
+
+        - address: 0x50
+          name: eeprom
+          doc: "256-byte calibration EEPROM."
+          registers:
+            - addr: 0x00
+              name: cal_data
+              type: bytes
+              length: 256
+              flags: [read, write]
+              page_size: 16
+              doc: "Calibration data block (page-write)."
+  ```
+]
+
+// ═══════════════════════════════════════════════════════════════════
+//  SLIDE 7i — SPI Interface Description
+// ═══════════════════════════════════════════════════════════════════
+#page[
+  = SPI Interface Description
+
+  #v(4pt)
+  ```yaml
+  interface:
+    title: Locator Base SPI Peripheral Bus
+    transport: spi
+    version history:
+      - fw-version: "1.0"
+        date: '2026.03.09'
+        author: dev
+        changes: "Initial SPI register map."
+
+    spi:
+      physical:
+        sck_pin:  PA12
+        mosi_pin: PA14      # PICO
+        miso_pin: PA13      # POCI
+        cs_pins:
+          - { pin: PA8,  device: dac }
+          - { pin: PA3,  device: adc_ext }
+          - { pin: PA24, device: flash }
+        clock_hz: 10_000_000
+        mode: 0              # CPOL=0, CPHA=0
+        bit_order: msb-first
+        word_size: 8
+
+      devices:
+        - cs: dac
+          name: dac_output
+          doc: "12-bit DAC (MCP4921 compatible)."
+          transactions:
+            write_dac:
+              type: write
+              frame: { fields: [
+                { name: control, type: uint4,
+                  bits: "SHDN:1 GA:1 BUF:1 RSVD:1" },
+                { name: value,   type: uint12 } ] }
+              doc: "Write 12-bit output value."
+
+        - cs: adc_ext
+          name: adc_input
+          doc: "16-bit external ADC (ADS8681 compatible)."
+          transactions:
+            read_sample:
+              type: read
+              frame: { fields: [
+                { name: status, type: uint4 },
+                { name: value,  type: uint16 },
+                { name: pad,    type: uint4 } ] }
+              doc: "Read single conversion result."
+            write_config:
+              type: write
+              frame: { fields: [
+                { name: reg_addr, type: uint8 },
+                { name: data,     type: uint16 } ] }
+              doc: "Write configuration register."
+
+        - cs: flash
+          name: nor_flash
+          doc: "SPI NOR flash (W25Q128 compatible)."
+          commands:
+            read_id:    { opcode: 0x9F, response_len: 3,
+                          doc: "Read JEDEC manufacturer ID." }
+            read_data:  { opcode: 0x03, addr_bytes: 3,
+                          doc: "Read data from address." }
+            page_prog:  { opcode: 0x02, addr_bytes: 3,
+                          max_payload: 256,
+                          doc: "Program up to 256-byte page." }
+            chip_erase: { opcode: 0xC7,
+                          doc: "Erase entire flash chip." }
+  ```
+]
+
+// ═══════════════════════════════════════════════════════════════════
+//  SLIDE 7j — Interface Description Summary
+// ═══════════════════════════════════════════════════════════════════
+#page[
+  = Interface Description — Summary
+
+  #v(6pt)
+  #table(
+    columns: (0.8fr, 1fr, 1.2fr, 1.2fr),
+    stroke: 0.5pt + surface1,
+    inset: 8pt,
+    fill: (_, row) => if calc.odd(row) { surface0 } else { rgb("#1e1e2e") },
+    table.header(
+      [*Transport*], [*Key Section*], [*Addressing*], [*Data Model*],
+    ),
+    [CANopen],  [`canopen.object dictionary`], [MLX index `0xNNNNNN`], [SDO/PDO + bitfield types],
+    [UART],     [`uart.commands`],             [Command ID `0xNN`],    [Request/response frames],
+    [RS-485],   [`rs485.modbus.registers`],    [Modbus addr `0xNNNN`], [Holding / input registers],
+    [TCP/UDP],  [`tcp.commands` / `udp.messages`], [Message ID `0xNNNN`], [Framed commands / datagrams],
+    [I²C],      [`i2c.devices[].registers`],   [Device addr + reg],    [Register read/write],
+    [SPI],      [`spi.devices[].transactions`], [CS line + opcode],    [Frame fields / commands],
+  )
+
+  #v(8pt)
+  #grid(
+    columns: (1fr, 1fr),
+    gutter: 16pt,
+    note-box[
+      === Common structure
+      - `interface.title`
+      - `transport` discriminator
+      - `version history` changelog
+      - `physical` pin & electrical config
+      - Protocol-specific data model
+    ],
+    note-box[
+      === Code generation targets
+      - *C* — register maps, frame packers
+      - *Python* — typed driver classes
+      - *HTML* — documentation tables
+      - *XML* — tool-chain interchange
+      - *Batch* — `mp.yaml` orchestration
+    ],
+  )
+]
+
+// ═══════════════════════════════════════════════════════════════════
 //  SLIDE 8 — Tutorial 1: Power Measurement
 // ═══════════════════════════════════════════════════════════════════
 #page[

@@ -1,0 +1,124 @@
+<html><head>
+<title>{{ title | esc }}</title>
+<style>
+body { font-family: sans-serif; background: #1e1e2e; color: #cdd6f4; padding: 2em; }
+h1 { color: #89b4fa; } h2 { color: #a6e3a1; } h3 { color: #f9e2af; }
+table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+th, td { border: 1px solid #45475a; padding: 8px; text-align: left; }
+th { background: #313244; } tr:nth-child(even) { background: #313244; }
+code { background: #313244; padding: 2px 6px; border-radius: 3px; }
+</style></head><body>
+<h1>{{ title | esc }}</h1>
+<p>Transport: <code>{{ transport | esc }}</code></p>
+{% if versions %}
+<h2>Version History</h2><table>
+<tr><th>FW Version</th><th>Date</th><th>Author</th><th>Changes</th></tr>
+{% for v in versions %}
+<tr><td>{{ v.fw_version | esc }}</td><td>{{ v.date | esc }}</td><td>{{ v.author | esc }}</td><td>{{ v.changes | esc }}</td></tr>
+{% endfor %}
+</table>
+{% endif %}
+{% if transport == "canopen" %}
+{% for node in canopen.nodes %}
+<h2>Nodes</h2>
+<h3>{{ node.name | esc }} — 0x{{ node.id }}</h3>
+<p>{{ node.doc | esc }}</p>
+{% endfor %}
+{% for group in canopen.groups %}
+<h2>{{ group.name | esc }}</h2>
+<table><tr><th>Object</th><th>MLX</th><th>Type</th><th>R/W</th><th>Description</th></tr>
+{% for obj in group.objects %}
+<tr><td>{{ obj.name | esc }}</td><td>{{ obj.mlx | esc }}</td><td>{{ obj.type | esc }}</td><td>{{ obj.flags | esc }}</td><td>{{ obj.doc | esc }}</td></tr>
+{% endfor %}
+</table>
+{% endfor %}
+{% elif transport == "uart" %}
+<h2>Physical</h2>
+<p>TX: {{ uart.tx_pin }}, RX: {{ uart.rx_pin }}, Baud: {{ uart.baud_rate }}, {{ uart.data_bits }}{{ uart.parity }}1</p>
+<h2>Commands</h2>
+<table><tr><th>Command</th><th>ID</th><th>Direction</th><th>Request</th><th>Response</th><th>Doc</th></tr>
+{% for cmd in uart.commands %}
+<tr><td>{{ cmd.name | esc }}</td><td>{{ cmd.id | esc }}</td><td>{{ cmd.direction | esc }}</td><td>{{ cmd.req | esc }}</td><td>{{ cmd.resp | esc }}</td><td>{{ cmd.doc | esc }}</td></tr>
+{% endfor %}
+</table>
+{% elif transport == "rs485" %}
+<h2>Modbus RTU — Slave ID {{ modbus.slave_id }}</h2>
+{% for rg in modbus.register_groups %}
+<h3>{{ rg.title }} Registers</h3>
+<table><tr><th>Address</th><th>Name</th><th>Type</th><th>R/W</th><th>Description</th></tr>
+{% for reg in rg.registers %}
+<tr><td>{{ reg.addr | esc }}</td><td>{{ reg.name | esc }}</td><td>{{ reg.type | esc }}</td><td>{{ reg.flags | esc }}</td><td>{{ reg.doc | esc }}</td></tr>
+{% endfor %}
+</table>
+{% endfor %}
+{% elif transport in ["tcp/udp", "tcp", "udp"] %}
+{% if tcpudp.tcp %}
+<h2>TCP — Port {{ tcpudp.tcp.port }}</h2>
+<table><tr><th>Command</th><th>ID</th><th>Direction</th><th>Doc</th></tr>
+{% for cmd in tcpudp.tcp.commands %}
+<tr><td>{{ cmd.name | esc }}</td><td>{{ cmd.id | esc }}</td><td>{{ cmd.direction | esc }}</td><td>{{ cmd.doc | esc }}</td></tr>
+{% endfor %}
+</table>
+{% endif %}
+{% if tcpudp.udp %}
+<h2>UDP — Port {{ tcpudp.udp.port }}</h2>
+<table><tr><th>Message</th><th>ID</th><th>Rate</th><th>Doc</th></tr>
+{% for msg in tcpudp.udp.messages %}
+<tr><td>{{ msg.name | esc }}</td><td>{{ msg.id | esc }}</td><td>{{ msg.rate | esc }}</td><td>{{ msg.doc | esc }}</td></tr>
+{% endfor %}
+</table>
+{% endif %}
+{% elif transport == "i2c" %}
+{% for device in i2c.devices %}
+<h2>{{ device.name | esc }} — 0x{{ device.addr_hex }}{{ " (%s)" % device.part | esc if device.part }}</h2>
+<p>{{ device.doc | esc }}</p>
+{% if device.registers %}
+<table><tr><th>Addr</th><th>Name</th><th>Type</th><th>R/W</th><th>Doc</th></tr>
+{% for reg in device.registers %}
+<tr><td>{{ reg.addr | esc }}</td><td>{{ reg.name | esc }}</td><td>{{ reg.type | esc }}</td><td>{{ reg.flags | esc }}</td><td>{{ reg.doc | esc }}</td></tr>
+{% endfor %}
+</table>
+{% endif %}
+{% endfor %}
+{% elif transport == "spi" %}
+{% for device in spi.devices %}
+<h2>{{ device.name | esc }} — CS: {{ device.cs }}{{ " (%s)" % device.part | esc if device.part }}</h2>
+<p>{{ device.doc | esc }}</p>
+{% if device.transactions %}
+<h3>Transactions</h3>
+<table><tr><th>Name</th><th>Type</th><th>Word Size</th><th>Doc</th></tr>
+{% for tx in device.transactions %}
+<tr><td>{{ tx.name | esc }}</td><td>{{ tx.type | esc }}</td><td>{{ tx.word_size | esc }}</td><td>{{ tx.doc | esc }}</td></tr>
+{% endfor %}
+</table>
+{% endif %}
+{% if device.commands %}
+<h3>Commands</h3>
+<table><tr><th>Name</th><th>Opcode</th><th>Addr Bytes</th><th>Doc</th></tr>
+{% for cmd in device.commands %}
+<tr><td>{{ cmd.name | esc }}</td><td>{{ cmd.opcode | esc }}</td><td>{{ cmd.addr_bytes | esc }}</td><td>{{ cmd.doc | esc }}</td></tr>
+{% endfor %}
+</table>
+{% endif %}
+{% if device.registers %}
+<h3>Registers</h3>
+<table><tr><th>Addr</th><th>Name</th><th>Type</th><th>R/W</th><th>Doc</th></tr>
+{% for reg in device.registers %}
+<tr><td>{{ reg.addr | esc }}</td><td>{{ reg.name | esc }}</td><td>{{ reg.type | esc }}</td><td>{{ reg.flags | esc }}</td><td>{{ reg.doc | esc }}</td></tr>
+{% endfor %}
+</table>
+{% endif %}
+{% if device.memory_map %}
+<h3>Memory Map</h3>
+<p>Total: {{ device.memory_map.total_size }} bytes, Sector: {{ device.memory_map.sector_size }} bytes, Page: {{ device.memory_map.page_size }} bytes</p>
+{% if device.memory_map.regions %}
+<table><tr><th>Region</th><th>Start</th><th>Size</th><th>Doc</th></tr>
+{% for r in device.memory_map.regions %}
+<tr><td>{{ r.name | esc }}</td><td>{{ r.start | esc }}</td><td>{{ r.size | esc }}</td><td>{{ r.doc | esc }}</td></tr>
+{% endfor %}
+</table>
+{% endif %}
+{% endif %}
+{% endfor %}
+{% endif %}
+</body></html>

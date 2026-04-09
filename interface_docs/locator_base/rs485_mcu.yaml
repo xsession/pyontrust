@@ -1,0 +1,241 @@
+# ─────────────────────────────────────────────────────────────────
+#  Locator Base — RS-485 / Modbus RTU Interface  (rs485_mcu.yaml)
+#  Board: TI MSPM0G3507 — UART1 with RS-485 transceiver
+# ─────────────────────────────────────────────────────────────────
+
+interface:
+  title: Locator Base RS-485 Modbus Interface
+  transport: rs485
+
+  version history:
+    - fw-version: "1.0"
+      date: '2026.03.09'
+      author: dev
+      changes: >
+        - Initial Modbus RTU register map.
+
+  TODO:
+    - Add coil registers for relay control
+    - Add file record access for data logging
+
+  rs485:
+    physical:
+      a_pin: PA5             # D+ (non-inverting)
+      b_pin: PA6             # D- (inverting)
+      de_pin: PA7            # Driver-enable (auto-switched)
+      peripheral: UART1
+      transceiver: "MAX485"
+      baud_rate: 9600
+      data_bits: 8
+      parity: even
+      stop_bits: 1
+      termination: true      # 120 Ω on-board termination
+      voltage_level: "5V differential"
+      max_bus_length_m: 1200
+      max_nodes: 32
+
+    modbus:
+      mode: rtu              # rtu | ascii
+      slave_id: 0x10
+      response_timeout_ms: 500
+      inter_frame_gap_ms: 3.5   # 3.5 char times at 9600 baud
+
+      registers:
+        # ── Holding registers (read/write, FC03/FC06/FC16) ──
+        holding:
+          - addr: 0x0000
+            name: device_status
+            type: EXT__device_status_tun
+            flags: [read]
+            doc: "Bit-mapped device status word."
+
+          - addr: 0x0001
+            name: led_control
+            type: EXT__led_control_tun
+            flags: [read, write]
+            doc: "LED on/off bitmask (bit 0 = LED0, bit 1 = LED1, ...)."
+
+          - addr: 0x0002
+            name: fw_version_major
+            type: uint16
+            flags: [read]
+            doc: "Firmware major version number."
+
+          - addr: 0x0003
+            name: fw_version_minor
+            type: uint16
+            flags: [read]
+            doc: "Firmware minor version number."
+
+          - addr: 0x0004
+            name: node_id
+            type: uint16
+            flags: [read, write]
+            doc: "Modbus slave address (1–247). Takes effect after save + reboot."
+
+          - addr: 0x0005
+            name: baud_rate_code
+            type: EXT__baud_rate_ten
+            flags: [read, write]
+            doc: "Baud rate selection. See baud_rate_ten enum."
+
+          - addr: 0x0006
+            name: parity_mode
+            type: uint16
+            flags: [read, write]
+            doc: "0 = none, 1 = even, 2 = odd."
+
+          - addr: 0x0007
+            name: save_config
+            type: uint16
+            flags: [write]
+            doc: "Write 0x1234 to persist holding registers 0x0004–0x0006 to flash."
+
+          - addr: 0x0010
+            name: pwm0_freq_hz
+            type: uint16
+            flags: [read, write]
+            doc: "PWM channel 0 frequency in Hz (PA7 / TIMG8_CH0)."
+
+          - addr: 0x0011
+            name: pwm0_duty_pct
+            type: uint16
+            flags: [read, write]
+            doc: "PWM channel 0 duty cycle 0–100."
+
+          - addr: 0x0012
+            name: pwm1_freq_hz
+            type: uint16
+            flags: [read, write]
+            doc: "PWM channel 1 frequency in Hz (PA21 / TIMG6_CH0)."
+
+          - addr: 0x0013
+            name: pwm1_duty_pct
+            type: uint16
+            flags: [read, write]
+            doc: "PWM channel 1 duty cycle 0–100."
+
+          - addr: 0x0014
+            name: pwm2_freq_hz
+            type: uint16
+            flags: [read, write]
+            doc: "PWM channel 2 frequency in Hz (PA22 / TIMG6_CH1)."
+
+          - addr: 0x0015
+            name: pwm2_duty_pct
+            type: uint16
+            flags: [read, write]
+            doc: "PWM channel 2 duty cycle 0–100."
+
+          - addr: 0x0016
+            name: pwm3_freq_hz
+            type: uint16
+            flags: [read, write]
+            doc: "PWM channel 3 frequency in Hz (PA23 / TIMG0_CH0)."
+
+          - addr: 0x0017
+            name: pwm3_duty_pct
+            type: uint16
+            flags: [read, write]
+            doc: "PWM channel 3 duty cycle 0–100."
+
+          - addr: 0x0020
+            name: dout_mask
+            type: uint16
+            flags: [read, write]
+            doc: "Digital output state bitmask (bits 0–3 = DOUT0–DOUT3)."
+
+        # ── Input registers (read-only, FC04) ───────────────
+        input:
+          - addr: 0x0000
+            name: board_temperature
+            type: int16
+            unit: "0.1 °C"
+            flags: [read]
+            doc: "On-board temperature sensor × 10."
+
+          - addr: 0x0001
+            name: supply_voltage
+            type: uint16
+            unit: mV
+            flags: [read]
+            doc: "Supply rail voltage in millivolts."
+
+          - addr: 0x0002
+            name: adc_ch0
+            type: uint16
+            unit: mV
+            flags: [read]
+            doc: "ADC channel 0 (PA15) converted to millivolts."
+
+          - addr: 0x0003
+            name: adc_ch1
+            type: uint16
+            unit: mV
+            flags: [read]
+            doc: "ADC channel 1 (PA16) converted to millivolts."
+
+          - addr: 0x0004
+            name: adc_ch2
+            type: uint16
+            unit: mV
+            flags: [read]
+            doc: "ADC channel 2 (PA17) converted to millivolts."
+
+          - addr: 0x0005
+            name: adc_ch3
+            type: uint16
+            unit: mV
+            flags: [read]
+            doc: "ADC channel 3 (PA18) converted to millivolts."
+
+          - addr: 0x0006
+            name: din_state
+            type: uint16
+            flags: [read]
+            doc: "Digital input state bitmask (bits 0–3 = DIN0–DIN3)."
+
+          - addr: 0x0007
+            name: uptime_s
+            type: uint16
+            flags: [read]
+            doc: "Seconds since last boot (rolls at 65535)."
+
+          - addr: 0x0008
+            name: can_rx_count
+            type: uint16
+            flags: [read]
+            doc: "Total CAN frames received since boot."
+
+          - addr: 0x0009
+            name: can_tx_count
+            type: uint16
+            flags: [read]
+            doc: "Total CAN frames transmitted since boot."
+
+          - addr: 0x000A
+            name: error_count
+            type: uint16
+            flags: [read]
+            doc: "Cumulative error counter since boot."
+
+        # ── Discrete inputs (read-only, FC02) ───────────────
+        discrete:
+          - addr: 0x0000
+            name: din0
+            doc: "Digital input 0 (PA15)."
+          - addr: 0x0001
+            name: din1
+            doc: "Digital input 1 (PA16)."
+          - addr: 0x0002
+            name: din2
+            doc: "Digital input 2 (PA17)."
+          - addr: 0x0003
+            name: din3
+            doc: "Digital input 3 (PA18 / button)."
+          - addr: 0x0004
+            name: can_bus_ok
+            doc: "CAN bus operational (not bus-off)."
+          - addr: 0x0005
+            name: temp_warning
+            doc: "Temperature warning threshold exceeded."

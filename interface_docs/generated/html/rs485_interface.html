@@ -1,0 +1,62 @@
+<html><head>
+<title>Locator Base RS-485 Modbus Interface</title>
+<style>
+body { font-family: sans-serif; background: #1e1e2e; color: #cdd6f4; padding: 2em; }
+h1 { color: #89b4fa; } h2 { color: #a6e3a1; } h3 { color: #f9e2af; }
+table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+th, td { border: 1px solid #45475a; padding: 8px; text-align: left; }
+th { background: #313244; } tr:nth-child(even) { background: #313244; }
+code { background: #313244; padding: 2px 6px; border-radius: 3px; }
+</style></head><body>
+<h1>Locator Base RS-485 Modbus Interface</h1>
+<p>Transport: <code>rs485</code></p>
+<h2>Version History</h2><table>
+<tr><th>FW Version</th><th>Date</th><th>Author</th><th>Changes</th></tr>
+<tr><td>1.0</td><td>2026.03.09</td><td>dev</td><td>- Initial Modbus RTU register map.
+</td></tr>
+</table>
+<h2>Modbus RTU — Slave ID 0x10</h2>
+<h3>Holding Registers</h3>
+<table><tr><th>Address</th><th>Name</th><th>Type</th><th>R/W</th><th>Description</th></tr>
+<tr><td>0x0000</td><td>device_status</td><td>EXT__device_status_tun</td><td>read</td><td>Bit-mapped device status word.</td></tr>
+<tr><td>0x0001</td><td>led_control</td><td>EXT__led_control_tun</td><td>read, write</td><td>LED on/off bitmask (bit 0 = LED0, bit 1 = LED1, ...).</td></tr>
+<tr><td>0x0002</td><td>fw_version_major</td><td>uint16</td><td>read</td><td>Firmware major version number.</td></tr>
+<tr><td>0x0003</td><td>fw_version_minor</td><td>uint16</td><td>read</td><td>Firmware minor version number.</td></tr>
+<tr><td>0x0004</td><td>node_id</td><td>uint16</td><td>read, write</td><td>Modbus slave address (1–247). Takes effect after save + reboot.</td></tr>
+<tr><td>0x0005</td><td>baud_rate_code</td><td>EXT__baud_rate_ten</td><td>read, write</td><td>Baud rate selection. See baud_rate_ten enum.</td></tr>
+<tr><td>0x0006</td><td>parity_mode</td><td>uint16</td><td>read, write</td><td>0 = none, 1 = even, 2 = odd.</td></tr>
+<tr><td>0x0007</td><td>save_config</td><td>uint16</td><td>write</td><td>Write 0x1234 to persist holding registers 0x0004–0x0006 to flash.</td></tr>
+<tr><td>0x0010</td><td>pwm0_freq_hz</td><td>uint16</td><td>read, write</td><td>PWM channel 0 frequency in Hz (PA7 / TIMG8_CH0).</td></tr>
+<tr><td>0x0011</td><td>pwm0_duty_pct</td><td>uint16</td><td>read, write</td><td>PWM channel 0 duty cycle 0–100.</td></tr>
+<tr><td>0x0012</td><td>pwm1_freq_hz</td><td>uint16</td><td>read, write</td><td>PWM channel 1 frequency in Hz (PA21 / TIMG6_CH0).</td></tr>
+<tr><td>0x0013</td><td>pwm1_duty_pct</td><td>uint16</td><td>read, write</td><td>PWM channel 1 duty cycle 0–100.</td></tr>
+<tr><td>0x0014</td><td>pwm2_freq_hz</td><td>uint16</td><td>read, write</td><td>PWM channel 2 frequency in Hz (PA22 / TIMG6_CH1).</td></tr>
+<tr><td>0x0015</td><td>pwm2_duty_pct</td><td>uint16</td><td>read, write</td><td>PWM channel 2 duty cycle 0–100.</td></tr>
+<tr><td>0x0016</td><td>pwm3_freq_hz</td><td>uint16</td><td>read, write</td><td>PWM channel 3 frequency in Hz (PA23 / TIMG0_CH0).</td></tr>
+<tr><td>0x0017</td><td>pwm3_duty_pct</td><td>uint16</td><td>read, write</td><td>PWM channel 3 duty cycle 0–100.</td></tr>
+<tr><td>0x0020</td><td>dout_mask</td><td>uint16</td><td>read, write</td><td>Digital output state bitmask (bits 0–3 = DOUT0–DOUT3).</td></tr>
+</table>
+<h3>Input Registers</h3>
+<table><tr><th>Address</th><th>Name</th><th>Type</th><th>R/W</th><th>Description</th></tr>
+<tr><td>0x0000</td><td>board_temperature</td><td>int16</td><td>read</td><td>On-board temperature sensor × 10.</td></tr>
+<tr><td>0x0001</td><td>supply_voltage</td><td>uint16</td><td>read</td><td>Supply rail voltage in millivolts.</td></tr>
+<tr><td>0x0002</td><td>adc_ch0</td><td>uint16</td><td>read</td><td>ADC channel 0 (PA15) converted to millivolts.</td></tr>
+<tr><td>0x0003</td><td>adc_ch1</td><td>uint16</td><td>read</td><td>ADC channel 1 (PA16) converted to millivolts.</td></tr>
+<tr><td>0x0004</td><td>adc_ch2</td><td>uint16</td><td>read</td><td>ADC channel 2 (PA17) converted to millivolts.</td></tr>
+<tr><td>0x0005</td><td>adc_ch3</td><td>uint16</td><td>read</td><td>ADC channel 3 (PA18) converted to millivolts.</td></tr>
+<tr><td>0x0006</td><td>din_state</td><td>uint16</td><td>read</td><td>Digital input state bitmask (bits 0–3 = DIN0–DIN3).</td></tr>
+<tr><td>0x0007</td><td>uptime_s</td><td>uint16</td><td>read</td><td>Seconds since last boot (rolls at 65535).</td></tr>
+<tr><td>0x0008</td><td>can_rx_count</td><td>uint16</td><td>read</td><td>Total CAN frames received since boot.</td></tr>
+<tr><td>0x0009</td><td>can_tx_count</td><td>uint16</td><td>read</td><td>Total CAN frames transmitted since boot.</td></tr>
+<tr><td>0x000a</td><td>error_count</td><td>uint16</td><td>read</td><td>Cumulative error counter since boot.</td></tr>
+</table>
+<h3>Discrete Registers</h3>
+<table><tr><th>Address</th><th>Name</th><th>Type</th><th>R/W</th><th>Description</th></tr>
+<tr><td>0x0000</td><td>din0</td><td>bit</td><td>R</td><td>Digital input 0 (PA15).</td></tr>
+<tr><td>0x0001</td><td>din1</td><td>bit</td><td>R</td><td>Digital input 1 (PA16).</td></tr>
+<tr><td>0x0002</td><td>din2</td><td>bit</td><td>R</td><td>Digital input 2 (PA17).</td></tr>
+<tr><td>0x0003</td><td>din3</td><td>bit</td><td>R</td><td>Digital input 3 (PA18 / button).</td></tr>
+<tr><td>0x0004</td><td>can_bus_ok</td><td>bit</td><td>R</td><td>CAN bus operational (not bus-off).</td></tr>
+<tr><td>0x0005</td><td>temp_warning</td><td>bit</td><td>R</td><td>Temperature warning threshold exceeded.</td></tr>
+</table>
+</body></html>

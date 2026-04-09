@@ -1,0 +1,342 @@
+<!-- Auto-generated GUI widget block                             -->
+<!-- Title:     Locator Base SPI Peripheral Bus Interface                                      -->
+<!-- Transport: spi                                  -->
+<!-- Include:   include "gui/spi_locatorbasespi_gui.html.j2"  in your Jinja app  -->
+
+<style>
+  .ifdoc-panel { background:#1e1e2e; color:#cdd6f4; border:1px solid #45475a; border-radius:8px; padding:1em; margin:0.5em 0; font-family:monospace; font-size:13px; }
+  .ifdoc-panel h3 { color:#89b4fa; margin:0 0 0.5em 0; font-size:15px; }
+  .ifdoc-panel h4 { color:#a6e3a1; margin:0.8em 0 0.3em 0; font-size:13px; }
+  .ifdoc-panel table { border-collapse:collapse; width:100%; }
+  .ifdoc-panel th, .ifdoc-panel td { border:1px solid #45475a; padding:4px 8px; text-align:left; }
+  .ifdoc-panel th { background:#313244; color:#cdd6f4; }
+  .ifdoc-panel tr:nth-child(even) { background:#313244; }
+  .ifdoc-panel .ifdoc-row { display:flex; gap:8px; align-items:center; margin:4px 0; flex-wrap:wrap; }
+  .ifdoc-panel input, .ifdoc-panel select { background:#313244; color:#cdd6f4; border:1px solid #585b70; border-radius:4px; padding:3px 6px; font-size:12px; font-family:monospace; }
+  .ifdoc-panel input[type=number] { width:80px; }
+  .ifdoc-panel input[type=text] { width:120px; }
+  .ifdoc-panel button { background:#89b4fa; color:#1e1e2e; border:none; border-radius:4px; padding:4px 12px; cursor:pointer; font-size:12px; font-weight:bold; }
+  .ifdoc-panel button:hover { background:#74c7ec; }
+  .ifdoc-panel button.danger { background:#f38ba8; }
+  .ifdoc-panel button.danger:hover { background:#eba0ac; }
+  .ifdoc-panel .ifdoc-result { background:#181825; border:1px solid #45475a; border-radius:4px; padding:4px 8px; margin:4px 0; min-height:1.4em; white-space:pre-wrap; word-break:break-all; color:#a6e3a1; font-size:12px; }
+  .ifdoc-panel label { color:#bac2de; font-size:12px; min-width:70px; }
+  .ifdoc-panel .ifdoc-badge { display:inline-block; background:#45475a; color:#f9e2af; border-radius:3px; padding:1px 6px; font-size:11px; margin-left:6px; }
+</style>
+
+<div class="ifdoc-panel" id="locatorbasespi-spi-panel">
+  <h3>Locator Base SPI Peripheral Bus Interface</h3>
+  <h4>dac_output — CS: dac (MCP4921)</h4>
+  <div class="ifdoc-row" title="Write 12-bit output value. CS must be toggled per write.">
+    <label>write_dac</label>
+    <input type="number" id="locatorbasespi_dac_output_write_dac_v" placeholder="data">
+    <button onclick="ifdocFetch('/api/locatorbasespi/spi/dac_output/write_dac', {value: Number(document.getElementById('locatorbasespi_dac_output_write_dac_v').value)}, document.getElementById('locatorbasespi_dac_output_write_dac_r'))">Send</button>
+    <div class="ifdoc-result" id="locatorbasespi_dac_output_write_dac_r"></div>
+  </div>
+  <h4>adc_input — CS: adc_ext (ADS8681)</h4>
+  <div class="ifdoc-row" title="Read single conversion result. Assert CS, clock 24 bits.">
+    <label>read_sample</label>
+    <input type="number" id="locatorbasespi_adc_input_read_sample_v" placeholder="data">
+    <button onclick="ifdocFetch('/api/locatorbasespi/spi/adc_input/read_sample', {value: Number(document.getElementById('locatorbasespi_adc_input_read_sample_v').value)}, document.getElementById('locatorbasespi_adc_input_read_sample_r'))">Send</button>
+    <div class="ifdoc-result" id="locatorbasespi_adc_input_read_sample_r"></div>
+  </div>
+  <div class="ifdoc-row" title="Write configuration register.">
+    <label>write_register</label>
+    <input type="number" id="locatorbasespi_adc_input_write_register_v" placeholder="data">
+    <button onclick="ifdocFetch('/api/locatorbasespi/spi/adc_input/write_register', {value: Number(document.getElementById('locatorbasespi_adc_input_write_register_v').value)}, document.getElementById('locatorbasespi_adc_input_write_register_r'))">Send</button>
+    <div class="ifdoc-result" id="locatorbasespi_adc_input_write_register_r"></div>
+  </div>
+  <div class="ifdoc-row" title="Read configuration register.">
+    <label>read_register</label>
+    <input type="number" id="locatorbasespi_adc_input_read_register_v" placeholder="data">
+    <button onclick="ifdocFetch('/api/locatorbasespi/spi/adc_input/read_register', {value: Number(document.getElementById('locatorbasespi_adc_input_read_register_v').value)}, document.getElementById('locatorbasespi_adc_input_read_register_r'))">Send</button>
+    <div class="ifdoc-result" id="locatorbasespi_adc_input_read_register_r"></div>
+  </div>
+  <table><tr><th>Addr</th><th>Register</th><th style="width:100%">Actions</th></tr>
+  <tr title="Device ID register.">
+    <td>0x00</td><td>device_id</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasespi/spi/adc_input/reg/0x00', document.getElementById('locatorbasespi_adc_input_device_id_r'))">Read</button>
+        <div class="ifdoc-result" id="locatorbasespi_adc_input_device_id_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Reset and power control.">
+    <td>0x01</td><td>rst_pwrctl</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasespi/spi/adc_input/reg/0x01', document.getElementById('locatorbasespi_adc_input_rst_pwrctl_r'))">Read</button>
+        <input type="number" id="locatorbasespi_adc_input_rst_pwrctl_v" placeholder="value" style="width:80px">
+        <button onclick="ifdocFetch('/api/locatorbasespi/spi/adc_input/reg/0x01', {value: Number(document.getElementById('locatorbasespi_adc_input_rst_pwrctl_v').value)}, document.getElementById('locatorbasespi_adc_input_rst_pwrctl_r'))">Write</button>
+        <div class="ifdoc-result" id="locatorbasespi_adc_input_rst_pwrctl_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="SDI data input control.">
+    <td>0x02</td><td>sdi_ctl</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasespi/spi/adc_input/reg/0x02', document.getElementById('locatorbasespi_adc_input_sdi_ctl_r'))">Read</button>
+        <input type="number" id="locatorbasespi_adc_input_sdi_ctl_v" placeholder="value" style="width:80px">
+        <button onclick="ifdocFetch('/api/locatorbasespi/spi/adc_input/reg/0x02', {value: Number(document.getElementById('locatorbasespi_adc_input_sdi_ctl_v').value)}, document.getElementById('locatorbasespi_adc_input_sdi_ctl_r'))">Write</button>
+        <div class="ifdoc-result" id="locatorbasespi_adc_input_sdi_ctl_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="SDO data output control.">
+    <td>0x03</td><td>sdo_ctl</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasespi/spi/adc_input/reg/0x03', document.getElementById('locatorbasespi_adc_input_sdo_ctl_r'))">Read</button>
+        <input type="number" id="locatorbasespi_adc_input_sdo_ctl_v" placeholder="value" style="width:80px">
+        <button onclick="ifdocFetch('/api/locatorbasespi/spi/adc_input/reg/0x03', {value: Number(document.getElementById('locatorbasespi_adc_input_sdo_ctl_v').value)}, document.getElementById('locatorbasespi_adc_input_sdo_ctl_r'))">Write</button>
+        <div class="ifdoc-result" id="locatorbasespi_adc_input_sdo_ctl_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Data output control.">
+    <td>0x04</td><td>dataout_ctl</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasespi/spi/adc_input/reg/0x04', document.getElementById('locatorbasespi_adc_input_dataout_ctl_r'))">Read</button>
+        <input type="number" id="locatorbasespi_adc_input_dataout_ctl_v" placeholder="value" style="width:80px">
+        <button onclick="ifdocFetch('/api/locatorbasespi/spi/adc_input/reg/0x04', {value: Number(document.getElementById('locatorbasespi_adc_input_dataout_ctl_v').value)}, document.getElementById('locatorbasespi_adc_input_dataout_ctl_r'))">Write</button>
+        <div class="ifdoc-result" id="locatorbasespi_adc_input_dataout_ctl_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Input range selection.">
+    <td>0x05</td><td>range_sel</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasespi/spi/adc_input/reg/0x05', document.getElementById('locatorbasespi_adc_input_range_sel_r'))">Read</button>
+        <input type="number" id="locatorbasespi_adc_input_range_sel_v" placeholder="value" style="width:80px">
+        <button onclick="ifdocFetch('/api/locatorbasespi/spi/adc_input/reg/0x05', {value: Number(document.getElementById('locatorbasespi_adc_input_range_sel_v').value)}, document.getElementById('locatorbasespi_adc_input_range_sel_r'))">Write</button>
+        <div class="ifdoc-result" id="locatorbasespi_adc_input_range_sel_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="High alarm threshold.">
+    <td>0x14</td><td>alarm_h_th</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasespi/spi/adc_input/reg/0x14', document.getElementById('locatorbasespi_adc_input_alarm_h_th_r'))">Read</button>
+        <input type="number" id="locatorbasespi_adc_input_alarm_h_th_v" placeholder="value" style="width:80px">
+        <button onclick="ifdocFetch('/api/locatorbasespi/spi/adc_input/reg/0x14', {value: Number(document.getElementById('locatorbasespi_adc_input_alarm_h_th_v').value)}, document.getElementById('locatorbasespi_adc_input_alarm_h_th_r'))">Write</button>
+        <div class="ifdoc-result" id="locatorbasespi_adc_input_alarm_h_th_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Low alarm threshold.">
+    <td>0x18</td><td>alarm_l_th</td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocRead('/api/locatorbasespi/spi/adc_input/reg/0x18', document.getElementById('locatorbasespi_adc_input_alarm_l_th_r'))">Read</button>
+        <input type="number" id="locatorbasespi_adc_input_alarm_l_th_v" placeholder="value" style="width:80px">
+        <button onclick="ifdocFetch('/api/locatorbasespi/spi/adc_input/reg/0x18', {value: Number(document.getElementById('locatorbasespi_adc_input_alarm_l_th_v').value)}, document.getElementById('locatorbasespi_adc_input_alarm_l_th_r'))">Write</button>
+        <div class="ifdoc-result" id="locatorbasespi_adc_input_alarm_l_th_r"></div>
+      </div>
+    </td>
+  </tr>
+  </table>
+  <h4>nor_flash — CS: flash (W25Q128JV)</h4>
+  <table><tr><th>Command</th><th>Opcode</th><th style="width:100%">Actions</th></tr>
+  <tr title="Read JEDEC manufacturer (0xEF), memory type (0x40), capacity (0x18).">
+    <td>read_jedec_id</td><td><code>0x9f</code></td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocFetch('/api/locatorbasespi/spi/nor_flash/read_jedec_id', {addr: document.getElementById('locatorbasespi_nor_flash_read_jedec_id_a')?.value || '', len: Number(document.getElementById('locatorbasespi_nor_flash_read_jedec_id_n')?.value || 0)}, document.getElementById('locatorbasespi_nor_flash_read_jedec_id_r'))">Execute</button>
+        <div class="ifdoc-result" id="locatorbasespi_nor_flash_read_jedec_id_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="64-bit unique serial number.">
+    <td>read_unique_id</td><td><code>0x4b</code></td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocFetch('/api/locatorbasespi/spi/nor_flash/read_unique_id', {addr: document.getElementById('locatorbasespi_nor_flash_read_unique_id_a')?.value || '', len: Number(document.getElementById('locatorbasespi_nor_flash_read_unique_id_n')?.value || 0)}, document.getElementById('locatorbasespi_nor_flash_read_unique_id_r'))">Execute</button>
+        <div class="ifdoc-result" id="locatorbasespi_nor_flash_read_unique_id_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Status register 1 (BUSY, WEL, BP bits).">
+    <td>read_status_1</td><td><code>0x05</code></td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocFetch('/api/locatorbasespi/spi/nor_flash/read_status_1', {addr: document.getElementById('locatorbasespi_nor_flash_read_status_1_a')?.value || '', len: Number(document.getElementById('locatorbasespi_nor_flash_read_status_1_n')?.value || 0)}, document.getElementById('locatorbasespi_nor_flash_read_status_1_r'))">Execute</button>
+        <div class="ifdoc-result" id="locatorbasespi_nor_flash_read_status_1_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Status register 2 (QE, SRL, CMP bits).">
+    <td>read_status_2</td><td><code>0x35</code></td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocFetch('/api/locatorbasespi/spi/nor_flash/read_status_2', {addr: document.getElementById('locatorbasespi_nor_flash_read_status_2_a')?.value || '', len: Number(document.getElementById('locatorbasespi_nor_flash_read_status_2_n')?.value || 0)}, document.getElementById('locatorbasespi_nor_flash_read_status_2_r'))">Execute</button>
+        <div class="ifdoc-result" id="locatorbasespi_nor_flash_read_status_2_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Status register 3 (WPS, DRV bits).">
+    <td>read_status_3</td><td><code>0x15</code></td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocFetch('/api/locatorbasespi/spi/nor_flash/read_status_3', {addr: document.getElementById('locatorbasespi_nor_flash_read_status_3_a')?.value || '', len: Number(document.getElementById('locatorbasespi_nor_flash_read_status_3_n')?.value || 0)}, document.getElementById('locatorbasespi_nor_flash_read_status_3_r'))">Execute</button>
+        <div class="ifdoc-result" id="locatorbasespi_nor_flash_read_status_3_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Write status register 1.">
+    <td>write_status_1</td><td><code>0x01</code></td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocFetch('/api/locatorbasespi/spi/nor_flash/write_status_1', {addr: document.getElementById('locatorbasespi_nor_flash_write_status_1_a')?.value || '', len: Number(document.getElementById('locatorbasespi_nor_flash_write_status_1_n')?.value || 0)}, document.getElementById('locatorbasespi_nor_flash_write_status_1_r'))">Execute</button>
+        <div class="ifdoc-result" id="locatorbasespi_nor_flash_write_status_1_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Set Write Enable Latch (WEL). Required before program/erase.">
+    <td>write_enable</td><td><code>0x06</code></td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocFetch('/api/locatorbasespi/spi/nor_flash/write_enable', {addr: document.getElementById('locatorbasespi_nor_flash_write_enable_a')?.value || '', len: Number(document.getElementById('locatorbasespi_nor_flash_write_enable_n')?.value || 0)}, document.getElementById('locatorbasespi_nor_flash_write_enable_r'))">Execute</button>
+        <div class="ifdoc-result" id="locatorbasespi_nor_flash_write_enable_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Clear Write Enable Latch.">
+    <td>write_disable</td><td><code>0x04</code></td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocFetch('/api/locatorbasespi/spi/nor_flash/write_disable', {addr: document.getElementById('locatorbasespi_nor_flash_write_disable_a')?.value || '', len: Number(document.getElementById('locatorbasespi_nor_flash_write_disable_n')?.value || 0)}, document.getElementById('locatorbasespi_nor_flash_write_disable_r'))">Execute</button>
+        <div class="ifdoc-result" id="locatorbasespi_nor_flash_write_disable_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Read data starting at 24-bit address. Up to SPI clock limit.">
+    <td>read_data</td><td><code>0x03</code></td>
+    <td>
+      <div class="ifdoc-row">
+        <input type="text" id="locatorbasespi_nor_flash_read_data_a" placeholder="addr (hex)" style="width:80px">
+        <input type="number" id="locatorbasespi_nor_flash_read_data_n" placeholder="len" style="width:60px">
+        <button onclick="ifdocFetch('/api/locatorbasespi/spi/nor_flash/read_data', {addr: document.getElementById('locatorbasespi_nor_flash_read_data_a')?.value || '', len: Number(document.getElementById('locatorbasespi_nor_flash_read_data_n')?.value || 0)}, document.getElementById('locatorbasespi_nor_flash_read_data_r'))">Execute</button>
+        <div class="ifdoc-result" id="locatorbasespi_nor_flash_read_data_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Fast read with dummy byte. Supports higher clock speeds.">
+    <td>fast_read</td><td><code>0x0b</code></td>
+    <td>
+      <div class="ifdoc-row">
+        <input type="text" id="locatorbasespi_nor_flash_fast_read_a" placeholder="addr (hex)" style="width:80px">
+        <input type="number" id="locatorbasespi_nor_flash_fast_read_n" placeholder="len" style="width:60px">
+        <button onclick="ifdocFetch('/api/locatorbasespi/spi/nor_flash/fast_read', {addr: document.getElementById('locatorbasespi_nor_flash_fast_read_a')?.value || '', len: Number(document.getElementById('locatorbasespi_nor_flash_fast_read_n')?.value || 0)}, document.getElementById('locatorbasespi_nor_flash_fast_read_r'))">Execute</button>
+        <div class="ifdoc-result" id="locatorbasespi_nor_flash_fast_read_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Program up to 256 bytes within a page. Requires write_enable first.">
+    <td>page_program</td><td><code>0x02</code></td>
+    <td>
+      <div class="ifdoc-row">
+        <input type="text" id="locatorbasespi_nor_flash_page_program_a" placeholder="addr (hex)" style="width:80px">
+        <input type="number" id="locatorbasespi_nor_flash_page_program_n" placeholder="len" style="width:60px">
+        <button onclick="ifdocFetch('/api/locatorbasespi/spi/nor_flash/page_program', {addr: document.getElementById('locatorbasespi_nor_flash_page_program_a')?.value || '', len: Number(document.getElementById('locatorbasespi_nor_flash_page_program_n')?.value || 0)}, document.getElementById('locatorbasespi_nor_flash_page_program_r'))">Execute</button>
+        <div class="ifdoc-result" id="locatorbasespi_nor_flash_page_program_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Erase 4 KB sector.">
+    <td>sector_erase_4k</td><td><code>0x20</code></td>
+    <td>
+      <div class="ifdoc-row">
+        <input type="text" id="locatorbasespi_nor_flash_sector_erase_4k_a" placeholder="addr (hex)" style="width:80px">
+        <input type="number" id="locatorbasespi_nor_flash_sector_erase_4k_n" placeholder="len" style="width:60px">
+        <button onclick="ifdocFetch('/api/locatorbasespi/spi/nor_flash/sector_erase_4k', {addr: document.getElementById('locatorbasespi_nor_flash_sector_erase_4k_a')?.value || '', len: Number(document.getElementById('locatorbasespi_nor_flash_sector_erase_4k_n')?.value || 0)}, document.getElementById('locatorbasespi_nor_flash_sector_erase_4k_r'))">Execute</button>
+        <div class="ifdoc-result" id="locatorbasespi_nor_flash_sector_erase_4k_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Erase 32 KB block.">
+    <td>block_erase_32k</td><td><code>0x52</code></td>
+    <td>
+      <div class="ifdoc-row">
+        <input type="text" id="locatorbasespi_nor_flash_block_erase_32k_a" placeholder="addr (hex)" style="width:80px">
+        <input type="number" id="locatorbasespi_nor_flash_block_erase_32k_n" placeholder="len" style="width:60px">
+        <button onclick="ifdocFetch('/api/locatorbasespi/spi/nor_flash/block_erase_32k', {addr: document.getElementById('locatorbasespi_nor_flash_block_erase_32k_a')?.value || '', len: Number(document.getElementById('locatorbasespi_nor_flash_block_erase_32k_n')?.value || 0)}, document.getElementById('locatorbasespi_nor_flash_block_erase_32k_r'))">Execute</button>
+        <div class="ifdoc-result" id="locatorbasespi_nor_flash_block_erase_32k_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Erase 64 KB block.">
+    <td>block_erase_64k</td><td><code>0xd8</code></td>
+    <td>
+      <div class="ifdoc-row">
+        <input type="text" id="locatorbasespi_nor_flash_block_erase_64k_a" placeholder="addr (hex)" style="width:80px">
+        <input type="number" id="locatorbasespi_nor_flash_block_erase_64k_n" placeholder="len" style="width:60px">
+        <button onclick="ifdocFetch('/api/locatorbasespi/spi/nor_flash/block_erase_64k', {addr: document.getElementById('locatorbasespi_nor_flash_block_erase_64k_a')?.value || '', len: Number(document.getElementById('locatorbasespi_nor_flash_block_erase_64k_n')?.value || 0)}, document.getElementById('locatorbasespi_nor_flash_block_erase_64k_r'))">Execute</button>
+        <div class="ifdoc-result" id="locatorbasespi_nor_flash_block_erase_64k_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Erase entire chip. Takes ~40 seconds.">
+    <td>chip_erase</td><td><code>0xc7</code></td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocFetch('/api/locatorbasespi/spi/nor_flash/chip_erase', {addr: document.getElementById('locatorbasespi_nor_flash_chip_erase_a')?.value || '', len: Number(document.getElementById('locatorbasespi_nor_flash_chip_erase_n')?.value || 0)}, document.getElementById('locatorbasespi_nor_flash_chip_erase_r'))">Execute</button>
+        <div class="ifdoc-result" id="locatorbasespi_nor_flash_chip_erase_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Enter deep power-down mode (~1µA standby).">
+    <td>power_down</td><td><code>0xb9</code></td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocFetch('/api/locatorbasespi/spi/nor_flash/power_down', {addr: document.getElementById('locatorbasespi_nor_flash_power_down_a')?.value || '', len: Number(document.getElementById('locatorbasespi_nor_flash_power_down_n')?.value || 0)}, document.getElementById('locatorbasespi_nor_flash_power_down_r'))">Execute</button>
+        <div class="ifdoc-result" id="locatorbasespi_nor_flash_power_down_r"></div>
+      </div>
+    </td>
+  </tr>
+  <tr title="Release power-down and read device ID.">
+    <td>release_power_down</td><td><code>0xab</code></td>
+    <td>
+      <div class="ifdoc-row">
+        <button onclick="ifdocFetch('/api/locatorbasespi/spi/nor_flash/release_power_down', {addr: document.getElementById('locatorbasespi_nor_flash_release_power_down_a')?.value || '', len: Number(document.getElementById('locatorbasespi_nor_flash_release_power_down_n')?.value || 0)}, document.getElementById('locatorbasespi_nor_flash_release_power_down_r'))">Execute</button>
+        <div class="ifdoc-result" id="locatorbasespi_nor_flash_release_power_down_r"></div>
+      </div>
+    </td>
+  </tr>
+  </table>
+</div>
+
+<script>
+(function() {
+  const API_BASE = "{{ api_base|default('') }}";
+
+  window.ifdocFetch = function(endpoint, params, resultEl) {
+    resultEl.textContent = "…";
+    const url = API_BASE + endpoint;
+    const opts = params
+      ? {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(params)}
+      : {method: "GET"};
+    fetch(url, opts)
+      .then(r => r.json())
+      .then(d => { resultEl.textContent = JSON.stringify(d, null, 2); })
+      .catch(e => { resultEl.textContent = "ERROR: " + e; });
+  };
+
+  window.ifdocRead = function(endpoint, resultEl) {
+    ifdocFetch(endpoint, null, resultEl);
+  };
+
+  window.ifdocWrite = function(endpoint, formEl, resultEl) {
+    const fd = new FormData(formEl);
+    const params = {};
+    for (const [k, v] of fd.entries()) {
+      params[k] = isNaN(Number(v)) ? v : Number(v);
+    }
+    ifdocFetch(endpoint, params, resultEl);
+  };
+})();
+</script>

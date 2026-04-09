@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>pyontrust — Interface Control Panel</title>
+  <style>
+    /* ── Catppuccin Mocha base ──────────────────────────────── */
+    :root {
+      --bg:     #1e1e2e; --bg2:    #252538; --bg3:    #2d2d44;
+      --fg:     #cdd6f4; --fg-dim: #6c7086;
+      --accent: #89b4fa; --green:  #a6e3a1; --red:    #f38ba8;
+      --yellow: #f9e2af; --border: #45475a; --radius: 6px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--fg); min-height: 100vh; }
+    ::-webkit-scrollbar { width: 8px; } ::-webkit-scrollbar-track { background: var(--bg2); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+    /* ── Header ─────────────────────────────────────────────── */
+    .ifdoc-header {
+      background: var(--bg2); border-bottom: 1px solid var(--border);
+      padding: 12px 20px; display: flex; align-items: center; gap: 16px;
+      position: sticky; top: 0; z-index: 100;
+    }
+    .ifdoc-header h1 { font-size: 16px; color: var(--accent); white-space: nowrap; }
+    .ifdoc-header .mode-toggle {
+      margin-left: auto; font-size: 12px; display: flex; align-items: center; gap: 6px; color: var(--fg-dim);
+    }
+    .ifdoc-header .mode-toggle input { accent-color: var(--accent); }
+
+    /* ── Tabs ───────────────────────────────────────────────── */
+    .ifdoc-tabs {
+      display: flex; gap: 2px; background: var(--bg2); padding: 0 20px;
+      border-bottom: 1px solid var(--border); overflow-x: auto;
+    }
+    .ifdoc-tab {
+      padding: 10px 18px; font-size: 13px; color: var(--fg-dim);
+      cursor: pointer; border-bottom: 2px solid transparent;
+      transition: color 0.15s, border-color 0.15s; white-space: nowrap;
+      background: none; border-top: none; border-left: none; border-right: none;
+      font-family: inherit;
+    }
+    .ifdoc-tab:hover { color: var(--fg); background: var(--bg3); }
+    .ifdoc-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .ifdoc-tab .tab-icon { margin-right: 6px; }
+
+    /* ── Content area ───────────────────────────────────────── */
+    .ifdoc-content { padding: 16px 20px; max-width: 1200px; margin: 0 auto; }
+    .ifdoc-tab-panel { display: none; }
+    .ifdoc-tab-panel.active { display: block; }
+
+    /* ── Widget styles (from generator) ─────────────────────── */
+    .ifdoc-panel { background: var(--bg2); color: var(--fg); border: 1px solid var(--border); border-radius: 8px; padding: 1em; margin: 0.5em 0; font-family: monospace; font-size: 13px; }
+    .ifdoc-panel h3 { color: var(--accent); margin: 0 0 0.5em 0; font-size: 15px; }
+    .ifdoc-panel h4 { color: var(--green); margin: 0.8em 0 0.3em 0; font-size: 13px; }
+    .ifdoc-panel table { border-collapse: collapse; width: 100%; }
+    .ifdoc-panel th, .ifdoc-panel td { border: 1px solid var(--border); padding: 4px 8px; text-align: left; }
+    .ifdoc-panel th { background: var(--bg3); color: var(--fg); }
+    .ifdoc-panel tr:nth-child(even) { background: var(--bg3); }
+    .ifdoc-panel .ifdoc-row { display: flex; gap: 8px; align-items: center; margin: 4px 0; flex-wrap: wrap; }
+    .ifdoc-panel input, .ifdoc-panel select { background: var(--bg3); color: var(--fg); border: 1px solid #585b70; border-radius: 4px; padding: 3px 6px; font-size: 12px; font-family: monospace; }
+    .ifdoc-panel input[type=number] { width: 80px; }
+    .ifdoc-panel input[type=text] { width: 120px; }
+    .ifdoc-panel button { background: var(--accent); color: var(--bg); border: none; border-radius: 4px; padding: 4px 12px; cursor: pointer; font-size: 12px; font-weight: bold; }
+    .ifdoc-panel button:hover { background: #74c7ec; }
+    .ifdoc-panel button.danger { background: var(--red); }
+    .ifdoc-panel button.danger:hover { background: #eba0ac; }
+    .ifdoc-panel .ifdoc-result { background: #181825; border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; margin: 4px 0; min-height: 1.4em; white-space: pre-wrap; word-break: break-all; color: var(--green); font-size: 12px; }
+    .ifdoc-panel label { color: #bac2de; font-size: 12px; min-width: 70px; }
+    .ifdoc-panel .ifdoc-badge { display: inline-block; background: var(--border); color: var(--yellow); border-radius: 3px; padding: 1px 6px; font-size: 11px; margin-left: 6px; }
+
+    /* ── Status bar ─────────────────────────────────────────── */
+    .ifdoc-statusbar {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: var(--bg2); border-top: 1px solid var(--border);
+      padding: 4px 20px; font-size: 11px; color: var(--fg-dim);
+      display: flex; gap: 20px; align-items: center;
+    }
+    .ifdoc-statusbar .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+    .ifdoc-statusbar .status-dot.ok { background: var(--green); }
+    .ifdoc-statusbar .status-dot.err { background: var(--red); }
+    .ifdoc-statusbar .status-dot.demo { background: var(--yellow); }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────── -->
+<header class="ifdoc-header">
+  <h1>⚡ Interface Control Panel</h1>
+  <div class="mode-toggle">
+    <input type="checkbox" id="demo-mode" checked>
+    <label for="demo-mode">Demo mode (mock responses)</label>
+  </div>
+</header>
+
+<!-- ── Tabs ────────────────────────────────────────────────────── -->
+<nav class="ifdoc-tabs" id="tab-bar">
+  <button class="ifdoc-tab active" data-tab="canopen"><span class="tab-icon">🔗</span>CANopen</button>
+  <button class="ifdoc-tab" data-tab="uart"><span class="tab-icon">📡</span>UART</button>
+  <button class="ifdoc-tab" data-tab="rs485"><span class="tab-icon">🔌</span>RS-485</button>
+  <button class="ifdoc-tab" data-tab="tcpudp"><span class="tab-icon">🌐</span>TCP/UDP</button>
+  <button class="ifdoc-tab" data-tab="i2c"><span class="tab-icon">🔩</span>I²C</button>
+  <button class="ifdoc-tab" data-tab="spi"><span class="tab-icon">⚡</span>SPI</button>
+</nav>
+
+<!-- ── Tab panels ─────────────────────────────────────────────── -->
+<div class="ifdoc-content">
+
+  <!-- ══ CANopen ══════════════════════════════════════════════ -->
+  <div class="ifdoc-tab-panel active" id="panel-canopen">
+    <div class="ifdoc-panel" id="locatorbase-canopen-panel">
+      <h3>Locator Base CANopen MCU Interface</h3>
+
+      <h4>info</h4>
+      <div class="ifdoc-row">
+        <label>device_name</label><span class="ifdoc-badge">0x100800</span>
+        <button onclick="ifdocRead('/api/locatorbase/sdo/0x100800', eid('locatorbase_device_name_r'))">Read</button>
+        <div class="ifdoc-result" id="locatorbase_device_name_r"></div>
+      </div>
+      <div class="ifdoc-row">
+        <label>hw_version</label><span class="ifdoc-badge">0x100900</span>
+        <button onclick="ifdocRead('/api/locatorbase/sdo/0x100900', eid('locatorbase_hw_version_r'))">Read</button>
+        <input type="number" id="locatorbase_hw_version_v" placeholder="value">
+        <button onclick="ifdocFetch('/api/locatorbase/sdo/0x100900', {value: Number(eid('locatorbase_hw_version_v').value)}, eid('locatorbase_hw_version_r'))">Write</button>
+        <div class="ifdoc-result" id="locatorbase_hw_version_r"></div>
+      </div>
+      <div class="ifdoc-row">
+        <label>fw_version</label><span class="ifdoc-badge">0x100a00</span>
+        <button onclick="ifdocRead('/api/locatorbase/sdo/0x100a00', eid('locatorbase_fw_version_r'))">Read</button>
+        <div class="ifdoc-result" id="locatorbase_fw_version_r"></div>
+      </div>
+
+      <h4>store_parameters</h4>
+      <div class="ifdoc-row">
+        <label>save_all_parameters</label><span class="ifdoc-badge">0x101001</span>
+        <button onclick="ifdocRead('/api/locatorbase/sdo/0x101001', eid('locatorbase_save_all_r'))">Read</button>
+        <input type="number" id="locatorbase_save_all_v" placeholder="value">
+        <button onclick="ifdocFetch('/api/locatorbase/sdo/0x101001', {value: Number(eid('locatorbase_save_all_v').value)}, eid('locatorbase_save_all_r'))">Write</button>
+        <div class="ifdoc-result" id="locatorbase_save_all_r"></div>
+      </div>
+
+      <h4>config</h4>
+      <div class="ifdoc-row">
+        <label>node_id</label><span class="ifdoc-badge">0x210001</span>
+        <button onclick="ifdocRead('/api/locatorbase/sdo/0x210001', eid('locatorbase_node_id_r'))">Read</button>
+        <input type="number" id="locatorbase_node_id_v" placeholder="value">
+        <button onclick="ifdocFetch('/api/locatorbase/sdo/0x210001', {value: Number(eid('locatorbase_node_id_v').value)}, eid('locatorbase_node_id_r'))">Write</button>
+        <div class="ifdoc-result" id="locatorbase_node_id_r"></div>
+      </div>
+      <div class="ifdoc-row">
+        <label>heartbeat_ms</label><span class="ifdoc-badge">0x210002</span>
+        <button onclick="ifdocRead('/api/locatorbase/sdo/0x210002', eid('locatorbase_heartbeat_ms_r'))">Read</button>
+        <input type="number" id="locatorbase_heartbeat_ms_v" placeholder="value">
+        <button onclick="ifdocFetch('/api/locatorbase/sdo/0x210002', {value: Number(eid('locatorbase_heartbeat_ms_v').value)}, eid('locatorbase_heartbeat_ms_r'))">Write</button>
+        <div class="ifdoc-result" id="locatorbase_heartbeat_ms_r"></div>
+      </div>
+
+      <h4>digital_outputs</h4>
+      <div class="ifdoc-row">
+        <label>led_control</label><span class="ifdoc-badge">0x620001</span>
+        <button onclick="ifdocRead('/api/locatorbase/sdo/0x620001', eid('locatorbase_led_control_r'))">Read</button>
+        <input type="number" id="locatorbase_led_control_v" placeholder="value">
+        <button onclick="ifdocFetch('/api/locatorbase/sdo/0x620001', {value: Number(eid('locatorbase_led_control_v').value)}, eid('locatorbase_led_control_r'))">Write</button>
+        <div class="ifdoc-result" id="locatorbase_led_control_r"></div>
+      </div>
+
+      <h4>digital_inputs</h4>
+      <div class="ifdoc-row">
+        <label>button_state</label><span class="ifdoc-badge">0x610001</span>
+        <button onclick="ifdocRead('/api/locatorbase/sdo/0x610001', eid('locatorbase_button_state_r'))">Read</button>
+        <div class="ifdoc-result" id="locatorbase_button_state_r"></div>
+      </div>
+
+      <h4>status</h4>
+      <div class="ifdoc-row">
+        <label>device_status</label><span class="ifdoc-badge">0x600001</span>
+        <button onclick="ifdocRead('/api/locatorbase/sdo/0x600001', eid('locatorbase_device_status_r'))">Read</button>
+        <div class="ifdoc-result" id="locatorbase_device_status_r"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ UART ═════════════════════════════════════════════════ -->
+  <div class="ifdoc-tab-panel" id="panel-uart">
+    <div class="ifdoc-panel" id="locatorbaseuart-uart-panel">
+      <h3>Locator Base UART Debug Interface</h3>
+      <h4>Commands</h4>
+
+      <div class="ifdoc-row" title="Query firmware version.">
+        <label>get_version</label><span class="ifdoc-badge">0x01</span>
+        <button onclick="ifdocRead('/api/ifdoc/uart/get_version', eid('uart_get_version_r'))">Send</button>
+        <div class="ifdoc-result" id="uart_get_version_r"></div>
+      </div>
+      <div class="ifdoc-row" title="Query overall device status.">
+        <label>get_status</label><span class="ifdoc-badge">0x02</span>
+        <button onclick="ifdocRead('/api/ifdoc/uart/get_status', eid('uart_get_status_r'))">Send</button>
+        <div class="ifdoc-result" id="uart_get_status_r"></div>
+      </div>
+      <div class="ifdoc-row" title="Reset the device.">
+        <label>reset</label><span class="ifdoc-badge">0x03</span>
+        <form id="uart_reset_f" onsubmit="return false" style="display:contents">
+          <input type="number" name="mode" placeholder="mode" title="0=soft, 1=bootloader">
+          <button onclick="ifdocWrite('/api/ifdoc/uart/reset', eid('uart_reset_f'), eid('uart_reset_r'))">Send</button>
+        </form>
+        <div class="ifdoc-result" id="uart_reset_r"></div>
+      </div>
+      <div class="ifdoc-row" title="Control individual LED.">
+        <label>set_led</label><span class="ifdoc-badge">0x10</span>
+        <form id="uart_set_led_f" onsubmit="return false" style="display:contents">
+          <input type="number" name="led_id" placeholder="led_id">
+          <input type="number" name="state" placeholder="state">
+          <button onclick="ifdocWrite('/api/ifdoc/uart/set_led', eid('uart_set_led_f'), eid('uart_set_led_r'))">Send</button>
+        </form>
+        <div class="ifdoc-result" id="uart_set_led_r"></div>
+      </div>
+      <div class="ifdoc-row" title="Read current LED state.">
+        <label>get_led</label><span class="ifdoc-badge">0x11</span>
+        <form id="uart_get_led_f" onsubmit="return false" style="display:contents">
+          <input type="number" name="led_id" placeholder="led_id">
+          <button onclick="ifdocWrite('/api/ifdoc/uart/get_led', eid('uart_get_led_f'), eid('uart_get_led_r'))">Send</button>
+        </form>
+        <div class="ifdoc-result" id="uart_get_led_r"></div>
+      </div>
+      <div class="ifdoc-row" title="Set digital output pins.">
+        <label>set_gpio</label><span class="ifdoc-badge">0x12</span>
+        <form id="uart_set_gpio_f" onsubmit="return false" style="display:contents">
+          <input type="number" name="pin_mask" placeholder="pin_mask">
+          <input type="number" name="value" placeholder="value">
+          <button onclick="ifdocWrite('/api/ifdoc/uart/set_gpio', eid('uart_set_gpio_f'), eid('uart_set_gpio_r'))">Send</button>
+        </form>
+        <div class="ifdoc-result" id="uart_set_gpio_r"></div>
+      </div>
+      <div class="ifdoc-row" title="Read all digital I/O states.">
+        <label>get_gpio</label><span class="ifdoc-badge">0x13</span>
+        <button onclick="ifdocRead('/api/ifdoc/uart/get_gpio', eid('uart_get_gpio_r'))">Send</button>
+        <div class="ifdoc-result" id="uart_get_gpio_r"></div>
+      </div>
+      <div class="ifdoc-row" title="Read single ADC channel.">
+        <label>read_adc</label><span class="ifdoc-badge">0x20</span>
+        <form id="uart_read_adc_f" onsubmit="return false" style="display:contents">
+          <input type="number" name="channel" placeholder="channel">
+          <button onclick="ifdocWrite('/api/ifdoc/uart/read_adc', eid('uart_read_adc_f'), eid('uart_read_adc_r'))">Send</button>
+        </form>
+        <div class="ifdoc-result" id="uart_read_adc_r"></div>
+      </div>
+      <div class="ifdoc-row" title="Configure PWM output.">
+        <label>set_pwm</label><span class="ifdoc-badge">0x30</span>
+        <form id="uart_set_pwm_f" onsubmit="return false" style="display:contents">
+          <input type="number" name="channel" placeholder="ch">
+          <input type="number" name="freq_hz" placeholder="freq">
+          <input type="number" name="duty_pct" placeholder="duty%">
+          <button onclick="ifdocWrite('/api/ifdoc/uart/set_pwm', eid('uart_set_pwm_f'), eid('uart_set_pwm_r'))">Send</button>
+        </form>
+        <div class="ifdoc-result" id="uart_set_pwm_r"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ RS-485 / Modbus ══════════════════════════════════════ -->
+  <div class="ifdoc-tab-panel" id="panel-rs485">
+    <div class="ifdoc-panel" id="locatorbasemodbus-modbus-panel">
+      <h3>Locator Base RS-485 Modbus Interface</h3>
+      <p>Slave ID: <code>0x10</code></p>
+
+      <h4>Holding Registers</h4>
+      <table>
+        <tr><th>Addr</th><th>Name</th><th>R/W</th><th style="width:100%">Actions</th></tr>
+        <tr title="Bit-mapped device status word.">
+          <td>0x0000</td><td>device_status</td><td>read</td>
+          <td><div class="ifdoc-row">
+            <button onclick="ifdocRead('/api/ifdoc/modbus/holding/0x0000', eid('mb_h_device_status_r'))">Read</button>
+            <div class="ifdoc-result" id="mb_h_device_status_r"></div>
+          </div></td>
+        </tr>
+        <tr title="LED on/off bitmask.">
+          <td>0x0001</td><td>led_control</td><td>read, write</td>
+          <td><div class="ifdoc-row">
+            <button onclick="ifdocRead('/api/ifdoc/modbus/holding/0x0001', eid('mb_h_led_control_r'))">Read</button>
+            <input type="number" id="mb_h_led_control_v" placeholder="value" style="width:70px">
+            <button onclick="ifdocFetch('/api/ifdoc/modbus/holding/0x0001', {value: Number(eid('mb_h_led_control_v').value)}, eid('mb_h_led_control_r'))">Write</button>
+            <div class="ifdoc-result" id="mb_h_led_control_r"></div>
+          </div></td>
+        </tr>
+        <tr><td>0x0002</td><td>fw_version_major</td><td>read</td>
+          <td><div class="ifdoc-row"><button onclick="ifdocRead('/api/ifdoc/modbus/holding/0x0002', eid('mb_h_fw_major_r'))">Read</button><div class="ifdoc-result" id="mb_h_fw_major_r"></div></div></td></tr>
+        <tr><td>0x0003</td><td>fw_version_minor</td><td>read</td>
+          <td><div class="ifdoc-row"><button onclick="ifdocRead('/api/ifdoc/modbus/holding/0x0003', eid('mb_h_fw_minor_r'))">Read</button><div class="ifdoc-result" id="mb_h_fw_minor_r"></div></div></td></tr>
+        <tr><td>0x0010</td><td>node_id</td><td>read, write</td>
+          <td><div class="ifdoc-row">
+            <button onclick="ifdocRead('/api/ifdoc/modbus/holding/0x0010', eid('mb_h_node_id_r'))">Read</button>
+            <input type="number" id="mb_h_node_id_v" placeholder="value" style="width:70px">
+            <button onclick="ifdocFetch('/api/ifdoc/modbus/holding/0x0010', {value: Number(eid('mb_h_node_id_v').value)}, eid('mb_h_node_id_r'))">Write</button>
+            <div class="ifdoc-result" id="mb_h_node_id_r"></div>
+          </div></td></tr>
+        <tr><td>0x0011</td><td>baud_rate</td><td>read, write</td>
+          <td><div class="ifdoc-row">
+            <button onclick="ifdocRead('/api/ifdoc/modbus/holding/0x0011', eid('mb_h_baud_r'))">Read</button>
+            <input type="number" id="mb_h_baud_v" placeholder="value" style="width:70px">
+            <button onclick="ifdocFetch('/api/ifdoc/modbus/holding/0x0011', {value: Number(eid('mb_h_baud_v').value)}, eid('mb_h_baud_r'))">Write</button>
+            <div class="ifdoc-result" id="mb_h_baud_r"></div>
+          </div></td></tr>
+      </table>
+
+      <h4>Input Registers</h4>
+      <table>
+        <tr><th>Addr</th><th>Name</th><th style="width:100%">Actions</th></tr>
+        <tr><td>0x0000</td><td>temperature_raw</td>
+          <td><div class="ifdoc-row"><button onclick="ifdocRead('/api/ifdoc/modbus/input/0x0000', eid('mb_i_temp_r'))">Read</button><div class="ifdoc-result" id="mb_i_temp_r"></div></div></td></tr>
+        <tr><td>0x0001</td><td>supply_voltage_mv</td>
+          <td><div class="ifdoc-row"><button onclick="ifdocRead('/api/ifdoc/modbus/input/0x0001', eid('mb_i_vcc_r'))">Read</button><div class="ifdoc-result" id="mb_i_vcc_r"></div></div></td></tr>
+        <tr><td>0x0002</td><td>adc_ch0</td>
+          <td><div class="ifdoc-row"><button onclick="ifdocRead('/api/ifdoc/modbus/input/0x0002', eid('mb_i_adc0_r'))">Read</button><div class="ifdoc-result" id="mb_i_adc0_r"></div></div></td></tr>
+        <tr><td>0x0003</td><td>adc_ch1</td>
+          <td><div class="ifdoc-row"><button onclick="ifdocRead('/api/ifdoc/modbus/input/0x0003', eid('mb_i_adc1_r'))">Read</button><div class="ifdoc-result" id="mb_i_adc1_r"></div></div></td></tr>
+        <tr><td>0x0008</td><td>uptime_seconds</td>
+          <td><div class="ifdoc-row"><button onclick="ifdocRead('/api/ifdoc/modbus/input/0x0008', eid('mb_i_uptime_r'))">Read</button><div class="ifdoc-result" id="mb_i_uptime_r"></div></div></td></tr>
+      </table>
+
+      <h4>Discrete Inputs</h4>
+      <table>
+        <tr><th>Addr</th><th>Name</th><th style="width:100%">Actions</th></tr>
+        <tr><td>0x0000</td><td>din0</td>
+          <td><div class="ifdoc-row"><button onclick="ifdocRead('/api/ifdoc/modbus/discrete/0x0000', eid('mb_d_din0_r'))">Read</button><div class="ifdoc-result" id="mb_d_din0_r"></div></div></td></tr>
+        <tr><td>0x0004</td><td>can_bus_ok</td>
+          <td><div class="ifdoc-row"><button onclick="ifdocRead('/api/ifdoc/modbus/discrete/0x0004', eid('mb_d_can_r'))">Read</button><div class="ifdoc-result" id="mb_d_can_r"></div></div></td></tr>
+        <tr><td>0x0005</td><td>temp_warning</td>
+          <td><div class="ifdoc-row"><button onclick="ifdocRead('/api/ifdoc/modbus/discrete/0x0005', eid('mb_d_tw_r'))">Read</button><div class="ifdoc-result" id="mb_d_tw_r"></div></div></td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- ══ TCP/UDP ══════════════════════════════════════════════ -->
+  <div class="ifdoc-tab-panel" id="panel-tcpudp">
+    <div class="ifdoc-panel" id="locatorbasetcp-tcpudp-panel">
+      <h3>Locator Base TCP/UDP Control Interface</h3>
+
+      <h4>TCP Commands (port 5200)</h4>
+      <div class="ifdoc-row" title="Check connectivity.">
+        <label>ping</label><span class="ifdoc-badge">0x0001</span>
+        <button onclick="ifdocRead('/api/ifdoc/tcp/ping', eid('tcp_ping_r'))">Send</button>
+        <div class="ifdoc-result" id="tcp_ping_r"></div>
+      </div>
+      <div class="ifdoc-row" title="Get device identification.">
+        <label>get_device_info</label><span class="ifdoc-badge">0x0002</span>
+        <button onclick="ifdocRead('/api/ifdoc/tcp/get_device_info', eid('tcp_info_r'))">Send</button>
+        <div class="ifdoc-result" id="tcp_info_r"></div>
+      </div>
+      <div class="ifdoc-row" title="Device status snapshot.">
+        <label>get_status</label><span class="ifdoc-badge">0x0003</span>
+        <button onclick="ifdocRead('/api/ifdoc/tcp/get_status', eid('tcp_status_r'))">Send</button>
+        <div class="ifdoc-result" id="tcp_status_r"></div>
+      </div>
+      <div class="ifdoc-row" title="Control LED.">
+        <label>set_led</label><span class="ifdoc-badge">0x0010</span>
+        <form id="tcp_set_led_f" onsubmit="return false" style="display:contents">
+          <input type="number" name="led_id" placeholder="led_id">
+          <input type="number" name="state" placeholder="state">
+          <button onclick="ifdocWrite('/api/ifdoc/tcp/set_led', eid('tcp_set_led_f'), eid('tcp_set_led_r'))">Send</button>
+        </form>
+        <div class="ifdoc-result" id="tcp_set_led_r"></div>
+      </div>
+      <div class="ifdoc-row" title="Start a measurement sequence.">
+        <label>start_measurement</label><span class="ifdoc-badge">0x0030</span>
+        <form id="tcp_start_meas_f" onsubmit="return false" style="display:contents">
+          <input type="number" name="channel" placeholder="ch">
+          <input type="number" name="duration_ms" placeholder="ms">
+          <button onclick="ifdocWrite('/api/ifdoc/tcp/start_measurement', eid('tcp_start_meas_f'), eid('tcp_start_meas_r'))">Send</button>
+        </form>
+        <div class="ifdoc-result" id="tcp_start_meas_r"></div>
+      </div>
+
+      <h4>UDP Telemetry (port 5201)</h4>
+      <table>
+        <tr><th>Message</th><th>Rate</th><th style="width:100%">Live Data</th></tr>
+        <tr><td>heartbeat</td><td>1 Hz</td><td><div class="ifdoc-result" id="udp_heartbeat_r">—</div></td></tr>
+        <tr><td>telemetry</td><td>10 Hz</td><td><div class="ifdoc-result" id="udp_telemetry_r">—</div></td></tr>
+        <tr><td>can_frame</td><td>event</td><td><div class="ifdoc-result" id="udp_can_frame_r">—</div></td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- ══ I²C ═════════════════════════════════════════════════ -->
+  <div class="ifdoc-tab-panel" id="panel-i2c">
+    <div class="ifdoc-panel" id="locatorbasei2c-i2c-panel">
+      <h3>Locator Base I²C Sensor Bus Interface</h3>
+
+      <h4>TMP117 — 0x48 (TI TMP117)</h4>
+      <table>
+        <tr><th>Addr</th><th>Register</th><th style="width:100%">Actions</th></tr>
+        <tr title="Temperature result."><td>0x00</td><td>temperature</td>
+          <td><div class="ifdoc-row"><button onclick="ifdocRead('/api/ifdoc/i2c/0x48/0x00', eid('i2c_tmp_temp_r'))">Read</button><div class="ifdoc-result" id="i2c_tmp_temp_r"></div></div></td></tr>
+        <tr title="Configuration register."><td>0x01</td><td>config</td>
+          <td><div class="ifdoc-row">
+            <button onclick="ifdocRead('/api/ifdoc/i2c/0x48/0x01', eid('i2c_tmp_cfg_r'))">Read</button>
+            <input type="number" id="i2c_tmp_cfg_v" placeholder="value" style="width:80px">
+            <button onclick="ifdocFetch('/api/ifdoc/i2c/0x48/0x01', {value: Number(eid('i2c_tmp_cfg_v').value)}, eid('i2c_tmp_cfg_r'))">Write</button>
+            <div class="ifdoc-result" id="i2c_tmp_cfg_r"></div>
+          </div></td></tr>
+        <tr><td>0x0f</td><td>device_id</td>
+          <td><div class="ifdoc-row"><button onclick="ifdocRead('/api/ifdoc/i2c/0x48/0x0f', eid('i2c_tmp_id_r'))">Read</button><div class="ifdoc-result" id="i2c_tmp_id_r"></div></div></td></tr>
+      </table>
+
+      <h4>AT24C02 EEPROM — 0x50</h4>
+      <table>
+        <tr><th>Addr</th><th>Register</th><th style="width:100%">Actions</th></tr>
+        <tr title="EEPROM page 0"><td>0x00</td><td>page_0</td>
+          <td><div class="ifdoc-row">
+            <button onclick="ifdocRead('/api/ifdoc/i2c/0x50/0x00', eid('i2c_ee_p0_r'))">Read</button>
+            <input type="text" id="i2c_ee_p0_v" placeholder="hex bytes" style="width:120px">
+            <button onclick="ifdocFetch('/api/ifdoc/i2c/0x50/0x00', {value: eid('i2c_ee_p0_v').value}, eid('i2c_ee_p0_r'))">Write</button>
+            <div class="ifdoc-result" id="i2c_ee_p0_r"></div>
+          </div></td></tr>
+      </table>
+
+      <h4>PCF8574 GPIO — 0x20</h4>
+      <table>
+        <tr><th>Addr</th><th>Register</th><th style="width:100%">Actions</th></tr>
+        <tr><td>—</td><td>port</td>
+          <td><div class="ifdoc-row">
+            <button onclick="ifdocRead('/api/ifdoc/i2c/0x20/port', eid('i2c_gpio_r'))">Read</button>
+            <input type="number" id="i2c_gpio_v" placeholder="0–255" style="width:80px">
+            <button onclick="ifdocFetch('/api/ifdoc/i2c/0x20/port', {value: Number(eid('i2c_gpio_v').value)}, eid('i2c_gpio_r'))">Write</button>
+            <div class="ifdoc-result" id="i2c_gpio_r"></div>
+          </div></td></tr>
+      </table>
+
+      <h4>INA219 Power Mon — 0x40</h4>
+      <table>
+        <tr><th>Addr</th><th>Register</th><th style="width:100%">Actions</th></tr>
+        <tr><td>0x00</td><td>config</td>
+          <td><div class="ifdoc-row">
+            <button onclick="ifdocRead('/api/ifdoc/i2c/0x40/0x00', eid('i2c_ina_cfg_r'))">Read</button>
+            <input type="number" id="i2c_ina_cfg_v" placeholder="value" style="width:80px">
+            <button onclick="ifdocFetch('/api/ifdoc/i2c/0x40/0x00', {value: Number(eid('i2c_ina_cfg_v').value)}, eid('i2c_ina_cfg_r'))">Write</button>
+            <div class="ifdoc-result" id="i2c_ina_cfg_r"></div>
+          </div></td></tr>
+        <tr><td>0x01</td><td>shunt_voltage</td>
+          <td><div class="ifdoc-row"><button onclick="ifdocRead('/api/ifdoc/i2c/0x40/0x01', eid('i2c_ina_shunt_r'))">Read</button><div class="ifdoc-result" id="i2c_ina_shunt_r"></div></div></td></tr>
+        <tr><td>0x02</td><td>bus_voltage</td>
+          <td><div class="ifdoc-row"><button onclick="ifdocRead('/api/ifdoc/i2c/0x40/0x02', eid('i2c_ina_bus_r'))">Read</button><div class="ifdoc-result" id="i2c_ina_bus_r"></div></div></td></tr>
+        <tr><td>0x03</td><td>power</td>
+          <td><div class="ifdoc-row"><button onclick="ifdocRead('/api/ifdoc/i2c/0x40/0x03', eid('i2c_ina_pwr_r'))">Read</button><div class="ifdoc-result" id="i2c_ina_pwr_r"></div></div></td></tr>
+        <tr><td>0x04</td><td>current</td>
+          <td><div class="ifdoc-row"><button onclick="ifdocRead('/api/ifdoc/i2c/0x40/0x04', eid('i2c_ina_cur_r'))">Read</button><div class="ifdoc-result" id="i2c_ina_cur_r"></div></div></td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- ══ SPI ══════════════════════════════════════════════════ -->
+  <div class="ifdoc-tab-panel" id="panel-spi">
+    <div class="ifdoc-panel" id="locatorbasespi-spi-panel">
+      <h3>Locator Base SPI Device Bus Interface</h3>
+
+      <h4>MCP4921 DAC — CS: PA8</h4>
+      <div class="ifdoc-row" title="12-bit DAC write: [config nibble + data]">
+        <label>dac_write</label>
+        <input type="number" id="spi_dac_v" placeholder="0–4095">
+        <button onclick="ifdocFetch('/api/ifdoc/spi/dac/write', {value: Number(eid('spi_dac_v').value)}, eid('spi_dac_r'))">Write DAC</button>
+        <div class="ifdoc-result" id="spi_dac_r"></div>
+      </div>
+
+      <h4>ADS8681 ADC — CS: PA3</h4>
+      <div class="ifdoc-row" title="Read latest conversion result.">
+        <label>adc_read</label>
+        <button onclick="ifdocRead('/api/ifdoc/spi/adc/read', eid('spi_adc_r'))">Read ADC</button>
+        <div class="ifdoc-result" id="spi_adc_r"></div>
+      </div>
+      <table>
+        <tr><th>Addr</th><th>Register</th><th style="width:100%">Actions</th></tr>
+        <tr><td>0x04</td><td>rst_pwrctl</td>
+          <td><div class="ifdoc-row">
+            <button onclick="ifdocRead('/api/ifdoc/spi/adc/reg/0x04', eid('spi_adc_rst_r'))">Read</button>
+            <input type="number" id="spi_adc_rst_v" placeholder="value" style="width:80px">
+            <button onclick="ifdocFetch('/api/ifdoc/spi/adc/reg/0x04', {value: Number(eid('spi_adc_rst_v').value)}, eid('spi_adc_rst_r'))">Write</button>
+            <div class="ifdoc-result" id="spi_adc_rst_r"></div>
+          </div></td></tr>
+        <tr><td>0x08</td><td>sdo_ctl</td>
+          <td><div class="ifdoc-row">
+            <button onclick="ifdocRead('/api/ifdoc/spi/adc/reg/0x08', eid('spi_adc_sdo_r'))">Read</button>
+            <input type="number" id="spi_adc_sdo_v" placeholder="value" style="width:80px">
+            <button onclick="ifdocFetch('/api/ifdoc/spi/adc/reg/0x08', {value: Number(eid('spi_adc_sdo_v').value)}, eid('spi_adc_sdo_r'))">Write</button>
+            <div class="ifdoc-result" id="spi_adc_sdo_r"></div>
+          </div></td></tr>
+        <tr><td>0x14</td><td>range_sel</td>
+          <td><div class="ifdoc-row">
+            <button onclick="ifdocRead('/api/ifdoc/spi/adc/reg/0x14', eid('spi_adc_rng_r'))">Read</button>
+            <input type="number" id="spi_adc_rng_v" placeholder="value" style="width:80px">
+            <button onclick="ifdocFetch('/api/ifdoc/spi/adc/reg/0x14', {value: Number(eid('spi_adc_rng_v').value)}, eid('spi_adc_rng_r'))">Write</button>
+            <div class="ifdoc-result" id="spi_adc_rng_r"></div>
+          </div></td></tr>
+      </table>
+
+      <h4>W25Q128JV NOR Flash — CS: PA24</h4>
+      <table>
+        <tr><th>Command</th><th>Opcode</th><th style="width:100%">Actions</th></tr>
+        <tr><td>read_jedec_id</td><td><code>0x9f</code></td>
+          <td><div class="ifdoc-row"><button onclick="ifdocRead('/api/ifdoc/spi/flash/jedec_id', eid('spi_flash_jid_r'))">Execute</button><div class="ifdoc-result" id="spi_flash_jid_r"></div></div></td></tr>
+        <tr><td>read_status_1</td><td><code>0x05</code></td>
+          <td><div class="ifdoc-row"><button onclick="ifdocRead('/api/ifdoc/spi/flash/status1', eid('spi_flash_s1_r'))">Execute</button><div class="ifdoc-result" id="spi_flash_s1_r"></div></div></td></tr>
+        <tr><td>read_data</td><td><code>0x03</code></td>
+          <td><div class="ifdoc-row">
+            <input type="text" id="spi_flash_rd_a" placeholder="addr (hex)" style="width:80px">
+            <input type="number" id="spi_flash_rd_n" placeholder="len" style="width:60px">
+            <button onclick="ifdocFetch('/api/ifdoc/spi/flash/read', {addr: eid('spi_flash_rd_a').value, len: Number(eid('spi_flash_rd_n').value)}, eid('spi_flash_rd_r'))">Execute</button>
+            <div class="ifdoc-result" id="spi_flash_rd_r"></div>
+          </div></td></tr>
+        <tr><td>chip_erase</td><td><code>0xc7</code></td>
+          <td><div class="ifdoc-row"><button class="danger" onclick="if(confirm('Erase entire flash?')) ifdocFetch('/api/ifdoc/spi/flash/chip_erase', {}, eid('spi_flash_ce_r'))">Chip Erase</button><div class="ifdoc-result" id="spi_flash_ce_r"></div></div></td></tr>
+      </table>
+    </div>
+  </div>
+
+</div><!-- /ifdoc-content -->
+
+<!-- ── Status bar ─────────────────────────────────────────────── -->
+<footer class="ifdoc-statusbar">
+  <span><span class="status-dot demo" id="conn-dot"></span><span id="conn-text">Demo mode</span></span>
+  <span id="req-counter">Requests: 0</span>
+  <span id="last-req">Last: —</span>
+</footer>
+
+<!-- ── Application logic ──────────────────────────────────────── -->
+<script>
+(function() {
+  "use strict";
+
+  const eid = (id) => document.getElementById(id);
+  window.eid = eid;  // expose for inline onclick handlers
+
+  let requestCount = 0;
+  const demoToggle = eid("demo-mode");
+
+  // ── Tab switching ──────────────────────────────────────────
+  document.querySelectorAll(".ifdoc-tab").forEach(tab => {
+    tab.addEventListener("click", () => {
+      document.querySelectorAll(".ifdoc-tab").forEach(t => t.classList.remove("active"));
+      document.querySelectorAll(".ifdoc-tab-panel").forEach(p => p.classList.remove("active"));
+      tab.classList.add("active");
+      eid("panel-" + tab.dataset.tab).classList.add("active");
+    });
+  });
+
+  // ── Mock data for demo mode ────────────────────────────────
+  const MOCK = {
+    // CANopen
+    "/api/locatorbase/sdo/0x100800": {value: "Locator Base v2"},
+    "/api/locatorbase/sdo/0x100900": {value: "HW 2.1"},
+    "/api/locatorbase/sdo/0x100a00": {value: "FW 1.3.0-rc1"},
+    "/api/locatorbase/sdo/0x101001": {value: 0, doc: "Write 0x65766173 to save"},
+    "/api/locatorbase/sdo/0x210001": {value: 16},
+    "/api/locatorbase/sdo/0x210002": {value: 1000},
+    "/api/locatorbase/sdo/0x620001": {value: 0x05, bits: {led0: 1, led1: 0, led2: 1}},
+    "/api/locatorbase/sdo/0x610001": {value: 0x02, bits: {btn0: 0, btn1: 1}},
+    "/api/locatorbase/sdo/0x600001": {value: 0x41, can_ok: true, temp_ok: true, errors: 0},
+    // UART
+    "/api/ifdoc/uart/get_version": {major: 1, minor: 3, patch: 0, build_id: 247},
+    "/api/ifdoc/uart/get_status":  {uptime_s: 87432, temp_c: 34.2, vcc_mv: 3312, errors: 0},
+    "/api/ifdoc/uart/get_gpio":    {port_a: 0x3c, port_b: 0x01},
+    // Modbus
+    "/api/ifdoc/modbus/holding/0x0000": {value: 0x0041},
+    "/api/ifdoc/modbus/holding/0x0001": {value: 0x05},
+    "/api/ifdoc/modbus/holding/0x0002": {value: 1},
+    "/api/ifdoc/modbus/holding/0x0003": {value: 3},
+    "/api/ifdoc/modbus/holding/0x0010": {value: 0x10},
+    "/api/ifdoc/modbus/holding/0x0011": {value: 9600},
+    "/api/ifdoc/modbus/input/0x0000":   {value: 2234, temp_c: 17.45},
+    "/api/ifdoc/modbus/input/0x0001":   {value: 3312},
+    "/api/ifdoc/modbus/input/0x0002":   {value: 1842},
+    "/api/ifdoc/modbus/input/0x0003":   {value: 956},
+    "/api/ifdoc/modbus/input/0x0008":   {value: 87432},
+    "/api/ifdoc/modbus/discrete/0x0000": {value: 1},
+    "/api/ifdoc/modbus/discrete/0x0004": {value: 1},
+    "/api/ifdoc/modbus/discrete/0x0005": {value: 0},
+    // TCP
+    "/api/ifdoc/tcp/ping":           {ok: true, rtt_ms: 2.3},
+    "/api/ifdoc/tcp/get_device_info":{name: "Locator Base", hw: "2.1", fw: "1.3.0", serial: "LB-0042"},
+    "/api/ifdoc/tcp/get_status":     {uptime_s: 87432, temp_c: 34.2, state: "idle"},
+    // I2C
+    "/api/ifdoc/i2c/0x48/0x00": {raw: 4396, temp_c: 34.34},
+    "/api/ifdoc/i2c/0x48/0x01": {value: 0x0220},
+    "/api/ifdoc/i2c/0x48/0x0f": {value: "0x0117"},
+    "/api/ifdoc/i2c/0x50/0x00": {hex: "4C 42 2D 30 30 34 32 00", ascii: "LB-0042"},
+    "/api/ifdoc/i2c/0x20/port": {value: 0x3c},
+    "/api/ifdoc/i2c/0x40/0x00": {value: 0x399f},
+    "/api/ifdoc/i2c/0x40/0x01": {raw: 312, voltage_uv: 3120},
+    "/api/ifdoc/i2c/0x40/0x02": {raw: 6624, voltage_mv: 3312},
+    "/api/ifdoc/i2c/0x40/0x03": {raw: 2080, power_mw: 104.0},
+    "/api/ifdoc/i2c/0x40/0x04": {raw: 628, current_ma: 31.4},
+    // SPI
+    "/api/ifdoc/spi/adc/read":       {raw: 0x7FE0, voltage_v: 5.118},
+    "/api/ifdoc/spi/adc/reg/0x04":   {value: 0x0000},
+    "/api/ifdoc/spi/adc/reg/0x08":   {value: 0x0000},
+    "/api/ifdoc/spi/adc/reg/0x14":   {value: 0x0000, range: "±12.288 V"},
+    "/api/ifdoc/spi/flash/jedec_id": {mfr: 0xef, type: 0x40, cap: 0x18, id: "Winbond W25Q128JV"},
+    "/api/ifdoc/spi/flash/status1":  {value: 0x00, busy: false, wel: false},
+  };
+
+  function mockResponse(endpoint, params) {
+    const base = MOCK[endpoint];
+    if (base) return JSON.parse(JSON.stringify(base));
+    // Generic write-ack / unknown read
+    if (params) return {ok: true, written: params};
+    return {value: Math.floor(Math.random() * 65536)};
+  }
+
+  // ── API layer ──────────────────────────────────────────────
+  // All API paths in the HTML are relative (e.g. /api/ifdoc/...).
+  // Prepend the blueprint mount prefix so they reach /ifdoc/api/...
+  const API_PREFIX = "/ifdoc";
+
+  window.ifdocFetch = function(endpoint, params, resultEl) {
+    resultEl.textContent = "…";
+    requestCount++;
+    eid("req-counter").textContent = "Requests: " + requestCount;
+    eid("last-req").textContent = "Last: " + endpoint;
+
+    if (demoToggle.checked) {
+      // Simulate network delay
+      setTimeout(() => {
+        resultEl.textContent = JSON.stringify(mockResponse(endpoint, params), null, 2);
+      }, 60 + Math.random() * 140);
+      return;
+    }
+
+    const url = API_PREFIX + endpoint;
+    const opts = params
+      ? {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(params)}
+      : {method: "GET"};
+    fetch(url, opts)
+      .then(r => { if (!r.ok) throw new Error(r.status + " " + r.statusText); return r.json(); })
+      .then(d => { resultEl.textContent = JSON.stringify(d, null, 2); })
+      .catch(e => { resultEl.textContent = "ERROR: " + e; });
+  };
+
+  window.ifdocRead = function(endpoint, resultEl) {
+    ifdocFetch(endpoint, null, resultEl);
+  };
+
+  window.ifdocWrite = function(endpoint, formEl, resultEl) {
+    const fd = new FormData(formEl);
+    const params = {};
+    for (const [k, v] of fd.entries()) {
+      params[k] = isNaN(Number(v)) ? v : Number(v);
+    }
+    ifdocFetch(endpoint, params, resultEl);
+  };
+
+  // ── Demo mode toggle ──────────────────────────────────────
+  demoToggle.addEventListener("change", () => {
+    const dot = eid("conn-dot");
+    const txt = eid("conn-text");
+    if (demoToggle.checked) {
+      dot.className = "status-dot demo"; txt.textContent = "Demo mode";
+    } else {
+      dot.className = "status-dot ok"; txt.textContent = "Live";
+    }
+  });
+
+  // ── UDP telemetry simulation (demo mode) ──────────────────
+  let ticks = 0;
+  setInterval(() => {
+    if (!demoToggle.checked) return;
+    ticks++;
+    // Heartbeat @ 1 Hz
+    const hbEl = eid("udp_heartbeat_r");
+    if (hbEl) hbEl.textContent = JSON.stringify({seq: ticks, uptime_s: 87432 + ticks}, null, 2);
+    // Telemetry @ 10 Hz (update display at 1 Hz for readability)
+    const tlEl = eid("udp_telemetry_r");
+    if (tlEl) tlEl.textContent = JSON.stringify({
+      temp_c: (34.2 + Math.sin(ticks/10)*0.3).toFixed(2),
+      vcc_mv: 3312 + Math.floor(Math.random()*5),
+      adc0: Math.floor(1842 + Math.sin(ticks/7)*50)
+    }, null, 2);
+  }, 1000);
+
+})();
+</script>
+
+</body>
+</html>
