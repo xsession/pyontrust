@@ -1,0 +1,148 @@
+{
+  "generated_at": "2026-04-28T18:40:54.215Z",
+  "moves": [
+    {
+      "from": ".uploads\\5ba5524a7e3f_lpc802_vendor_matrix.pdf",
+      "to": ".uploads\\mcu_jobs\\5ba5524a7e3f_lpc802_vendor_matrix.pdf",
+      "reason": "mcu_manifest"
+    },
+    {
+      "from": ".uploads\\922276231e4a_samd11_vendor_matrix.pdf",
+      "to": ".uploads\\mcu_jobs\\922276231e4a_samd11_vendor_matrix.pdf",
+      "reason": "mcu_manifest"
+    },
+    {
+      "from": ".uploads\\290a325108b1_nuc126_vendor_matrix.pdf",
+      "to": ".uploads\\mcu_jobs\\290a325108b1_nuc126_vendor_matrix.pdf",
+      "reason": "mcu_manifest"
+    },
+    {
+      "from": ".uploads\\64c9b5927021_175e4d8126c4_stm32f411re_vendor_matrix.pdf",
+      "to": ".uploads\\mcu_jobs\\64c9b5927021_175e4d8126c4_stm32f411re_vendor_matrix.pdf",
+      "reason": "mcu_manifest"
+    },
+    {
+      "from": ".uploads\\1d6179ccc270_332bac53983b_efm32pg22_vendor_matrix.pdf",
+      "to": ".uploads\\mcu_jobs\\1d6179ccc270_332bac53983b_efm32pg22_vendor_matrix.pdf",
+      "reason": "mcu_manifest"
+    },
+    {
+      "from": ".uploads\\280e37fa3d8d_5b56b31a09dc_mspm0g3507_vendor_matrix.pdf",
+      "to": ".uploads\\mcu_jobs\\280e37fa3d8d_5b56b31a09dc_mspm0g3507_vendor_matrix.pdf",
+      "reason": "mcu_manifest"
+    },
+    {
+      "from": ".uploads\\d51a6ff06123_tmp117_vendor_matrix.pdf",
+      "to": ".uploads\\sensor_jobs\\d51a6ff06123_tmp117_vendor_matrix.pdf",
+      "reason": "sensor_manifest"
+    },
+    {
+      "from": ".uploads\\d72dd784f049_scl3300_vendor_matrix.pdf",
+      "to": ".uploads\\sensor_jobs\\d72dd784f049_scl3300_vendor_matrix.pdf",
+      "reason": "sensor_manifest"
+    },
+    {
+      "from": ".uploads\\07f346f36c41_507723a1107b_adxl345_vendor_matrix.pdf",
+      "to": ".uploads\\sensor_jobs\\07f346f36c41_507723a1107b_adxl345_vendor_matrix.pdf",
+      "reason": "sensor_manifest"
+    },
+    {
+      "from": ".uploads\\68668cc555f6_5e15994cf390_ch32v003_vendor_matrix.pdf",
+      "to": ".uploads\\sensor_jobs\\68668cc555f6_5e15994cf390_ch32v003_vendor_matrix.pdf",
+      "reason": "sensor_manifest"
+    },
+    {
+      "from": ".uploads\\389f022718f0b99db4c410485c134593",
+      "to": ".uploads\\incoming\\legacy\\389f022718f0b99db4c410485c134593",
+      "reason": "digested_source"
+    },
+    {
+      "from": ".uploads\\175e4d8126c4_stm32f411re_vendor_matrix.pdf",
+      "to": ".uploads\\incoming\\legacy\\175e4d8126c4_stm32f411re_vendor_matrix.pdf",
+      "reason": "loose_root_artifact"
+    },
+    {
+      "from": ".uploads\\2a384369e3ee_389f022718f0b99db4c410485c134593.pdf",
+      "to": ".uploads\\incoming\\legacy\\2a384369e3ee_389f022718f0b99db4c410485c134593.pdf",
+      "reason": "loose_root_artifact"
+    },
+    {
+      "from": ".uploads\\332bac53983b_efm32pg22_vendor_matrix.pdf",
+      "to": ".uploads\\incoming\\legacy\\332bac53983b_efm32pg22_vendor_matrix.pdf",
+      "reason": "loose_root_artifact"
+    },
+    {
+      "from": ".uploads\\507723a1107b_adxl345_vendor_matrix.pdf",
+      "to": ".uploads\\incoming\\legacy\\507723a1107b_adxl345_vendor_matrix.pdf",
+      "reason": "loose_root_artifact"
+    },
+    {
+      "from": ".uploads\\5b56b31a09dc_mspm0g3507_vendor_matrix.pdf",
+      "to": ".uploads\\incoming\\legacy\\5b56b31a09dc_mspm0g3507_vendor_matrix.pdf",
+      "reason": "loose_root_artifact"
+    },
+    {
+      "from": ".uploads\\5e15994cf390_ch32v003_vendor_matrix.pdf",
+      "to": ".uploads\\incoming\\legacy\\5e15994cf390_ch32v003_vendor_matrix.pdf",
+      "reason": "loose_root_artifact"
+    },
+    {
+      "from": ".uploads\\65b2245b4cc3ebcc519fc9e6e4ef496f",
+      "to": ".uploads\\incoming\\legacy\\65b2245b4cc3ebcc519fc9e6e4ef496f",
+      "reason": "loose_root_artifact"
+    },
+    {
+      "from": ".uploads\\7a08cc072361_lis2dh12_vendor_matrix.pdf",
+      "to": ".uploads\\incoming\\legacy\\7a08cc072361_lis2dh12_vendor_matrix.pdf",
+      "reason": "loose_root_artifact"
+    },
+    {
+      "from": ".uploads\\7cf875f68de8_esp32_vendor_matrix.pdf",
+      "to": ".uploads\\incoming\\legacy\\7cf875f68de8_esp32_vendor_matrix.pdf",
+      "reason": "loose_root_artifact"
+    },
+    {
+      "from": ".uploads\\886cbdee7afc_fxos8700cq_vendor_matrix.pdf",
+      "to": ".uploads\\incoming\\legacy\\886cbdee7afc_fxos8700cq_vendor_matrix.pdf",
+      "reason": "loose_root_artifact"
+    },
+    {
+      "from": ".uploads\\b1013b4124bd_bmp280_vendor_matrix.pdf",
+      "to": ".uploads\\incoming\\legacy\\b1013b4124bd_bmp280_vendor_matrix.pdf",
+      "reason": "loose_root_artifact"
+    },
+    {
+      "from": ".uploads\\bf8433627934_389f022718f0b99db4c410485c134593.pdf",
+      "to": ".uploads\\incoming\\legacy\\bf8433627934_389f022718f0b99db4c410485c134593.pdf",
+      "reason": "loose_root_artifact"
+    },
+    {
+      "from": ".uploads\\c6a4ef50c160_mlx90614_vendor_matrix.pdf",
+      "to": ".uploads\\incoming\\legacy\\c6a4ef50c160_mlx90614_vendor_matrix.pdf",
+      "reason": "loose_root_artifact"
+    },
+    {
+      "from": ".uploads\\ce937f5b3bae_veml7700_vendor_matrix.pdf",
+      "to": ".uploads\\incoming\\legacy\\ce937f5b3bae_veml7700_vendor_matrix.pdf",
+      "reason": "loose_root_artifact"
+    },
+    {
+      "from": ".uploads\\deeee486a1c6_zmod4410_vendor_matrix.pdf",
+      "to": ".uploads\\incoming\\legacy\\deeee486a1c6_zmod4410_vendor_matrix.pdf",
+      "reason": "loose_root_artifact"
+    },
+    {
+      "from": ".uploads\\fe07dc212751_ra2l1_vendor_matrix.pdf",
+      "to": ".uploads\\incoming\\legacy\\fe07dc212751_ra2l1_vendor_matrix.pdf",
+      "reason": "loose_root_artifact"
+    },
+    {
+      "from": ".uploads\\fe196a72e204_mcp9808_vendor_matrix.pdf",
+      "to": ".uploads\\incoming\\legacy\\fe196a72e204_mcp9808_vendor_matrix.pdf",
+      "reason": "loose_root_artifact"
+    }
+  ],
+  "summary": {
+    "moved": 28
+  }
+}

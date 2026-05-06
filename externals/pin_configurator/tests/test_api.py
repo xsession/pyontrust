@@ -38,6 +38,22 @@ class TestBoardEndpoints:
         resp = client.get("/api/board/nonexistent_board_xyz")
         assert resp.status_code == 404
 
+    def test_board_detail_rpi_pico_multicore(self, client):
+        """GET /api/board/rpi_pico returns multicore board metadata."""
+        resp = client.get("/api/board/rpi_pico")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["soc"] == "RP2040"
+        assert data["board"] == "rpi_pico"
+        assert len(data["cores"]) == 2
+        assert data["cores"][0]["default"] is True
+        assert {target["kind"] for target in data["output_targets"]} == {
+            "zephyr", "arduino", "baremetal"
+        }
+        uart0 = next(peripheral for peripheral in data["peripherals"] if peripheral["name"] == "uart0")
+        assert uart0["core_id"] == "core0"
+        assert uart0["available_cores"] == ["core0", "core1"]
+
 
 class TestGenerateEndpoints:
     """Tests for DTS overlay / prj.conf generation."""
@@ -75,6 +91,79 @@ class TestGenerateEndpoints:
         assert "&gpioa" in overlay
         assert "CONFIG_I2C=y" in conf
         assert "CONFIG_GPIO=y" in conf
+
+    def test_generate_multitarget_rpi_pico(self, client, sample_rpi_pico_assignments):
+        """POST /api/generate returns Zephyr, Arduino, and bare-metal outputs."""
+        resp = client.post(
+            "/api/generate",
+            data=json.dumps(sample_rpi_pico_assignments),
+            content_type="application/json",
+        )
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert "UART0_TX_GP0" in data["overlay"]
+        assert "targets" in data
+        assert "arduino" in data["targets"]
+        assert "baremetal" in data["targets"]
+        assert "assigned-core: core1" in data["overlay"]
+        assert "pinMode(PIN_UART0_TX, OUTPUT);" in data["targets"]["arduino"]["rpi_pico.ino"]
+        assert "pin_config_apply" in data["targets"]["baremetal"]["pin_config.c"]
+
+    def test_generate_external_device_outputs(self, client):
+        """POST /api/generate emits external device snippets for Zephyr and Arduino."""
+        payload = {
+            "board_id": "rpi_pico",
+            "board": "rpi_pico",
+            "targets": ["zephyr", "arduino"],
+            "assignments": [
+                {
+                    "pin_name": "GP4", "pincm": 5, "function_id": 3,
+                    "af_name": "I2C0_SDA", "peripheral": "i2c0",
+                    "signal": "sda", "direction": "io",
+                    "zephyr_pinmux": "I2C0_SDA_GP4",
+                },
+                {
+                    "pin_name": "GP5", "pincm": 6, "function_id": 3,
+                    "af_name": "I2C0_SCL", "peripheral": "i2c0",
+                    "signal": "scl", "direction": "io",
+                    "zephyr_pinmux": "I2C0_SCL_GP5",
+                },
+            ],
+            "peripherals": [
+                {
+                    "name": "i2c0", "dts_node": "&i2c0",
+                    "compatible": "raspberrypi,rp2040-i2c", "enabled": True,
+                },
+            ],
+            "external_devices": [
+                {
+                    "id": "bme280_i2c",
+                    "display": "Bosch BME280",
+                    "category": "sensor",
+                    "bus": "i2c0",
+                    "compatible": "bosch,bme280",
+                    "address": "0x76",
+                    "required_signals": ["sda", "scl"],
+                    "frameworks": ["zephyr", "arduino"],
+                    "notes": "Temperature, humidity, and pressure sensor.",
+                }
+            ],
+        }
+
+        resp = client.post(
+            "/api/generate",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert "&i2c0" in data["overlay"]
+        assert 'compatible = "bosch,bme280";' in data["overlay"]
+        assert "reg = <0x76>;" in data["overlay"]
+        assert "CONFIG_BME280=y" in data["prj_conf"]
+        assert "#include <Wire.h>" in data["targets"]["arduino"]["rpi_pico.ino"]
+        assert "Device: Bosch BME280 on i2c0 (0x76)" in data["targets"]["arduino"]["rpi_pico.ino"]
 
 
 class TestImportEndpoints:
@@ -235,12 +324,17 @@ class TestProjectFileEndpoints:
             }
         }
         periph_states = {"uart0": False, "spi0": True}
+        periph_core_states = {"spi0": "core1"}
         # Save first
         client.post("/api/project-file/save", json={
             "file_path": fp,
             "board_id": "lp_mspm0g3507",
             "pin_states": pin_states,
             "periph_states": periph_states,
+            "periph_core_states": periph_core_states,
+            "external_device_states": {
+                "bme280_i2c": {"selected": True, "bus": "i2c0"},
+            },
             "generated_overlay": "/* test overlay */",
             "generated_conf": "CONFIG_SPI=y",
         })
@@ -253,8 +347,30 @@ class TestProjectFileEndpoints:
         assert "5" in data["pin_states"]
         assert data["pin_states"]["5"]["af"]["name"] == "SPI0_CLK"
         assert data["periph_states"]["spi0"] is True
+        assert data["periph_core_states"]["spi0"] == "core1"
+        assert data["external_device_states"]["bme280_i2c"]["selected"] is True
+        assert data["external_device_states"]["bme280_i2c"]["bus"] == "i2c0"
         assert data["generated_overlay"] == "/* test overlay */"
         assert data["generated_conf"] == "CONFIG_SPI=y"
+
+    def test_save_project_file_with_core_state(self, client, tmp_path):
+        """POST /api/project-file/save persists multicore peripheral ownership."""
+        fp = str(tmp_path / "pico.zpinproj")
+        resp = client.post("/api/project-file/save", json={
+            "file_path": fp,
+            "board_id": "rpi_pico",
+            "pin_states": {},
+            "periph_states": {"uart0": True},
+            "periph_core_states": {"uart0": "core1"},
+        })
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["saved"] is True
+
+        load_resp = client.post("/api/project-file/load", json={"file_path": fp})
+        assert load_resp.status_code == 200
+        load_data = load_resp.get_json()
+        assert load_data["periph_core_states"]["uart0"] == "core1"
 
     def test_load_missing_file(self, client):
         """POST /api/project-file/load returns 404 for missing file."""

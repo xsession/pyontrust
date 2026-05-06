@@ -7,9 +7,10 @@
 ## Overview
 
 Pyontrust Pin Configurator is a Flask-powered web application that provides an
-interactive GUI for configuring Zephyr RTOS projects. It covers the full
+interactive GUI for configuring embedded projects. It covers the full
 embedded workflow — from parsing MCU datasheets to generating production-ready
-DTS overlays, Kconfig settings, and driver boilerplate.
+Zephyr overlays and Kconfig fragments, plus starter Arduino and bare-metal pin
+configuration files.
 
 ![Architecture](docs/img/architecture.png)
 
@@ -18,6 +19,7 @@ DTS overlays, Kconfig settings, and driver boilerplate.
 | Feature | Description |
 |---------|-------------|
 | **Pin Configurator** | Interactive chip diagram with drag-and-drop pin assignment |
+| **Multi-target Export** | Generate Zephyr, Arduino, and bare-metal pin configuration outputs |
 | **Package Manager** | Parse MCU datasheet PDFs (18+ vendor families), auto-download by part number |
 | **Module Configurator** | Browse & enable 27 Zephyr Kconfig modules (399 options) |
 | **Peripheral Configurator** | 11 peripheral templates, 22 instances with DTS generation |
@@ -31,6 +33,10 @@ DTS overlays, Kconfig settings, and driver boilerplate.
 TI · STMicroelectronics · Nordic Semiconductor · NXP · Microchip · Espressif ·
 Infineon · Renesas · Silicon Labs · GigaDevice · WCH · Nuvoton · Bouffalo Lab ·
 HPMicro · Puya · Artery · MindMotion · Luat
+
+The built-in board registry now also includes a dual-core RP2040 target for
+the Raspberry Pi Pico, exposing CPU-core metadata and export-target metadata to
+both the Python and TypeScript backends.
 
 ---
 
@@ -75,6 +81,18 @@ west configure --headless   # API-only mode (no browser)
 ```
 
 See [West Extension](#west-extension) below for setup instructions.
+
+### Using the VS Code Extension (TypeScript backend)
+
+The repository also includes a VS Code extension wrapper around the TypeScript backend:
+
+```bash
+cd vscode-extension
+npm install
+npm run package:vsix
+```
+
+The packaged extension starts `backend_ts/dist/server_entry.js` and hosts the Pin Configurator UI directly inside VS Code.
 
 ---
 
@@ -150,7 +168,7 @@ pin_configurator/
 |--------|----------|-------------|
 | `GET`  | `/api/boards` | List available board packages |
 | `GET`  | `/api/board/<name>` | Get full board definition |
-| `POST` | `/api/generate` | Generate DTS overlay + prj.conf |
+| `POST` | `/api/generate` | Generate Zephyr, Arduino, and bare-metal output files |
 | `POST` | `/api/save-project` | Write generated files to disk |
 
 ### Package Manager

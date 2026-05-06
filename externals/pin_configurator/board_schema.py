@@ -34,6 +34,12 @@ class PinSide(str, Enum):
     TOP    = "top"
 
 
+class OutputKind(str, Enum):
+    ZEPHYR = "zephyr"
+    ARDUINO = "arduino"
+    BAREMETAL = "baremetal"
+
+
 # ── Data classes ───────────────────────────────────────────────────────
 
 @dataclass
@@ -45,6 +51,7 @@ class AltFunction:
     peripheral: str           # e.g. "uart0", "spi1", "gpio"
     signal: str               # e.g. "tx", "rx", "scl", "mosi", "ccp0"
     direction: str = "io"     # "in", "out", "io", "analog"
+    zephyr_pinmux: str = ""    # Raw Zephyr pinmux macro/value when not MSPM0
 
 
 @dataclass
@@ -75,6 +82,41 @@ class Peripheral:
     reg_address: str = ""     # e.g. "0x40108000"
     dts_node: str = ""        # e.g. "&uart0"
     enabled: bool = False
+    core_id: str = ""         # Owning CPU core for multicore devices
+    available_cores: list[str] = field(default_factory=list)
+
+
+@dataclass
+class Core:
+    """CPU core metadata for multicore devices."""
+    id: str
+    name: str
+    arch: str
+    role: str = "application"
+    clock_hz: int = 0
+    default: bool = False
+
+
+@dataclass
+class OutputTarget:
+    """Supported output target for generated project files."""
+    kind: OutputKind
+    label: str
+    file_suffixes: list[str] = field(default_factory=list)
+
+
+@dataclass
+class ExternalDevice:
+    """Optional off-board device wired to this board."""
+    id: str
+    display: str
+    category: str = "device"
+    bus: str = ""
+    compatible: str = ""
+    address: str = ""
+    required_signals: list[str] = field(default_factory=list)
+    frameworks: list[str] = field(default_factory=list)
+    notes: str = ""
 
 
 @dataclass
@@ -87,6 +129,9 @@ class BoardDef:
     pin_count: int = 48
     pins: list[Pin] = field(default_factory=list)
     peripherals: list[Peripheral] = field(default_factory=list)
+    external_devices: list[ExternalDevice] = field(default_factory=list)
+    cores: list[Core] = field(default_factory=list)
+    output_targets: list[OutputTarget] = field(default_factory=list)
 
     # DTS generation metadata
     dts_soc_include: str = ""    # e.g. "<ti/mspm0/g/mspm0g3507.dtsi>"
@@ -127,8 +172,26 @@ def load_board(path: str | pathlib.Path) -> BoardDef:
         pins.append(Pin(**pd, alt_functions=afs))
 
     periphs = [Peripheral(**p) for p in d.pop("peripherals", [])]
+    external_devices = [ExternalDevice(**device) for device in d.pop("external_devices", [])]
+    cores = [Core(**core) for core in d.pop("cores", [])]
 
-    return BoardDef(**d, pins=pins, peripherals=periphs)
+    output_targets = []
+    for target in d.pop("output_targets", []):
+        output_targets.append(
+            OutputTarget(
+                **target,
+                kind=OutputKind(target.get("kind", "zephyr")),
+            )
+        )
+
+    return BoardDef(
+        **d,
+        pins=pins,
+        peripherals=periphs,
+        external_devices=external_devices,
+        cores=cores,
+        output_targets=output_targets,
+    )
 
 
 def board_to_frontend(board: BoardDef) -> dict:
@@ -142,6 +205,25 @@ def board_to_frontend(board: BoardDef) -> dict:
         "flash_size_kb": board.flash_size_kb,
         "sram_size_kb": board.sram_size_kb,
         "clock_hz": board.clock_hz,
+        "cores": [
+            {
+                "id": core.id,
+                "name": core.name,
+                "arch": core.arch,
+                "role": core.role,
+                "clock_hz": core.clock_hz,
+                "default": core.default,
+            }
+            for core in board.cores
+        ],
+        "output_targets": [
+            {
+                "kind": target.kind.value,
+                "label": target.label,
+                "file_suffixes": target.file_suffixes,
+            }
+            for target in board.output_targets
+        ],
         "pins": [
             {
                 "number": p.number,
@@ -159,6 +241,7 @@ def board_to_frontend(board: BoardDef) -> dict:
                         "peripheral": a.peripheral,
                         "signal": a.signal,
                         "direction": a.direction,
+                        "zephyr_pinmux": a.zephyr_pinmux,
                     }
                     for a in p.alt_functions
                 ],
@@ -173,7 +256,23 @@ def board_to_frontend(board: BoardDef) -> dict:
                 "signals": pe.signals,
                 "dts_node": pe.dts_node,
                 "enabled": pe.enabled,
+                "core_id": pe.core_id,
+                "available_cores": pe.available_cores,
             }
             for pe in board.peripherals
+        ],
+        "external_devices": [
+            {
+                "id": device.id,
+                "display": device.display,
+                "category": device.category,
+                "bus": device.bus,
+                "compatible": device.compatible,
+                "address": device.address,
+                "required_signals": device.required_signals,
+                "frameworks": device.frameworks,
+                "notes": device.notes,
+            }
+            for device in board.external_devices
         ],
     }

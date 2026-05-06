@@ -238,6 +238,24 @@ def _gen_peripheral_line(periph_id: str,
     return f'        Peripheral("{periph_id}", "{display}", "{compat}", [{sigs_str}], "{addr}", "{dts_node}"),'
 
 
+def _gen_external_device_line(device: dict[str, object]) -> str:
+    required_signals = [str(signal) for signal in device.get("required_signals", []) or []]
+    frameworks = [str(framework) for framework in device.get("frameworks", []) or []]
+    return (
+        "        ExternalDevice("
+        f"id={str(device.get('id', 'device'))!r}, "
+        f"display={str(device.get('display', device.get('id', 'device')))!r}, "
+        f"category={str(device.get('category', 'device'))!r}, "
+        f"bus={str(device.get('bus', ''))!r}, "
+        f"compatible={str(device.get('compatible', ''))!r}, "
+        f"address={str(device.get('address', ''))!r}, "
+        f"required_signals={required_signals!r}, "
+        f"frameworks={frameworks!r}, "
+        f"notes={str(device.get('notes', ''))!r}"
+        "),"
+    )
+
+
 def generate_board_file(
     device: DeviceSummary,
     package: PackageInfo,
@@ -246,6 +264,7 @@ def generate_board_file(
     dts_soc_include: Optional[str] = None,
     dts_pinctrl_include: Optional[str] = None,
     pinctrl_header: Optional[str] = None,
+    external_devices: Optional[list[dict[str, object]]] = None,
 ) -> str:
     """
     Generate a Python board definition file as a string.
@@ -342,6 +361,8 @@ def generate_board_file(
     periph_ids = _collect_peripherals(pin_mux)
     periph_lines = [_gen_peripheral_line(pid, pin_mux) for pid in periph_ids]
     periphs_block = "\n".join(periph_lines)
+    external_device_lines = [_gen_external_device_line(device) for device in (external_devices or [])]
+    external_devices_block = "\n".join(external_device_lines)
 
     # ── Assemble the full file ───────────────────────────────────────
 
@@ -358,7 +379,7 @@ def generate_board_file(
         """
 
         from board_schema import (
-            BoardDef, Pin, AltFunction, Peripheral,
+            BoardDef, Pin, AltFunction, Peripheral, ExternalDevice,
             PinKind, PinSide,
         )
 
@@ -427,6 +448,10 @@ def generate_board_file(
         {periphs_block}
             ]
 
+            external_devices = [
+        {external_devices_block}
+            ]
+
             return BoardDef(
                 soc="{soc}",
                 board="{board_name}",
@@ -435,6 +460,7 @@ def generate_board_file(
                 pin_count={package.pin_count},
                 pins=pins,
                 peripherals=peripherals,
+                external_devices=external_devices,
                 dts_soc_include={dts_soc_include},
                 dts_pinctrl_include={dts_pinctrl_include},
                 pinctrl_header="{pinctrl_header}",
@@ -454,6 +480,7 @@ def generate_board_files(
     dts_soc_include: Optional[str] = None,
     dts_pinctrl_include: Optional[str] = None,
     pinctrl_header: Optional[str] = None,
+    external_devices: Optional[list[dict[str, object]]] = None,
     register_in_init: bool = True,
 ) -> list[str]:
     """
@@ -498,6 +525,7 @@ def generate_board_files(
             dts_soc_include=dts_soc_include,
             dts_pinctrl_include=dts_pinctrl_include,
             pinctrl_header=pinctrl_header,
+            external_devices=external_devices,
         )
 
         soc_lower = info.device.soc.lower()

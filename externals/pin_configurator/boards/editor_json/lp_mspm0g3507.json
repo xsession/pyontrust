@@ -1,0 +1,2106 @@
+{
+  "soc": "MSPM0G3507",
+  "board": "lp_mspm0g3507",
+  "vendor": "ti",
+  "package": "QFP-48",
+  "pin_count": 48,
+  "flash_size_kb": 128,
+  "sram_size_kb": 32,
+  "clock_hz": 80000000,
+  "cores": [],
+  "output_targets": [],
+  "pins": [
+    {
+      "number": 1,
+      "name": "PA0",
+      "port": "A",
+      "gpio_num": 0,
+      "kind": "io",
+      "side": "left",
+      "default_function": "Reset",
+      "alt_functions": [
+        {
+          "function_id": 1,
+          "pincm": 1,
+          "name": "GPIOA0",
+          "peripheral": "gpioa",
+          "signal": "0",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 2,
+          "pincm": 1,
+          "name": "TIMA0_CCP0",
+          "peripheral": "tima0",
+          "signal": "ccp0",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 3,
+          "pincm": 1,
+          "name": "TIMG8_CCP0",
+          "peripheral": "timg8",
+          "signal": "ccp0",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 4,
+          "pincm": 1,
+          "name": "SPI0_CS2",
+          "peripheral": "spi0",
+          "signal": "cs2",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 5,
+          "pincm": 1,
+          "name": "UART0_CTS",
+          "peripheral": "uart0",
+          "signal": "cts",
+          "direction": "in",
+          "zephyr_pinmux": ""
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "name": "PA1",
+      "port": "A",
+      "gpio_num": 1,
+      "kind": "io",
+      "side": "left",
+      "default_function": "Reset",
+      "alt_functions": [
+        {
+          "function_id": 1,
+          "pincm": 2,
+          "name": "GPIOA1",
+          "peripheral": "gpioa",
+          "signal": "1",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 2,
+          "pincm": 2,
+          "name": "TIMA0_CCP0_C",
+          "peripheral": "tima0",
+          "signal": "ccp0_cmpl",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 3,
+          "pincm": 2,
+          "name": "TIMG8_IDX",
+          "peripheral": "timg8",
+          "signal": "idx",
+          "direction": "in",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 4,
+          "pincm": 2,
+          "name": "SPI0_CS3",
+          "peripheral": "spi0",
+          "signal": "cs3",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 5,
+          "pincm": 2,
+          "name": "UART0_RTS",
+          "peripheral": "uart0",
+          "signal": "rts",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 7,
+          "pincm": 2,
+          "name": "COMP0_OUT",
+          "peripheral": "comp0",
+          "signal": "out",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        }
+      ]
+    },
+    {
+      "number": 3,
+      "name": "PA2",
+      "port": "A",
+      "gpio_num": 2,
+      "kind": "io",
+      "side": "left",
+      "default_function": "Reset",
+      "alt_functions": [
+        {
+          "function_id": 1,
+          "pincm": 3,
+          "name": "GPIOA2",
+          "peripheral": "gpioa",
+          "signal": "2",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 2,
+          "pincm": 3,
+          "name": "TIMA0_CCP1",
+          "peripheral": "tima0",
+          "signal": "ccp1",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 3,
+          "pincm": 3,
+          "name": "TIMG8_CCP1",
+          "peripheral": "timg8",
+          "signal": "ccp1",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 5,
+          "pincm": 3,
+          "name": "UART0_TX",
+          "peripheral": "uart0",
+          "signal": "tx",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        }
+      ]
+    },
+    {
+      "number": 4,
+      "name": "PA3",
+      "port": "A",
+      "gpio_num": 3,
+      "kind": "io",
+      "side": "left",
+      "default_function": "Reset",
+      "alt_functions": [
+        {
+          "function_id": 1,
+          "pincm": 4,
+          "name": "GPIOA3",
+          "peripheral": "gpioa",
+          "signal": "3",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 2,
+          "pincm": 4,
+          "name": "TIMA0_CCP1_C",
+          "peripheral": "tima0",
+          "signal": "ccp1_cmpl",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 3,
+          "pincm": 4,
+          "name": "SPI0_CS0",
+          "peripheral": "spi0",
+          "signal": "cs0",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 5,
+          "pincm": 4,
+          "name": "UART1_TX",
+          "peripheral": "uart1",
+          "signal": "tx",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 7,
+          "pincm": 4,
+          "name": "I2C1_SCL",
+          "peripheral": "i2c1",
+          "signal": "scl",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        }
+      ]
+    },
+    {
+      "number": 5,
+      "name": "PA4",
+      "port": "A",
+      "gpio_num": 4,
+      "kind": "io",
+      "side": "left",
+      "default_function": "Reset",
+      "alt_functions": [
+        {
+          "function_id": 1,
+          "pincm": 5,
+          "name": "GPIOA4",
+          "peripheral": "gpioa",
+          "signal": "4",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 2,
+          "pincm": 5,
+          "name": "TIMA0_CCP2",
+          "peripheral": "tima0",
+          "signal": "ccp2",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 3,
+          "pincm": 5,
+          "name": "SPI0_POCI",
+          "peripheral": "spi0",
+          "signal": "poci",
+          "direction": "in",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 5,
+          "pincm": 5,
+          "name": "UART1_RX",
+          "peripheral": "uart1",
+          "signal": "rx",
+          "direction": "in",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 7,
+          "pincm": 5,
+          "name": "I2C1_SDA",
+          "peripheral": "i2c1",
+          "signal": "sda",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        }
+      ]
+    },
+    {
+      "number": 6,
+      "name": "PA5",
+      "port": "A",
+      "gpio_num": 5,
+      "kind": "io",
+      "side": "left",
+      "default_function": "Reset",
+      "alt_functions": [
+        {
+          "function_id": 1,
+          "pincm": 6,
+          "name": "GPIOA5",
+          "peripheral": "gpioa",
+          "signal": "5",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 2,
+          "pincm": 6,
+          "name": "TIMA0_CCP2_C",
+          "peripheral": "tima0",
+          "signal": "ccp2_cmpl",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 3,
+          "pincm": 6,
+          "name": "SPI0_SCLK",
+          "peripheral": "spi0",
+          "signal": "sclk",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 5,
+          "pincm": 6,
+          "name": "UART1_CTS",
+          "peripheral": "uart1",
+          "signal": "cts",
+          "direction": "in",
+          "zephyr_pinmux": ""
+        }
+      ]
+    },
+    {
+      "number": 7,
+      "name": "PA6",
+      "port": "A",
+      "gpio_num": 6,
+      "kind": "io",
+      "side": "left",
+      "default_function": "Reset",
+      "alt_functions": [
+        {
+          "function_id": 1,
+          "pincm": 7,
+          "name": "GPIOA6",
+          "peripheral": "gpioa",
+          "signal": "6",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 2,
+          "pincm": 7,
+          "name": "TIMA0_CCP3",
+          "peripheral": "tima0",
+          "signal": "ccp3",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 3,
+          "pincm": 7,
+          "name": "SPI0_PICO",
+          "peripheral": "spi0",
+          "signal": "pico",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 5,
+          "pincm": 7,
+          "name": "UART1_RTS",
+          "peripheral": "uart1",
+          "signal": "rts",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        }
+      ]
+    },
+    {
+      "number": 8,
+      "name": "PA7",
+      "port": "A",
+      "gpio_num": 7,
+      "kind": "io",
+      "side": "left",
+      "default_function": "Reset",
+      "alt_functions": [
+        {
+          "function_id": 1,
+          "pincm": 8,
+          "name": "GPIOA7",
+          "peripheral": "gpioa",
+          "signal": "7",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 2,
+          "pincm": 8,
+          "name": "TIMA0_CCP3_C",
+          "peripheral": "tima0",
+          "signal": "ccp3_cmpl",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 3,
+          "pincm": 8,
+          "name": "TIMG8_CCP0",
+          "peripheral": "timg8",
+          "signal": "ccp0",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 5,
+          "pincm": 8,
+          "name": "UART2_TX",
+          "peripheral": "uart2",
+          "signal": "tx",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 8,
+          "pincm": 8,
+          "name": "SPI1_CS0",
+          "peripheral": "spi1",
+          "signal": "cs0",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        }
+      ]
+    },
+    {
+      "number": 9,
+      "name": "VDD",
+      "port": "",
+      "gpio_num": -1,
+      "kind": "power",
+      "side": "left",
+      "default_function": "Reset",
+      "alt_functions": []
+    },
+    {
+      "number": 10,
+      "name": "GND",
+      "port": "",
+      "gpio_num": -1,
+      "kind": "ground",
+      "side": "left",
+      "default_function": "Reset",
+      "alt_functions": []
+    },
+    {
+      "number": 11,
+      "name": "PA8",
+      "port": "A",
+      "gpio_num": 8,
+      "kind": "io",
+      "side": "left",
+      "default_function": "Reset",
+      "alt_functions": [
+        {
+          "function_id": 1,
+          "pincm": 11,
+          "name": "GPIOA8",
+          "peripheral": "gpioa",
+          "signal": "8",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 2,
+          "pincm": 11,
+          "name": "TIMG12_CCP0",
+          "peripheral": "timg12",
+          "signal": "ccp0",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 3,
+          "pincm": 11,
+          "name": "TIMG8_CCP1",
+          "peripheral": "timg8",
+          "signal": "ccp1",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 5,
+          "pincm": 11,
+          "name": "UART2_RX",
+          "peripheral": "uart2",
+          "signal": "rx",
+          "direction": "in",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 8,
+          "pincm": 11,
+          "name": "SPI1_POCI",
+          "peripheral": "spi1",
+          "signal": "poci",
+          "direction": "in",
+          "zephyr_pinmux": ""
+        }
+      ]
+    },
+    {
+      "number": 12,
+      "name": "PA9",
+      "port": "A",
+      "gpio_num": 9,
+      "kind": "io",
+      "side": "left",
+      "default_function": "Reset",
+      "alt_functions": [
+        {
+          "function_id": 1,
+          "pincm": 12,
+          "name": "GPIOA9",
+          "peripheral": "gpioa",
+          "signal": "9",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 2,
+          "pincm": 12,
+          "name": "TIMG12_CCP1",
+          "peripheral": "timg12",
+          "signal": "ccp1",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 5,
+          "pincm": 12,
+          "name": "UART2_CTS",
+          "peripheral": "uart2",
+          "signal": "cts",
+          "direction": "in",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 8,
+          "pincm": 12,
+          "name": "SPI1_SCLK",
+          "peripheral": "spi1",
+          "signal": "sclk",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        }
+      ]
+    },
+    {
+      "number": 13,
+      "name": "PA10",
+      "port": "A",
+      "gpio_num": 10,
+      "kind": "io",
+      "side": "bottom",
+      "default_function": "Reset",
+      "alt_functions": [
+        {
+          "function_id": 1,
+          "pincm": 13,
+          "name": "GPIOA10",
+          "peripheral": "gpioa",
+          "signal": "10",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 2,
+          "pincm": 13,
+          "name": "UART0_TX",
+          "peripheral": "uart0",
+          "signal": "tx",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 3,
+          "pincm": 13,
+          "name": "SPI1_PICO",
+          "peripheral": "spi1",
+          "signal": "pico",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 5,
+          "pincm": 13,
+          "name": "UART2_RTS",
+          "peripheral": "uart2",
+          "signal": "rts",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 8,
+          "pincm": 13,
+          "name": "I2C0_SCL",
+          "peripheral": "i2c0",
+          "signal": "scl",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        }
+      ]
+    },
+    {
+      "number": 14,
+      "name": "PA11",
+      "port": "A",
+      "gpio_num": 11,
+      "kind": "io",
+      "side": "bottom",
+      "default_function": "Reset",
+      "alt_functions": [
+        {
+          "function_id": 1,
+          "pincm": 14,
+          "name": "GPIOA11",
+          "peripheral": "gpioa",
+          "signal": "11",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 2,
+          "pincm": 14,
+          "name": "UART0_RX",
+          "peripheral": "uart0",
+          "signal": "rx",
+          "direction": "in",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 3,
+          "pincm": 14,
+          "name": "SPI1_CS0",
+          "peripheral": "spi1",
+          "signal": "cs0",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 5,
+          "pincm": 14,
+          "name": "COMP0_OUT",
+          "peripheral": "comp0",
+          "signal": "out",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 8,
+          "pincm": 14,
+          "name": "I2C0_SDA",
+          "peripheral": "i2c0",
+          "signal": "sda",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        }
+      ]
+    },
+    {
+      "number": 15,
+      "name": "PA12",
+      "port": "A",
+      "gpio_num": 12,
+      "kind": "io",
+      "side": "bottom",
+      "default_function": "Reset",
+      "alt_functions": [
+        {
+          "function_id": 1,
+          "pincm": 15,
+          "name": "GPIOA12",
+          "peripheral": "gpioa",
+          "signal": "12",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 2,
+          "pincm": 15,
+          "name": "TIMG6_CCP0",
+          "peripheral": "timg6",
+          "signal": "ccp0",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 3,
+          "pincm": 15,
+          "name": "SPI1_CS1",
+          "peripheral": "spi1",
+          "signal": "cs1",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 5,
+          "pincm": 15,
+          "name": "UART3_TX",
+          "peripheral": "uart3",
+          "signal": "tx",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 8,
+          "pincm": 15,
+          "name": "I2C1_SCL",
+          "peripheral": "i2c1",
+          "signal": "scl",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        }
+      ]
+    },
+    {
+      "number": 16,
+      "name": "PA13",
+      "port": "A",
+      "gpio_num": 13,
+      "kind": "io",
+      "side": "bottom",
+      "default_function": "Reset",
+      "alt_functions": [
+        {
+          "function_id": 1,
+          "pincm": 16,
+          "name": "GPIOA13",
+          "peripheral": "gpioa",
+          "signal": "13",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 2,
+          "pincm": 16,
+          "name": "TIMG6_CCP1",
+          "peripheral": "timg6",
+          "signal": "ccp1",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 3,
+          "pincm": 16,
+          "name": "SPI1_CS2",
+          "peripheral": "spi1",
+          "signal": "cs2",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 5,
+          "pincm": 16,
+          "name": "UART3_RX",
+          "peripheral": "uart3",
+          "signal": "rx",
+          "direction": "in",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 8,
+          "pincm": 16,
+          "name": "I2C1_SDA",
+          "peripheral": "i2c1",
+          "signal": "sda",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        }
+      ]
+    },
+    {
+      "number": 17,
+      "name": "PA14",
+      "port": "A",
+      "gpio_num": 14,
+      "kind": "io",
+      "side": "bottom",
+      "default_function": "Reset",
+      "alt_functions": [
+        {
+          "function_id": 1,
+          "pincm": 17,
+          "name": "GPIOA14",
+          "peripheral": "gpioa",
+          "signal": "14",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 2,
+          "pincm": 17,
+          "name": "TIMG7_CCP0",
+          "peripheral": "timg7",
+          "signal": "ccp0",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 3,
+          "pincm": 17,
+          "name": "SPI1_CS3",
+          "peripheral": "spi1",
+          "signal": "cs3",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 5,
+          "pincm": 17,
+          "name": "UART3_CTS",
+          "peripheral": "uart3",
+          "signal": "cts",
+          "direction": "in",
+          "zephyr_pinmux": ""
+        }
+      ]
+    },
+    {
+      "number": 18,
+      "name": "PA15",
+      "port": "A",
+      "gpio_num": 15,
+      "kind": "io",
+      "side": "bottom",
+      "default_function": "Reset",
+      "alt_functions": [
+        {
+          "function_id": 1,
+          "pincm": 18,
+          "name": "GPIOA15",
+          "peripheral": "gpioa",
+          "signal": "15",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 0,
+          "pincm": 18,
+          "name": "ADC0_CH0",
+          "peripheral": "adc0",
+          "signal": "ch0",
+          "direction": "analog",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 2,
+          "pincm": 18,
+          "name": "TIMG7_CCP1",
+          "peripheral": "timg7",
+          "signal": "ccp1",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 5,
+          "pincm": 18,
+          "name": "UART3_RTS",
+          "peripheral": "uart3",
+          "signal": "rts",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        }
+      ]
+    },
+    {
+      "number": 19,
+      "name": "PA16",
+      "port": "A",
+      "gpio_num": 16,
+      "kind": "io",
+      "side": "bottom",
+      "default_function": "Reset",
+      "alt_functions": [
+        {
+          "function_id": 1,
+          "pincm": 19,
+          "name": "GPIOA16",
+          "peripheral": "gpioa",
+          "signal": "16",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 0,
+          "pincm": 19,
+          "name": "ADC0_CH1",
+          "peripheral": "adc0",
+          "signal": "ch1",
+          "direction": "analog",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 2,
+          "pincm": 19,
+          "name": "TIMG0_CCP0",
+          "peripheral": "timg0",
+          "signal": "ccp0",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 5,
+          "pincm": 19,
+          "name": "COMP1_OUT",
+          "peripheral": "comp1",
+          "signal": "out",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        }
+      ]
+    },
+    {
+      "number": 20,
+      "name": "PA17",
+      "port": "A",
+      "gpio_num": 17,
+      "kind": "io",
+      "side": "bottom",
+      "default_function": "Reset",
+      "alt_functions": [
+        {
+          "function_id": 1,
+          "pincm": 20,
+          "name": "GPIOA17",
+          "peripheral": "gpioa",
+          "signal": "17",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 0,
+          "pincm": 20,
+          "name": "ADC0_CH2",
+          "peripheral": "adc0",
+          "signal": "ch2",
+          "direction": "analog",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 2,
+          "pincm": 20,
+          "name": "TIMG0_CCP1",
+          "peripheral": "timg0",
+          "signal": "ccp1",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        }
+      ]
+    },
+    {
+      "number": 21,
+      "name": "PA18",
+      "port": "A",
+      "gpio_num": 18,
+      "kind": "io",
+      "side": "bottom",
+      "default_function": "Reset",
+      "alt_functions": [
+        {
+          "function_id": 1,
+          "pincm": 21,
+          "name": "GPIOA18",
+          "peripheral": "gpioa",
+          "signal": "18",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 0,
+          "pincm": 21,
+          "name": "ADC0_CH3",
+          "peripheral": "adc0",
+          "signal": "ch3",
+          "direction": "analog",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 2,
+          "pincm": 21,
+          "name": "TIMA1_CCP0",
+          "peripheral": "tima1",
+          "signal": "ccp0",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        }
+      ]
+    },
+    {
+      "number": 22,
+      "name": "AVDD",
+      "port": "",
+      "gpio_num": -1,
+      "kind": "power",
+      "side": "bottom",
+      "default_function": "Reset",
+      "alt_functions": []
+    },
+    {
+      "number": 23,
+      "name": "AVSS",
+      "port": "",
+      "gpio_num": -1,
+      "kind": "ground",
+      "side": "bottom",
+      "default_function": "Reset",
+      "alt_functions": []
+    },
+    {
+      "number": 24,
+      "name": "PA19",
+      "port": "A",
+      "gpio_num": 19,
+      "kind": "io",
+      "side": "bottom",
+      "default_function": "Reset",
+      "alt_functions": [
+        {
+          "function_id": 1,
+          "pincm": 24,
+          "name": "GPIOA19",
+          "peripheral": "gpioa",
+          "signal": "19",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 0,
+          "pincm": 24,
+          "name": "ADC0_CH4",
+          "peripheral": "adc0",
+          "signal": "ch4",
+          "direction": "analog",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 2,
+          "pincm": 24,
+          "name": "TIMA1_CCP0_C",
+          "peripheral": "tima1",
+          "signal": "ccp0_cmpl",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        }
+      ]
+    },
+    {
+      "number": 25,
+      "name": "PA20",
+      "port": "A",
+      "gpio_num": 20,
+      "kind": "io",
+      "side": "right",
+      "default_function": "Reset",
+      "alt_functions": [
+        {
+          "function_id": 1,
+          "pincm": 25,
+          "name": "GPIOA20",
+          "peripheral": "gpioa",
+          "signal": "20",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 0,
+          "pincm": 25,
+          "name": "ADC0_CH5",
+          "peripheral": "adc0",
+          "signal": "ch5",
+          "direction": "analog",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 2,
+          "pincm": 25,
+          "name": "TIMA1_CCP1",
+          "peripheral": "tima1",
+          "signal": "ccp1",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 0,
+          "pincm": 25,
+          "name": "DAC0_OUT",
+          "peripheral": "dac0",
+          "signal": "out",
+          "direction": "analog",
+          "zephyr_pinmux": ""
+        }
+      ]
+    },
+    {
+      "number": 26,
+      "name": "PA21",
+      "port": "A",
+      "gpio_num": 21,
+      "kind": "io",
+      "side": "right",
+      "default_function": "Reset",
+      "alt_functions": [
+        {
+          "function_id": 1,
+          "pincm": 26,
+          "name": "GPIOA21",
+          "peripheral": "gpioa",
+          "signal": "21",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 0,
+          "pincm": 26,
+          "name": "ADC0_CH6",
+          "peripheral": "adc0",
+          "signal": "ch6",
+          "direction": "analog",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 2,
+          "pincm": 26,
+          "name": "TIMG6_CCP0",
+          "peripheral": "timg6",
+          "signal": "ccp0",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        }
+      ]
+    },
+    {
+      "number": 27,
+      "name": "PA22",
+      "port": "A",
+      "gpio_num": 22,
+      "kind": "io",
+      "side": "right",
+      "default_function": "Reset",
+      "alt_functions": [
+        {
+          "function_id": 1,
+          "pincm": 27,
+          "name": "GPIOA22",
+          "peripheral": "gpioa",
+          "signal": "22",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 0,
+          "pincm": 27,
+          "name": "ADC0_CH7",
+          "peripheral": "adc0",
+          "signal": "ch7",
+          "direction": "analog",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 2,
+          "pincm": 27,
+          "name": "TIMG6_CCP1",
+          "peripheral": "timg6",
+          "signal": "ccp1",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 4,
+          "pincm": 27,
+          "name": "CAN0_TX",
+          "peripheral": "can0",
+          "signal": "tx",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        }
+      ]
+    },
+    {
+      "number": 28,
+      "name": "PA23",
+      "port": "A",
+      "gpio_num": 23,
+      "kind": "io",
+      "side": "right",
+      "default_function": "Reset",
+      "alt_functions": [
+        {
+          "function_id": 1,
+          "pincm": 28,
+          "name": "GPIOA23",
+          "peripheral": "gpioa",
+          "signal": "23",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 2,
+          "pincm": 28,
+          "name": "TIMG0_CCP0",
+          "peripheral": "timg0",
+          "signal": "ccp0",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        }
+      ]
+    },
+    {
+      "number": 29,
+      "name": "NRST",
+      "port": "",
+      "gpio_num": -1,
+      "kind": "special",
+      "side": "right",
+      "default_function": "NRST",
+      "alt_functions": []
+    },
+    {
+      "number": 30,
+      "name": "VDD",
+      "port": "",
+      "gpio_num": -1,
+      "kind": "power",
+      "side": "right",
+      "default_function": "Reset",
+      "alt_functions": []
+    },
+    {
+      "number": 31,
+      "name": "GND",
+      "port": "",
+      "gpio_num": -1,
+      "kind": "ground",
+      "side": "right",
+      "default_function": "Reset",
+      "alt_functions": []
+    },
+    {
+      "number": 32,
+      "name": "PA24",
+      "port": "A",
+      "gpio_num": 24,
+      "kind": "io",
+      "side": "right",
+      "default_function": "Reset",
+      "alt_functions": [
+        {
+          "function_id": 1,
+          "pincm": 32,
+          "name": "GPIOA24",
+          "peripheral": "gpioa",
+          "signal": "24",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 2,
+          "pincm": 32,
+          "name": "TIMG7_CCP0",
+          "peripheral": "timg7",
+          "signal": "ccp0",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 4,
+          "pincm": 32,
+          "name": "CAN0_RX",
+          "peripheral": "can0",
+          "signal": "rx",
+          "direction": "in",
+          "zephyr_pinmux": ""
+        }
+      ]
+    },
+    {
+      "number": 33,
+      "name": "PA25",
+      "port": "A",
+      "gpio_num": 25,
+      "kind": "io",
+      "side": "right",
+      "default_function": "Reset",
+      "alt_functions": [
+        {
+          "function_id": 1,
+          "pincm": 33,
+          "name": "GPIOA25",
+          "peripheral": "gpioa",
+          "signal": "25",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 2,
+          "pincm": 33,
+          "name": "TIMG7_CCP1",
+          "peripheral": "timg7",
+          "signal": "ccp1",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 5,
+          "pincm": 33,
+          "name": "I2C0_SCL",
+          "peripheral": "i2c0",
+          "signal": "scl",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        }
+      ]
+    },
+    {
+      "number": 34,
+      "name": "PA26",
+      "port": "A",
+      "gpio_num": 26,
+      "kind": "io",
+      "side": "right",
+      "default_function": "Reset",
+      "alt_functions": [
+        {
+          "function_id": 1,
+          "pincm": 34,
+          "name": "GPIOA26",
+          "peripheral": "gpioa",
+          "signal": "26",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 2,
+          "pincm": 34,
+          "name": "TIMA1_CCP1_C",
+          "peripheral": "tima1",
+          "signal": "ccp1_cmpl",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 4,
+          "pincm": 34,
+          "name": "CAN0_TX",
+          "peripheral": "can0",
+          "signal": "tx",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 5,
+          "pincm": 34,
+          "name": "I2C0_SDA",
+          "peripheral": "i2c0",
+          "signal": "sda",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        }
+      ]
+    },
+    {
+      "number": 35,
+      "name": "PA27",
+      "port": "A",
+      "gpio_num": 27,
+      "kind": "io",
+      "side": "right",
+      "default_function": "Reset",
+      "alt_functions": [
+        {
+          "function_id": 1,
+          "pincm": 35,
+          "name": "GPIOA27",
+          "peripheral": "gpioa",
+          "signal": "27",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 2,
+          "pincm": 35,
+          "name": "TIMA0_CCP0",
+          "peripheral": "tima0",
+          "signal": "ccp0",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 4,
+          "pincm": 35,
+          "name": "CAN0_RX",
+          "peripheral": "can0",
+          "signal": "rx",
+          "direction": "in",
+          "zephyr_pinmux": ""
+        }
+      ]
+    },
+    {
+      "number": 36,
+      "name": "PA28",
+      "port": "A",
+      "gpio_num": 28,
+      "kind": "io",
+      "side": "right",
+      "default_function": "Reset",
+      "alt_functions": [
+        {
+          "function_id": 1,
+          "pincm": 36,
+          "name": "GPIOA28",
+          "peripheral": "gpioa",
+          "signal": "28",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 2,
+          "pincm": 36,
+          "name": "TIMA1_CCP0",
+          "peripheral": "tima1",
+          "signal": "ccp0",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 5,
+          "pincm": 36,
+          "name": "SPI0_CS1",
+          "peripheral": "spi0",
+          "signal": "cs1",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        }
+      ]
+    },
+    {
+      "number": 37,
+      "name": "PA31",
+      "port": "A",
+      "gpio_num": 31,
+      "kind": "io",
+      "side": "top",
+      "default_function": "Reset",
+      "alt_functions": [
+        {
+          "function_id": 1,
+          "pincm": 37,
+          "name": "GPIOA31",
+          "peripheral": "gpioa",
+          "signal": "31",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 2,
+          "pincm": 37,
+          "name": "TIMA1_CCP1",
+          "peripheral": "tima1",
+          "signal": "ccp1",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 3,
+          "pincm": 37,
+          "name": "UART0_TX",
+          "peripheral": "uart0",
+          "signal": "tx",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        }
+      ]
+    },
+    {
+      "number": 38,
+      "name": "PB0",
+      "port": "B",
+      "gpio_num": 0,
+      "kind": "io",
+      "side": "top",
+      "default_function": "Reset",
+      "alt_functions": [
+        {
+          "function_id": 1,
+          "pincm": 38,
+          "name": "GPIOB0",
+          "peripheral": "gpiob",
+          "signal": "0",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 2,
+          "pincm": 38,
+          "name": "TIMA0_CCP0",
+          "peripheral": "tima0",
+          "signal": "ccp0",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 3,
+          "pincm": 38,
+          "name": "UART0_RX",
+          "peripheral": "uart0",
+          "signal": "rx",
+          "direction": "in",
+          "zephyr_pinmux": ""
+        }
+      ]
+    },
+    {
+      "number": 39,
+      "name": "XIN",
+      "port": "",
+      "gpio_num": -1,
+      "kind": "special",
+      "side": "top",
+      "default_function": "XIN",
+      "alt_functions": []
+    },
+    {
+      "number": 40,
+      "name": "XOUT",
+      "port": "",
+      "gpio_num": -1,
+      "kind": "special",
+      "side": "top",
+      "default_function": "XOUT",
+      "alt_functions": []
+    },
+    {
+      "number": 41,
+      "name": "PB2",
+      "port": "B",
+      "gpio_num": 2,
+      "kind": "io",
+      "side": "top",
+      "default_function": "Reset",
+      "alt_functions": [
+        {
+          "function_id": 1,
+          "pincm": 41,
+          "name": "GPIOB2",
+          "peripheral": "gpiob",
+          "signal": "2",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 4,
+          "pincm": 41,
+          "name": "I2C1_SCL",
+          "peripheral": "i2c1",
+          "signal": "scl",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 5,
+          "pincm": 41,
+          "name": "UART1_TX",
+          "peripheral": "uart1",
+          "signal": "tx",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        }
+      ]
+    },
+    {
+      "number": 42,
+      "name": "PB3",
+      "port": "B",
+      "gpio_num": 3,
+      "kind": "io",
+      "side": "top",
+      "default_function": "Reset",
+      "alt_functions": [
+        {
+          "function_id": 1,
+          "pincm": 42,
+          "name": "GPIOB3",
+          "peripheral": "gpiob",
+          "signal": "3",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 4,
+          "pincm": 42,
+          "name": "I2C1_SDA",
+          "peripheral": "i2c1",
+          "signal": "sda",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 5,
+          "pincm": 42,
+          "name": "UART1_RX",
+          "peripheral": "uart1",
+          "signal": "rx",
+          "direction": "in",
+          "zephyr_pinmux": ""
+        }
+      ]
+    },
+    {
+      "number": 43,
+      "name": "PB6",
+      "port": "B",
+      "gpio_num": 6,
+      "kind": "io",
+      "side": "top",
+      "default_function": "Reset",
+      "alt_functions": [
+        {
+          "function_id": 1,
+          "pincm": 43,
+          "name": "GPIOB6",
+          "peripheral": "gpiob",
+          "signal": "6",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 2,
+          "pincm": 43,
+          "name": "TIMG6_CCP0",
+          "peripheral": "timg6",
+          "signal": "ccp0",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 5,
+          "pincm": 43,
+          "name": "UART1_CTS",
+          "peripheral": "uart1",
+          "signal": "cts",
+          "direction": "in",
+          "zephyr_pinmux": ""
+        }
+      ]
+    },
+    {
+      "number": 44,
+      "name": "PB7",
+      "port": "B",
+      "gpio_num": 7,
+      "kind": "io",
+      "side": "top",
+      "default_function": "Reset",
+      "alt_functions": [
+        {
+          "function_id": 1,
+          "pincm": 44,
+          "name": "GPIOB7",
+          "peripheral": "gpiob",
+          "signal": "7",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 2,
+          "pincm": 44,
+          "name": "TIMG6_CCP1",
+          "peripheral": "timg6",
+          "signal": "ccp1",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 5,
+          "pincm": 44,
+          "name": "UART1_RTS",
+          "peripheral": "uart1",
+          "signal": "rts",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        }
+      ]
+    },
+    {
+      "number": 45,
+      "name": "DVDD",
+      "port": "",
+      "gpio_num": -1,
+      "kind": "power",
+      "side": "top",
+      "default_function": "Reset",
+      "alt_functions": []
+    },
+    {
+      "number": 46,
+      "name": "DVSS",
+      "port": "",
+      "gpio_num": -1,
+      "kind": "ground",
+      "side": "top",
+      "default_function": "Reset",
+      "alt_functions": []
+    },
+    {
+      "number": 47,
+      "name": "PB16",
+      "port": "B",
+      "gpio_num": 16,
+      "kind": "io",
+      "side": "top",
+      "default_function": "Reset",
+      "alt_functions": [
+        {
+          "function_id": 1,
+          "pincm": 47,
+          "name": "GPIOB16",
+          "peripheral": "gpiob",
+          "signal": "16",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 2,
+          "pincm": 47,
+          "name": "TIMG7_CCP0",
+          "peripheral": "timg7",
+          "signal": "ccp0",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        }
+      ]
+    },
+    {
+      "number": 48,
+      "name": "PB22",
+      "port": "B",
+      "gpio_num": 22,
+      "kind": "io",
+      "side": "top",
+      "default_function": "Reset",
+      "alt_functions": [
+        {
+          "function_id": 1,
+          "pincm": 48,
+          "name": "GPIOB22",
+          "peripheral": "gpiob",
+          "signal": "22",
+          "direction": "io",
+          "zephyr_pinmux": ""
+        },
+        {
+          "function_id": 2,
+          "pincm": 48,
+          "name": "TIMG7_CCP1",
+          "peripheral": "timg7",
+          "signal": "ccp1",
+          "direction": "out",
+          "zephyr_pinmux": ""
+        }
+      ]
+    }
+  ],
+  "peripherals": [
+    {
+      "name": "gpioa",
+      "display": "GPIO A",
+      "compatible": "ti,mspm0-gpio",
+      "signals": [],
+      "dts_node": "&gpioa",
+      "enabled": false,
+      "core_id": "",
+      "available_cores": []
+    },
+    {
+      "name": "gpiob",
+      "display": "GPIO B",
+      "compatible": "ti,mspm0-gpio",
+      "signals": [],
+      "dts_node": "&gpiob",
+      "enabled": false,
+      "core_id": "",
+      "available_cores": []
+    },
+    {
+      "name": "uart0",
+      "display": "UART 0",
+      "compatible": "ti,mspm0-uart",
+      "signals": [
+        "tx",
+        "rx"
+      ],
+      "dts_node": "&uart0",
+      "enabled": false,
+      "core_id": "",
+      "available_cores": []
+    },
+    {
+      "name": "uart1",
+      "display": "UART 1",
+      "compatible": "ti,mspm0-uart",
+      "signals": [
+        "tx",
+        "rx"
+      ],
+      "dts_node": "&uart1",
+      "enabled": false,
+      "core_id": "",
+      "available_cores": []
+    },
+    {
+      "name": "uart2",
+      "display": "UART 2",
+      "compatible": "ti,mspm0-uart",
+      "signals": [
+        "tx",
+        "rx"
+      ],
+      "dts_node": "&uart2",
+      "enabled": false,
+      "core_id": "",
+      "available_cores": []
+    },
+    {
+      "name": "uart3",
+      "display": "UART 3",
+      "compatible": "ti,mspm0-uart",
+      "signals": [
+        "tx",
+        "rx"
+      ],
+      "dts_node": "&uart3",
+      "enabled": false,
+      "core_id": "",
+      "available_cores": []
+    },
+    {
+      "name": "spi0",
+      "display": "SPI 0",
+      "compatible": "ti,mspm0-spi",
+      "signals": [
+        "sclk",
+        "pico",
+        "poci",
+        "cs0"
+      ],
+      "dts_node": "&spi0",
+      "enabled": false,
+      "core_id": "",
+      "available_cores": []
+    },
+    {
+      "name": "spi1",
+      "display": "SPI 1",
+      "compatible": "ti,mspm0-spi",
+      "signals": [
+        "sclk",
+        "pico",
+        "poci",
+        "cs0"
+      ],
+      "dts_node": "&spi1",
+      "enabled": false,
+      "core_id": "",
+      "available_cores": []
+    },
+    {
+      "name": "i2c0",
+      "display": "I2C 0",
+      "compatible": "ti,mspm0-i2c",
+      "signals": [
+        "scl",
+        "sda"
+      ],
+      "dts_node": "&i2c0",
+      "enabled": false,
+      "core_id": "",
+      "available_cores": []
+    },
+    {
+      "name": "i2c1",
+      "display": "I2C 1",
+      "compatible": "ti,mspm0-i2c",
+      "signals": [
+        "scl",
+        "sda"
+      ],
+      "dts_node": "&i2c1",
+      "enabled": false,
+      "core_id": "",
+      "available_cores": []
+    },
+    {
+      "name": "can0",
+      "display": "CAN 0",
+      "compatible": "ti,mspm0-can",
+      "signals": [
+        "tx",
+        "rx"
+      ],
+      "dts_node": "&can0",
+      "enabled": false,
+      "core_id": "",
+      "available_cores": []
+    },
+    {
+      "name": "tima0",
+      "display": "Timer A0 (PWM)",
+      "compatible": "ti,mspm0-timer-pwm",
+      "signals": [
+        "ccp0",
+        "ccp1",
+        "ccp2",
+        "ccp3"
+      ],
+      "dts_node": "&tima0",
+      "enabled": false,
+      "core_id": "",
+      "available_cores": []
+    },
+    {
+      "name": "tima1",
+      "display": "Timer A1 (PWM)",
+      "compatible": "ti,mspm0-timer-pwm",
+      "signals": [
+        "ccp0",
+        "ccp1"
+      ],
+      "dts_node": "&tima1",
+      "enabled": false,
+      "core_id": "",
+      "available_cores": []
+    },
+    {
+      "name": "timg0",
+      "display": "Timer G0",
+      "compatible": "ti,mspm0-timer",
+      "signals": [
+        "ccp0",
+        "ccp1"
+      ],
+      "dts_node": "&timg0",
+      "enabled": false,
+      "core_id": "",
+      "available_cores": []
+    },
+    {
+      "name": "timg6",
+      "display": "Timer G6",
+      "compatible": "ti,mspm0-timer",
+      "signals": [
+        "ccp0",
+        "ccp1"
+      ],
+      "dts_node": "&timg6",
+      "enabled": false,
+      "core_id": "",
+      "available_cores": []
+    },
+    {
+      "name": "timg7",
+      "display": "Timer G7",
+      "compatible": "ti,mspm0-timer",
+      "signals": [
+        "ccp0",
+        "ccp1"
+      ],
+      "dts_node": "&timg7",
+      "enabled": false,
+      "core_id": "",
+      "available_cores": []
+    },
+    {
+      "name": "timg8",
+      "display": "Timer G8",
+      "compatible": "ti,mspm0-timer",
+      "signals": [
+        "ccp0",
+        "ccp1"
+      ],
+      "dts_node": "&timg8",
+      "enabled": false,
+      "core_id": "",
+      "available_cores": []
+    },
+    {
+      "name": "timg12",
+      "display": "Timer G12",
+      "compatible": "ti,mspm0-timer",
+      "signals": [
+        "ccp0",
+        "ccp1"
+      ],
+      "dts_node": "&timg12",
+      "enabled": false,
+      "core_id": "",
+      "available_cores": []
+    },
+    {
+      "name": "adc0",
+      "display": "ADC 0",
+      "compatible": "ti,mspm0-adc",
+      "signals": [
+        "ch0",
+        "ch1",
+        "ch2",
+        "ch3",
+        "ch4",
+        "ch5",
+        "ch6",
+        "ch7"
+      ],
+      "dts_node": "&adc0",
+      "enabled": false,
+      "core_id": "",
+      "available_cores": []
+    },
+    {
+      "name": "dac0",
+      "display": "DAC 0",
+      "compatible": "ti,mspm0-dac",
+      "signals": [
+        "out"
+      ],
+      "dts_node": "&dac0",
+      "enabled": false,
+      "core_id": "",
+      "available_cores": []
+    },
+    {
+      "name": "comp0",
+      "display": "Comp 0",
+      "compatible": "ti,mspm0-comp",
+      "signals": [
+        "out"
+      ],
+      "dts_node": "&comp0",
+      "enabled": false,
+      "core_id": "",
+      "available_cores": []
+    },
+    {
+      "name": "comp1",
+      "display": "Comp 1",
+      "compatible": "ti,mspm0-comp",
+      "signals": [
+        "out"
+      ],
+      "dts_node": "&comp1",
+      "enabled": false,
+      "core_id": "",
+      "available_cores": []
+    }
+  ],
+  "external_devices": [
+    {
+      "id": "gps_module",
+      "display": "GPS module",
+      "category": "manual",
+      "required_signals": [
+        "VCC",
+        "GND",
+        "TX",
+        "RX"
+      ],
+      "pins": [
+        "VCC",
+        "GND",
+        "TX",
+        "RX"
+      ],
+      "bus": "",
+      "compatible": "",
+      "address": "",
+      "notes": "",
+      "frameworks": [],
+      "x": 1140,
+      "y": 664.9999694824219
+    }
+  ],
+  "manual_connections": [
+    {
+      "board_pin": 13,
+      "device_id": "gps_module",
+      "device_pin": "TX"
+    }
+  ]
+}

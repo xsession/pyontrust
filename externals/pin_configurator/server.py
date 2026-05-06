@@ -33,7 +33,7 @@ if str(_HERE) not in sys.path:
 
 from board_schema import board_to_frontend
 from boards import BOARDS
-from dts_generator import PinAssignment, PeripheralConfig, generate
+from dts_generator import ExternalDeviceConfig, PinAssignment, PeripheralConfig, generate
 from pdf_parser import parse_datasheet, DatasheetInfo
 from package_generator import generate_board_files
 from overlay_parser import parse_import, import_result_to_json
@@ -79,6 +79,40 @@ def _get_board(name: str):
     return _BOARD_CACHE[name]
 
 
+def _find_board(board_ref: str):
+    """Resolve a board by registry id or runtime board name."""
+    if not board_ref:
+        return None
+
+    board = _get_board(board_ref)
+    if board is not None:
+        return board
+
+    for board_id in BOARDS:
+        candidate = _get_board(board_id)
+        if candidate and candidate.board == board_ref:
+            return candidate
+
+    return None
+
+
+def _match_alt_function(board, pin_name: str, peripheral: str, signal: str, function_id: int):
+    if board is None:
+        return None
+
+    for pin in board.pins:
+        if pin.name != pin_name:
+            continue
+        for alt in pin.alt_functions:
+            if (
+                alt.peripheral == peripheral
+                and alt.signal == signal
+                and alt.function_id == function_id
+            ):
+                return alt
+    return None
+
+
 # ── Routes ────────────────────────────────────────────────────────────
 
 @app.route("/")
@@ -122,6 +156,8 @@ def generate_overlay():
     }
     """
     body = request.get_json(force=True)
+    board = _find_board(body.get("board_id") or body.get("board", ""))
+    targets = body.get("targets") or ["zephyr", "arduino", "baremetal"]
 
     assignments = [
         PinAssignment(
@@ -132,6 +168,15 @@ def generate_overlay():
             peripheral=a["peripheral"],
             signal=a["signal"],
             direction=a.get("direction", "io"),
+            zephyr_pinmux=a.get("zephyr_pinmux", "") or (
+                matched.zephyr_pinmux if (matched := _match_alt_function(
+                    board,
+                    a["pin_name"],
+                    a["peripheral"],
+                    a["signal"],
+                    a["function_id"],
+                )) else ""
+            ),
             bias_pull_up=a.get("bias_pull_up", False),
             bias_pull_down=a.get("bias_pull_down", False),
             drive_open_drain=a.get("drive_open_drain", False),
@@ -146,15 +191,39 @@ def generate_overlay():
             dts_node=p.get("dts_node", ""),
             compatible=p.get("compatible", ""),
             enabled=p.get("enabled", False),
+            core_id=p.get("core_id", ""),
         )
         for p in body.get("peripherals", [])
     ]
 
-    result = generate(assignments, periphs, board_name=body.get("board", "custom"))
+    external_devices = [
+        ExternalDeviceConfig(
+            id=str(device.get("id", "")).strip(),
+            display=str(device.get("display", device.get("id", ""))).strip(),
+            category=str(device.get("category", "device")),
+            bus=str(device.get("bus", "")),
+            compatible=str(device.get("compatible", "")),
+            address=str(device.get("address", "")),
+            required_signals=[str(signal) for signal in device.get("required_signals", [])],
+            frameworks=[str(framework) for framework in device.get("frameworks", [])],
+            notes=str(device.get("notes", "")),
+        )
+        for device in body.get("external_devices", [])
+        if isinstance(device, dict) and str(device.get("id", "")).strip()
+    ]
+
+    result = generate(
+        assignments,
+        periphs,
+        board_name=body.get("board", "custom"),
+        targets=[str(target) for target in targets] if isinstance(targets, list) else None,
+        external_devices=external_devices,
+    )
 
     return jsonify({
         "overlay": result.overlay,
         "prj_conf": result.prj_conf,
+        "targets": result.targets,
     })
 
 
@@ -222,6 +291,7 @@ def project_file_save():
       "board_id": "lp_mspm0g3507",
       "pin_states": { "1": { "af": { ... }, "props": { ... } }, ... },
       "periph_states": { "uart0": true, "spi0": false, ... },
+            "periph_core_states": { "uart0": "core0", "spi0": "core1" },
       "generated_overlay": "...",   // optional
       "generated_conf": "..."       // optional
     }
@@ -245,6 +315,8 @@ def project_file_save():
         "board_id": body.get("board_id", ""),
         "pin_states": body.get("pin_states", {}),
         "periph_states": body.get("periph_states", {}),
+        "periph_core_states": body.get("periph_core_states", {}),
+        "external_device_states": body.get("external_device_states", {}),
         "generated_overlay": body.get("generated_overlay", ""),
         "generated_conf": body.get("generated_conf", ""),
         "sensor_jobs": body.get("sensor_jobs", []),
@@ -388,6 +460,7 @@ def generate_package():
       "dts_soc_include": "...",         // optional
       "dts_pinctrl_include": "...",     // optional
       "pinctrl_header": "...",          // optional
+            "external_devices": [{...}],       // optional external Zephyr/Arduino devices
       "register": true                  // update boards/__init__.py
     }
     """
@@ -413,6 +486,9 @@ def generate_package():
                             f"{[p.name for p in _PARSED_JOBS[job_id]['info'].packages]}"}), 400
 
     boards_dir = _HERE / "boards"
+    external_devices = body.get("external_devices")
+    if not isinstance(external_devices, list):
+        external_devices = []
 
     try:
         files = generate_board_files(
@@ -422,6 +498,7 @@ def generate_package():
             dts_soc_include=body.get("dts_soc_include"),
             dts_pinctrl_include=body.get("dts_pinctrl_include"),
             pinctrl_header=body.get("pinctrl_header"),
+            external_devices=external_devices,
             register_in_init=body.get("register", True),
         )
     except Exception as exc:

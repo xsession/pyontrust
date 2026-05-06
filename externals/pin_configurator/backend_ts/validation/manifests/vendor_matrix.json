@@ -1,0 +1,167 @@
+{
+  "sensors": [
+    {
+      "vendor": "bosch",
+      "label": "BMP280",
+      "filename": "bmp280_vendor_matrix.pdf",
+      "urls": [
+        "https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmp280-ds001.pdf",
+        "https://cdn.sparkfun.com/assets/learn_tutorials/3/6/8/BMP280-Datasheet.pdf"
+      ]
+    },
+    {
+      "vendor": "st",
+      "label": "LIS2DH12",
+      "filename": "lis2dh12_vendor_matrix.pdf",
+      "urls": [
+        "https://www.st.com/resource/en/datasheet/lis2dh12.pdf"
+      ]
+    },
+    {
+      "vendor": "adi",
+      "label": "ADXL345",
+      "filename": "adxl345_vendor_matrix.pdf",
+      "urls": [
+        "https://www.analog.com/media/en/technical-documentation/data-sheets/adxl345.pdf"
+      ]
+    },
+    {
+      "vendor": "ti",
+      "label": "TMP117",
+      "filename": "tmp117_vendor_matrix.pdf",
+      "urls": [
+        "https://www.ti.com/lit/gpn/tmp117"
+      ]
+    },
+    {
+      "vendor": "nxp",
+      "label": "FXOS8700CQ",
+      "filename": "fxos8700cq_vendor_matrix.pdf",
+      "urls": [
+        "https://www.nxp.com/docs/en/data-sheet/FXOS8700CQ.pdf"
+      ]
+    },
+    {
+      "vendor": "microchip",
+      "label": "MCP9808",
+      "filename": "mcp9808_vendor_matrix.pdf",
+      "urls": [
+        "https://ww1.microchip.com/downloads/en/DeviceDoc/25095A.pdf"
+      ]
+    },
+    {
+      "vendor": "vishay",
+      "label": "VEML7700",
+      "filename": "veml7700_vendor_matrix.pdf",
+      "urls": [
+        "https://www.vishay.com/docs/84286/veml7700.pdf"
+      ]
+    },
+    {
+      "vendor": "melexis",
+      "label": "MLX90614",
+      "filename": "mlx90614_vendor_matrix.pdf",
+      "urls": [
+        "https://www.melexis.com/-/media/files/documents/datasheets/mlx90614-datasheet-melexis.pdf"
+      ]
+    },
+    {
+      "vendor": "murata",
+      "label": "SCL3300",
+      "filename": "scl3300_vendor_matrix.pdf",
+      "urls": [
+        "https://www.murata.com/-/media/webrenewal/products/sensor/pdf/datasheet/datasheet_scl3300-d01.ashx"
+      ]
+    },
+    {
+      "vendor": "renesas",
+      "label": "ZMOD4410",
+      "filename": "zmod4410_vendor_matrix.pdf",
+      "urls": [
+        "https://www.renesas.com/document/dst/zmod4410-datasheet"
+      ]
+    }
+  ],
+  "mcus": [
+    {
+      "vendor": "ti",
+      "label": "MSPM0G3507",
+      "filename": "mspm0g3507_vendor_matrix.pdf",
+      "urls": [
+        "https://www.ti.com/lit/gpn/mspm0g3507"
+      ]
+    },
+    {
+      "vendor": "st",
+      "label": "STM32F411RE",
+      "filename": "stm32f411re_vendor_matrix.pdf",
+      "urls": [
+        "https://www.st.com/resource/en/datasheet/stm32f411re.pdf"
+      ]
+    },
+    {
+      "vendor": "nxp",
+      "label": "LPC802",
+      "filename": "lpc802_vendor_matrix.pdf",
+      "urls": [
+        "https://www.nxp.com/docs/en/data-sheet/LPC802.pdf"
+      ]
+    },
+    {
+      "vendor": "microchip",
+      "label": "SAMD11",
+      "filename": "samd11_vendor_matrix.pdf",
+      "urls": [
+        "https://ww1.microchip.com/downloads/en/DeviceDoc/Atmel-42363-SAM-D11_Datasheet.pdf"
+      ]
+    },
+    {
+      "vendor": "espressif",
+      "label": "ESP32",
+      "filename": "esp32_vendor_matrix.pdf",
+      "urls": [
+        "https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf"
+      ]
+    },
+    {
+      "vendor": "wch",
+      "label": "CH32V003",
+      "filename": "ch32v003_vendor_matrix.pdf",
+      "urls": [
+        "https://www.wch-ic.com/download/file?id=359"
+      ]
+    },
+    {
+      "vendor": "renesas",
+      "label": "RA2L1",
+      "filename": "ra2l1_vendor_matrix.pdf",
+      "urls": [
+        "https://www.renesas.com/document/dst/ra2l1-group-datasheet"
+      ]
+    },
+    {
+      "vendor": "silabs",
+      "label": "EFM32PG22",
+      "filename": "efm32pg22_vendor_matrix.pdf",
+      "urls": [
+        "https://www.silabs.com/documents/public/data-sheets/efm32pg22-datasheet.pdf"
+      ]
+    },
+    {
+      "vendor": "raspberrypi",
+      "label": "RP2040",
+      "filename": "rp2040_vendor_matrix.pdf",
+      "urls": [
+        "https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf"
+      ]
+    },
+    {
+      "vendor": "nuvoton",
+      "label": "NUC126",
+      "filename": "nuc126_vendor_matrix.pdf",
+      "urls": [
+        "https://www.nuvoton.com/export/resource-files/DS_NUC126_Series_EN_Rev1.04.pdf"
+      ]
+    }
+  ]
+}

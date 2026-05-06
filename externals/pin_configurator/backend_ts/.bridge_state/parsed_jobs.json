@@ -1,0 +1,147 @@
+{
+  "bb39b99bb97a": {
+    "job_id": "bb39b99bb97a",
+    "filename": "lpc802_vendor_matrix.pdf",
+    "upload_path": "C:\\GIT\\addmind\\deps\\pyontrust\\externals\\pin_configurator\\.uploads\\bb39b99bb97a_lpc802_vendor_matrix.pdf",
+    "result": {
+      "device": {
+        "soc": "LPC802",
+        "vendor": "nxp",
+        "flash_size_kb": 16,
+        "sram_size_kb": 2,
+        "clock_hz": 0
+      },
+      "packages": [],
+      "pin_mux_count": 0,
+      "pin_mux_total_funcs": 0,
+      "pin_mux_sample": {}
+    },
+    "full_result": {
+      "device": {
+        "soc": "LPC802",
+        "vendor": "nxp",
+        "flash_size_kb": 16,
+        "sram_size_kb": 2,
+        "clock_hz": 0
+      },
+      "packages": [],
+      "pin_mux": {}
+    }
+  },
+  "5ba5524a7e3f": {
+    "job_id": "5ba5524a7e3f",
+    "filename": "lpc802_vendor_matrix.pdf",
+    "upload_path": "C:\\GIT\\addmind\\deps\\pyontrust\\externals\\pin_configurator\\.uploads\\5ba5524a7e3f_lpc802_vendor_matrix.pdf",
+    "result": {
+      "device": {
+        "soc": "LPC802",
+        "vendor": "nxp",
+        "flash_size_kb": 16,
+        "sram_size_kb": 2,
+        "clock_hz": 0
+      },
+      "packages": [],
+      "pin_mux_count": 0,
+      "pin_mux_total_funcs": 0,
+      "pin_mux_sample": {}
+    },
+    "full_result": {
+      "device": {
+        "soc": "LPC802",
+        "vendor": "nxp",
+        "flash_size_kb": 16,
+        "sram_size_kb": 2,
+        "clock_hz": 0
+      },
+      "packages": [],
+      "pin_mux": {}
+    }
+  },
+  "922276231e4a": {
+    "job_id": "922276231e4a",
+    "filename": "samd11_vendor_matrix.pdf",
+    "upload_path": "C:\\GIT\\addmind\\deps\\pyontrust\\externals\\pin_configurator\\.uploads\\922276231e4a_samd11_vendor_matrix.pdf",
+    "result": {
+      "device": {
+        "soc": "ATSAM",
+        "vendor": "microchip",
+        "flash_size_kb": 16,
+        "sram_size_kb": 4,
+        "clock_hz": 48000000
+      },
+      "packages": [],
+      "pin_mux_count": 0,
+      "pin_mux_total_funcs": 0,
+      "pin_mux_sample": {}
+    },
+    "full_result": {
+      "device": {
+        "soc": "ATSAM",
+        "vendor": "microchip",
+        "flash_size_kb": 16,
+        "sram_size_kb": 4,
+        "clock_hz": 48000000
+      },
+      "packages": [],
+      "pin_mux": {}
+    }
+  },
+  "290a325108b1": {
+    "job_id": "290a325108b1",
+    "filename": "nuc126_vendor_matrix.pdf",
+    "upload_path": "C:\\GIT\\addmind\\deps\\pyontrust\\externals\\pin_configurator\\.uploads\\290a325108b1_nuc126_vendor_matrix.pdf",
+    "result": {
+      "device": {
+        "soc": "NUC126",
+        "vendor": "nuvoton",
+        "flash_size_kb": 4,
+        "sram_size_kb": 0,
+        "clock_hz": 144000000
+      },
+      "packages": [],
+      "pin_mux_count": 0,
+      "pin_mux_total_funcs": 0,
+      "pin_mux_sample": {}
+    },
+    "full_result": {
+      "device": {
+        "soc": "NUC126",
+        "vendor": "nuvoton",
+        "flash_size_kb": 4,
+        "sram_size_kb": 0,
+        "clock_hz": 144000000
+      },
+      "packages": [],
+      "pin_mux": {}
+    }
+  },
+  "d8c976ed862e": {
+    "job_id": "d8c976ed862e",
+    "filename": "fe07dc212751_ra2l1_vendor_matrix.pdf",
+    "upload_path": "C:\\GIT\\addmind\\deps\\pyontrust\\externals\\pin_configurator\\.uploads\\mcu_jobs\\d8c976ed862e_fe07dc212751_ra2l1_vendor_matrix.pdf",
+    "result": {
+      "device": {
+        "soc": "RA2L1",
+        "vendor": "renesas",
+        "flash_size_kb": 256,
+        "sram_size_kb": 32,
+        "clock_hz": 48000000
+      },
+      "packages": [],
+      "pin_mux_count": 0,
+      "pin_mux_total_funcs": 0,
+      "pin_mux_sample": {}
+    },
+    "full_result": {
+      "device": {
+        "soc": "RA2L1",
+        "vendor": "renesas",
+        "flash_size_kb": 256,
+        "sram_size_kb": 32,
+        "clock_hz": 48000000
+      },
+      "packages": [],
+      "pin_mux": {}
+    }
+  }
+}

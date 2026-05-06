@@ -1,0 +1,145 @@
+{
+  "c:\\git\\addmind\\deps\\pyontrust\\externals\\pin_configurator\\.uploads\\incoming\\legacy\\389f022718f0b99db4c410485c134593": {
+    "file": ".uploads\\incoming\\legacy\\389f022718f0b99db4c410485c134593",
+    "size": 2151969,
+    "mtime_ms": 1777397921320.1235,
+    "kind": "sensor",
+    "job_id": "bf8433627934"
+  },
+  "c:\\git\\addmind\\deps\\pyontrust\\externals\\pin_configurator\\.uploads\\incoming\\legacy\\175e4d8126c4_stm32f411re_vendor_matrix.pdf": {
+    "file": ".uploads\\incoming\\legacy\\175e4d8126c4_stm32f411re_vendor_matrix.pdf",
+    "size": 2151969,
+    "mtime_ms": 1777399004902.8335,
+    "content_hash": "d1a6c24c17fad99dc1cce858e91475d7c53ab1bc029e1c119bb3e60f0e92a64c",
+    "kind": "unknown",
+    "job_id": null
+  },
+  "c:\\git\\addmind\\deps\\pyontrust\\externals\\pin_configurator\\.uploads\\incoming\\legacy\\2a384369e3ee_389f022718f0b99db4c410485c134593.pdf": {
+    "file": ".uploads\\incoming\\legacy\\2a384369e3ee_389f022718f0b99db4c410485c134593.pdf",
+    "size": 2151969,
+    "mtime_ms": 1777397921320.1235,
+    "content_hash": "d1a6c24c17fad99dc1cce858e91475d7c53ab1bc029e1c119bb3e60f0e92a64c",
+    "kind": "unknown",
+    "job_id": null
+  },
+  "c:\\git\\addmind\\deps\\pyontrust\\externals\\pin_configurator\\.uploads\\incoming\\legacy\\332bac53983b_efm32pg22_vendor_matrix.pdf": {
+    "file": ".uploads\\incoming\\legacy\\332bac53983b_efm32pg22_vendor_matrix.pdf",
+    "size": 1290967,
+    "mtime_ms": 1777399848584.9246,
+    "content_hash": "846352b27f8e04e3b8cf6d9f1685f1072cc115fd84aeb4c7708191a57c1d3d0a",
+    "kind": "unknown",
+    "job_id": null
+  },
+  "c:\\git\\addmind\\deps\\pyontrust\\externals\\pin_configurator\\.uploads\\incoming\\legacy\\507723a1107b_adxl345_vendor_matrix.pdf": {
+    "file": ".uploads\\incoming\\legacy\\507723a1107b_adxl345_vendor_matrix.pdf",
+    "size": 1487158,
+    "mtime_ms": 1777398748196.5413,
+    "content_hash": "87ae2212498c35a6759d8732adee0ec9b9d8d60fa95688bc5904f1f07ceb8ff6",
+    "kind": "unknown",
+    "job_id": null
+  },
+  "c:\\git\\addmind\\deps\\pyontrust\\externals\\pin_configurator\\.uploads\\incoming\\legacy\\5b56b31a09dc_mspm0g3507_vendor_matrix.pdf": {
+    "file": ".uploads\\incoming\\legacy\\5b56b31a09dc_mspm0g3507_vendor_matrix.pdf",
+    "size": 5347434,
+    "mtime_ms": 1777398934334.7112,
+    "content_hash": "980b44e0e1b64aed76e0168f2d2f3ee2d928323638cf4eb88aea354d8c705e80",
+    "kind": "unknown",
+    "job_id": null
+  },
+  "c:\\git\\addmind\\deps\\pyontrust\\externals\\pin_configurator\\.uploads\\incoming\\legacy\\5e15994cf390_ch32v003_vendor_matrix.pdf": {
+    "file": ".uploads\\incoming\\legacy\\5e15994cf390_ch32v003_vendor_matrix.pdf",
+    "size": 723483,
+    "mtime_ms": 1777399561161.1973,
+    "content_hash": "186210d35123325ea49305e3a0152cbfa6e377d8e6efc2e610e3497daabe17f8",
+    "kind": "unknown",
+    "job_id": null
+  },
+  "c:\\git\\addmind\\deps\\pyontrust\\externals\\pin_configurator\\.uploads\\incoming\\legacy\\65b2245b4cc3ebcc519fc9e6e4ef496f": {
+    "file": ".uploads\\incoming\\legacy\\65b2245b4cc3ebcc519fc9e6e4ef496f",
+    "size": 5301205,
+    "mtime_ms": 1777399930846.7344,
+    "content_hash": "be56fbb75ba0ae9e26558a73c93ac3e75c2ad4e6878d3b6703de2a76d886ea8c",
+    "kind": "unknown",
+    "job_id": null
+  },
+  "c:\\git\\addmind\\deps\\pyontrust\\externals\\pin_configurator\\.uploads\\incoming\\legacy\\7a08cc072361_lis2dh12_vendor_matrix.pdf": {
+    "file": ".uploads\\incoming\\legacy\\7a08cc072361_lis2dh12_vendor_matrix.pdf",
+    "size": 1142100,
+    "mtime_ms": 1777398727097.3367,
+    "content_hash": "eb79e6ee9ca70ef91f17c695fd5d2c6c6b24525b87b9ae41537bcb348f6cad56",
+    "kind": "unknown",
+    "job_id": null
+  },
+  "c:\\git\\addmind\\deps\\pyontrust\\externals\\pin_configurator\\.uploads\\incoming\\legacy\\7cf875f68de8_esp32_vendor_matrix.pdf": {
+    "file": ".uploads\\incoming\\legacy\\7cf875f68de8_esp32_vendor_matrix.pdf",
+    "size": 989232,
+    "mtime_ms": 1777399473414.8699,
+    "content_hash": "6fdff42cce00775643335e0ccb1dc1024070bb86208a2c734e9c09675ca3894a",
+    "kind": "unknown",
+    "job_id": null
+  },
+  "c:\\git\\addmind\\deps\\pyontrust\\externals\\pin_configurator\\.uploads\\incoming\\legacy\\886cbdee7afc_fxos8700cq_vendor_matrix.pdf": {
+    "file": ".uploads\\incoming\\legacy\\886cbdee7afc_fxos8700cq_vendor_matrix.pdf",
+    "size": 2316576,
+    "mtime_ms": 1777398816151.6091,
+    "content_hash": "62a143bd5f7f292dec66a30afdaa852da697cbe391c5385082e688f21dccc17e",
+    "kind": "unknown",
+    "job_id": null
+  },
+  "c:\\git\\addmind\\deps\\pyontrust\\externals\\pin_configurator\\.uploads\\incoming\\legacy\\b1013b4124bd_bmp280_vendor_matrix.pdf": {
+    "file": ".uploads\\incoming\\legacy\\b1013b4124bd_bmp280_vendor_matrix.pdf",
+    "size": 1162932,
+    "mtime_ms": 1777398712818.131,
+    "content_hash": "473ff27d9df698b4757e36b36209f83b9f637b592c999d5fabe2a9453a488da6",
+    "kind": "unknown",
+    "job_id": null
+  },
+  "c:\\git\\addmind\\deps\\pyontrust\\externals\\pin_configurator\\.uploads\\incoming\\legacy\\bf8433627934_389f022718f0b99db4c410485c134593.pdf": {
+    "file": ".uploads\\incoming\\legacy\\bf8433627934_389f022718f0b99db4c410485c134593.pdf",
+    "size": 2151969,
+    "mtime_ms": 1777397921320.1235,
+    "content_hash": "d1a6c24c17fad99dc1cce858e91475d7c53ab1bc029e1c119bb3e60f0e92a64c",
+    "kind": "unknown",
+    "job_id": null
+  },
+  "c:\\git\\addmind\\deps\\pyontrust\\externals\\pin_configurator\\.uploads\\incoming\\legacy\\c6a4ef50c160_mlx90614_vendor_matrix.pdf": {
+    "file": ".uploads\\incoming\\legacy\\c6a4ef50c160_mlx90614_vendor_matrix.pdf",
+    "size": 2900188,
+    "mtime_ms": 1777398862769.4165,
+    "content_hash": "39f005d210921629d16c3898a85f479b4f160751058629f902a4fce0c3d7952c",
+    "kind": "sensor",
+    "job_id": "6fbea4c5ec02"
+  },
+  "c:\\git\\addmind\\deps\\pyontrust\\externals\\pin_configurator\\.uploads\\incoming\\legacy\\ce937f5b3bae_veml7700_vendor_matrix.pdf": {
+    "file": ".uploads\\incoming\\legacy\\ce937f5b3bae_veml7700_vendor_matrix.pdf",
+    "size": 295562,
+    "mtime_ms": 1777398854377.8271,
+    "content_hash": "f338cf7d5911828a2f2ac8ae8324049380c852e34aa5afa43ac92c98ffe827d1",
+    "kind": "sensor",
+    "job_id": "c0f4a4171389"
+  },
+  "c:\\git\\addmind\\deps\\pyontrust\\externals\\pin_configurator\\.uploads\\incoming\\legacy\\deeee486a1c6_zmod4410_vendor_matrix.pdf": {
+    "file": ".uploads\\incoming\\legacy\\deeee486a1c6_zmod4410_vendor_matrix.pdf",
+    "size": 1719501,
+    "mtime_ms": 1777398923140.4426,
+    "content_hash": "b7bff24ed2181b7448da80a22f14ff2a51c3f72fc9ba28b77bbdbb77579eecf3",
+    "kind": "sensor",
+    "job_id": "02dbd7b56d9e"
+  },
+  "c:\\git\\addmind\\deps\\pyontrust\\externals\\pin_configurator\\.uploads\\incoming\\legacy\\fe07dc212751_ra2l1_vendor_matrix.pdf": {
+    "file": ".uploads\\incoming\\legacy\\fe07dc212751_ra2l1_vendor_matrix.pdf",
+    "size": 2209794,
+    "mtime_ms": 1777399608185.8206,
+    "content_hash": "42fa95d5bd4bdd0770c4cd50d2a0c19510e62f85926fa13f7bed17c8f7332666",
+    "kind": "mcu",
+    "job_id": "d8c976ed862e"
+  },
+  "c:\\git\\addmind\\deps\\pyontrust\\externals\\pin_configurator\\.uploads\\incoming\\legacy\\fe196a72e204_mcp9808_vendor_matrix.pdf": {
+    "file": ".uploads\\incoming\\legacy\\fe196a72e204_mcp9808_vendor_matrix.pdf",
+    "size": 1111378,
+    "mtime_ms": 1777398840374.7048,
+    "content_hash": "9578bb72de18d76830ce34f256ef36b400542a3e7bbb9c6d0b74f0a72577ee11",
+    "kind": "sensor",
+    "job_id": "71e6fe0c463a"
+  }
+}

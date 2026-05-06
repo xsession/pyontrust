@@ -1,0 +1,1060 @@
+{
+  "summaries": [
+    {
+      "id": "mspm0g3507",
+      "name": "MSPM0G3507 Clock Tree",
+      "soc": "MSPM0G3507",
+      "desc": "MSPM0G3507 has SYSOSC (up to 32 MHz), LFOSC (32 kHz), optional HFXT (4\u201348 MHz crystal), LFXT (32.768 kHz crystal), SYSPLL (up to 80 MHz), and flexible MCLK / ULPCLK / LFCLK routing.",
+      "max_freq": 80000000,
+      "node_count": 14
+    },
+    {
+      "id": "stm32_generic",
+      "name": "STM32 Generic Clock Tree",
+      "soc": "STM32 (Generic)",
+      "desc": "Generic STM32 clock tree with HSI/HSE, PLL, and AHB/APB prescalers. Covers F4, L4, G4, H7 families at a high level.",
+      "max_freq": 170000000,
+      "node_count": 12
+    },
+    {
+      "id": "nrf52",
+      "name": "nRF52 Clock Tree",
+      "soc": "nRF52 (Generic)",
+      "desc": "nRF52 series clock system with HFCLK (64 MHz), LFCLK (32.768 kHz), and selectable internal/external sources.",
+      "max_freq": 64000000,
+      "node_count": 8
+    }
+  ],
+  "byId": {
+    "mspm0g3507": {
+      "id": "mspm0g3507",
+      "name": "MSPM0G3507 Clock Tree",
+      "soc": "MSPM0G3507",
+      "desc": "MSPM0G3507 has SYSOSC (up to 32 MHz), LFOSC (32 kHz), optional HFXT (4\u201348 MHz crystal), LFXT (32.768 kHz crystal), SYSPLL (up to 80 MHz), and flexible MCLK / ULPCLK / LFCLK routing.",
+      "max_freq": 80000000,
+      "nodes": [
+        {
+          "id": "sysosc",
+          "name": "SYSOSC",
+          "type": "source",
+          "icon": "\ud83d\udd37",
+          "desc": "Internal system oscillator, 4/16/24/32 MHz (\u00b11% accuracy)",
+          "parent": null,
+          "freq_hz": 32000000,
+          "props": [
+            {
+              "key": "sysosc-freq",
+              "label": "SYSOSC Frequency",
+              "type": "choice",
+              "choices": [
+                4000000,
+                16000000,
+                24000000,
+                32000000
+              ],
+              "default": 32000000,
+              "help": "SYSOSC base frequency (Hz)",
+              "dts": true,
+              "kconfig": null
+            }
+          ]
+        },
+        {
+          "id": "lfosc",
+          "name": "LFOSC",
+          "type": "source",
+          "icon": "\ud83d\udd37",
+          "desc": "Internal low-frequency oscillator, 32.768 kHz",
+          "parent": null,
+          "freq_hz": 32768,
+          "props": []
+        },
+        {
+          "id": "hfxt",
+          "name": "HFXT",
+          "type": "source",
+          "icon": "\ud83d\udc8e",
+          "desc": "High-frequency external crystal (4\u201348 MHz)",
+          "parent": null,
+          "freq_hz": 0,
+          "props": [
+            {
+              "key": "hfxt-enable",
+              "label": "Enable HFXT",
+              "type": "bool",
+              "default": false,
+              "help": "Enable high-frequency external crystal",
+              "dts": true,
+              "kconfig": null
+            },
+            {
+              "key": "hfxt-freq",
+              "label": "Crystal Frequency (Hz)",
+              "type": "int",
+              "default": 48000000,
+              "help": "HFXT crystal frequency: 4\u201348 MHz",
+              "dts": true,
+              "kconfig": null
+            },
+            {
+              "key": "hfxt-range",
+              "label": "Frequency Range",
+              "type": "choice",
+              "choices": [
+                "4-8 MHz",
+                "8-16 MHz",
+                "16-32 MHz",
+                "32-48 MHz"
+              ],
+              "default": "32-48 MHz",
+              "help": "HFXT frequency range selection",
+              "dts": true,
+              "kconfig": null
+            }
+          ]
+        },
+        {
+          "id": "lfxt",
+          "name": "LFXT",
+          "type": "source",
+          "icon": "\ud83d\udc8e",
+          "desc": "Low-frequency external crystal (32.768 kHz)",
+          "parent": null,
+          "freq_hz": 0,
+          "props": [
+            {
+              "key": "lfxt-enable",
+              "label": "Enable LFXT",
+              "type": "bool",
+              "default": false,
+              "help": "Enable low-frequency external crystal",
+              "dts": true,
+              "kconfig": null
+            }
+          ]
+        },
+        {
+          "id": "syspll",
+          "name": "SYSPLL",
+          "type": "pll",
+          "icon": "\u26a1",
+          "desc": "System PLL (up to 80 MHz output)",
+          "parent": "sysosc",
+          "freq_hz": 0,
+          "props": [
+            {
+              "key": "syspll-enable",
+              "label": "Enable SYSPLL",
+              "type": "bool",
+              "default": false,
+              "help": "Enable the system PLL",
+              "dts": true,
+              "kconfig": null
+            },
+            {
+              "key": "syspll-input",
+              "label": "PLL Reference",
+              "type": "choice",
+              "choices": [
+                "SYSOSC",
+                "HFXT"
+              ],
+              "default": "SYSOSC",
+              "help": "PLL reference clock source",
+              "dts": true,
+              "kconfig": null
+            },
+            {
+              "key": "syspll-pdiv",
+              "label": "Pre-Divider (PDIV)",
+              "type": "choice",
+              "choices": [
+                1,
+                2,
+                4,
+                8
+              ],
+              "default": 1,
+              "help": "PLL input pre-divider",
+              "dts": true,
+              "kconfig": null
+            },
+            {
+              "key": "syspll-qdiv",
+              "label": "Multiplier (QDIV)",
+              "type": "int",
+              "default": 5,
+              "help": "PLL feedback multiplier (2\u201320)",
+              "dts": true,
+              "kconfig": null
+            },
+            {
+              "key": "syspll-clk0-div",
+              "label": "CLK0 Post-Divider",
+              "type": "choice",
+              "choices": [
+                2,
+                4,
+                6,
+                8,
+                10,
+                12,
+                14,
+                16
+              ],
+              "default": 2,
+              "help": "Post-divider for SYSPLL CLK0 output",
+              "dts": true,
+              "kconfig": null
+            },
+            {
+              "key": "syspll-clk2x-div",
+              "label": "CLK2X Post-Divider",
+              "type": "choice",
+              "choices": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8
+              ],
+              "default": 1,
+              "help": "Post-divider for SYSPLL CLK2X output",
+              "dts": true,
+              "kconfig": null
+            }
+          ]
+        },
+        {
+          "id": "mclk_mux",
+          "name": "MCLK Source",
+          "type": "mux",
+          "icon": "\ud83d\udd00",
+          "desc": "Master clock source selector",
+          "parent": null,
+          "freq_hz": 0,
+          "props": [
+            {
+              "key": "mclk-source",
+              "label": "MCLK Source",
+              "type": "choice",
+              "choices": [
+                "SYSOSC",
+                "HFXT",
+                "SYSPLL_CLK0",
+                "SYSPLL_CLK2X"
+              ],
+              "default": "SYSOSC",
+              "help": "Select the source for the master clock (MCLK)",
+              "dts": true,
+              "kconfig": null
+            }
+          ]
+        },
+        {
+          "id": "lfclk_mux",
+          "name": "LFCLK Source",
+          "type": "mux",
+          "icon": "\ud83d\udd00",
+          "desc": "Low-frequency clock source selector",
+          "parent": null,
+          "freq_hz": 0,
+          "props": [
+            {
+              "key": "lfclk-source",
+              "label": "LFCLK Source",
+              "type": "choice",
+              "choices": [
+                "LFOSC",
+                "LFXT"
+              ],
+              "default": "LFOSC",
+              "help": "Select the source for the LF clock domain",
+              "dts": true,
+              "kconfig": null
+            }
+          ]
+        },
+        {
+          "id": "mclk_div",
+          "name": "MCLK Divider",
+          "type": "divider",
+          "icon": "\u2797",
+          "desc": "Master clock divider (UDIV)",
+          "parent": "mclk_mux",
+          "freq_hz": 0,
+          "props": [
+            {
+              "key": "mclk-divider",
+              "label": "MCLK Divider",
+              "type": "choice",
+              "choices": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9,
+                10,
+                11,
+                12,
+                13,
+                14,
+                15,
+                16
+              ],
+              "default": 1,
+              "help": "MCLK frequency divider (1\u201316)",
+              "dts": true,
+              "kconfig": null
+            }
+          ]
+        },
+        {
+          "id": "ulpclk_div",
+          "name": "ULPCLK Divider",
+          "type": "divider",
+          "icon": "\u2797",
+          "desc": "Ultra-low-power clock divider",
+          "parent": "mclk_mux",
+          "freq_hz": 0,
+          "props": [
+            {
+              "key": "ulpclk-divider",
+              "label": "ULPCLK Divider",
+              "type": "choice",
+              "choices": [
+                1,
+                2,
+                4,
+                8,
+                16,
+                32
+              ],
+              "default": 1,
+              "help": "ULPCLK = MCLK / divider (used in low-power modes)",
+              "dts": true,
+              "kconfig": null
+            }
+          ]
+        },
+        {
+          "id": "canclk_div",
+          "name": "CANCLK Source",
+          "type": "divider",
+          "icon": "\ud83d\ude97",
+          "desc": "CAN clock source and divider",
+          "parent": "mclk_mux",
+          "freq_hz": 0,
+          "props": [
+            {
+              "key": "canclk-source",
+              "label": "CAN Clock Source",
+              "type": "choice",
+              "choices": [
+                "MCLK",
+                "SYSPLL_CLK0",
+                "HFXT"
+              ],
+              "default": "MCLK",
+              "help": "Clock source for CAN controller",
+              "dts": true,
+              "kconfig": null
+            },
+            {
+              "key": "canclk-divider",
+              "label": "CAN Clock Divider",
+              "type": "choice",
+              "choices": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8
+              ],
+              "default": 1,
+              "help": "CAN clock divider",
+              "dts": true,
+              "kconfig": null
+            }
+          ]
+        },
+        {
+          "id": "mclk_out",
+          "name": "MCLK",
+          "type": "output",
+          "icon": "\ud83c\udfc1",
+          "desc": "Master clock \u2013 CPU & AHB bus",
+          "parent": "mclk_div",
+          "freq_hz": 0,
+          "props": []
+        },
+        {
+          "id": "ulpclk_out",
+          "name": "ULPCLK",
+          "type": "output",
+          "icon": "\ud83c\udfc1",
+          "desc": "Ultra-low-power clock domain",
+          "parent": "ulpclk_div",
+          "freq_hz": 0,
+          "props": []
+        },
+        {
+          "id": "lfclk_out",
+          "name": "LFCLK",
+          "type": "output",
+          "icon": "\ud83c\udfc1",
+          "desc": "Low-frequency clock domain (32 kHz)",
+          "parent": "lfclk_mux",
+          "freq_hz": 0,
+          "props": []
+        },
+        {
+          "id": "canclk_out",
+          "name": "CANCLK",
+          "type": "output",
+          "icon": "\ud83c\udfc1",
+          "desc": "CAN peripheral clock",
+          "parent": "canclk_div",
+          "freq_hz": 0,
+          "props": []
+        }
+      ],
+      "connections": [
+        {
+          "from": "sysosc",
+          "to": "mclk_mux"
+        },
+        {
+          "from": "hfxt",
+          "to": "mclk_mux"
+        },
+        {
+          "from": "sysosc",
+          "to": "syspll"
+        },
+        {
+          "from": "hfxt",
+          "to": "syspll"
+        },
+        {
+          "from": "syspll",
+          "to": "mclk_mux"
+        },
+        {
+          "from": "mclk_mux",
+          "to": "mclk_div"
+        },
+        {
+          "from": "mclk_mux",
+          "to": "ulpclk_div"
+        },
+        {
+          "from": "mclk_mux",
+          "to": "canclk_div"
+        },
+        {
+          "from": "mclk_div",
+          "to": "mclk_out"
+        },
+        {
+          "from": "ulpclk_div",
+          "to": "ulpclk_out"
+        },
+        {
+          "from": "canclk_div",
+          "to": "canclk_out"
+        },
+        {
+          "from": "lfosc",
+          "to": "lfclk_mux"
+        },
+        {
+          "from": "lfxt",
+          "to": "lfclk_mux"
+        },
+        {
+          "from": "lfclk_mux",
+          "to": "lfclk_out"
+        }
+      ],
+      "kconfig": [
+        "CONFIG_CLOCK_CONTROL=y"
+      ],
+      "peripheral_clocks": {
+        "uart0": "mclk_out",
+        "uart1": "mclk_out",
+        "uart2": "mclk_out",
+        "uart3": "mclk_out",
+        "spi0": "mclk_out",
+        "spi1": "mclk_out",
+        "i2c0": "mclk_out",
+        "i2c1": "mclk_out",
+        "can0": "canclk_out",
+        "adc0": "ulpclk_out",
+        "tima0": "mclk_out",
+        "tima1": "mclk_out",
+        "timg0": "mclk_out",
+        "timg6": "mclk_out",
+        "timg7": "mclk_out",
+        "timg8": "mclk_out",
+        "timg12": "mclk_out"
+      }
+    },
+    "stm32_generic": {
+      "id": "stm32_generic",
+      "name": "STM32 Generic Clock Tree",
+      "soc": "STM32 (Generic)",
+      "desc": "Generic STM32 clock tree with HSI/HSE, PLL, and AHB/APB prescalers. Covers F4, L4, G4, H7 families at a high level.",
+      "max_freq": 170000000,
+      "nodes": [
+        {
+          "id": "hsi",
+          "name": "HSI",
+          "type": "source",
+          "icon": "\ud83d\udd37",
+          "desc": "Internal high-speed RC oscillator (8/16 MHz)",
+          "parent": null,
+          "freq_hz": 16000000,
+          "props": [
+            {
+              "key": "hsi-freq",
+              "label": "HSI Frequency",
+              "type": "choice",
+              "choices": [
+                8000000,
+                16000000
+              ],
+              "default": 16000000,
+              "help": "HSI base frequency (family-dependent)",
+              "dts": true,
+              "kconfig": null
+            }
+          ]
+        },
+        {
+          "id": "hse",
+          "name": "HSE",
+          "type": "source",
+          "icon": "\ud83d\udc8e",
+          "desc": "High-speed external crystal (4\u201348 MHz)",
+          "parent": null,
+          "freq_hz": 0,
+          "props": [
+            {
+              "key": "hse-enable",
+              "label": "Enable HSE",
+              "type": "bool",
+              "default": false,
+              "help": "Enable the high-speed external oscillator",
+              "dts": true,
+              "kconfig": null
+            },
+            {
+              "key": "hse-freq",
+              "label": "HSE Frequency (Hz)",
+              "type": "int",
+              "default": 8000000,
+              "help": "External crystal frequency",
+              "dts": true,
+              "kconfig": null
+            }
+          ]
+        },
+        {
+          "id": "lsi",
+          "name": "LSI",
+          "type": "source",
+          "icon": "\ud83d\udd37",
+          "desc": "Internal low-speed RC oscillator (~32 kHz)",
+          "parent": null,
+          "freq_hz": 32000,
+          "props": []
+        },
+        {
+          "id": "lse",
+          "name": "LSE",
+          "type": "source",
+          "icon": "\ud83d\udc8e",
+          "desc": "Low-speed external crystal (32.768 kHz)",
+          "parent": null,
+          "freq_hz": 0,
+          "props": [
+            {
+              "key": "lse-enable",
+              "label": "Enable LSE",
+              "type": "bool",
+              "default": false,
+              "help": "Enable the low-speed external crystal",
+              "dts": true,
+              "kconfig": null
+            }
+          ]
+        },
+        {
+          "id": "pll_main",
+          "name": "PLL",
+          "type": "pll",
+          "icon": "\u26a1",
+          "desc": "Main PLL",
+          "parent": "hsi",
+          "freq_hz": 0,
+          "props": [
+            {
+              "key": "pll-enable",
+              "label": "Enable PLL",
+              "type": "bool",
+              "default": true,
+              "help": "Enable the main PLL",
+              "dts": true,
+              "kconfig": null
+            },
+            {
+              "key": "pll-source",
+              "label": "PLL Source",
+              "type": "choice",
+              "choices": [
+                "HSI",
+                "HSE"
+              ],
+              "default": "HSI",
+              "help": "PLL reference clock source",
+              "dts": true,
+              "kconfig": null
+            },
+            {
+              "key": "pll-m",
+              "label": "PLL M (pre-divider)",
+              "type": "int",
+              "default": 1,
+              "help": "PLL input prescaler (1\u201316)",
+              "dts": true,
+              "kconfig": null
+            },
+            {
+              "key": "pll-n",
+              "label": "PLL N (multiplier)",
+              "type": "int",
+              "default": 20,
+              "help": "PLL VCO multiplier (8\u2013432)",
+              "dts": true,
+              "kconfig": null
+            },
+            {
+              "key": "pll-p",
+              "label": "PLL P (SYSCLK div)",
+              "type": "choice",
+              "choices": [
+                2,
+                4,
+                6,
+                8
+              ],
+              "default": 2,
+              "help": "PLL output divider for SYSCLK",
+              "dts": true,
+              "kconfig": null
+            },
+            {
+              "key": "pll-q",
+              "label": "PLL Q (48 MHz div)",
+              "type": "choice",
+              "choices": [
+                2,
+                4,
+                6,
+                8
+              ],
+              "default": 4,
+              "help": "PLL output divider for USB/SDIO (target 48 MHz)",
+              "dts": true,
+              "kconfig": null
+            }
+          ]
+        },
+        {
+          "id": "sysclk_mux",
+          "name": "SYSCLK Source",
+          "type": "mux",
+          "icon": "\ud83d\udd00",
+          "desc": "System clock source selector",
+          "parent": null,
+          "freq_hz": 0,
+          "props": [
+            {
+              "key": "sysclk-source",
+              "label": "SYSCLK Source",
+              "type": "choice",
+              "choices": [
+                "HSI",
+                "HSE",
+                "PLL"
+              ],
+              "default": "PLL",
+              "help": "Select the system clock source",
+              "dts": true,
+              "kconfig": null
+            }
+          ]
+        },
+        {
+          "id": "ahb_div",
+          "name": "AHB Prescaler",
+          "type": "divider",
+          "icon": "\u2797",
+          "desc": "AHB bus clock prescaler",
+          "parent": "sysclk_mux",
+          "freq_hz": 0,
+          "props": [
+            {
+              "key": "ahb-prescaler",
+              "label": "AHB Prescaler",
+              "type": "choice",
+              "choices": [
+                1,
+                2,
+                4,
+                8,
+                16,
+                64,
+                128,
+                256,
+                512
+              ],
+              "default": 1,
+              "help": "HCLK = SYSCLK / prescaler",
+              "dts": true,
+              "kconfig": null
+            }
+          ]
+        },
+        {
+          "id": "apb1_div",
+          "name": "APB1 Prescaler",
+          "type": "divider",
+          "icon": "\u2797",
+          "desc": "APB1 low-speed bus prescaler",
+          "parent": "ahb_div",
+          "freq_hz": 0,
+          "props": [
+            {
+              "key": "apb1-prescaler",
+              "label": "APB1 Prescaler",
+              "type": "choice",
+              "choices": [
+                1,
+                2,
+                4,
+                8,
+                16
+              ],
+              "default": 1,
+              "help": "PCLK1 = HCLK / prescaler",
+              "dts": true,
+              "kconfig": null
+            }
+          ]
+        },
+        {
+          "id": "apb2_div",
+          "name": "APB2 Prescaler",
+          "type": "divider",
+          "icon": "\u2797",
+          "desc": "APB2 high-speed bus prescaler",
+          "parent": "ahb_div",
+          "freq_hz": 0,
+          "props": [
+            {
+              "key": "apb2-prescaler",
+              "label": "APB2 Prescaler",
+              "type": "choice",
+              "choices": [
+                1,
+                2,
+                4,
+                8,
+                16
+              ],
+              "default": 1,
+              "help": "PCLK2 = HCLK / prescaler",
+              "dts": true,
+              "kconfig": null
+            }
+          ]
+        },
+        {
+          "id": "hclk",
+          "name": "HCLK",
+          "type": "output",
+          "icon": "\ud83c\udfc1",
+          "desc": "CPU / AHB bus clock",
+          "parent": "ahb_div",
+          "freq_hz": 0,
+          "props": []
+        },
+        {
+          "id": "pclk1",
+          "name": "PCLK1",
+          "type": "output",
+          "icon": "\ud83c\udfc1",
+          "desc": "APB1 peripheral clock (UART2-5, SPI2-3, I2C, CAN)",
+          "parent": "apb1_div",
+          "freq_hz": 0,
+          "props": []
+        },
+        {
+          "id": "pclk2",
+          "name": "PCLK2",
+          "type": "output",
+          "icon": "\ud83c\udfc1",
+          "desc": "APB2 peripheral clock (UART1, SPI1, TIM1, ADC)",
+          "parent": "apb2_div",
+          "freq_hz": 0,
+          "props": []
+        }
+      ],
+      "connections": [
+        {
+          "from": "hsi",
+          "to": "sysclk_mux"
+        },
+        {
+          "from": "hse",
+          "to": "sysclk_mux"
+        },
+        {
+          "from": "hsi",
+          "to": "pll_main"
+        },
+        {
+          "from": "hse",
+          "to": "pll_main"
+        },
+        {
+          "from": "pll_main",
+          "to": "sysclk_mux"
+        },
+        {
+          "from": "sysclk_mux",
+          "to": "ahb_div"
+        },
+        {
+          "from": "ahb_div",
+          "to": "apb1_div"
+        },
+        {
+          "from": "ahb_div",
+          "to": "apb2_div"
+        },
+        {
+          "from": "ahb_div",
+          "to": "hclk"
+        },
+        {
+          "from": "apb1_div",
+          "to": "pclk1"
+        },
+        {
+          "from": "apb2_div",
+          "to": "pclk2"
+        }
+      ],
+      "kconfig": [
+        "CONFIG_CLOCK_CONTROL=y",
+        "CONFIG_CLOCK_CONTROL_STM32=y"
+      ],
+      "peripheral_clocks": {
+        "usart1": "pclk2",
+        "usart2": "pclk1",
+        "usart3": "pclk1",
+        "spi1": "pclk2",
+        "spi2": "pclk1",
+        "i2c1": "pclk1",
+        "i2c2": "pclk1",
+        "can1": "pclk1",
+        "adc1": "pclk2",
+        "tim1": "pclk2",
+        "tim2": "pclk1",
+        "tim3": "pclk1"
+      }
+    },
+    "nrf52": {
+      "id": "nrf52",
+      "name": "nRF52 Clock Tree",
+      "soc": "nRF52 (Generic)",
+      "desc": "nRF52 series clock system with HFCLK (64 MHz), LFCLK (32.768 kHz), and selectable internal/external sources.",
+      "max_freq": 64000000,
+      "nodes": [
+        {
+          "id": "hfint",
+          "name": "HFINT",
+          "type": "source",
+          "icon": "\ud83d\udd37",
+          "desc": "Internal 64 MHz RC oscillator",
+          "parent": null,
+          "freq_hz": 64000000,
+          "props": []
+        },
+        {
+          "id": "hfxo",
+          "name": "HFXO",
+          "type": "source",
+          "icon": "\ud83d\udc8e",
+          "desc": "External 32 MHz crystal (doubled to 64 MHz internally)",
+          "parent": null,
+          "freq_hz": 0,
+          "props": [
+            {
+              "key": "hfxo-enable",
+              "label": "Enable HFXO",
+              "type": "bool",
+              "default": true,
+              "help": "Enable 32 MHz external crystal (required for BLE)",
+              "dts": true,
+              "kconfig": null
+            }
+          ]
+        },
+        {
+          "id": "lfrc",
+          "name": "LFRC",
+          "type": "source",
+          "icon": "\ud83d\udd37",
+          "desc": "Internal 32.768 kHz RC oscillator",
+          "parent": null,
+          "freq_hz": 32768,
+          "props": []
+        },
+        {
+          "id": "lfxo",
+          "name": "LFXO",
+          "type": "source",
+          "icon": "\ud83d\udc8e",
+          "desc": "External 32.768 kHz crystal",
+          "parent": null,
+          "freq_hz": 0,
+          "props": [
+            {
+              "key": "lfxo-enable",
+              "label": "Enable LFXO",
+              "type": "bool",
+              "default": false,
+              "help": "Enable low-frequency crystal for accurate RTC",
+              "dts": true,
+              "kconfig": null
+            }
+          ]
+        },
+        {
+          "id": "hfclk_mux",
+          "name": "HFCLK Source",
+          "type": "mux",
+          "icon": "\ud83d\udd00",
+          "desc": "High-frequency clock source selector",
+          "parent": null,
+          "freq_hz": 0,
+          "props": [
+            {
+              "key": "hfclk-source",
+              "label": "HFCLK Source",
+              "type": "choice",
+              "choices": [
+                "HFINT",
+                "HFXO"
+              ],
+              "default": "HFXO",
+              "help": "HFXO required for Bluetooth; HFINT for lower power",
+              "dts": true,
+              "kconfig": null
+            }
+          ]
+        },
+        {
+          "id": "lfclk_mux",
+          "name": "LFCLK Source",
+          "type": "mux",
+          "icon": "\ud83d\udd00",
+          "desc": "Low-frequency clock source selector",
+          "parent": null,
+          "freq_hz": 0,
+          "props": [
+            {
+              "key": "lfclk-source",
+              "label": "LFCLK Source",
+              "type": "choice",
+              "choices": [
+                "LFRC",
+                "LFXO",
+                "LFSYNTH"
+              ],
+              "default": "LFRC",
+              "help": "LFXO for accuracy, LFRC for cost, LFSYNTH from HFCLK",
+              "dts": true,
+              "kconfig": null
+            }
+          ]
+        },
+        {
+          "id": "hfclk_out",
+          "name": "HFCLK (64 MHz)",
+          "type": "output",
+          "icon": "\ud83c\udfc1",
+          "desc": "CPU & high-speed peripherals",
+          "parent": "hfclk_mux",
+          "freq_hz": 0,
+          "props": []
+        },
+        {
+          "id": "lfclk_out",
+          "name": "LFCLK (32 kHz)",
+          "type": "output",
+          "icon": "\ud83c\udfc1",
+          "desc": "RTC, WDT, low-power peripherals",
+          "parent": "lfclk_mux",
+          "freq_hz": 0,
+          "props": []
+        }
+      ],
+      "connections": [
+        {
+          "from": "hfint",
+          "to": "hfclk_mux"
+        },
+        {
+          "from": "hfxo",
+          "to": "hfclk_mux"
+        },
+        {
+          "from": "hfclk_mux",
+          "to": "hfclk_out"
+        },
+        {
+          "from": "lfrc",
+          "to": "lfclk_mux"
+        },
+        {
+          "from": "lfxo",
+          "to": "lfclk_mux"
+        },
+        {
+          "from": "lfclk_mux",
+          "to": "lfclk_out"
+        }
+      ],
+      "kconfig": [
+        "CONFIG_CLOCK_CONTROL=y",
+        "CONFIG_CLOCK_CONTROL_NRF=y"
+      ],
+      "peripheral_clocks": {}
+    }
+  }
+}

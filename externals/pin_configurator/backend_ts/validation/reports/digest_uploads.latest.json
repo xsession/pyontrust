@@ -1,0 +1,135 @@
+{
+  "generated_at": "2026-04-28T19:17:47.674Z",
+  "uploads_root": ".uploads\\incoming",
+  "digested": [
+    {
+      "file": ".uploads\\incoming\\legacy\\175e4d8126c4_stm32f411re_vendor_matrix.pdf",
+      "skipped": true,
+      "reason": "already_digested_content"
+    },
+    {
+      "file": ".uploads\\incoming\\legacy\\2a384369e3ee_389f022718f0b99db4c410485c134593.pdf",
+      "skipped": true,
+      "reason": "already_digested_content"
+    },
+    {
+      "file": ".uploads\\incoming\\legacy\\332bac53983b_efm32pg22_vendor_matrix.pdf",
+      "skipped": true,
+      "reason": "already_digested_content"
+    },
+    {
+      "file": ".uploads\\incoming\\legacy\\389f022718f0b99db4c410485c134593",
+      "skipped": true,
+      "reason": "already_digested_source"
+    },
+    {
+      "file": ".uploads\\incoming\\legacy\\507723a1107b_adxl345_vendor_matrix.pdf",
+      "skipped": true,
+      "reason": "already_digested_content"
+    },
+    {
+      "file": ".uploads\\incoming\\legacy\\5b56b31a09dc_mspm0g3507_vendor_matrix.pdf",
+      "skipped": true,
+      "reason": "already_digested_content"
+    },
+    {
+      "file": ".uploads\\incoming\\legacy\\5e15994cf390_ch32v003_vendor_matrix.pdf",
+      "skipped": true,
+      "reason": "already_digested_content"
+    },
+    {
+      "file": ".uploads\\incoming\\legacy\\65b2245b4cc3ebcc519fc9e6e4ef496f",
+      "skipped": true,
+      "reason": "already_digested_content"
+    },
+    {
+      "file": ".uploads\\incoming\\legacy\\7a08cc072361_lis2dh12_vendor_matrix.pdf",
+      "skipped": true,
+      "reason": "already_digested_content"
+    },
+    {
+      "file": ".uploads\\incoming\\legacy\\7cf875f68de8_esp32_vendor_matrix.pdf",
+      "skipped": true,
+      "reason": "already_digested_content"
+    },
+    {
+      "file": ".uploads\\incoming\\legacy\\886cbdee7afc_fxos8700cq_vendor_matrix.pdf",
+      "skipped": true,
+      "reason": "already_digested_content"
+    },
+    {
+      "file": ".uploads\\incoming\\legacy\\b1013b4124bd_bmp280_vendor_matrix.pdf",
+      "skipped": true,
+      "reason": "already_digested_content"
+    },
+    {
+      "file": ".uploads\\incoming\\legacy\\bf8433627934_389f022718f0b99db4c410485c134593.pdf",
+      "skipped": true,
+      "reason": "already_digested_content"
+    },
+    {
+      "file": ".uploads\\incoming\\legacy\\c6a4ef50c160_mlx90614_vendor_matrix.pdf",
+      "classified_as": "sensor",
+      "classification_reason": "sensor_snapshot",
+      "success": true,
+      "kind": "sensor",
+      "via": "native",
+      "job_id": "6fbea4c5ec02",
+      "parsed_part": null,
+      "parsed_vendor": "unknown"
+    },
+    {
+      "file": ".uploads\\incoming\\legacy\\ce937f5b3bae_veml7700_vendor_matrix.pdf",
+      "classified_as": "sensor",
+      "classification_reason": "sensor_snapshot",
+      "success": true,
+      "kind": "sensor",
+      "via": "native",
+      "job_id": "c0f4a4171389",
+      "parsed_part": null,
+      "parsed_vendor": "unknown"
+    },
+    {
+      "file": ".uploads\\incoming\\legacy\\deeee486a1c6_zmod4410_vendor_matrix.pdf",
+      "classified_as": "sensor",
+      "classification_reason": "identifySensor:deeee486a1c6_zmod4410_vendor_matrix",
+      "success": true,
+      "kind": "sensor",
+      "via": "native",
+      "job_id": "02dbd7b56d9e",
+      "parsed_part": "ZMOD4410",
+      "parsed_vendor": "renesas"
+    },
+    {
+      "file": ".uploads\\incoming\\legacy\\fe07dc212751_ra2l1_vendor_matrix.pdf",
+      "classified_as": "mcu",
+      "classification_reason": "identifyMcu:ra2l1_vendor_matrix",
+      "success": true,
+      "kind": "mcu",
+      "via": "python",
+      "job_id": "d8c976ed862e",
+      "parsed_soc": "RA2L1",
+      "parsed_vendor": "renesas"
+    },
+    {
+      "file": ".uploads\\incoming\\legacy\\fe196a72e204_mcp9808_vendor_matrix.pdf",
+      "classified_as": "sensor",
+      "classification_reason": "identifySensor:fe196a72e204_mcp9808_vendor_matrix",
+      "success": true,
+      "kind": "sensor",
+      "via": "native",
+      "job_id": "71e6fe0c463a",
+      "parsed_part": "MCP9808",
+      "parsed_vendor": "microchip"
+    }
+  ],
+  "summary": {
+    "discovered": 18,
+    "skipped_existing": 13,
+    "skipped_non_pdf": 0,
+    "digested_successes": 5,
+    "digested_failures": 0,
+    "sensor_jobs": 4,
+    "mcu_jobs": 1
+  }
+}

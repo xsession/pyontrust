@@ -97,6 +97,34 @@ def sample_multi_peripheral_assignments():
 
 
 @pytest.fixture()
+def sample_rpi_pico_assignments():
+    """Minimal RP2040/Pico assignment set for multicore board generation."""
+    return {
+        "board_id": "rpi_pico",
+        "board": "rpi_pico",
+        "targets": ["zephyr", "arduino", "baremetal"],
+        "assignments": [
+            {
+                "pin_name": "GP0", "pincm": 1, "function_id": 2,
+                "af_name": "UART0_TX", "peripheral": "uart0",
+                "signal": "tx", "direction": "out",
+            },
+            {
+                "pin_name": "GP1", "pincm": 2, "function_id": 2,
+                "af_name": "UART0_RX", "peripheral": "uart0",
+                "signal": "rx", "direction": "in",
+            },
+        ],
+        "peripherals": [
+            {
+                "name": "uart0", "dts_node": "&uart0",
+                "compatible": "raspberrypi,rp2040-uart", "enabled": True, "core_id": "core1",
+            },
+        ],
+    }
+
+
+@pytest.fixture()
 def sample_overlay_text():
     """Sample DTS overlay text for import testing."""
     return """\

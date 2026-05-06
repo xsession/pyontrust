@@ -1,0 +1,325 @@
+{
+  "71e6fe0c463a": {
+    "job_id": "71e6fe0c463a",
+    "filename": "fe196a72e204_mcp9808_vendor_matrix.pdf",
+    "upload_path": "C:\\GIT\\addmind\\deps\\pyontrust\\externals\\pin_configurator\\.uploads\\sensor_jobs\\71e6fe0c463a_fe196a72e204_mcp9808_vendor_matrix.pdf",
+    "result": {
+      "summary": {
+        "part_number": "MCP9808",
+        "vendor": "microchip",
+        "vendor_name": "Microchip Technology",
+        "sensor_type": "temperature",
+        "description": "• Accuracy: Microchip Technology Inc.’s MCP9808 digital",
+        "who_am_i_reg": 6,
+        "who_am_i_value": -1,
+        "supply_voltage_min": 0,
+        "supply_voltage_max": 0,
+        "temp_range_min": -40,
+        "temp_range_max": 85
+      },
+      "address": {
+        "protocol": "i2c",
+        "i2c_addresses": [],
+        "i2c_address_pin": "A0",
+        "spi_max_freq_hz": 0,
+        "spi_max_freq_mhz": 0,
+        "spi_mode": -1,
+        "spi_word_size": 8
+      },
+      "package": {
+        "name": "DFN-8",
+        "package_type": "DFN",
+        "pin_count": 8,
+        "width_mm": 3,
+        "height_mm": 0.9,
+        "source": "sensor-pdf",
+        "pins": [
+          {
+            "number": 1,
+            "name": "1_SDA",
+            "kind": "special"
+          },
+          {
+            "number": 2,
+            "name": "2_SCL",
+            "kind": "special"
+          },
+          {
+            "number": 3,
+            "name": "3",
+            "kind": "io"
+          },
+          {
+            "number": 4,
+            "name": "4_GND",
+            "kind": "ground"
+          },
+          {
+            "number": 5,
+            "name": "5_A2",
+            "kind": "io"
+          },
+          {
+            "number": 6,
+            "name": "6_A1",
+            "kind": "io"
+          },
+          {
+            "number": 7,
+            "name": "7_A0",
+            "kind": "io"
+          },
+          {
+            "number": 8,
+            "name": "8_VDD",
+            "kind": "power"
+          },
+          {
+            "number": 9,
+            "name": "—_EP",
+            "kind": "ground"
+          }
+        ]
+      },
+      "register_map": {
+        "register_count": 8,
+        "address_bits": 8,
+        "auto_increment": true,
+        "registers": [
+          {
+            "address": "0x01",
+            "address_int": 1,
+            "name": "CONFIG",
+            "c_name": "CONFIG",
+            "size": 1,
+            "access": "RW",
+            "reset_value": "0x00",
+            "description": "",
+            "fields": []
+          },
+          {
+            "address": "0x02",
+            "address_int": 2,
+            "name": "T_UPPER",
+            "c_name": "T_UPPER",
+            "size": 1,
+            "access": "RW",
+            "reset_value": "0x00",
+            "description": "",
+            "fields": []
+          },
+          {
+            "address": "0x03",
+            "address_int": 3,
+            "name": "T_LOWER",
+            "c_name": "T_LOWER",
+            "size": 1,
+            "access": "RW",
+            "reset_value": "0x00",
+            "description": "",
+            "fields": []
+          },
+          {
+            "address": "0x04",
+            "address_int": 4,
+            "name": "T_CRIT",
+            "c_name": "T_CRIT",
+            "size": 1,
+            "access": "RW",
+            "reset_value": "0x00",
+            "description": "",
+            "fields": []
+          },
+          {
+            "address": "0x05",
+            "address_int": 5,
+            "name": "T_A",
+            "c_name": "T_A",
+            "size": 1,
+            "access": "RW",
+            "reset_value": "0x00",
+            "description": "",
+            "fields": []
+          },
+          {
+            "address": "0x06",
+            "address_int": 6,
+            "name": "MANUFACTURER_ID",
+            "c_name": "MANUFACTURER_ID",
+            "size": 1,
+            "access": "RW",
+            "reset_value": "0x00",
+            "description": "",
+            "fields": []
+          },
+          {
+            "address": "0x07",
+            "address_int": 7,
+            "name": "DEVICE_IDDEVICE_REVISION",
+            "c_name": "DEVICE_IDDEVICE_REVISION",
+            "size": 1,
+            "access": "RW",
+            "reset_value": "0x00",
+            "description": "",
+            "fields": []
+          },
+          {
+            "address": "0x08",
+            "address_int": 8,
+            "name": "RESOLUTION",
+            "c_name": "RESOLUTION",
+            "size": 1,
+            "access": "RW",
+            "reset_value": "0x00",
+            "description": "",
+            "fields": []
+          }
+        ]
+      }
+    }
+  },
+  "d51a6ff06123": {
+    "job_id": "d51a6ff06123",
+    "filename": "tmp117_vendor_matrix.pdf",
+    "upload_path": "C:\\GIT\\addmind\\deps\\pyontrust\\externals\\pin_configurator\\.uploads\\sensor_jobs\\d51a6ff06123_tmp117_vendor_matrix.pdf",
+    "result": {
+      "summary": {
+        "part_number": "TMP117",
+        "vendor": "ti",
+        "vendor_name": "Texas Instruments",
+        "sensor_type": "temperature",
+        "description": "TMP117 High-Accuracy, Low-Power, Digital Temperature Sensor",
+        "who_am_i_reg": -1,
+        "who_am_i_value": -1,
+        "supply_voltage_min": 1.7,
+        "supply_voltage_max": 5.5,
+        "temp_range_min": -40,
+        "temp_range_max": 85
+      },
+      "address": {
+        "protocol": "i2c",
+        "i2c_addresses": [],
+        "i2c_address_pin": "",
+        "spi_max_freq_hz": 0,
+        "spi_max_freq_mhz": 0,
+        "spi_mode": -1,
+        "spi_word_size": 8
+      },
+      "package": {
+        "name": "WSON-6",
+        "package_type": "WSON",
+        "pin_count": 6,
+        "width_mm": 2,
+        "height_mm": 2,
+        "source": "sensor-pdf",
+        "pins": []
+      },
+      "register_map": {
+        "register_count": 0,
+        "address_bits": 8,
+        "auto_increment": true,
+        "registers": []
+      }
+    }
+  },
+  "d72dd784f049": {
+    "job_id": "d72dd784f049",
+    "filename": "scl3300_vendor_matrix.pdf",
+    "upload_path": "C:\\GIT\\addmind\\deps\\pyontrust\\externals\\pin_configurator\\.uploads\\sensor_jobs\\d72dd784f049_scl3300_vendor_matrix.pdf",
+    "result": {
+      "summary": {
+        "part_number": "SCL3300",
+        "vendor": "unknown",
+        "vendor_name": "Unknown",
+        "sensor_type": "accelerometer",
+        "description": "and digital SPI interface",
+        "who_am_i_reg": -1,
+        "who_am_i_value": -1,
+        "supply_voltage_min": 3,
+        "supply_voltage_max": 3.6,
+        "temp_range_min": -40,
+        "temp_range_max": 85
+      },
+      "address": {
+        "protocol": "spi",
+        "i2c_addresses": [],
+        "i2c_address_pin": "ADDR",
+        "spi_max_freq_hz": 0,
+        "spi_max_freq_mhz": 0,
+        "spi_mode": 0,
+        "spi_word_size": 8
+      },
+      "package": {
+        "name": "SCL3300-PKG",
+        "package_type": "CUSTOM",
+        "pin_count": 11,
+        "width_mm": 7.6,
+        "height_mm": 3.3,
+        "source": "sensor-pdf",
+        "pins": [
+          {
+            "number": 1,
+            "name": "AVSS",
+            "kind": "io"
+          },
+          {
+            "number": 3,
+            "name": "RESERVED",
+            "kind": "special"
+          },
+          {
+            "number": 4,
+            "name": "VDD",
+            "kind": "power"
+          },
+          {
+            "number": 5,
+            "name": "CSB",
+            "kind": "io"
+          },
+          {
+            "number": 6,
+            "name": "MISO",
+            "kind": "special"
+          },
+          {
+            "number": 7,
+            "name": "MOSI",
+            "kind": "special"
+          },
+          {
+            "number": 8,
+            "name": "SCK",
+            "kind": "special"
+          },
+          {
+            "number": 9,
+            "name": "DVIO",
+            "kind": "io"
+          },
+          {
+            "number": 10,
+            "name": "D_EXTC",
+            "kind": "io"
+          },
+          {
+            "number": 11,
+            "name": "DVSS",
+            "kind": "io"
+          },
+          {
+            "number": 12,
+            "name": "EMC_GND",
+            "kind": "ground"
+          }
+        ]
+      },
+      "register_map": {
+        "register_count": 0,
+        "address_bits": 8,
+        "auto_increment": true,
+        "registers": []
+      }
+    }
+  }
+}

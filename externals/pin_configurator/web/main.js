@@ -14,17 +14,77 @@
 let boardData    = null;   // Current board definition from API
 let pinStates    = {};     // { pin_number: { af, props } }
 let periphStates = {};     // { periph_name: enabled }
+let periphCoreStates = {}; // { periph_name: core_id }
+let externalDeviceStates = {}; // { device_id: { selected, bus } }
 let selectedPin  = null;   // Currently selected pin number
+let boardEditorDrafts = [];
 
 let generatedOverlay = "";
 let generatedConf    = "";
+let generatedTargets = {};
 let activeTab        = "overlay";
+let boardEditorPendingDelete = "";
+let boardEditorPreviewBoard = null;
+let boardEditorCanvasStart = null;
+let boardEditorCanvasDrag = null;
+let boardEditorPreviewTimer = null;
+let boardEditorDeviceLibrary = [];
+let boardEditorCanvasZoom = 1.0;
 
 // Zoom state
 let chipZoom = 1.0;
 const ZOOM_MIN = 0.2;
 const ZOOM_MAX = 4.0;
 const ZOOM_STEP = 0.15;
+const BOARD_EDITOR_CANVAS_WIDTH = 1400;
+const BOARD_EDITOR_CANVAS_HEIGHT = 900;
+
+const DEFAULT_EXTERNAL_DEVICE_CATALOG = [
+  {
+    id: "bme280_i2c",
+    display: "Bosch BME280",
+    category: "sensor",
+    bus_family: "i2c",
+    compatible: "bosch,bme280",
+    address: "0x76",
+    required_signals: ["sda", "scl"],
+    frameworks: ["zephyr", "arduino"],
+    notes: "Temperature, humidity, and pressure sensor.",
+  },
+  {
+    id: "lis2dh_i2c",
+    display: "ST LIS2DH",
+    category: "sensor",
+    bus_family: "i2c",
+    compatible: "st,lis2dh",
+    address: "0x18",
+    required_signals: ["sda", "scl", "int1"],
+    frameworks: ["zephyr", "arduino"],
+    notes: "3-axis accelerometer with optional interrupt line.",
+  },
+  {
+    id: "ssd1306_i2c",
+    display: "SSD1306 OLED",
+    category: "display",
+    bus_family: "i2c",
+    compatible: "solomon,ssd1306fb",
+    address: "0x3c",
+    required_signals: ["sda", "scl"],
+    frameworks: ["zephyr", "arduino"],
+    notes: "128x64 monochrome OLED display.",
+  },
+  {
+    id: "st7789v_spi",
+    display: "ST7789V TFT",
+    category: "display",
+    bus_family: "spi",
+    compatible: "sitronix,st7789v",
+    address: "0",
+    required_signals: ["mosi", "sck", "cs", "dc", "reset"],
+    frameworks: ["zephyr", "arduino"],
+    notes: "SPI TFT display with chip-select and data/command lines.",
+  },
+];
 
 // ── DOM refs ─────────────────────────────────────────────────────────
 const $ = (sel) => document.querySelector(sel);
@@ -38,6 +98,7 @@ const chipContainer= $("#chipContainer");
 const periphPanel  = $("#periphPanel");
 const configPanel  = $("#configPanel");
 const outputBar    = $("#outputBar");
+const outputTabs   = $("#outputBar .output-tabs");
 const outputPre    = $("#outputPre");
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -62,6 +123,244 @@ function periphColor(periph) {
   return "";
 }
 
+function cloneJson(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function inferDeviceBusFamily(device) {
+  const bus = String(device.bus || "").toLowerCase();
+  if (bus.startsWith("i2c")) return "i2c";
+  if (bus.startsWith("spi")) return "spi";
+  if (bus.startsWith("uart")) return "uart";
+  if (bus.startsWith("can")) return "can";
+
+  const requiredSignals = Array.isArray(device.required_signals)
+    ? device.required_signals.map(signal => String(signal).toLowerCase())
+    : [];
+  if (requiredSignals.includes("sda") || requiredSignals.includes("scl")) return "i2c";
+  if (requiredSignals.includes("mosi") || requiredSignals.includes("miso") || requiredSignals.includes("sck")) return "spi";
+  return "";
+}
+
+function normalizeExternalDevice(device) {
+  return {
+    id: String(device.id || "").trim(),
+    display: String(device.display || device.id || "").trim(),
+    category: String(device.category || "device").trim() || "device",
+    bus: String(device.bus || "").trim(),
+    bus_family: String(device.bus_family || inferDeviceBusFamily(device)).trim(),
+    compatible: String(device.compatible || "").trim(),
+    address: String(device.address || "").trim(),
+    required_signals: Array.isArray(device.required_signals)
+      ? device.required_signals.map(signal => String(signal))
+      : [],
+    frameworks: Array.isArray(device.frameworks) && device.frameworks.length
+      ? device.frameworks.map(framework => String(framework))
+      : ["zephyr", "arduino"],
+    notes: String(device.notes || "").trim(),
+  };
+}
+
+function getExternalDeviceCatalog() {
+  const merged = new Map();
+  [...DEFAULT_EXTERNAL_DEVICE_CATALOG, ...(boardData?.external_devices || [])]
+    .map(normalizeExternalDevice)
+    .filter(device => device.id)
+    .forEach(device => {
+      merged.set(device.id, device);
+    });
+  return [...merged.values()];
+}
+
+function getPeripheralOptionsForBusFamily(busFamily) {
+  if (!boardData || !busFamily) return [];
+  return boardData.peripherals
+    .filter(peripheral => peripheral.name.startsWith(busFamily))
+    .map(peripheral => ({
+      name: peripheral.name,
+      display: peripheral.display || peripheral.name,
+      enabled: !!periphStates[peripheral.name],
+    }))
+    .sort((left, right) => Number(right.enabled) - Number(left.enabled) || left.name.localeCompare(right.name));
+}
+
+function initExternalDeviceStates() {
+  const next = {};
+  getExternalDeviceCatalog().forEach(device => {
+    const candidates = getPeripheralOptionsForBusFamily(device.bus_family);
+    const preferredBus = candidates.some(candidate => candidate.name === device.bus)
+      ? device.bus
+      : (candidates[0]?.name || device.bus || "");
+    next[device.id] = {
+      selected: false,
+      bus: preferredBus,
+    };
+  });
+  externalDeviceStates = next;
+}
+
+function enableDeviceBus(deviceId) {
+  const device = getExternalDeviceCatalog().find(entry => entry.id === deviceId);
+  const state = externalDeviceStates[deviceId];
+  if (!device || !state?.bus || !(state.bus in periphStates)) return;
+  if (!periphStates[state.bus]) {
+    periphStates[state.bus] = true;
+    renderPeripherals();
+  }
+}
+
+function selectedExternalDevices() {
+  const catalog = getExternalDeviceCatalog();
+  return catalog
+    .filter(device => externalDeviceStates[device.id]?.selected)
+    .map(device => ({
+      ...device,
+      bus: externalDeviceStates[device.id]?.bus || device.bus,
+    }))
+    .filter(device => device.bus);
+}
+
+function buildExternalDeviceSection() {
+  const catalog = getExternalDeviceCatalog();
+  if (!catalog.length) {
+    return `
+      <div class="config-section external-device-section">
+        <label>External Devices</label>
+        <div class="empty-state" style="padding: 18px 12px;">No preset devices available for this board.</div>
+      </div>`;
+  }
+
+  const rows = catalog.map(device => {
+    const state = externalDeviceStates[device.id] || { selected: false, bus: device.bus || "" };
+    const busOptions = getPeripheralOptionsForBusFamily(device.bus_family);
+    const disabled = busOptions.length === 0;
+    const requiredSignals = device.required_signals.length
+      ? `<div class="device-meta">Signals: ${escapeHtml(device.required_signals.join(", "))}</div>`
+      : "";
+    const notes = device.notes ? `<div class="device-note">${escapeHtml(device.notes)}</div>` : "";
+
+    return `
+      <div class="device-row ${state.selected ? "selected" : ""} ${disabled ? "disabled" : ""}">
+        <div class="device-toggle-row">
+          <input type="checkbox" data-device-toggle="${escapeHtml(device.id)}" ${state.selected ? "checked" : ""} ${disabled ? "disabled" : ""}>
+          <div class="device-copy">
+            <div class="device-title-row">
+              <span class="device-title">${escapeHtml(device.display)}</span>
+              <span class="device-pill">${escapeHtml(device.category)}</span>
+            </div>
+            <div class="device-meta">${escapeHtml(device.compatible || "custom device")}</div>
+            ${requiredSignals}
+            ${notes}
+          </div>
+        </div>
+        <label class="device-bus-label">
+          Bus
+          <select data-device-bus="${escapeHtml(device.id)}" ${disabled ? "disabled" : ""}>
+            ${busOptions.length ? busOptions.map(option => `
+              <option value="${escapeHtml(option.name)}" ${state.bus === option.name ? "selected" : ""}>${escapeHtml(option.display)}</option>
+            `).join("") : '<option value="">No compatible bus</option>'}
+          </select>
+        </label>
+      </div>`;
+  }).join("");
+
+  return `
+    <div class="config-section external-device-section">
+      <label>External Devices</label>
+      <div class="device-list">${rows}</div>
+    </div>`;
+}
+
+function wireExternalDeviceControls(panel) {
+  panel.querySelectorAll("[data-device-toggle]").forEach(input => {
+    input.addEventListener("change", () => {
+      const deviceId = input.dataset.deviceToggle;
+      if (!deviceId || !externalDeviceStates[deviceId]) return;
+      externalDeviceStates[deviceId].selected = input.checked;
+      if (input.checked) {
+        enableDeviceBus(deviceId);
+      }
+      renderConfigPanel();
+    });
+  });
+
+  panel.querySelectorAll("[data-device-bus]").forEach(select => {
+    select.addEventListener("change", () => {
+      const deviceId = select.dataset.deviceBus;
+      if (!deviceId || !externalDeviceStates[deviceId]) return;
+      externalDeviceStates[deviceId].bus = select.value;
+      if (externalDeviceStates[deviceId].selected) {
+        enableDeviceBus(deviceId);
+      }
+    });
+  });
+}
+
+function collectOutputViews() {
+  const views = [
+    { id: "overlay", label: ".overlay", content: generatedOverlay },
+    { id: "conf", label: "prj.conf", content: generatedConf },
+  ];
+
+  for (const target of ["arduino", "baremetal"]) {
+    const files = generatedTargets[target] || {};
+    Object.keys(files).sort().forEach(filename => {
+      views.push({
+        id: `${target}:${filename}`,
+        label: `${target}:${filename}`,
+        content: files[filename],
+      });
+    });
+  }
+
+  return views.filter(view => view.content);
+}
+
+function appendOutputToggle() {
+  const toggle = document.createElement("div");
+  toggle.className = "output-toggle";
+  toggle.id = "outputToggle";
+  toggle.innerHTML = "&#9650; Output";
+  toggle.addEventListener("click", () => {
+    outputBar.classList.toggle("collapsed");
+  });
+  outputTabs.appendChild(toggle);
+}
+
+function renderOutputTabs() {
+  const views = collectOutputViews();
+  if (!views.length) {
+    outputTabs.innerHTML = '<div class="output-tab active" data-tab="overlay">.overlay</div>';
+    appendOutputToggle();
+    activeTab = "overlay";
+    return;
+  }
+
+  if (!views.some(view => view.id === activeTab)) {
+    activeTab = views[0].id;
+  }
+
+  outputTabs.innerHTML = "";
+  views.forEach(view => {
+    const tab = document.createElement("div");
+    tab.className = "output-tab" + (view.id === activeTab ? " active" : "");
+    tab.dataset.tab = view.id;
+    tab.textContent = view.label;
+    tab.addEventListener("click", () => showOutput(view.id));
+    outputTabs.appendChild(tab);
+  });
+  appendOutputToggle();
+}
+
 // ── Board loading ────────────────────────────────────────────────────
 
 async function loadBoardList() {
@@ -82,10 +381,22 @@ async function loadBoardList() {
 
 async function loadBoard(name) {
   const res = await fetch(`/api/board/${name}`);
-  boardData = await res.json();
+  applyBoardDefinition(await res.json(), { syncEditor: true });
+}
+
+function applyBoardDefinition(nextBoard, options = {}) {
+  const { syncEditor = false } = options;
+
+  boardData = nextBoard;
   pinStates = {};
   periphStates = {};
+  periphCoreStates = {};
+  externalDeviceStates = {};
   selectedPin = null;
+  generatedOverlay = "";
+  generatedConf = "";
+  generatedTargets = {};
+  renderOutputTabs();
 
   chipLabel.textContent = boardData.soc;
   statsLabel.textContent =
@@ -93,11 +404,1419 @@ async function loadBoard(name) {
 
   boardData.peripherals.forEach(p => {
     periphStates[p.name] = p.enabled || false;
+    periphCoreStates[p.name] = p.core_id || (p.available_cores && p.available_cores[0]) || "";
   });
+
+  initExternalDeviceStates();
+  updateBoardEditorMeta();
+  if (syncEditor) {
+    setBoardEditorText(boardData);
+    setBoardEditorStatus("Loaded current board into the editor.", "ok");
+  }
 
   renderPeripherals();
   renderChip();
   renderConfigPanel();
+}
+
+function currentBoardForEditor() {
+  if (!boardData) return null;
+  return cloneJson(boardData);
+}
+
+function setBoardEditorText(board, options = {}) {
+  const editor = $("#boardEditorJson");
+  if (!editor) return;
+  const { syncPreview = true } = options;
+  editor.value = `${JSON.stringify(board, null, 2)}\n`;
+  if (syncPreview) {
+    boardEditorPreviewBoard = normalizeBoardEditorBoard(board);
+    updateBoardEditorMeta(boardEditorPreviewBoard);
+    renderBoardEditorCanvas(boardEditorPreviewBoard);
+  }
+}
+
+function setBoardEditorStatus(message, tone = "") {
+  const status = $("#boardEditorStatus");
+  if (!status) return;
+  status.textContent = message;
+  status.className = `board-editor-status${tone ? ` ${tone}` : ""}`;
+}
+
+function setBoardEditorCanvasStatus(message, tone = "") {
+  const status = $("#boardEditorCanvasStatus");
+  if (!status) return;
+  status.textContent = message;
+  status.className = `board-editor-canvas-status${tone ? ` ${tone}` : ""}`;
+}
+
+function formatBoardDraftDate(timestamp) {
+  if (!timestamp) return "Updated just now";
+  return new Date(timestamp).toLocaleString([], {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function renderBoardEditorDrafts() {
+  const list = $("#boardEditorDraftList");
+  if (!list) return;
+  if (!boardEditorDrafts.length) {
+    list.innerHTML = '<div class="empty-state" style="padding: 18px 12px;">No saved board drafts yet.</div>';
+    return;
+  }
+
+  list.innerHTML = boardEditorDrafts.map(draft => `
+    <div class="board-editor-draft-item" data-board-draft="${escapeHtml(draft.filename)}">
+      <div class="board-editor-draft-name">${escapeHtml(draft.filename)}</div>
+      <div class="board-editor-draft-meta">${draft.size} bytes • ${escapeHtml(formatBoardDraftDate(draft.updated_at))}</div>
+      <div class="board-editor-draft-actions">
+        <button class="board-editor-draft-btn" data-board-draft-load="${escapeHtml(draft.filename)}">Load</button>
+        <button class="board-editor-draft-btn" data-board-draft-duplicate="${escapeHtml(draft.filename)}">Duplicate</button>
+        <button class="board-editor-draft-btn danger" data-board-draft-delete="${escapeHtml(draft.filename)}">${boardEditorPendingDelete === draft.filename ? "Confirm Delete" : "Delete"}</button>
+      </div>
+    </div>
+  `).join("");
+
+  list.querySelectorAll("[data-board-draft]").forEach(item => {
+    item.addEventListener("click", async () => {
+      const filename = item.dataset.boardDraft;
+      if (!filename) return;
+      try {
+        await loadBoardEditorDraft(filename);
+      } catch (err) {
+        setBoardEditorStatus(err.message, "error");
+      }
+    });
+  });
+
+  list.querySelectorAll("[data-board-draft-load]").forEach(button => {
+    button.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      const filename = button.dataset.boardDraftLoad;
+      if (!filename) return;
+      try {
+        await loadBoardEditorDraft(filename);
+      } catch (err) {
+        setBoardEditorStatus(err.message, "error");
+      }
+    });
+  });
+
+  list.querySelectorAll("[data-board-draft-duplicate]").forEach(button => {
+    button.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      const filename = button.dataset.boardDraftDuplicate;
+      if (!filename) return;
+      try {
+        await duplicateBoardEditorDraft(filename);
+      } catch (err) {
+        setBoardEditorStatus(err.message, "error");
+      }
+    });
+  });
+
+  list.querySelectorAll("[data-board-draft-delete]").forEach(button => {
+    button.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      const filename = button.dataset.boardDraftDelete;
+      if (!filename) return;
+      try {
+        await deleteBoardEditorDraft(filename);
+      } catch (err) {
+        setBoardEditorStatus(err.message, "error");
+      }
+    });
+  });
+}
+
+async function loadBoardEditorDrafts() {
+  try {
+    const res = await fetch("/api/board-editor/drafts");
+    const result = await res.json();
+    if (!res.ok) {
+      throw new Error(result.error || "Failed to load board drafts.");
+    }
+    boardEditorDrafts = Array.isArray(result.drafts) ? result.drafts : [];
+    renderBoardEditorDrafts();
+  } catch (err) {
+    boardEditorDrafts = [];
+    renderBoardEditorDrafts();
+    setBoardEditorStatus(err.message || "Failed to load board drafts.", "error");
+  }
+}
+
+async function saveBoardEditorDraft() {
+  const board = validateBoardEditorJson();
+  const res = await fetch("/api/board-editor/save", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ board }),
+  });
+  const result = await res.json();
+  if (!res.ok) {
+    throw new Error(result.error || "Failed to save board draft.");
+  }
+  await loadBoardEditorDrafts();
+  setBoardEditorStatus(`Saved draft ${result.filename}.`, "ok");
+  toast(`Saved board draft ${result.filename}`);
+  return result;
+}
+
+function nextDuplicateDraftName(filename) {
+  const base = filename.replace(/\.json$/i, "");
+  const known = new Set(boardEditorDrafts.map(draft => draft.filename.toLowerCase()));
+  let index = 1;
+  let candidate = `${base}_copy.json`;
+  while (known.has(candidate.toLowerCase())) {
+    index += 1;
+    candidate = `${base}_copy${index}.json`;
+  }
+  return candidate;
+}
+
+async function loadBoardEditorDraft(filename) {
+  const res = await fetch(`/api/board-editor/draft/${encodeURIComponent(filename)}`);
+  const result = await res.json();
+  if (!res.ok) {
+    throw new Error(result.error || `Failed to load ${filename}.`);
+  }
+  const board = normalizeBoardEditorBoard(result.board);
+  setBoardEditorText(board);
+  boardEditorPendingDelete = "";
+  setBoardEditorCanvasStatus("Loaded draft into the wiring canvas. Drag devices or click pins to wire them.", "ok");
+  setBoardEditorStatus(`Loaded draft ${result.filename}.`, "ok");
+}
+
+async function duplicateBoardEditorDraft(filename) {
+  const draftRes = await fetch(`/api/board-editor/draft/${encodeURIComponent(filename)}`);
+  const result = await draftRes.json();
+  if (!draftRes.ok) {
+    throw new Error(result.error || `Failed to load ${filename}.`);
+  }
+  const board = normalizeBoardEditorBoard(result.board);
+  const nextFilename = nextDuplicateDraftName(filename);
+  board.board = nextFilename.replace(/\.json$/i, "");
+  const res = await fetch("/api/board-editor/save", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ filename: nextFilename, board }),
+  });
+  const saveResult = await res.json();
+  if (!res.ok) {
+    throw new Error(saveResult.error || "Failed to duplicate board draft.");
+  }
+
+  await loadBoardEditorDrafts();
+  setBoardEditorStatus(`Duplicated draft as ${saveResult.filename}.`, "ok");
+  toast(`Duplicated board draft ${saveResult.filename}`);
+}
+
+async function deleteBoardEditorDraft(filename) {
+  if (boardEditorPendingDelete !== filename) {
+    boardEditorPendingDelete = filename;
+    renderBoardEditorDrafts();
+    setBoardEditorStatus(`Click delete again to remove ${filename}.`, "error");
+    return;
+  }
+
+  const res = await fetch("/api/board-editor/delete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ filename }),
+  });
+  const result = await res.json();
+  if (!res.ok) {
+    throw new Error(result.error || "Failed to delete board draft.");
+  }
+
+  boardEditorPendingDelete = "";
+  await loadBoardEditorDrafts();
+  setBoardEditorStatus(`Deleted draft ${result.filename}.`, "ok");
+  toast(`Deleted board draft ${result.filename}`);
+}
+
+function updateBoardEditorMeta() {
+  const activeBoard = arguments.length ? arguments[0] : boardEditorPreviewBoard || boardData;
+  if (!activeBoard) return;
+  const boardLabel = $("#boardEditorBoard");
+  const packageLabel = $("#boardEditorPackage");
+  const countsLabel = $("#boardEditorCounts");
+  if (boardLabel) boardLabel.textContent = activeBoard.board || activeBoard.soc || "Unnamed board";
+  if (packageLabel) packageLabel.textContent = activeBoard.package || "-";
+  if (countsLabel) {
+    countsLabel.textContent = `${activeBoard.pins?.length || 0} pins / ${activeBoard.peripherals?.length || 0} peripherals`;
+  }
+}
+
+function slugifyBoardEditorToken(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "") || "device";
+}
+
+function normalizeSearchToken(value) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function boardEditorSignalsForBus(protocol) {
+  const normalized = String(protocol || "").toLowerCase();
+  if (normalized === "i2c") return ["VCC", "GND", "SDA", "SCL"];
+  if (normalized === "spi") return ["VCC", "GND", "SCK", "MOSI", "MISO", "CS"];
+  if (normalized === "uart") return ["VCC", "GND", "TX", "RX"];
+  if (normalized === "can") return ["VCC", "GND", "CAN_TX", "CAN_RX"];
+  return ["VCC", "GND"];
+}
+
+function cleanBoardEditorPartLabel(summary, job) {
+  const direct = String(summary?.part_number || "").trim();
+  if (direct) return direct.toUpperCase();
+  const fallback = String(job?.filename || job?.job_id || "sensor").trim();
+  const noExt = fallback.replace(/\.pdf$/i, "");
+  const normalized = noExt.replace(/^[a-f0-9]{8,}_/i, "");
+  const vendorMatrix = normalized.match(/([a-z0-9+-]+)_vendor_matrix$/i);
+  if (vendorMatrix) return vendorMatrix[1].toUpperCase();
+  return normalized;
+}
+
+function cleanBoardEditorPackagePinName(name) {
+  return String(name || "")
+    .trim()
+    .replace(/^[-_\s—–]+/, "")
+    .replace(/^\d+[_\s/-]*/, "")
+    .replace(/^[_\s/-]+/, "")
+    .replace(/\s+/g, "_");
+}
+
+function cleanBoardEditorPackageInfo(packageInfo) {
+  if (!packageInfo || typeof packageInfo !== "object") return null;
+  const normalized = cloneJson(packageInfo);
+  normalized.name = String(normalized.name || "").trim();
+  normalized.package_type = String(normalized.package_type || "").trim();
+  normalized.pin_count = Number(normalized.pin_count || 0);
+  normalized.width_mm = Number.isFinite(Number(normalized.width_mm)) ? Number(normalized.width_mm) : undefined;
+  normalized.height_mm = Number.isFinite(Number(normalized.height_mm)) ? Number(normalized.height_mm) : undefined;
+  normalized.pitch_mm = Number.isFinite(Number(normalized.pitch_mm)) ? Number(normalized.pitch_mm) : undefined;
+  normalized.pins = Array.isArray(normalized.pins)
+    ? normalized.pins.map((pin, index) => ({
+        number: Number(pin?.number || index + 1),
+        name: cleanBoardEditorPackagePinName(pin?.name || `PIN${index + 1}`),
+        kind: String(pin?.kind || "io"),
+      })).filter((pin) => pin.name)
+    : [];
+  return normalized;
+}
+
+function boardEditorLibraryScore(entry) {
+  const packageInfo = entry?.device?.package_info || {};
+  return [
+    entry?.source === "catalog" ? 1 : 0,
+    entry?.device?.compatible ? 2 : 0,
+    packageInfo?.name ? 4 : 0,
+    Array.isArray(packageInfo?.pins) ? packageInfo.pins.length : 0,
+    entry?.device?.display ? 1 : 0,
+  ].reduce((sum, value) => sum + value, 0);
+}
+
+function boardEditorLibraryDedupeKey(entry) {
+  if (entry.source === "catalog") return entry.key;
+  const device = entry.device || {};
+  const packageName = String(device.package_info?.name || device.package || "").toLowerCase();
+  return [
+    "sensor",
+    normalizeSearchToken(device.display || entry.label),
+    normalizeSearchToken(device.bus_family || device.bus),
+    normalizeSearchToken(device.compatible || ""),
+    normalizeSearchToken(packageName),
+  ].join(":");
+}
+
+function updateBoardEditorCanvasZoomLabel() {
+  const label = $("#boardEditorZoomLevel");
+  if (label) label.textContent = `${Math.round(boardEditorCanvasZoom * 100)}%`;
+}
+
+function applyBoardEditorCanvasZoom() {
+  const svg = $("#boardEditorCanvasShell svg");
+  if (svg) {
+    svg.style.width = `${Math.round(BOARD_EDITOR_CANVAS_WIDTH * boardEditorCanvasZoom)}px`;
+    svg.style.height = `${Math.round(BOARD_EDITOR_CANVAS_HEIGHT * boardEditorCanvasZoom)}px`;
+  }
+  updateBoardEditorCanvasZoomLabel();
+}
+
+function boardEditorCanvasZoomIn() {
+  boardEditorCanvasZoom = Math.min(ZOOM_MAX, boardEditorCanvasZoom + ZOOM_STEP);
+  applyBoardEditorCanvasZoom();
+}
+
+function boardEditorCanvasZoomOut() {
+  boardEditorCanvasZoom = Math.max(ZOOM_MIN, boardEditorCanvasZoom - ZOOM_STEP);
+  applyBoardEditorCanvasZoom();
+}
+
+function boardEditorCanvasFit() {
+  const shell = $("#boardEditorCanvasShell");
+  if (!shell) return;
+  const areaW = Math.max(200, shell.clientWidth - 32);
+  const areaH = Math.max(180, shell.clientHeight - 32);
+  boardEditorCanvasZoom = Math.min(areaW / BOARD_EDITOR_CANVAS_WIDTH, areaH / BOARD_EDITOR_CANVAS_HEIGHT);
+  boardEditorCanvasZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, boardEditorCanvasZoom));
+  applyBoardEditorCanvasZoom();
+}
+
+function matchSupportedDeviceForPart(partNumber) {
+  const token = normalizeSearchToken(partNumber);
+  if (!token) return null;
+  return DEFAULT_EXTERNAL_DEVICE_CATALOG.find((device) => {
+    const haystack = [device.id, device.display, device.compatible]
+      .map(normalizeSearchToken)
+      .join(" ");
+    return haystack.includes(token);
+  }) || null;
+}
+
+function normalizeBoardEditorDevice(device, index) {
+  const normalized = device && typeof device === "object" ? cloneJson(device) : {};
+  normalized.id = String(normalized.id || `${slugifyBoardEditorToken(normalized.display || `device_${index + 1}`)}_${index + 1}`);
+  normalized.display = String(normalized.display || normalized.id || `Device ${index + 1}`);
+  normalized.category = String(normalized.category || "device");
+  normalized.bus = String(normalized.bus || "");
+  normalized.compatible = String(normalized.compatible || "");
+  normalized.address = String(normalized.address || "");
+  normalized.notes = String(normalized.notes || "");
+  normalized.package_info = normalized.package_info && typeof normalized.package_info === "object"
+    ? cleanBoardEditorPackageInfo(normalized.package_info)
+    : null;
+  normalized.package = String(normalized.package || normalized.package_info?.name || "");
+  normalized.frameworks = Array.isArray(normalized.frameworks) ? normalized.frameworks.map(value => String(value)) : [];
+  normalized.required_signals = Array.isArray(normalized.required_signals)
+    ? normalized.required_signals.map(value => String(value))
+    : [];
+  const explicitPins = Array.isArray(normalized.pins)
+    ? normalized.pins.map(value => String(value).trim()).filter(Boolean)
+    : [];
+  const packagePins = Array.isArray(normalized.package_info?.pins)
+    ? normalized.package_info.pins.map(pin => String(pin?.name || "").trim()).filter(Boolean)
+    : [];
+  normalized.pins = explicitPins.length
+    ? explicitPins
+    : (packagePins.length
+      ? packagePins
+      : (normalized.required_signals.length
+      ? normalized.required_signals.map(value => String(value).trim()).filter(Boolean)
+      : ["VCC", "GND"]));
+  normalized.x = Number.isFinite(Number(normalized.x)) ? Number(normalized.x) : 860 + (index % 2) * 250;
+  normalized.y = Number.isFinite(Number(normalized.y)) ? Number(normalized.y) : 140 + Math.floor(index / 2) * 180;
+  return normalized;
+}
+
+function buildBoardEditorSensorLibraryEntry(job) {
+  const summary = job.result?.summary || job.summary || {};
+  const address = job.result?.address || {};
+  const packageInfo = cleanBoardEditorPackageInfo(job.result?.package || job.package || null);
+  const partNumber = cleanBoardEditorPartLabel(summary, job);
+  const protocol = String(address.protocol || summary.protocol || "").toLowerCase();
+  const matched = matchSupportedDeviceForPart(partNumber);
+  const busFamily = protocol || matched?.bus_family || inferDeviceBusFamily(matched || {});
+  const addressValue = Array.isArray(address.i2c_addresses) && address.i2c_addresses.length
+    ? String(address.i2c_addresses[0])
+    : String(matched?.address || "");
+
+  return {
+    key: `sensor:${job.job_id}`,
+    source: "sensor",
+    label: `${partNumber} [parsed sensor]`,
+    device: {
+      id: matched?.id || `${slugifyBoardEditorToken(partNumber)}${busFamily ? `_${busFamily}` : ""}`,
+      display: partNumber,
+      category: String(summary.sensor_type || matched?.category || "sensor").trim() || "sensor",
+      bus: busFamily ? `${busFamily}0` : "",
+      bus_family: busFamily,
+      compatible: matched?.compatible || "",
+      address: addressValue,
+      required_signals: matched?.required_signals || boardEditorSignalsForBus(busFamily),
+      frameworks: matched?.frameworks || [],
+      package: packageInfo?.name || "",
+      package_info: packageInfo,
+      notes: [
+        `Imported from parsed sensor job ${job.job_id}.`,
+        summary.vendor_name ? `Vendor: ${summary.vendor_name}.` : "",
+        packageInfo?.name ? `Package: ${packageInfo.name}.` : "",
+        matched?.compatible ? `Matched supported device ${matched.display}.` : "",
+      ].filter(Boolean).join(" "),
+      pins: Array.isArray(packageInfo?.pins) && packageInfo.pins.length
+        ? packageInfo.pins.map(pin => cleanBoardEditorPackagePinName(pin.name))
+        : (matched?.required_signals || boardEditorSignalsForBus(busFamily)),
+    },
+  };
+}
+
+function renderBoardEditorDeviceLibrary() {
+  const select = $("#boardEditorDeviceLibrary");
+  if (!select) return;
+
+  const placeholder = '<option value="">Supported devices and parsed sensors</option>';
+  if (!boardEditorDeviceLibrary.length) {
+    select.innerHTML = `${placeholder}<option value="" disabled>No library devices available</option>`;
+    return;
+  }
+
+  select.innerHTML = [
+    placeholder,
+    ...boardEditorDeviceLibrary.map((entry) => (
+      `<option value="${escapeHtml(entry.key)}">${escapeHtml(entry.label)}</option>`
+    )),
+  ].join("");
+}
+
+async function loadBoardEditorDeviceLibrary() {
+  const entries = DEFAULT_EXTERNAL_DEVICE_CATALOG.map((device) => ({
+    key: `catalog:${device.id}`,
+    source: "catalog",
+    label: `${device.display} [zephyr/arduino]`,
+    device: {
+      ...cloneJson(device),
+      bus: device.bus || (device.bus_family ? `${device.bus_family}0` : ""),
+      pins: device.required_signals,
+    },
+  }));
+
+  try {
+    const res = await fetch("/api/sensor-jobs");
+    const jobs = await res.json();
+    if (res.ok && Array.isArray(jobs)) {
+      const detailedJobs = await Promise.all(jobs.map(async (job) => {
+        try {
+          const detailRes = await fetch(`/api/sensor-job/${encodeURIComponent(job.job_id)}`);
+          const detail = await detailRes.json();
+          if (detailRes.ok && detail?.result) {
+            return { ...job, result: detail.result };
+          }
+        } catch (_err) {
+          // Fall back to the summary entry when the detail endpoint is unavailable.
+        }
+        return job;
+      }));
+
+      detailedJobs.forEach((job) => {
+        entries.push(buildBoardEditorSensorLibraryEntry(job));
+      });
+    }
+  } catch (_err) {
+    // Keep the supported-device catalog even if sensor jobs are unavailable.
+  }
+
+  const deduped = new Map();
+  entries.forEach((entry) => {
+    const dedupeKey = boardEditorLibraryDedupeKey(entry);
+    const current = deduped.get(dedupeKey);
+    if (!current || boardEditorLibraryScore(entry) > boardEditorLibraryScore(current)) {
+      deduped.set(dedupeKey, entry);
+    }
+  });
+  boardEditorDeviceLibrary = [...deduped.values()];
+  renderBoardEditorDeviceLibrary();
+}
+
+function normalizeBoardEditorConnection(connection) {
+  if (!connection || typeof connection !== "object") return null;
+  const normalized = {
+    board_pin: Number(connection.board_pin),
+    device_id: String(connection.device_id || "").trim(),
+    device_pin: String(connection.device_pin || "").trim(),
+  };
+  if (!Number.isFinite(normalized.board_pin) || !normalized.device_id || !normalized.device_pin) {
+    return null;
+  }
+  return normalized;
+}
+
+function queueBoardEditorPreviewSync() {
+  if (boardEditorPreviewTimer) {
+    clearTimeout(boardEditorPreviewTimer);
+  }
+  boardEditorPreviewTimer = setTimeout(() => {
+    boardEditorPreviewTimer = null;
+    syncBoardEditorPreview({ softFail: true });
+  }, 180);
+}
+
+function syncBoardEditorPreview(options = {}) {
+  const { softFail = false } = options;
+  try {
+    const board = parseBoardEditorJson();
+    boardEditorPreviewBoard = board;
+    updateBoardEditorMeta(board);
+    renderBoardEditorCanvas(board);
+    return board;
+  } catch (err) {
+    setBoardEditorCanvasStatus(`Preview paused until JSON is valid. ${err.message}`, "error");
+    if (softFail) {
+      return null;
+    }
+    throw err;
+  }
+}
+
+function writeBoardEditorFromCanvas(board, message = "", tone = "ok") {
+  const normalized = normalizeBoardEditorBoard(board);
+  boardEditorPreviewBoard = normalized;
+  setBoardEditorText(normalized, { syncPreview: false });
+  updateBoardEditorMeta(normalized);
+  renderBoardEditorCanvas(normalized);
+  if (message) {
+    setBoardEditorCanvasStatus(message, tone);
+  }
+}
+
+function normalizeBoardEditorBoard(parsed) {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Board JSON must be an object.");
+  }
+
+  const normalized = cloneJson(parsed);
+  normalized.board = String(normalized.board || normalized.id || normalized.soc || "custom_board");
+  normalized.soc = String(normalized.soc || normalized.board || "Custom SoC");
+  normalized.vendor = String(normalized.vendor || "custom");
+  normalized.package = String(normalized.package || "Custom");
+  normalized.pins = Array.isArray(normalized.pins) ? normalized.pins : [];
+  normalized.peripherals = Array.isArray(normalized.peripherals) ? normalized.peripherals : [];
+  normalized.external_devices = Array.isArray(normalized.external_devices)
+    ? normalized.external_devices.map((device, index) => normalizeBoardEditorDevice(device, index))
+    : [];
+  normalized.cores = Array.isArray(normalized.cores) ? normalized.cores : [];
+  normalized.output_targets = Array.isArray(normalized.output_targets) ? normalized.output_targets : [];
+  normalized.manual_connections = Array.isArray(normalized.manual_connections)
+    ? normalized.manual_connections.map(normalizeBoardEditorConnection).filter(Boolean)
+    : [];
+  normalized.pin_count = Number(normalized.pin_count || normalized.pins.length || 0);
+  normalized.flash_size_kb = Number(normalized.flash_size_kb || 0);
+  normalized.sram_size_kb = Number(normalized.sram_size_kb || 0);
+  normalized.clock_hz = Number(normalized.clock_hz || 0);
+
+  if (!normalized.pins.every(pin => pin && typeof pin === "object" && "number" in pin && "name" in pin)) {
+    throw new Error("Each pin must include at least number and name.");
+  }
+  if (!normalized.peripherals.every(peripheral => peripheral && typeof peripheral === "object" && "name" in peripheral)) {
+    throw new Error("Each peripheral must include at least name.");
+  }
+
+  return normalized;
+}
+
+function parseBoardEditorJson() {
+  const editor = $("#boardEditorJson");
+  if (!editor) {
+    throw new Error("Board editor is not available.");
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(editor.value);
+  } catch (err) {
+    throw new Error(`Invalid JSON: ${err.message}`);
+  }
+  return normalizeBoardEditorBoard(parsed);
+}
+
+function validateBoardEditorJson() {
+  const board = parseBoardEditorJson();
+  boardEditorPreviewBoard = board;
+  updateBoardEditorMeta(board);
+  renderBoardEditorCanvas(board);
+  setBoardEditorCanvasStatus("Package canvas is in sync. Drag devices and click endpoints to add or remove wires.", "ok");
+  setBoardEditorStatus(
+    `Valid board JSON: ${board.board} with ${board.pins.length} pins and ${board.peripherals.length} peripherals.`,
+    "ok",
+  );
+  return board;
+}
+
+function applyBoardEditorJson() {
+  const board = validateBoardEditorJson();
+  applyBoardDefinition(board, { syncEditor: true });
+  toast(`Applied board editor JSON for ${board.board}`);
+}
+
+function exportBoardEditorJson() {
+  const board = validateBoardEditorJson();
+  const blob = new Blob([`${JSON.stringify(board, null, 2)}\n`], { type: "application/json" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `${board.board || "board"}.json`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(link.href);
+  setBoardEditorStatus(`Exported ${link.download}.`, "ok");
+}
+
+function boardEditorSvgPoint(svg, clientX, clientY) {
+  const point = svg.createSVGPoint();
+  point.x = clientX;
+  point.y = clientY;
+  return point.matrixTransform(svg.getScreenCTM().inverse());
+}
+
+function buildBoardEditorPackageLayout(board) {
+  return isBgaPackage(board.package)
+    ? buildBoardEditorBgaLayout(board)
+    : buildBoardEditorQfpLayout(board);
+}
+
+function buildBoardEditorQfpLayout(board) {
+  const sides = { left: [], bottom: [], right: [], top: [] };
+  board.pins.forEach(pin => {
+    const side = sides[pin.side] ? pin.side : "left";
+    sides[side].push(pin);
+  });
+
+  const maxSide = Math.max(sides.left.length, sides.bottom.length, sides.right.length, sides.top.length, 1);
+  const centerX = 360;
+  const centerY = 420;
+  const padLong = 34;
+  const padShort = 18;
+  const padGap = 6;
+  const bodySize = Math.max(220, maxSide * (padShort + padGap) + 30);
+  const bodyX = centerX - bodySize / 2;
+  const bodyY = centerY - bodySize / 2;
+  const bodyW = bodySize;
+  const bodyH = bodySize;
+  const inset = 12;
+  const pins = [];
+
+  sides.left.forEach((pin, index) => {
+    const x = bodyX - padLong - 16;
+    const y = bodyY + inset + index * (padShort + padGap);
+    pins.push({ pin, x, y, w: padLong, h: padShort, side: "left", anchorX: x, anchorY: y + padShort / 2 });
+  });
+  sides.bottom.forEach((pin, index) => {
+    const x = bodyX + inset + index * (padShort + padGap);
+    const y = bodyY + bodyH + 16;
+    pins.push({ pin, x, y, w: padShort, h: padLong, side: "bottom", anchorX: x + padShort / 2, anchorY: y + padLong });
+  });
+  sides.right.forEach((pin, index) => {
+    const x = bodyX + bodyW + 16;
+    const y = bodyY + bodyH - inset - padShort - index * (padShort + padGap);
+    pins.push({ pin, x, y, w: padLong, h: padShort, side: "right", anchorX: x + padLong, anchorY: y + padShort / 2 });
+  });
+  sides.top.forEach((pin, index) => {
+    const x = bodyX + bodyW - inset - padShort - index * (padShort + padGap);
+    const y = bodyY - padLong - 16;
+    pins.push({ pin, x, y, w: padShort, h: padLong, side: "top", anchorX: x + padShort / 2, anchorY: y });
+  });
+
+  return {
+    type: "qfp",
+    centerX,
+    centerY,
+    bodyX,
+    bodyY,
+    bodyW,
+    bodyH,
+    pins,
+  };
+}
+
+function buildBoardEditorBgaLayout(board) {
+  const pins = [...board.pins].sort((left, right) => left.number - right.number);
+  const side = Math.ceil(Math.sqrt(Math.max(pins.length, 1)));
+  const cell = 34;
+  const radius = 11;
+  const gridSize = side * cell;
+  const originX = 220;
+  const originY = 250;
+  const pinLayouts = [];
+
+  pins.forEach((pin, index) => {
+    const row = Math.floor(index / side);
+    const col = index % side;
+    const cx = originX + col * cell + cell / 2;
+    const cy = originY + row * cell + cell / 2;
+    pinLayouts.push({ pin, cx, cy, r: radius, anchorX: cx, anchorY: cy, shortLabel: pin.name.slice(0, 4) });
+  });
+
+  return {
+    type: "bga",
+    centerX: originX + gridSize / 2,
+    centerY: originY + gridSize / 2,
+    bodyX: originX - 18,
+    bodyY: originY - 18,
+    bodyW: gridSize + 36,
+    bodyH: gridSize + 36,
+    pins: pinLayouts,
+    gridSide: side,
+  };
+}
+
+function buildBoardEditorDeviceLayout(device) {
+  const packageInfo = device?.package_info && typeof device.package_info === "object"
+    ? device.package_info
+    : null;
+  if (packageInfo) {
+    const packageName = String(packageInfo.name || device.package || "PKG");
+    const explicitPackagePins = Array.isArray(packageInfo.pins) ? packageInfo.pins : [];
+    const fallbackPins = Array.isArray(device.pins) && device.pins.length ? device.pins : ["VCC", "GND"];
+    const packagePins = (explicitPackagePins.length ? explicitPackagePins : fallbackPins.map((name, index) => ({ number: index + 1, name, kind: "io" })))
+      .map((pin, index) => ({
+        number: Number(pin.number || index + 1),
+        name: String(pin.name || `PIN${index + 1}`),
+        kind: String(pin.kind || "io") || "io",
+      }))
+      .sort((left, right) => left.number - right.number);
+    const isBga = isBgaPackage(packageName);
+    const bodyW = isBga ? 120 : 134;
+    const bodyH = isBga ? 120 : 134;
+    const pinLength = isBga ? 0 : 12;
+    const pinThickness = 10;
+    const originX = Number(device.x);
+    const originY = Number(device.y);
+    const bodyX = originX + (isBga ? 38 : 32);
+    const bodyY = originY + 54;
+    const pinLayouts = [];
+
+    if (isBga) {
+      const side = Math.max(2, Math.ceil(Math.sqrt(packagePins.length || 1)));
+      const cell = 22;
+      const grid = side * cell;
+      const gridOriginX = originX + 30;
+      const gridOriginY = originY + 62;
+      packagePins.forEach((pin, index) => {
+        const row = Math.floor(index / side);
+        const col = index % side;
+        const cx = gridOriginX + col * cell + cell / 2;
+        const cy = gridOriginY + row * cell + cell / 2;
+        pinLayouts.push({ pin, shape: "circle", cx, cy, r: 7, anchorX: cx, anchorY: cy });
+      });
+      return {
+        type: "package-device",
+        packageStyle: "bga",
+        device,
+        x: originX,
+        y: originY,
+        width: grid + 60,
+        height: grid + 110,
+        bodyX: gridOriginX - 8,
+        bodyY: gridOriginY - 8,
+        bodyW: grid + 16,
+        bodyH: grid + 16,
+        titleY: originY + 22,
+        subtitleY: originY + 40,
+        pinLayouts,
+      };
+    }
+
+    const sideCount = Math.max(1, Math.ceil(packagePins.length / 4));
+    packagePins.forEach((pin, index) => {
+      let side = "left";
+      let x = bodyX - pinLength;
+      let y = bodyY + 10;
+      if (index < sideCount) {
+        side = "left";
+        y = bodyY + 10 + index * ((bodyH - 20) / Math.max(1, sideCount));
+      } else if (index < sideCount * 2) {
+        side = "bottom";
+        x = bodyX + 10 + (index - sideCount) * ((bodyW - 20) / Math.max(1, sideCount));
+        y = bodyY + bodyH;
+      } else if (index < sideCount * 3) {
+        side = "right";
+        x = bodyX + bodyW;
+        y = bodyY + 10 + (index - sideCount * 2) * ((bodyH - 20) / Math.max(1, sideCount));
+      } else {
+        side = "top";
+        x = bodyX + 10 + (index - sideCount * 3) * ((bodyW - 20) / Math.max(1, sideCount));
+        y = bodyY - pinLength;
+      }
+      pinLayouts.push({
+        pin,
+        shape: "rect",
+        side,
+        x,
+        y,
+        w: side === "left" || side === "right" ? pinLength : pinThickness,
+        h: side === "left" || side === "right" ? pinThickness : pinLength,
+        anchorX: side === "left" ? x : side === "right" ? x + pinLength : x + pinThickness / 2,
+        anchorY: side === "top" ? y : side === "bottom" ? y + pinLength : y + pinThickness / 2,
+      });
+    });
+
+    return {
+      type: "package-device",
+      packageStyle: "perimeter",
+      device,
+      x: originX,
+      y: originY,
+      width: 204,
+      height: 232,
+      bodyX,
+      bodyY,
+      bodyW,
+      bodyH,
+      titleY: originY + 22,
+      subtitleY: originY + 40,
+      pinLayouts,
+    };
+  }
+
+  const pinNames = Array.isArray(device.pins) && device.pins.length ? device.pins : ["VCC", "GND"];
+  const width = 220;
+  const rowHeight = 26;
+  const headerHeight = 50;
+  const height = headerHeight + pinNames.length * rowHeight + 14;
+  const anchorSide = Number(device.x) >= 520 ? "left" : "right";
+  const pinLayouts = pinNames.map((pinName, index) => {
+    const y = Number(device.y) + headerHeight + index * rowHeight + rowHeight / 2;
+    const anchorX = anchorSide === "left" ? Number(device.x) : Number(device.x) + width;
+    return { name: pinName, x: Number(device.x), y, anchorX, anchorY: y, anchorSide };
+  });
+  return {
+    device,
+    x: Number(device.x),
+    y: Number(device.y),
+    width,
+    height,
+    headerHeight,
+    pinLayouts,
+    anchorSide,
+  };
+}
+
+function boardEditorConnectionMaps(packageLayout, deviceLayouts) {
+  const boardPins = new Map();
+  packageLayout.pins.forEach((entry) => {
+    boardPins.set(Number(entry.pin.number), entry);
+  });
+
+  const devicePins = new Map();
+  deviceLayouts.forEach((layout) => {
+    layout.pinLayouts.forEach((pin) => {
+      devicePins.set(`${layout.device.id}:${pin.name}`, pin);
+    });
+  });
+
+  return { boardPins, devicePins };
+}
+
+function renderBoardEditorCanvas(board) {
+  const shell = $("#boardEditorCanvasShell");
+  if (!shell) return;
+  if (!board) {
+    shell.innerHTML = '<div class="board-editor-canvas-empty">The selected MCU package and external devices will appear here once the Board Editor JSON is valid.</div>';
+    updateBoardEditorCanvasZoomLabel();
+    return;
+  }
+
+  const packageLayout = buildBoardEditorPackageLayout(board);
+  const deviceLayouts = board.external_devices.map(buildBoardEditorDeviceLayout);
+  const { boardPins, devicePins } = boardEditorConnectionMaps(packageLayout, deviceLayouts);
+  const parts = [];
+  parts.push(`<svg class="board-editor-canvas-svg" viewBox="0 0 ${BOARD_EDITOR_CANVAS_WIDTH} ${BOARD_EDITOR_CANVAS_HEIGHT}" xmlns="http://www.w3.org/2000/svg">`);
+  parts.push(`<text x="46" y="44" class="board-editor-mcu-label" font-size="18">${escapeHtml(board.soc || board.board)}</text>`);
+  parts.push(`<text x="46" y="66" class="board-editor-mcu-subtitle" font-size="12">${escapeHtml(board.package)} wiring canvas</text>`);
+
+  board.manual_connections.forEach((connection, index) => {
+    const boardPin = boardPins.get(Number(connection.board_pin));
+    const devicePin = devicePins.get(`${connection.device_id}:${connection.device_pin}`);
+    if (!boardPin || !devicePin) return;
+    const bendX = boardPin.anchorX < devicePin.anchorX
+      ? (boardPin.anchorX + devicePin.anchorX) / 2
+      : Math.max(boardPin.anchorX, devicePin.anchorX) + 60;
+    parts.push(`<path class="board-editor-wire" data-wire-index="${index}" d="M ${boardPin.anchorX} ${boardPin.anchorY} L ${bendX} ${boardPin.anchorY} L ${bendX} ${devicePin.anchorY} L ${devicePin.anchorX} ${devicePin.anchorY}" />`);
+  });
+
+  parts.push(`<rect class="board-editor-mcu-body" x="${packageLayout.bodyX}" y="${packageLayout.bodyY}" width="${packageLayout.bodyW}" height="${packageLayout.bodyH}" rx="14" />`);
+  parts.push(`<circle cx="${packageLayout.bodyX + 18}" cy="${packageLayout.bodyY + 18}" r="6" fill="rgba(248,250,252,.88)" />`);
+  parts.push(`<text x="${packageLayout.centerX}" y="${packageLayout.centerY - 10}" class="board-editor-mcu-label" font-size="18" text-anchor="middle">${escapeHtml(board.soc)}</text>`);
+  parts.push(`<text x="${packageLayout.centerX}" y="${packageLayout.centerY + 14}" class="board-editor-mcu-subtitle" font-size="12" text-anchor="middle">${escapeHtml(board.package)}</text>`);
+
+  if (packageLayout.type === "bga") {
+    packageLayout.pins.forEach((entry) => {
+      const selected = boardEditorCanvasStart?.type === "board" && Number(boardEditorCanvasStart.pin) === Number(entry.pin.number) ? " selected" : "";
+      parts.push(`<circle class="board-editor-canvas-pin ${escapeHtml(entry.pin.kind || "io")}${selected}" data-board-pin="${entry.pin.number}" cx="${entry.cx}" cy="${entry.cy}" r="${entry.r}" />`);
+      parts.push(`<text class="board-editor-canvas-pin-label" x="${entry.cx}" y="${entry.cy + 4}" text-anchor="middle">${escapeHtml(entry.shortLabel)}</text>`);
+      parts.push(`<text class="board-editor-canvas-pin-num" x="${entry.cx}" y="${entry.cy + 22}" text-anchor="middle">${entry.pin.number}</text>`);
+    });
+  } else {
+    packageLayout.pins.forEach((entry) => {
+      const selected = boardEditorCanvasStart?.type === "board" && Number(boardEditorCanvasStart.pin) === Number(entry.pin.number) ? " selected" : "";
+      parts.push(`<rect class="board-editor-canvas-pin ${escapeHtml(entry.pin.kind || "io")}${selected}" data-board-pin="${entry.pin.number}" x="${entry.x}" y="${entry.y}" width="${entry.w}" height="${entry.h}" rx="4" />`);
+      if (entry.side === "left") {
+        parts.push(`<text class="board-editor-canvas-pin-num" x="${entry.x + entry.w + 6}" y="${entry.y + entry.h / 2 + 4}" text-anchor="start">${entry.pin.number}</text>`);
+        parts.push(`<text class="board-editor-canvas-pin-label" x="${entry.x - 6}" y="${entry.y + entry.h / 2 + 4}" text-anchor="end">${escapeHtml(entry.pin.name)}</text>`);
+      } else if (entry.side === "right") {
+        parts.push(`<text class="board-editor-canvas-pin-num" x="${entry.x - 6}" y="${entry.y + entry.h / 2 + 4}" text-anchor="end">${entry.pin.number}</text>`);
+        parts.push(`<text class="board-editor-canvas-pin-label" x="${entry.x + entry.w + 6}" y="${entry.y + entry.h / 2 + 4}" text-anchor="start">${escapeHtml(entry.pin.name)}</text>`);
+      } else if (entry.side === "top") {
+        parts.push(`<text class="board-editor-canvas-pin-label" x="${entry.x + entry.w / 2}" y="${entry.y - 6}" text-anchor="middle">${escapeHtml(entry.pin.name)}</text>`);
+        parts.push(`<text class="board-editor-canvas-pin-num" x="${entry.x + entry.w / 2}" y="${entry.y + entry.h + 14}" text-anchor="middle">${entry.pin.number}</text>`);
+      } else {
+        parts.push(`<text class="board-editor-canvas-pin-num" x="${entry.x + entry.w / 2}" y="${entry.y - 6}" text-anchor="middle">${entry.pin.number}</text>`);
+        parts.push(`<text class="board-editor-canvas-pin-label" x="${entry.x + entry.w / 2}" y="${entry.y + entry.h + 16}" text-anchor="middle">${escapeHtml(entry.pin.name)}</text>`);
+      }
+    });
+  }
+
+  deviceLayouts.forEach((layout) => {
+    if (layout.type === "package-device") {
+      const packageInfo = layout.device.package_info || {};
+      const dims = Number(packageInfo.width_mm) > 0 && Number(packageInfo.height_mm) > 0
+        ? `${packageInfo.width_mm} x ${packageInfo.height_mm} mm`
+        : "";
+      const pitch = Number(packageInfo.pitch_mm) > 0 ? `${packageInfo.pitch_mm} mm pitch` : "";
+      const subtitle = [layout.device.package || packageInfo.name || "package", dims, pitch].filter(Boolean).join(" • ");
+      parts.push(`<g class="board-editor-device-card${boardEditorCanvasDrag?.deviceId === layout.device.id ? " dragging" : ""}" transform="translate(${layout.x} ${layout.y})">`);
+      parts.push(`<text class="board-editor-device-title" x="10" y="22">${escapeHtml(layout.device.display)}</text>`);
+      parts.push(`<text class="board-editor-device-subtitle" x="10" y="38">${escapeHtml(subtitle)}</text>`);
+      parts.push(`<circle class="board-editor-device-delete" data-device-remove="${escapeHtml(layout.device.id)}" cx="${layout.width - 12}" cy="16" r="10" />`);
+      parts.push(`<text class="board-editor-device-delete-label" x="${layout.width - 12}" y="20" text-anchor="middle">×</text>`);
+      parts.push(`<rect class="board-editor-device-body" data-device-drag="${escapeHtml(layout.device.id)}" x="${layout.bodyX - layout.x}" y="${layout.bodyY - layout.y}" width="${layout.bodyW}" height="${layout.bodyH}" rx="12" />`);
+      parts.push(`<text class="board-editor-mcu-subtitle" x="${layout.bodyX - layout.x + layout.bodyW / 2}" y="${layout.bodyY - layout.y + layout.bodyH / 2}" text-anchor="middle">${escapeHtml(layout.device.package || packageInfo.name || "pkg")}</text>`);
+      layout.pinLayouts.forEach((pinLayout) => {
+        const selected = boardEditorCanvasStart?.type === "device" && boardEditorCanvasStart.deviceId === layout.device.id && boardEditorCanvasStart.pin === pinLayout.pin.name ? " selected" : "";
+        if (pinLayout.shape === "circle") {
+          parts.push(`<circle class="board-editor-canvas-pin ${escapeHtml(pinLayout.pin.kind || "io")}${selected}" data-device-pin="${escapeHtml(layout.device.id)}" data-device-pin-name="${escapeHtml(pinLayout.pin.name)}" cx="${pinLayout.cx - layout.x}" cy="${pinLayout.cy - layout.y}" r="${pinLayout.r}" />`);
+          parts.push(`<text class="board-editor-canvas-pin-label" x="${pinLayout.cx - layout.x}" y="${pinLayout.cy - layout.y + 4}" text-anchor="middle">${escapeHtml(pinLayout.pin.name)}</text>`);
+        } else {
+          parts.push(`<rect class="board-editor-canvas-pin ${escapeHtml(pinLayout.pin.kind || "io")}${selected}" data-device-pin="${escapeHtml(layout.device.id)}" data-device-pin-name="${escapeHtml(pinLayout.pin.name)}" x="${pinLayout.x - layout.x}" y="${pinLayout.y - layout.y}" width="${pinLayout.w}" height="${pinLayout.h}" rx="4" />`);
+          if (pinLayout.side === "left") {
+            parts.push(`<text class="board-editor-canvas-pin-label" x="${pinLayout.x - layout.x - 4}" y="${pinLayout.y - layout.y + 9}" text-anchor="end">${escapeHtml(pinLayout.pin.name)}</text>`);
+          } else if (pinLayout.side === "right") {
+            parts.push(`<text class="board-editor-canvas-pin-label" x="${pinLayout.x - layout.x + pinLayout.w + 4}" y="${pinLayout.y - layout.y + 9}" text-anchor="start">${escapeHtml(pinLayout.pin.name)}</text>`);
+          } else if (pinLayout.side === "top") {
+            parts.push(`<text class="board-editor-canvas-pin-label" x="${pinLayout.x - layout.x + pinLayout.w / 2}" y="${pinLayout.y - layout.y - 4}" text-anchor="middle">${escapeHtml(pinLayout.pin.name)}</text>`);
+          } else {
+            parts.push(`<text class="board-editor-canvas-pin-label" x="${pinLayout.x - layout.x + pinLayout.w / 2}" y="${pinLayout.y - layout.y + pinLayout.h + 12}" text-anchor="middle">${escapeHtml(pinLayout.pin.name)}</text>`);
+          }
+        }
+      });
+      parts.push("</g>");
+      return;
+    }
+
+    parts.push(`<g class="board-editor-device-card${boardEditorCanvasDrag?.deviceId === layout.device.id ? " dragging" : ""}" transform="translate(${layout.x} ${layout.y})">`);
+    parts.push(`<rect class="board-editor-device-body" data-device-drag="${escapeHtml(layout.device.id)}" width="${layout.width}" height="${layout.height}" rx="12" />`);
+    parts.push(`<text class="board-editor-device-title" x="14" y="22">${escapeHtml(layout.device.display)}</text>`);
+    parts.push(`<text class="board-editor-device-subtitle" x="14" y="38">${escapeHtml(layout.device.category || "device")}${layout.device.bus ? ` • ${escapeHtml(layout.device.bus)}` : ""}</text>`);
+    parts.push(`<circle class="board-editor-device-delete" data-device-remove="${escapeHtml(layout.device.id)}" cx="${layout.width - 16}" cy="16" r="10" />`);
+    parts.push(`<text class="board-editor-device-delete-label" x="${layout.width - 16}" y="20" text-anchor="middle">×</text>`);
+    layout.pinLayouts.forEach((pin, index) => {
+      const pinY = layout.headerHeight + index * 26 + 6;
+      const selected = boardEditorCanvasStart?.type === "device" && boardEditorCanvasStart.deviceId === layout.device.id && boardEditorCanvasStart.pin === pin.name ? " selected" : "";
+      parts.push(`<rect class="board-editor-device-pin${selected}" data-device-pin="${escapeHtml(layout.device.id)}" data-device-pin-name="${escapeHtml(pin.name)}" x="10" y="${pinY}" width="${layout.width - 20}" height="20" rx="8" />`);
+      parts.push(`<text class="board-editor-device-pin-label" x="${layout.anchorSide === "left" ? 18 : layout.width - 18}" y="${pinY + 13}" text-anchor="${layout.anchorSide === "left" ? "start" : "end"}">${escapeHtml(pin.name)}</text>`);
+    });
+    parts.push("</g>");
+  });
+
+  parts.push("</svg>");
+  shell.innerHTML = parts.join("");
+  applyBoardEditorCanvasZoom();
+
+  const svg = shell.querySelector("svg");
+  if (!svg) return;
+
+  svg.querySelectorAll("[data-board-pin]").forEach((element) => {
+    element.addEventListener("click", () => {
+      handleBoardEditorEndpointClick({ type: "board", pin: Number(element.dataset.boardPin) });
+    });
+  });
+
+  svg.querySelectorAll("[data-device-pin]").forEach((element) => {
+    element.addEventListener("click", () => {
+      handleBoardEditorEndpointClick({
+        type: "device",
+        deviceId: element.dataset.devicePin,
+        pin: element.dataset.devicePinName,
+      });
+    });
+  });
+
+  svg.querySelectorAll("[data-wire-index]").forEach((element) => {
+    element.addEventListener("click", () => {
+      removeBoardEditorConnection(Number(element.dataset.wireIndex));
+    });
+  });
+
+  svg.querySelectorAll("[data-device-remove]").forEach((element) => {
+    element.addEventListener("click", (event) => {
+      event.stopPropagation();
+      removeBoardEditorCanvasDevice(element.dataset.deviceRemove);
+    });
+  });
+
+  svg.querySelectorAll("[data-device-drag]").forEach((element) => {
+    element.addEventListener("pointerdown", (event) => {
+      startBoardEditorDeviceDrag(element.dataset.deviceDrag, event, svg);
+    });
+  });
+}
+
+function handleBoardEditorEndpointClick(endpoint) {
+  const board = boardEditorPreviewBoard || syncBoardEditorPreview();
+  if (!board) return;
+
+  if (!boardEditorCanvasStart) {
+    boardEditorCanvasStart = endpoint;
+    renderBoardEditorCanvas(board);
+    setBoardEditorCanvasStatus("Connection start selected. Click the matching endpoint to create or remove a wire.");
+    return;
+  }
+
+  const sameStart = boardEditorCanvasStart.type === endpoint.type
+    && boardEditorCanvasStart.pin === endpoint.pin
+    && boardEditorCanvasStart.deviceId === endpoint.deviceId;
+  if (sameStart) {
+    boardEditorCanvasStart = null;
+    renderBoardEditorCanvas(board);
+    setBoardEditorCanvasStatus("Pending connection cleared.");
+    return;
+  }
+
+  if (boardEditorCanvasStart.type === endpoint.type) {
+    boardEditorCanvasStart = endpoint;
+    renderBoardEditorCanvas(board);
+    setBoardEditorCanvasStatus("Start point changed. Click an endpoint on the other side to wire it.");
+    return;
+  }
+
+  const boardPin = boardEditorCanvasStart.type === "board" ? Number(boardEditorCanvasStart.pin) : Number(endpoint.pin);
+  const deviceId = boardEditorCanvasStart.type === "device" ? boardEditorCanvasStart.deviceId : endpoint.deviceId;
+  const devicePin = boardEditorCanvasStart.type === "device" ? boardEditorCanvasStart.pin : endpoint.pin;
+  const existingIndex = board.manual_connections.findIndex((connection) => (
+    Number(connection.board_pin) === Number(boardPin)
+    && connection.device_id === deviceId
+    && connection.device_pin === devicePin
+  ));
+
+  if (existingIndex >= 0) {
+    board.manual_connections.splice(existingIndex, 1);
+    boardEditorCanvasStart = null;
+    writeBoardEditorFromCanvas(board, `Removed wire from MCU pin ${boardPin} to ${deviceId}.${devicePin}.`);
+    return;
+  }
+
+  board.manual_connections.push({ board_pin: Number(boardPin), device_id: deviceId, device_pin: devicePin });
+  boardEditorCanvasStart = null;
+  writeBoardEditorFromCanvas(board, `Connected MCU pin ${boardPin} to ${deviceId}.${devicePin}.`);
+}
+
+function removeBoardEditorConnection(index) {
+  const board = boardEditorPreviewBoard || syncBoardEditorPreview();
+  if (!board || !Number.isInteger(index) || index < 0 || index >= board.manual_connections.length) return;
+  const [connection] = board.manual_connections.splice(index, 1);
+  boardEditorCanvasStart = null;
+  writeBoardEditorFromCanvas(board, `Removed wire from MCU pin ${connection.board_pin} to ${connection.device_id}.${connection.device_pin}.`);
+}
+
+function nextBoardEditorDeviceId(board, label) {
+  const base = slugifyBoardEditorToken(label);
+  const known = new Set(board.external_devices.map(device => device.id));
+  let candidate = base;
+  let index = 2;
+  while (known.has(candidate)) {
+    candidate = `${base}_${index}`;
+    index += 1;
+  }
+  return candidate;
+}
+
+function addBoardEditorCanvasDevice() {
+  const board = boardEditorPreviewBoard || syncBoardEditorPreview();
+  if (!board) return;
+  const nameInput = $("#boardEditorDeviceName");
+  const pinsInput = $("#boardEditorDevicePins");
+  const display = String(nameInput?.value || "").trim();
+  if (!display) {
+    setBoardEditorCanvasStatus("Enter a device name before adding it to the canvas.", "error");
+    return;
+  }
+
+  const pins = String(pinsInput?.value || "")
+    .split(",")
+    .map(value => value.trim())
+    .filter(Boolean);
+  const device = normalizeBoardEditorDevice({
+    id: nextBoardEditorDeviceId(board, display),
+    display,
+    category: "manual",
+    required_signals: pins,
+    pins,
+  }, board.external_devices.length);
+  board.external_devices.push(device);
+  boardEditorCanvasStart = null;
+  writeBoardEditorFromCanvas(board, `Added ${device.display} to the canvas. Drag it into place and start wiring pins.`);
+  if (nameInput) nameInput.value = "";
+  if (pinsInput) pinsInput.value = "";
+}
+
+function addBoardEditorLibraryDevice() {
+  const board = boardEditorPreviewBoard || syncBoardEditorPreview();
+  if (!board) return;
+  const select = $("#boardEditorDeviceLibrary");
+  const key = select?.value;
+  if (!key) {
+    setBoardEditorCanvasStatus("Select a supported device or parsed sensor first.", "error");
+    return;
+  }
+
+  const entry = boardEditorDeviceLibrary.find((item) => item.key === key);
+  if (!entry) {
+    setBoardEditorCanvasStatus("Selected library device is no longer available.", "error");
+    return;
+  }
+
+  const template = cloneJson(entry.device);
+  const label = template.display || template.id || "device";
+  const signals = Array.isArray(template.required_signals) && template.required_signals.length
+    ? template.required_signals
+    : boardEditorSignalsForBus(template.bus_family || inferDeviceBusFamily(template));
+  const device = normalizeBoardEditorDevice({
+    ...template,
+    id: nextBoardEditorDeviceId(board, template.id || label),
+    display: label,
+    required_signals: signals,
+    pins: signals,
+  }, board.external_devices.length);
+  board.external_devices.push(device);
+  boardEditorCanvasStart = null;
+  writeBoardEditorFromCanvas(board, `Added ${device.display} from the device library.`);
+  if (select) select.value = "";
+}
+
+function removeBoardEditorCanvasDevice(deviceId) {
+  const board = boardEditorPreviewBoard || syncBoardEditorPreview();
+  if (!board || !deviceId) return;
+  const before = board.external_devices.length;
+  board.external_devices = board.external_devices.filter(device => device.id !== deviceId);
+  if (board.external_devices.length === before) return;
+  board.manual_connections = board.manual_connections.filter(connection => connection.device_id !== deviceId);
+  if (boardEditorCanvasStart?.type === "device" && boardEditorCanvasStart.deviceId === deviceId) {
+    boardEditorCanvasStart = null;
+  }
+  writeBoardEditorFromCanvas(board, `Removed ${deviceId} from the canvas.`);
+}
+
+function autoLayoutBoardEditorDevices() {
+  const board = boardEditorPreviewBoard || syncBoardEditorPreview();
+  if (!board) return;
+  board.external_devices.forEach((device, index) => {
+    device.x = 860 + (index % 2) * 260;
+    device.y = 140 + Math.floor(index / 2) * 190;
+  });
+  writeBoardEditorFromCanvas(board, "Arranged external devices around the package.");
+}
+
+function clearBoardEditorConnections() {
+  const board = boardEditorPreviewBoard || syncBoardEditorPreview();
+  if (!board) return;
+  board.manual_connections = [];
+  boardEditorCanvasStart = null;
+  writeBoardEditorFromCanvas(board, "Removed all manual wires from the canvas.");
+}
+
+function startBoardEditorDeviceDrag(deviceId, event, svg) {
+  if (!deviceId || !boardEditorPreviewBoard) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const device = boardEditorPreviewBoard.external_devices.find((entry) => entry.id === deviceId);
+  if (!device) return;
+  const point = boardEditorSvgPoint(svg, event.clientX, event.clientY);
+  boardEditorCanvasDrag = {
+    deviceId,
+    offsetX: point.x - Number(device.x),
+    offsetY: point.y - Number(device.y),
+  };
+
+  const onMove = (moveEvent) => {
+    if (!boardEditorCanvasDrag || !boardEditorPreviewBoard) return;
+    const currentSvg = $("#boardEditorCanvasShell svg");
+    if (!currentSvg) return;
+    const nextPoint = boardEditorSvgPoint(currentSvg, moveEvent.clientX, moveEvent.clientY);
+    const activeDevice = boardEditorPreviewBoard.external_devices.find((entry) => entry.id === boardEditorCanvasDrag.deviceId);
+    if (!activeDevice) return;
+    activeDevice.x = Math.max(560, Math.min(1140, nextPoint.x - boardEditorCanvasDrag.offsetX));
+    activeDevice.y = Math.max(70, Math.min(760, nextPoint.y - boardEditorCanvasDrag.offsetY));
+    renderBoardEditorCanvas(boardEditorPreviewBoard);
+    setBoardEditorCanvasStatus(`Dragging ${activeDevice.display}. Release to keep the new position.`);
+  };
+
+  const onUp = () => {
+    document.removeEventListener("pointermove", onMove);
+    document.removeEventListener("pointerup", onUp);
+    if (!boardEditorCanvasDrag || !boardEditorPreviewBoard) {
+      boardEditorCanvasDrag = null;
+      return;
+    }
+    const activeDevice = boardEditorPreviewBoard.external_devices.find((entry) => entry.id === boardEditorCanvasDrag.deviceId);
+    boardEditorCanvasDrag = null;
+    writeBoardEditorFromCanvas(boardEditorPreviewBoard, activeDevice ? `Placed ${activeDevice.display} on the canvas.` : "Updated canvas layout.");
+  };
+
+  document.addEventListener("pointermove", onMove);
+  document.addEventListener("pointerup", onUp);
+}
+
+function initBoardEditor() {
+  const loadBtn = $("#boardEditorBtnLoad");
+  const validateBtn = $("#boardEditorBtnValidate");
+  const formatBtn = $("#boardEditorBtnFormat");
+  const applyBtn = $("#boardEditorBtnApply");
+  const saveRepoBtn = $("#boardEditorBtnSaveRepo");
+  const exportBtn = $("#boardEditorBtnExport");
+  const importBtn = $("#boardEditorBtnImport");
+  const fileInput = $("#boardEditorFileInput");
+  const librarySelect = $("#boardEditorDeviceLibrary");
+  const addLibraryBtn = $("#boardEditorBtnAddLibrary");
+  const addDeviceBtn = $("#boardEditorBtnAddDevice");
+  const autoLayoutBtn = $("#boardEditorBtnAutoLayout");
+  const clearLinksBtn = $("#boardEditorBtnClearLinks");
+  const zoomOutBtn = $("#boardEditorZoomOut");
+  const zoomInBtn = $("#boardEditorZoomIn");
+  const zoomFitBtn = $("#boardEditorZoomFit");
+  const editor = $("#boardEditorJson");
+
+  if (!loadBtn || !validateBtn || !formatBtn || !applyBtn || !saveRepoBtn || !exportBtn || !importBtn || !fileInput || !librarySelect || !addLibraryBtn || !addDeviceBtn || !autoLayoutBtn || !clearLinksBtn || !zoomOutBtn || !zoomInBtn || !zoomFitBtn || !editor) {
+    return;
+  }
+
+  loadBtn.addEventListener("click", () => {
+    if (!boardData) {
+      setBoardEditorStatus("No board is currently loaded.", "error");
+      return;
+    }
+    boardEditorCanvasStart = null;
+    setBoardEditorText(currentBoardForEditor());
+    setBoardEditorCanvasStatus(`Loaded ${boardData.board} into the canvas. Click a package pin, then a device pin to wire them.`, "ok");
+    setBoardEditorStatus(`Loaded ${boardData.board} into the editor.`, "ok");
+  });
+
+  validateBtn.addEventListener("click", () => {
+    try {
+      validateBoardEditorJson();
+    } catch (err) {
+      setBoardEditorStatus(err.message, "error");
+    }
+  });
+
+  formatBtn.addEventListener("click", () => {
+    try {
+      const board = validateBoardEditorJson();
+      setBoardEditorText(board);
+      setBoardEditorCanvasStatus(`Formatted ${board.board} and refreshed the canvas.`, "ok");
+      setBoardEditorStatus(`Formatted ${board.board}.`, "ok");
+    } catch (err) {
+      setBoardEditorStatus(err.message, "error");
+    }
+  });
+
+  applyBtn.addEventListener("click", () => {
+    try {
+      applyBoardEditorJson();
+    } catch (err) {
+      setBoardEditorStatus(err.message, "error");
+    }
+  });
+
+  saveRepoBtn.addEventListener("click", async () => {
+    try {
+      await saveBoardEditorDraft();
+    } catch (err) {
+      setBoardEditorStatus(err.message, "error");
+    }
+  });
+
+  exportBtn.addEventListener("click", () => {
+    try {
+      exportBoardEditorJson();
+    } catch (err) {
+      setBoardEditorStatus(err.message, "error");
+    }
+  });
+
+  importBtn.addEventListener("click", () => {
+    fileInput.value = "";
+    fileInput.click();
+  });
+
+  fileInput.addEventListener("change", async () => {
+    const [file] = fileInput.files || [];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      editor.value = text;
+      const board = validateBoardEditorJson();
+      boardEditorCanvasStart = null;
+      setBoardEditorStatus(`Imported ${file.name} for ${board.board}.`, "ok");
+    } catch (err) {
+      setBoardEditorStatus(err.message, "error");
+    }
+  });
+
+  editor.addEventListener("input", () => {
+    boardEditorCanvasStart = null;
+    queueBoardEditorPreviewSync();
+  });
+
+  librarySelect.addEventListener("change", () => {
+    const entry = boardEditorDeviceLibrary.find((item) => item.key === librarySelect.value);
+    if (!entry) return;
+    const nameInput = $("#boardEditorDeviceName");
+    const pinsInput = $("#boardEditorDevicePins");
+    if (nameInput) nameInput.value = entry.device.display || "";
+    if (pinsInput) pinsInput.value = (entry.device.required_signals || []).join(", ");
+  });
+
+  addLibraryBtn.addEventListener("click", () => {
+    try {
+      addBoardEditorLibraryDevice();
+    } catch (err) {
+      setBoardEditorCanvasStatus(err.message, "error");
+    }
+  });
+
+  addDeviceBtn.addEventListener("click", () => {
+    try {
+      addBoardEditorCanvasDevice();
+    } catch (err) {
+      setBoardEditorCanvasStatus(err.message, "error");
+    }
+  });
+
+  autoLayoutBtn.addEventListener("click", () => {
+    try {
+      autoLayoutBoardEditorDevices();
+    } catch (err) {
+      setBoardEditorCanvasStatus(err.message, "error");
+    }
+  });
+
+  clearLinksBtn.addEventListener("click", () => {
+    try {
+      clearBoardEditorConnections();
+    } catch (err) {
+      setBoardEditorCanvasStatus(err.message, "error");
+    }
+  });
+
+  zoomOutBtn.addEventListener("click", () => {
+    boardEditorCanvasZoomOut();
+  });
+
+  zoomInBtn.addEventListener("click", () => {
+    boardEditorCanvasZoomIn();
+  });
+
+  zoomFitBtn.addEventListener("click", () => {
+    boardEditorCanvasFit();
+  });
+
+  void loadBoardEditorDrafts();
+  void loadBoardEditorDeviceLibrary();
+  updateBoardEditorCanvasZoomLabel();
 }
 
 // ── Peripheral panel ─────────────────────────────────────────────────
@@ -136,9 +1855,27 @@ function renderPeripherals() {
       row.innerHTML = `
         <span class="dot"></span>
         <span class="periph-label">${p.display}</span>
+        ${boardData.cores && boardData.cores.length > 1 && p.available_cores && p.available_cores.length > 1 ? `
+          <select class="periph-core-select" data-periph-core="${p.name}">
+            ${p.available_cores.map(coreId => {
+              const core = boardData.cores.find(entry => entry.id === coreId);
+              const label = core ? core.name : coreId;
+              const selected = periphCoreStates[p.name] === coreId ? 'selected' : '';
+              return `<option value="${coreId}" ${selected}>${label}</option>`;
+            }).join("")}
+          </select>
+        ` : ""}
         <div class="periph-toggle ${periphStates[p.name] ? 'on' : ''}"
              data-periph="${p.name}"></div>
       `;
+
+      const coreSelect = row.querySelector(".periph-core-select");
+      if (coreSelect) {
+        coreSelect.addEventListener("click", e => e.stopPropagation());
+        coreSelect.addEventListener("change", e => {
+          periphCoreStates[p.name] = e.target.value;
+        });
+      }
 
       const toggle = row.querySelector(".periph-toggle");
       toggle.addEventListener("click", (e) => {
@@ -484,10 +2221,12 @@ function selectPin(pinNum) {
 
 function renderConfigPanel() {
   const panel = configPanel;
+  const deviceSection = buildExternalDeviceSection();
 
   if (!selectedPin || !boardData) {
     panel.innerHTML = `<div class="empty-state"><div>Click a pin to configure</div>
-      <div class="hint">or enable a peripheral on the left</div></div>`;
+      <div class="hint">or enable a peripheral on the left</div></div>${deviceSection}`;
+    wireExternalDeviceControls(panel);
     return;
   }
 
@@ -508,7 +2247,8 @@ function renderConfigPanel() {
 
   if (pin.kind !== "io") {
     panel.innerHTML = `<h3><span class="pin-badge">${pin.name}</span> ${pinLabel}</h3>
-      <div class="empty-state">${pin.kind === 'power' ? 'Power pin' : pin.kind === 'ground' ? 'Ground pin' : 'Special pin'}<br>${pin.default_function}</div>`;
+      <div class="empty-state">${pin.kind === 'power' ? 'Power pin' : pin.kind === 'ground' ? 'Ground pin' : 'Special pin'}<br>${pin.default_function}</div>${deviceSection}`;
+    wireExternalDeviceControls(panel);
     return;
   }
 
@@ -563,7 +2303,7 @@ function renderConfigPanel() {
     </div>`;
   }
 
-  panel.innerHTML = html;
+  panel.innerHTML = html + deviceSection;
 
   // Attach event handlers
   panel.querySelectorAll(".af-list li").forEach(li => {
@@ -617,6 +2357,8 @@ function renderConfigPanel() {
       renderConfigPanel();
     });
   }
+
+  wireExternalDeviceControls(panel);
 }
 
 // ── Generate overlay ─────────────────────────────────────────────────
@@ -638,6 +2380,7 @@ async function generateOutput() {
       peripheral:      state.af.peripheral,
       signal:          state.af.signal,
       direction:       state.af.direction || "io",
+      zephyr_pinmux:   state.af.zephyr_pinmux || "",
       bias_pull_up:    state.props?.bias_pull_up || false,
       bias_pull_down:  state.props?.bias_pull_down || false,
       drive_open_drain:state.props?.drive_open_drain || false,
@@ -650,32 +2393,39 @@ async function generateOutput() {
     dts_node:   p.dts_node,
     compatible: p.compatible,
     enabled:    periphStates[p.name] || false,
+    core_id:    periphCoreStates[p.name] || p.core_id || "",
   }));
 
   const res = await fetch("/api/generate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
+      board_id: boardSelect.value,
       board: boardData.board,
       assignments: assignments,
       peripherals: periphs,
+      external_devices: selectedExternalDevices(),
     }),
   });
 
   const result = await res.json();
   generatedOverlay = result.overlay;
   generatedConf    = result.prj_conf;
+  generatedTargets = result.targets || {};
 
+  renderOutputTabs();
   showOutput(activeTab);
   outputBar.classList.remove("collapsed");
-  toast("Generated overlay + prj.conf");
+  toast("Generated Zephyr, Arduino, and bare-metal outputs");
 }
 
 // ── Output bar ───────────────────────────────────────────────────────
 
 function showOutput(tab) {
+  const views = collectOutputViews();
+  const current = views.find(view => view.id === tab) || views[0] || { id: "overlay", content: generatedOverlay };
   activeTab = tab;
-  outputPre.textContent = tab === "overlay" ? generatedOverlay : generatedConf;
+  outputPre.textContent = current.content || "";
   $$(".output-tab").forEach(t => t.classList.toggle("active", t.dataset.tab === tab));
 }
 
@@ -791,6 +2541,8 @@ async function saveProjectFile(filePath) {
       board_id: boardData.board || boardSelect.value,
       pin_states: serializePinStates(),
       periph_states: { ...periphStates },
+      periph_core_states: { ...periphCoreStates },
+      external_device_states: { ...externalDeviceStates },
       generated_overlay: generatedOverlay,
       generated_conf: generatedConf,
       sensor_jobs: snsJobsData,
@@ -865,9 +2617,26 @@ async function loadProjectFile(filePath) {
     }
   }
 
+  for (const [name, coreId] of Object.entries(project.periph_core_states || {})) {
+    if (name in periphCoreStates) {
+      periphCoreStates[name] = coreId;
+    }
+  }
+
+  const projectDeviceStates = project.external_device_states || {};
+  for (const [deviceId, state] of Object.entries(projectDeviceStates)) {
+    if (!(deviceId in externalDeviceStates) || !state || typeof state !== "object") continue;
+    externalDeviceStates[deviceId] = {
+      selected: !!state.selected,
+      bus: String(state.bus || externalDeviceStates[deviceId].bus || ""),
+    };
+  }
+
   // Restore generated output
   generatedOverlay = project.generated_overlay || "";
   generatedConf = project.generated_conf || "";
+  generatedTargets = {};
+  renderOutputTabs();
   if (generatedOverlay || generatedConf) {
     showOutput(activeTab);
     outputBar.classList.remove("collapsed");
@@ -903,20 +2672,13 @@ async function loadProjectFile(filePath) {
 
 document.addEventListener("DOMContentLoaded", () => {
   loadBoardList();
+  initBoardEditor();
 
   boardSelect.addEventListener("change", () => loadBoard(boardSelect.value));
 
   $("#btnGenerate").addEventListener("click", generateOutput);
 
-  // Output tabs
-  $$(".output-tab").forEach(tab => {
-    tab.addEventListener("click", () => showOutput(tab.dataset.tab));
-  });
-
-  // Output toggle
-  $("#outputToggle").addEventListener("click", () => {
-    outputBar.classList.toggle("collapsed");
-  });
+  renderOutputTabs();
 
   // Save modal
   $("#btnSave").addEventListener("click", () => {
@@ -1030,6 +2792,11 @@ document.addEventListener("DOMContentLoaded", () => {
       // Load existing packages when switching to the tab
       if (target === "packages") {
         pkgLoadExisting();
+      }
+      if (target === "board-editor") {
+        updateBoardEditorMeta();
+        loadBoardEditorDrafts();
+        loadBoardEditorDeviceLibrary();
       }
       if (target === "peripherals") {
         pcfgLoadBoards();
@@ -1376,6 +3143,8 @@ function pkgRenderDetail() {
           <input id="pkgDtsPinctrl" placeholder="auto-detect" value="">
           <label>Pinctrl Header</label>
           <input id="pkgPinctrlHeader" placeholder="mspm0-pinctrl.h" value="">
+          <label>External Devices</label>
+          <textarea id="pkgExternalDevices" placeholder='[\n  {\n    "id": "bme280_i2c",\n    "display": "BME280 Sensor",\n    "category": "sensor",\n    "bus": "i2c0",\n    "compatible": "bosch,bme280",\n    "address": "0x76",\n    "required_signals": ["scl", "sda"],\n    "frameworks": ["zephyr", "arduino"]\n  }\n]'></textarea>
         </div>
       </div>
     </div>
@@ -1436,6 +3205,25 @@ async function pkgGenerate() {
   }
   if (statusEl) statusEl.textContent = "Generating board files...";
 
+  let externalDevices;
+  const externalDevicesRaw = $("#pkgExternalDevices")?.value.trim() || "";
+  if (externalDevicesRaw) {
+    try {
+      externalDevices = JSON.parse(externalDevicesRaw);
+      if (!Array.isArray(externalDevices)) {
+        throw new Error("External devices must be a JSON array");
+      }
+    } catch (err) {
+      toast(`Invalid external devices JSON: ${err.message}`);
+      if (statusEl) statusEl.textContent = `Invalid external devices JSON: ${err.message}`;
+      if (btnGen) {
+        btnGen.disabled = false;
+        btnGen.innerHTML = `Generate ${pkgSelectedPkgs.size} Board File(s)`;
+      }
+      return;
+    }
+  }
+
   const body = {
     job_id: job.job_id,
     packages: [...pkgSelectedPkgs],
@@ -1443,6 +3231,7 @@ async function pkgGenerate() {
     dts_soc_include: $("#pkgDtsSoc")?.value.trim() || undefined,
     dts_pinctrl_include: $("#pkgDtsPinctrl")?.value.trim() || undefined,
     pinctrl_header: $("#pkgPinctrlHeader")?.value.trim() || undefined,
+    external_devices: externalDevices,
     register: true,
   };
 
