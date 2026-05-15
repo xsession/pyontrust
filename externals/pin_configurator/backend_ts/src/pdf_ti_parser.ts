@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { buildParsedJobResult, saveParsedJob, type ParsedDatasheetInfoJson, type ParsedPackageInfoJson, type ParsedPackagePinJson, type ParsedPinMuxEntryJson } from './job_registry';
+import { extractParsedClockInfo } from './pdf_clock_parser';
 import { uploadArtifactDir } from './runtime_paths';
 
 export interface TiPdfSnapshot {
@@ -247,10 +248,12 @@ export function parseTiSnapshot(snapshot: TiPdfSnapshot): ParsedDatasheetInfoJso
   if (vendor !== 'ti') return null;
   const pinMux = snapshot.pincm_tables.length > 0 ? parsePincmTables(snapshot.pincm_tables) : textFallbackMux(snapshot.texts);
   const packages = buildPackages(snapshot.package_rows);
+  const device = extractSummary(snapshot.texts, 'ti');
   return {
-    device: extractSummary(snapshot.texts, 'ti'),
+    device,
     packages,
     pin_mux: pinMux,
+    clock: extractParsedClockInfo(snapshot, device),
   };
 }
 

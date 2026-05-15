@@ -295,6 +295,62 @@ pytest --cov=. --cov-report=html --cov-report=term
 pytest -m "not integration and not slow"
 ```
 
+== Compile-backed Zephyr Validation
+
+The generated Zephyr output path is also covered by
+`tests/test_zephyr_codegen.py`.
+
+This module validates two things:
+
+- the exact structure of generated `app.overlay` and `prj.conf`
+- a real `west build` for `lp_mspm0g3507` using the demo app in
+    `demo/zephyr_compile_demo`
+
+=== Local runner script
+
+Use the PowerShell helper when you want the tool to provision the required
+Python environments automatically:
+
+```powershell
+pwsh -File scripts/run_zephyr_codegen_tests.ps1 `
+    -Workspace C:/path/to/west/workspace `
+    -Python312Path C:/Python312/python.exe
+```
+
+The helper:
+
+- ensures the configurator `.venv` exists and installs `requirements.txt`
+- creates a dedicated Python 3.12 Zephyr test venv under
+    `%LOCALAPPDATA%/Pyontrust/pinconfig-zephyr-test-py312`
+- installs the minimal Zephyr Python tooling required by the compile-backed
+    test
+- exports `PIN_CONFIGURATOR_ZEPHYR_WORKSPACE`, `PIN_CONFIGURATOR_WEST`,
+    `PIN_CONFIGURATOR_WEST_PYTHON`, and `PIN_CONFIGURATOR_CMAKE_PYTHON`
+- runs `pytest` with the requested arguments
+
+To execute only the compile-backed case:
+
+```powershell
+pwsh -File scripts/run_zephyr_codegen_tests.ps1 `
+    -Workspace C:/path/to/west/workspace `
+    -Python312Path C:/Python312/python.exe `
+    -PytestArgs tests/test_zephyr_codegen.py,-k,compile,-v
+```
+
+=== CI job
+
+The repository CI workflow now includes a dedicated
+`pin-configurator-zephyr-codegen` job in `.github/workflows/test.yml`.
+
+That job uses:
+
+- `zephyrproject-rtos/action-zephyr-setup@v1`
+- the self-contained manifest at `demo/zephyr_ci_workspace/west.yml`
+- the same `scripts/run_zephyr_codegen_tests.ps1` entrypoint used locally
+
+This keeps local execution and CI execution aligned around the same workspace
+shape, demo app, and compile-backed pytest flow.
+
 == Writing Tests
 
 === Using fixtures
@@ -336,6 +392,16 @@ def test_parse_real_pdf():
     """Parse actual datasheet — network/IO bound."""
     ...
 ```
+
+=== Zephyr codegen coverage
+
+`tests/test_zephyr_codegen.py` contains:
+
+- `TestZephyrGeneratedArtifacts` — overlay labels, pin properties, external
+    device emission, and deduplicated `prj.conf` symbols
+- `test_generated_zephyr_artifacts_compile_for_mspm0_board` — writes generated
+    Zephyr artifacts into the demo app and validates them with a real
+    `west build`
 
 == Code Quality
 

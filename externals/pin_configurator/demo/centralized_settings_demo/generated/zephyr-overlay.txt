@@ -1,0 +1,60 @@
+/*
+ * Auto-generated DTS overlay for lp_mspm0g3507
+ * Created by Zephyr Pin Configurator
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#include <zephyr/dt-bindings/pinctrl/mspm0-pinctrl.h>
+
+&pinctrl {
+	uart0_tx_pa10: uart0_tx_pa10 {
+		pinmux = <MSP_PINMUX(21,MSPM0_PIN_FUNCTION_2)>;
+	};
+
+	uart0_rx_pa11: uart0_rx_pa11 {
+		pinmux = <MSP_PINMUX(22,MSPM0_PIN_FUNCTION_2)>;
+		input-enable;
+		bias-pull-up;
+	};
+
+	i2c0_scl_pa25: i2c0_scl_pa25 {
+		pinmux = <MSP_PINMUX(33,MSPM0_PIN_FUNCTION_5)>;
+		input-enable;
+		drive-open-drain;
+	};
+
+	i2c0_sda_pa26: i2c0_sda_pa26 {
+		pinmux = <MSP_PINMUX(34,MSPM0_PIN_FUNCTION_5)>;
+		input-enable;
+		drive-open-drain;
+	};
+};
+
+&gpioa {
+	status = "okay";
+};
+
+&i2c0 {
+	status = "okay";
+	pinctrl-0 = <&i2c0_scl_pa25 &i2c0_sda_pa26>;
+	pinctrl-names = "default";
+	clock-frequency = <I2C_BITRATE_STANDARD>;
+};
+
+&uart0 {
+	status = "okay";
+	pinctrl-0 = <&uart0_tx_pa10 &uart0_rx_pa11>;
+	pinctrl-names = "default";
+	current-speed = <115200>;
+};
+
+&i2c0 {
+	bme280_i2c: bme280@76 {
+		compatible = "bosch,bme280";
+		reg = <0x76>;
+		label = "Bosch BME280";
+		/* Demo sensor node. */
+		status = "okay";
+	};
+};

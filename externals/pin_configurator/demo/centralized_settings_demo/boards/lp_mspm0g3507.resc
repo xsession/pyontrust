@@ -1,0 +1,14 @@
+:name: Pin Configurator demo for lp_mspm0g3507
+
+using sysbus
+mach create "Pin Configurator demo"
+
+machine LoadPlatformDescription @platforms/boards/ti/lp_mspm0g3507.repl
+showAnalyzer sysbus.uart0
+
+macro reset
+"""
+    sysbus LoadELF $bin
+"""
+
+runMacro $reset

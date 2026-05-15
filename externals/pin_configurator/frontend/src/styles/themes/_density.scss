@@ -1,0 +1,20 @@
+:root {
+  --control-height: var(--control-height-regular);
+  --toolbar-height: var(--toolbar-height-regular);
+  --icon-size: var(--icon-size-md);
+  --panel-rhythm: var(--panel-rhythm-regular);
+}
+
+:root[data-density="compact"] {
+  --control-height: var(--control-height-compact);
+  --toolbar-height: var(--toolbar-height-compact);
+  --icon-size: var(--icon-size-sm);
+  --panel-rhythm: var(--panel-rhythm-compact);
+}
+
+:root[data-density="spacious"] {
+  --control-height: var(--control-height-spacious);
+  --toolbar-height: var(--toolbar-height-regular);
+  --icon-size: var(--icon-size-lg);
+  --panel-rhythm: var(--panel-rhythm-spacious);
+}

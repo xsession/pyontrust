@@ -1,0 +1,95 @@
+{
+  "name": "pin-configurator-vscode-extension",
+  "displayName": "Pin Configurator",
+  "description": "Run the Pin Configurator inside VS Code using the TypeScript backend.",
+  "version": "0.1.0",
+  "publisher": "xsession",
+  "license": "Apache-2.0",
+  "icon": "media/icon.png",
+  "homepage": "https://github.com/pyontrust/pin-configurator#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pyontrust/pin-configurator.git"
+  },
+  "bugs": {
+    "url": "https://github.com/pyontrust/pin-configurator/issues"
+  },
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "zephyr",
+    "embedded",
+    "pin-configurator",
+    "device-tree",
+    "datasheet"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onCommand:pinConfigurator.open",
+    "onCommand:pinConfigurator.restartBackend",
+    "onCommand:pinConfigurator.stopBackend",
+    "onCommand:pinConfigurator.showOutput"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "pinConfigurator.open",
+        "title": "Pin Configurator: Open",
+        "category": "Pin Configurator"
+      },
+      {
+        "command": "pinConfigurator.restartBackend",
+        "title": "Pin Configurator: Restart Backend",
+        "category": "Pin Configurator"
+      },
+      {
+        "command": "pinConfigurator.stopBackend",
+        "title": "Pin Configurator: Stop Backend",
+        "category": "Pin Configurator"
+      },
+      {
+        "command": "pinConfigurator.showOutput",
+        "title": "Pin Configurator: Show Output",
+        "category": "Pin Configurator"
+      }
+    ],
+    "configuration": {
+      "title": "Pin Configurator",
+      "properties": {
+        "pinConfigurator.port": {
+          "type": "number",
+          "default": 5110,
+          "minimum": 1024,
+          "maximum": 65535,
+          "description": "Port used for the Pin Configurator TypeScript backend launched by the extension."
+        },
+        "pinConfigurator.host": {
+          "type": "string",
+          "default": "127.0.0.1",
+          "description": "Host used for the Pin Configurator TypeScript backend launched by the extension."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "build": "npm run compile && node ./scripts/prepare-package.mjs",
+    "watch": "tsc -w -p .",
+    "package:vsix": "npm run build && node -e \"require('node:fs').mkdirSync('dist', { recursive: true })\" && vsce package --allow-missing-repository --out dist/pin-configurator.vsix"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "multer": "^1.4.5-lts.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.21",
+    "@types/vscode": "^1.100.0",
+    "@vscode/vsce": "^3.6.2",
+    "typescript": "^5.8.3"
+  }
+}

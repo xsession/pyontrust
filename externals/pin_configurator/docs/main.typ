@@ -1580,6 +1580,33 @@ pytest --cov=. --cov-report=html
 pytest tests/test_driver_gen.py -v
 ```
 
+== Compile-backed Zephyr Validation
+
+The generated Zephyr export path is validated by
+`tests/test_zephyr_codegen.py`.
+
+This module combines:
+
+- detailed assertions for generated `app.overlay` and `prj.conf`
+- a real `west build` for `lp_mspm0g3507` using the demo app in
+  `demo/zephyr_compile_demo`
+
+For local execution, use the shared PowerShell helper:
+
+```powershell
+pwsh -File scripts/run_zephyr_codegen_tests.ps1 `
+  -Workspace C:/path/to/west/workspace `
+  -Python312Path C:/Python312/python.exe
+```
+
+The helper provisions the configurator test venv, creates a dedicated Python
+3.12 Zephyr venv, exports the required environment variables, and runs the
+requested pytest arguments.
+
+CI uses the same entrypoint through the `pin-configurator-zephyr-codegen` job
+in `.github/workflows/test.yml`, together with the self-contained west manifest
+at `demo/zephyr_ci_workspace/west.yml`.
+
 == Test Fixtures (`conftest.py`)
 
 #table(
@@ -1623,6 +1650,14 @@ pytest tests/test_driver_gen.py -v
 
 - `TestOverlayParser` — empty input, conf-only, pinctrl parsing, peripheral
   status, multi-peripheral round-trip
+
+=== `test_zephyr_codegen.py`
+
+- `TestZephyrGeneratedArtifacts` — verifies pinctrl labels, pin properties,
+  external device nodes, and `prj.conf` symbol generation
+- `test_generated_zephyr_artifacts_compile_for_mspm0_board` — writes generated
+  Zephyr artifacts into the demo app and validates them with a real
+  `west build`
 
 === `test_pdf_parser.py`
 

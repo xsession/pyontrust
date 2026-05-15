@@ -72,10 +72,19 @@ export interface ParsedDeviceSummaryJson {
   clock_hz: number;
 }
 
+export interface ParsedClockInfoJson {
+  model?: 'mspm0' | 'stm32_generic' | 'nrf52' | 'renesas_ra' | 'generic_simple';
+  max_freq_hz?: number;
+  summary?: string;
+  features?: string[];
+  evidence?: string[];
+}
+
 export interface ParsedDatasheetInfoJson {
   device: ParsedDeviceSummaryJson;
   packages: ParsedPackageInfoJson[];
   pin_mux: Record<string, ParsedPinMuxEntryJson[]>;
+  clock?: ParsedClockInfoJson;
 }
 
 export interface ParsedJobSummary {
@@ -219,6 +228,11 @@ export async function listParsedJobs(rootDir: string): Promise<ParsedJobSummary[
     packages: (job.result?.packages ?? []).map((pkg) => String(pkg.name ?? '')),
     pin_count: Number(job.result?.pin_mux_count ?? 0),
   }));
+}
+
+export async function listParsedJobEntries(rootDir: string): Promise<ParsedJobManifestEntry[]> {
+  const manifest = await loadManifest<ParsedJobManifestEntry>(parsedJobsPath(rootDir));
+  return Object.values(manifest);
 }
 
 export async function listSensorJobs(rootDir: string): Promise<SensorJobSummary[]> {

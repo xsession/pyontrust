@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { buildParsedJobResult, saveParsedJob, type ParsedDatasheetInfoJson, type ParsedPackageInfoJson, type ParsedPackagePinJson, type ParsedPinMuxEntryJson } from './job_registry';
+import { extractParsedClockInfo } from './pdf_clock_parser';
 import type { GenericPackagePageSnapshot, McuPdfSnapshot } from './python_jobs';
 import { uploadArtifactDir } from './runtime_paths';
 
@@ -260,10 +261,13 @@ export function parseGenericSnapshot(snapshot: McuPdfSnapshot): ParsedDatasheetI
   const packages = parseGenericPackages(snapshot.generic_package_pages);
   if (Object.keys(pinMux).length === 0 && packages.length === 0) return null;
 
+  const device = extractSummary(snapshot.texts, vendor);
+
   return {
-    device: extractSummary(snapshot.texts, vendor),
+    device,
     packages,
     pin_mux: pinMux,
+    clock: extractParsedClockInfo(snapshot, device),
   };
 }
 

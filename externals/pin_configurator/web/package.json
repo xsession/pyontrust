@@ -1,0 +1,8 @@
+{
+  "name": "pin-configurator-web",
+  "private": true,
+  "scripts": {
+    "build": "node ../backend_ts/node_modules/typescript/bin/tsc -p tsconfig.json && node -e \"const fs=require('fs'); fs.copyFileSync('generated/lvgl-model.js','lvgl-model.js'); fs.copyFileSync('generated/lvgl-build.js','lvgl-build.js'); fs.copyFileSync('generated/lvgl-ui.js','lvgl-ui.js');\"",
+    "check": "node ../backend_ts/node_modules/typescript/bin/tsc -p tsconfig.json --noEmit"
+  }
+}

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { buildParsedJobResult, saveParsedJob, type ParsedDatasheetInfoJson, type ParsedPackageInfoJson, type ParsedPackagePinJson, type ParsedPinMuxEntryJson } from './job_registry';
+import { extractParsedClockInfo } from './pdf_clock_parser';
 import { uploadArtifactDir } from './runtime_paths';
 
 export interface Stm32PdfSnapshot {
@@ -268,10 +269,12 @@ export function parseStm32Snapshot(snapshot: Stm32PdfSnapshot): ParsedDatasheetI
   }
 
   if (Object.keys(pinMux).length === 0 && packages.length === 0) return null;
+  const device = extractSummary(snapshot.texts, vendor);
   return {
-    device: extractSummary(snapshot.texts, vendor),
+    device,
     packages,
     pin_mux: pinMux,
+    clock: extractParsedClockInfo(snapshot, device),
   };
 }
 

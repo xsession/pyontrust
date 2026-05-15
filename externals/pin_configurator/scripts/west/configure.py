@@ -79,6 +79,11 @@ class Configure(WestCommand):
             default="",
             help="override ZEPHYR_BASE path",
         )
+        parser.add_argument(
+            "--ui-path",
+            default=os.environ.get("PIN_CONFIGURATOR_UI_PATH", "/app"),
+            help="UI path to open in the browser (default: /app)",
+        )
         return parser
 
     def do_run(self, args, unknown_args):
@@ -120,7 +125,9 @@ class Configure(WestCommand):
 
         # Open browser in a separate thread (unless headless)
         if not args.headless:
-            url = f"http://{args.host}:{args.port}"
+            base_url = f"http://{args.host}:{args.port}"
+            ui_path = args.ui_path if str(args.ui_path).startswith("/") else f"/{args.ui_path}"
+            url = f"{base_url}{ui_path}"
             threading.Timer(1.5, lambda: webbrowser.open(url)).start()
             log.inf(f"Opening browser at {url}")
 

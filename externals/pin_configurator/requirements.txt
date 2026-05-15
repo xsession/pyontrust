@@ -10,11 +10,13 @@ pdfplumber>=0.10.0
 
 # HTTP requests (datasheet fetcher)
 requests>=2.31.0
+pyyaml>=6.0.2
 
 # Development / Testing
 pytest>=8.0.0
 pytest-cov>=5.0.0
 flake8>=7.0.0
+playwright>=1.54.0
 
 # Optional: Renode RobotFramework testing
 # robotframework>=7.0

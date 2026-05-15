@@ -158,6 +158,7 @@ _STM32_LIKE = frozenset({"st", "gigadevice", "artery", "puya", "mindmotion"})
 _PKG_DECODE = {
     "LQFP": "LQFP",    "PFQL": "LQFP",
     "UFBGA": "UFBGA",  "AGBFU": "UFBGA",
+    "TFBGA": "TFBGA",  "AGBFT": "TFBGA",
     "WLCSP": "WLCSP",  "PSCLW": "WLCSP",
     "QFN": "QFN",       "NFQ": "QFN",
     "TSSOP": "TSSOP",   "POSST": "TSSOP",
@@ -216,6 +217,297 @@ def _guess_dir(fn: str, sig: str) -> str:
     if any(k in f for k in ("ADC", "DAC", "COMP", "AIN", "AOUT")):
         return "analog"
     return "io"
+
+
+def _clean_table_rows(tbl: list[list[object]]) -> list[list[str]]:
+    rows = [[str(cell).strip() if cell else "" for cell in row] for row in tbl if row]
+    while rows and re.search(r'continued', ' '.join(rows[0]), re.I):
+        rows.pop(0)
+    return rows
+
+
+def _combine_table_headers(rows: list[list[str]], header_rows: int) -> list[str]:
+    width = max((len(row) for row in rows[:header_rows]), default=0)
+    headers: list[str] = []
+    for ci in range(width):
+        parts: list[str] = []
+        for row in rows[:header_rows]:
+            cell = row[ci].replace("\n", " ").strip() if ci < len(row) else ""
+            if cell and cell not in parts:
+                parts.append(cell)
+        headers.append(" ".join(parts).strip())
+    return headers
+
+
+def _looks_like_pin_name(value: str) -> bool:
+    return bool(re.search(r'(P[A-K]\d+|GPIO_?\d+|IO\d+)', value or '', re.I))
+
+
+def _looks_like_pin_number(value: str) -> bool:
+    text = (value or '').strip().upper()
+    return bool(_RE_BGA_COORD.match(text) or re.fullmatch(r'[\d\s/,-]+', text))
+
+
+def _table_data_start(rows: list[list[str]], name_col: int) -> int:
+    for idx, row in enumerate(rows):
+        if name_col < len(row) and _looks_like_pin_name(row[name_col]):
+            return idx
+    return len(rows)
+
+
+def _mux_index_from_header(header: str) -> int:
+    am = re.search(r'AF(\d+)|ALT\s*(\d+)', header, re.I)
+    if am:
+        return int(am.group(1) or am.group(2))
+    lm = re.match(r'\s*([A-I])(?:\b|\()', header, re.I)
+    if lm:
+        return ord(lm.group(1).upper()) - ord('A')
+    return -1
+
+
+def _generic_parse_pinmux_table(tbl: list[list[object]]) -> dict[str, list[PinMuxEntry]]:
+    result: dict[str, list[PinMuxEntry]] = {}
+    rows = _clean_table_rows(tbl)
+    if len(rows) < 2:
+        return result
+
+    probe_headers = _combine_table_headers(rows, min(3, len(rows)))
+    pin_col = -1
+    for ci, header in enumerate(probe_headers):
+        if re.search(r'PIN\s*NAME|GPIO|PORT\s*PIN|PAD\s*NAME|BALL\s*NAME|IO\s*NAME|I/O\s*PIN', header, re.I):
+            pin_col = ci
+            break
+    if pin_col < 0:
+        return result
+
+    data_start = _table_data_start(rows, pin_col)
+    if data_start >= len(rows):
+        return result
+
+    headers = _combine_table_headers(rows, data_start)
+    func_cols: list[tuple[int, str]] = []
+    for ci, header in enumerate(headers):
+        if ci == pin_col:
+            continue
+        hu = header.upper()
+        if not hu or re.search(r'SUPPLY|VDD|VSS|POWER|PIN\(|^PIN$', hu):
+            continue
+        if re.search(r'AF\d+|ALT\s*\d|FUNC|MUX|PERIPH|SIGNAL|ALTERNATE|SERCOM|TC\b|TCC|EIC|ADC|DAC|PTC|COM\b|CCL|GCLK|REF|AC\b', hu) or re.match(r'\s*[A-I](?:\b|\()', hu):
+            func_cols.append((ci, hu))
+
+    if not func_cols:
+        return result
+
+    for row in rows[data_start:]:
+        if not row or len(row) <= pin_col:
+            continue
+        raw_pin = row[pin_col].strip().upper() if row[pin_col] else ""
+        if not _looks_like_pin_name(raw_pin):
+            continue
+        m2 = re.search(r'(P[A-K]\d+|GPIO_?\d+|IO\d+)', raw_pin, re.I)
+        if not m2:
+            continue
+        pin_name = m2.group(1).upper()
+
+        for ci, cname in func_cols:
+            if ci >= len(row):
+                continue
+            cell = str(row[ci]).strip() if row[ci] else ""
+            if not cell or cell in ("—", "-", "–", "Reserved"):
+                continue
+            af = _mux_index_from_header(cname)
+
+            for fn in re.split(r'[,\n;]', cell):
+                fn = fn.strip()
+                if not fn or fn in ("—", "-", "–"):
+                    continue
+                fn_norm = fn.upper().replace('.', '_').replace('/', '_')
+                p, s = _norm_periph(fn_norm)
+                result.setdefault(pin_name, []).append(PinMuxEntry(
+                    pin_name, af, af,
+                    fn_norm, p, s,
+                    _guess_dir(fn_norm, s)))
+
+    return result
+
+
+def _split_stm32_af_cell(cell: str) -> list[str]:
+    tokens: list[str] = []
+    compact_cell = re.sub(r'\s+', '', cell)
+    for chunk in re.split(r'[,;]+', compact_cell):
+        if not chunk or chunk in ("—", "-", "–"):
+            continue
+        if "/" not in chunk:
+            tokens.append(chunk)
+            continue
+
+        parts = [part.strip() for part in chunk.split("/") if part.strip()]
+        if not parts:
+            continue
+
+        expanded = [parts[0]]
+        prefix = parts[0].rsplit("_", 1)[0] if "_" in parts[0] else ""
+        for part in parts[1:]:
+            if "_" in part or not prefix:
+                expanded.append(part)
+            else:
+                expanded.append(f"{prefix}_{part}")
+        tokens.extend(expanded)
+    return tokens
+
+
+def _decode_stm32_package_label(header: str) -> str | None:
+    normalized = header.upper().replace("_", "").replace("-", "").replace(" ", "")
+    if not normalized or normalized.startswith("SPMS"):
+        return None
+
+    for key, real in _PKG_DECODE.items():
+        if key not in normalized:
+            continue
+        nums = re.findall(r'\d+', normalized)
+        if nums:
+            count = int(max(nums, key=len)[::-1])
+            return f"{real}{count}"
+        return real
+    return None
+
+
+def _package_name_from_header(header: str, page_text: str, fallback: str) -> str:
+    cleaned = re.sub(r'PIN\s*\(?\d*\)?', '', header, flags=re.I)
+    cleaned = re.sub(r'[^A-Za-z0-9]+', '', cleaned).upper()
+    if cleaned and re.search(r'[A-Z]', cleaned):
+        return cleaned
+    pm = _RE_PKG_TYPE.search(page_text)
+    if pm:
+        return f"{pm.group(1).upper()}{pm.group(2)}"
+    return fallback
+
+
+def _package_pin_count(name: str, pins: list[PackagePin]) -> int:
+    if _RE_PKG_TYPE.search(name) or _RE_PKG_NxPIN.search(name):
+        m = re.search(r'(\d+)', name)
+        if m:
+            return int(m.group(1))
+    return len(pins)
+
+
+def _is_reasonable_package_pin(name: str) -> bool:
+    cleaned = (name or '').strip().upper()
+    if not cleaned or ' ' in cleaned:
+        return False
+    if _looks_like_pin_name(cleaned):
+        return True
+    return _classify(cleaned) in {"power", "ground", "special"}
+
+
+def _rename_fallback_packages(packages: list[PackageInfo]) -> list[PackageInfo]:
+    counts: dict[int, int] = {}
+    renamed: list[PackageInfo] = []
+    for pkg in packages:
+        if not pkg.name.startswith("PKG_p"):
+            renamed.append(pkg)
+            continue
+
+        counts[pkg.pin_count] = counts.get(pkg.pin_count, 0) + 1
+        suffix = "" if counts[pkg.pin_count] == 1 else f"_{counts[pkg.pin_count]}"
+        renamed.append(PackageInfo(f"PACKAGE{pkg.pin_count}{suffix}", pkg.pin_count, pkg.pins))
+    return renamed
+
+
+def _finalize_packages(raw: dict[str, list[PackagePin]]) -> list[PackageInfo]:
+    packages: list[PackageInfo] = []
+    for name, pins in raw.items():
+        seen: set[int] = set()
+        uniq: list[PackagePin] = []
+        for pin in pins:
+            if pin.number not in seen:
+                seen.add(pin.number)
+                uniq.append(pin)
+        uniq.sort(key=lambda pin: pin.number)
+        if not uniq:
+            continue
+
+        valid_pin_names = sum(1 for pin in uniq if _is_reasonable_package_pin(pin.name))
+        if valid_pin_names < max(4, len(uniq) // 2):
+            continue
+
+        packages.append(PackageInfo(name, _package_pin_count(name, uniq), uniq))
+
+    named = [pkg for pkg in packages if not pkg.name.startswith("PKG_p")]
+    named_sets = [set(pin.name for pin in pkg.pins) for pkg in named]
+    filtered: list[PackageInfo] = []
+    for pkg in packages:
+        if pkg.name.startswith("PKG_p"):
+            pkg_set = set(pin.name for pin in pkg.pins)
+            for named_pkg, named_set in zip(named, named_sets):
+                if not pkg_set or not named_set:
+                    continue
+                overlap = len(pkg_set & named_set) / min(len(pkg_set), len(named_set))
+                if pkg_set.issubset(named_set) or (
+                    overlap >= 0.85 and abs(len(pkg_set) - len(named_set)) <= 8
+                ):
+                    break
+            else:
+                filtered.append(pkg)
+                continue
+            continue
+        filtered.append(pkg)
+
+    filtered = _rename_fallback_packages(filtered)
+    filtered.sort(key=lambda pkg: (pkg.pin_count, pkg.name))
+    return filtered
+
+
+def _generic_parse_package_table(tbl: list[list[object]], page_text: str, fallback: str) -> dict[str, list[PackagePin]]:
+    rows = _clean_table_rows(tbl)
+    if len(rows) < 2:
+        return {}
+
+    probe_headers = _combine_table_headers(rows, min(3, len(rows)))
+    name_col = -1
+    for ci, header in enumerate(probe_headers):
+        if re.search(r'PIN\s*NAME|SIGNAL|NAME|GPIO|PAD|FUNCTION|I/O\s*PIN', header, re.I):
+            name_col = ci
+            break
+    if name_col < 0:
+        return {}
+
+    data_start = _table_data_start(rows, name_col)
+    if data_start >= len(rows):
+        return {}
+
+    headers = _combine_table_headers(rows, data_start)
+    pin_cols = [
+        ci for ci in range(name_col)
+        if any(ci < len(row) and _looks_like_pin_number(row[ci]) for row in rows[data_start:data_start + 8])
+    ]
+    if not pin_cols:
+        return {}
+
+    packages: dict[str, list[PackagePin]] = {}
+    for ci in pin_cols:
+        header = headers[ci] if ci < len(headers) else ""
+        pkg_name = _package_name_from_header(header, page_text, f"{fallback}_{ci}")
+        for row in rows[data_start:]:
+            if len(row) <= max(ci, name_col):
+                continue
+            ns = row[ci].strip() if row[ci] else ""
+            nm = row[name_col].strip().upper() if row[name_col] else ""
+            if not ns or not _looks_like_pin_name(nm):
+                continue
+            bm = _RE_BGA_COORD.match(ns.upper())
+            if bm:
+                pnum = (ord(bm.group(1)) - 64) * 100 + int(bm.group(2))
+            else:
+                digits = re.sub(r'[^\d]', '', ns)
+                if not digits:
+                    continue
+                pnum = int(digits)
+            port, gn = _port_gpio(nm)
+            packages.setdefault(pkg_name, []).append(
+                PackagePin(pnum, nm, port, gn, _classify(nm)))
+
+    return packages
 
 
 # ──────────────────── speed: batch page text ─────────────────────────
@@ -553,10 +845,7 @@ def _stm32_parse_af(tables: list[list[list[str]]]) -> dict[str, list[PinMuxEntry
                 cell = str(row[ci]).strip() if row[ci] else ""
                 if not cell or cell in ("—", "-", "–"):
                     continue
-                for fn in re.split(r'[/\n]', cell):
-                    fn = fn.strip()
-                    if not fn or fn in ("—", "-", "–"):
-                        continue
+                for fn in _split_stm32_af_cell(cell):
                     p, s = _norm_periph(fn)
                     result.setdefault(raw_pin, []).append(PinMuxEntry(
                         raw_pin, af, af,
@@ -627,23 +916,9 @@ def _stm32_parse_pindef(tables: list[list[list[str]]]) -> tuple[list[PackageInfo
                 break
             if not s:
                 continue
-            su = s.upper().replace("_", "").replace("-", "").replace(" ", "")
-            # Skip SPMS_ (SmartPowerManagement) variants — same package, different probe pads
-            if su.startswith("SPMS"):
-                continue
-            for key, real in _PKG_DECODE.items():
-                if key in su:
-                    nums = re.findall(r'\d+', su)
-                    if nums:
-                        # Column headers have reversed text (e.g. '46PFQL' = LQFP64)
-                        # Reverse the digit string BEFORE converting to int
-                        rc = int(nums[0][::-1])
-                        label = f"{real}{rc}"
-                    else:
-                        label = real
-                    if label not in pkg_col:
-                        pkg_col[label] = ci
-                    break
+            label = _decode_stm32_package_label(s)
+            if label and label not in pkg_col:
+                pkg_col[label] = ci
 
         for row in tbl[2:]:
             if not row or len(row) <= name_col:
@@ -728,54 +1003,9 @@ def _generic_find_pinmux(pdf: pdfplumber.PDF, texts: list[str]) -> dict[str, lis
         except Exception:
             continue
         for tbl in page_tables:
-            if not tbl or len(tbl) < 3:
-                continue
-            header = [str(c).strip() if c else "" for c in tbl[0]]
-            hu = [h.upper() for h in header]
-
-            pin_col = -1
-            func_cols: list[tuple[int, str]] = []
-            for ci, h in enumerate(hu):
-                if pin_col < 0 and re.search(
-                    r'PIN\s*NAME|GPIO|PORT\s*PIN|PAD\s*NAME|BALL\s*NAME|IO\s*NAME', h):
-                    pin_col = ci
-                elif re.search(
-                    r'AF\d+|ALT\s*\d|FUNC|MUX|PERIPH|SIGNAL|ALTERNATE', h):
-                    func_cols.append((ci, h))
-
-            if pin_col < 0 or not func_cols:
-                continue
-
-            for row in tbl[1:]:
-                if not row or len(row) <= pin_col:
-                    continue
-                raw_pin = str(row[pin_col]).strip().upper() if row[pin_col] else ""
-                if not raw_pin:
-                    continue
-                m2 = re.search(r'(P[A-K]\d+|GPIO_?\d+|IO\d+)', raw_pin, re.I)
-                if not m2:
-                    continue
-                pin_name = m2.group(1).upper()
-                port, gnum = _port_gpio(pin_name)
-
-                for ci, cname in func_cols:
-                    if ci >= len(row):
-                        continue
-                    cell = str(row[ci]).strip() if row[ci] else ""
-                    if not cell or cell in ("—", "-", "–", "Reserved"):
-                        continue
-                    am = re.search(r'AF(\d+)|ALT\s*(\d+)', cname, re.I)
-                    af = int(am.group(1) or am.group(2)) if am else -1
-
-                    for fn in re.split(r'[,\n/;]', cell):
-                        fn = fn.strip()
-                        if not fn or fn in ("—", "-", "–"):
-                            continue
-                        p, s = _norm_periph(fn)
-                        result.setdefault(pin_name, []).append(PinMuxEntry(
-                            pin_name, af, af,
-                            fn.upper().replace(".", "_"), p, s,
-                            _guess_dir(fn, s)))
+            parsed = _generic_parse_pinmux_table(tbl)
+            for pin_name, entries in parsed.items():
+                result.setdefault(pin_name, []).extend(entries)
 
     return result
 
@@ -785,7 +1015,8 @@ def _generic_find_packages(pdf: pdfplumber.PDF, texts: list[str]) -> list[Packag
     pages = _pages_matching(texts, re.compile(
         r'pin\s*(out|diagram|assignment|description|definition)|'
         r'ball\s*map|signal\s*description|package\s*pin|'
-        r'terminal\s*function|pin\s*configuration',
+        r'terminal\s*function|pin\s*configuration|'
+        r'i/o\s+multiplexing|multiplexed\s+signals',
         re.I))
 
     raw: dict[str, list[PackagePin]] = {}
@@ -796,57 +1027,11 @@ def _generic_find_packages(pdf: pdfplumber.PDF, texts: list[str]) -> list[Packag
         except Exception:
             continue
         for tbl in page_tables:
-            if not tbl or len(tbl) < 2:
-                continue
-            header = [str(c).strip() if c else "" for c in tbl[0]]
-            hu = [h.upper() for h in header]
+            parsed = _generic_parse_package_table(tbl, text, f"PKG_p{idx+1}")
+            for pkg_name, pins in parsed.items():
+                raw.setdefault(pkg_name, []).extend(pins)
 
-            pin_col = name_col = -1
-            for ci, h in enumerate(hu):
-                if pin_col < 0 and re.search(r'PIN\s*(NO|NUM|#)|^#$|BALL', h):
-                    pin_col = ci
-                if name_col < 0 and re.search(
-                    r'PIN\s*NAME|SIGNAL|NAME|GPIO|PAD|FUNCTION', h):
-                    name_col = ci
-
-            if pin_col < 0 or name_col < 0 or pin_col == name_col:
-                continue
-
-            pm = _RE_PKG_TYPE.search(text)
-            pkg_name = f"{pm.group(1).upper()}{pm.group(2)}" if pm else f"PKG_p{idx+1}"
-
-            for row in tbl[1:]:
-                if len(row) <= max(pin_col, name_col):
-                    continue
-                ns = str(row[pin_col]).strip() if row[pin_col] else ""
-                nm = str(row[name_col]).strip().upper() if row[name_col] else ""
-                if not ns or not nm:
-                    continue
-                bm = _RE_BGA_COORD.match(ns.upper())
-                if bm:
-                    pnum = (ord(bm.group(1)) - 64) * 100 + int(bm.group(2))
-                else:
-                    try:
-                        pnum = int(re.sub(r'[^\d]', '', ns))
-                    except (ValueError, TypeError):
-                        continue
-                port, gn = _port_gpio(nm)
-                raw.setdefault(pkg_name, []).append(
-                    PackagePin(pnum, nm, port, gn, _classify(nm)))
-
-    pkgs: list[PackageInfo] = []
-    for name, pins in raw.items():
-        seen: set[int] = set()
-        uniq: list[PackagePin] = []
-        for p in pins:
-            if p.number not in seen:
-                seen.add(p.number)
-                uniq.append(p)
-        uniq.sort(key=lambda p: p.number)
-        m2 = re.search(r'(\d+)', name)
-        pkgs.append(PackageInfo(name, int(m2.group(1)) if m2 else len(uniq), uniq))
-    pkgs.sort(key=lambda p: p.pin_count)
-    return pkgs
+    return _finalize_packages(raw)
 
 
 # ═══════════════════════════════════════════════════════════════════════

@@ -39,6 +39,9 @@ dev = [
     "pytest-cov>=5.0.0",
     "flake8>=7.0.0",
 ]
+browser = [
+    "playwright>=1.54.0",
+]
 robot = [
     "robotframework>=7.0",
 ]
@@ -55,6 +58,7 @@ Issues = "https://github.com/pyontrust/pin-configurator/issues"
 testpaths = ["tests"]
 markers = [
     "integration: marks tests that require a running server",
+    "browser: marks tests that require Playwright and a browser runtime",
     "slow: marks tests that take >10s (e.g. PDF parsing)",
 ]
 addopts = "-v --tb=short"

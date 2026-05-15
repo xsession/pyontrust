@@ -116,15 +116,67 @@ body {
   transition: background .1s;
 }
 .periph-item:hover { background: var(--bg3); }
+.periph-item.active {
+  background: rgba(137, 180, 250, .12);
+  border: 1px solid rgba(137, 180, 250, .45);
+}
 .periph-item.enabled { color: var(--green); }
 .periph-item.enabled .dot { background: var(--green); }
+.periph-item.active .dot {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px rgba(137, 180, 250, .16);
+}
 .periph-item .dot {
   width: 8px; height: 8px;
   border-radius: 50%;
   background: var(--fg-dim);
   flex-shrink: 0;
 }
-.periph-item .periph-label { flex: 1; }
+.periph-item .periph-copy {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.periph-item .periph-label {
+  flex: 1;
+  font-weight: 600;
+}
+.periph-item .periph-signals {
+  font-size: 10px;
+  line-height: 1.35;
+  color: var(--fg-dim);
+  white-space: normal;
+}
+.periph-item .periph-signal-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 3px;
+}
+.periph-item .periph-signal-chip {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg-dim);
+  border-radius: 999px;
+  padding: 2px 7px;
+  font-size: 10px;
+  line-height: 1.2;
+  cursor: pointer;
+}
+.periph-item .periph-signal-chip:hover {
+  border-color: var(--accent);
+  color: var(--fg);
+}
+.periph-item .periph-signal-chip.active {
+  border-color: var(--accent);
+  background: rgba(137, 180, 250, .16);
+  color: var(--fg);
+}
+.periph-item.active .periph-signals {
+  color: var(--fg);
+}
 .periph-toggle {
   width: 34px; height: 18px;
   border-radius: 9px;
@@ -233,6 +285,16 @@ svg.chip-svg .pin-pad.assigned {
   stroke: var(--green);
   fill: rgba(166, 227, 161, .12);
 }
+svg.chip-svg .pin-pad.peripheral-match {
+  stroke-width: 2.5;
+  fill: rgba(137, 180, 250, .12);
+  filter: drop-shadow(0 0 6px rgba(137, 180, 250, .2));
+}
+svg.chip-svg .pin-pad.conflicted {
+  stroke: var(--red);
+  stroke-width: 2;
+  fill: rgba(243, 139, 168, .12);
+}
 svg.chip-svg .pin-pad.power {
   fill: rgba(249, 226, 175, .1);
   stroke: var(--yellow);
@@ -294,6 +356,11 @@ svg.chip-svg .bga-ball.selected {
 svg.chip-svg .bga-ball.assigned {
   stroke: var(--green);
   fill: rgba(166, 227, 161, .2);
+}
+svg.chip-svg .bga-ball.peripheral-match {
+  stroke-width: 2.5;
+  fill: rgba(137, 180, 250, .2);
+  filter: drop-shadow(0 0 8px rgba(137, 180, 250, .22));
 }
 svg.chip-svg .bga-ball.power {
   fill: rgba(249, 226, 175, .18);
@@ -562,6 +629,151 @@ svg.chip-svg .bga-label {
   padding: 1px 5px;
   border-radius: 3px;
 }
+.pin-conflict-section {
+  padding: 10px;
+  border: 1px solid rgba(243, 139, 168, 0.35);
+  border-radius: var(--radius);
+  background: rgba(243, 139, 168, 0.06);
+}
+.pin-conflict-summary {
+  font-size: 12px;
+  color: var(--yellow);
+  margin-bottom: 8px;
+}
+.pin-conflict-card {
+  border: 1px solid rgba(243, 139, 168, 0.28);
+  border-radius: var(--radius);
+  background: rgba(30, 30, 46, 0.55);
+  padding: 10px;
+  margin-top: 8px;
+}
+.pin-conflict-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--red);
+}
+.pin-conflict-copy,
+.pin-conflict-affected {
+  font-size: 11px;
+  color: var(--fg-dim);
+  line-height: 1.45;
+  margin-top: 6px;
+}
+.pin-conflict-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.pin-conflict-actions .btn {
+  font-size: 11px;
+  padding: 5px 10px;
+}
+.config-health-panel {
+  padding: 12px 20px 0;
+  background: var(--bg);
+}
+.config-health-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  background: var(--bg2);
+}
+.config-health-card.alert {
+  border-color: rgba(243, 139, 168, 0.45);
+  background: rgba(243, 139, 168, 0.07);
+}
+.config-health-card.ok {
+  border-color: rgba(166, 227, 161, 0.4);
+  background: rgba(166, 227, 161, 0.06);
+}
+.config-health-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.config-health-title {
+  font-size: 13px;
+  font-weight: 700;
+}
+.config-health-copy {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--fg-dim);
+  line-height: 1.45;
+}
+.config-health-pill {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 4px 8px;
+  border-radius: 999px;
+}
+.config-health-pill.alert {
+  background: var(--red);
+  color: var(--bg);
+}
+.config-health-pill.ok {
+  background: var(--green);
+  color: var(--bg);
+}
+.config-health-stats {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.config-health-stat {
+  min-width: 110px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(30, 30, 46, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+.config-health-stat strong {
+  display: block;
+  font-size: 18px;
+  line-height: 1;
+}
+.config-health-stat span {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--fg-dim);
+}
+.config-health-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+}
+.config-health-item {
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: rgba(30, 30, 46, 0.55);
+}
+.config-health-item-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--fg);
+}
+.config-health-item-copy,
+.config-health-item-meta {
+  margin-top: 5px;
+  font-size: 11px;
+  color: var(--fg-dim);
+  line-height: 1.45;
+}
+.config-health-actions,
+.config-health-footer {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
 
 /* ─── Scrollbar ────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -603,6 +815,21 @@ svg.chip-svg .bga-label {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
+}
+.path-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.path-input-row input,
+.path-input-row select,
+.path-input-row textarea {
+  flex: 1 1 auto;
+  margin-bottom: 0;
+}
+.path-input-row .btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 /* ─── Import modal ───────────────────────────────────────────── */
@@ -834,13 +1061,53 @@ svg.chip-svg .bga-label {
 .sns-empty .hint { font-size: 12px; margin-top: 8px; opacity: .6; }
 
 /* ─── Top-level Tab Navigation ─────────────────────────────── */
-.app-tabs {
+.app-tab-selector {
   display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg2);
+  border-bottom: 2px solid var(--border);
+  padding: 10px 20px;
+  flex-shrink: 0;
+}
+.app-tab-selector-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  white-space: nowrap;
+}
+.app-tab-select {
+  min-width: min(420px, 100%);
+  max-width: 100%;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.app-tabs {
+  display: none;
   gap: 0;
   background: var(--bg2);
   border-bottom: 2px solid var(--border);
   padding: 0 20px;
   flex-shrink: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+  position: relative;
+  transition: box-shadow .18s ease;
+}
+.app-tabs.can-scroll-left {
+  box-shadow: inset 16px 0 14px -14px rgba(6, 10, 18, 0.72);
+}
+.app-tabs.can-scroll-right {
+  box-shadow: inset -16px 0 14px -14px rgba(6, 10, 18, 0.72);
 }
 .app-tab {
   padding: 10px 24px;
@@ -852,10 +1119,49 @@ svg.chip-svg .bga-label {
   margin-bottom: -2px;
   transition: all .15s;
   user-select: none;
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 .app-tab:hover { color: var(--fg); }
 .app-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 .app-tab .tab-icon { margin-right: 6px; }
+
+@media (max-width: 900px) {
+  .app-tabs {
+    padding: 0 8px;
+  }
+  .app-tab-selector {
+    padding: 10px 12px;
+  }
+  .app-tabs.can-scroll-left {
+    box-shadow: inset 12px 0 12px -12px rgba(6, 10, 18, 0.8);
+  }
+  .app-tabs.can-scroll-right {
+    box-shadow: inset -12px 0 12px -12px rgba(6, 10, 18, 0.8);
+  }
+  .app-tab {
+    padding: 10px 14px;
+    font-size: 12px;
+  }
+  .app-tab .tab-icon {
+    margin-right: 4px;
+  }
+}
+
+@media (max-width: 640px) {
+  .app-tabs {
+    padding: 0 4px;
+  }
+  .app-tab-selector {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    padding: 10px;
+  }
+  .app-tab {
+    padding: 10px 10px;
+  }
+}
 
 .tab-content { display: none; flex: 1; overflow: hidden; flex-direction: column; }
 .tab-content.active { display: flex; }
@@ -1062,7 +1368,7 @@ svg.chip-svg .bga-label {
   min-height: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  overflow: auto;
+  overflow: hidden;
   background:
     radial-gradient(circle at top left, rgba(56,189,248,.12), transparent 28%),
     radial-gradient(circle at bottom right, rgba(251,191,36,.08), transparent 26%),
@@ -1085,6 +1391,8 @@ svg.chip-svg .bga-label {
   z-index: 1;
   margin: 0 auto;
   transform-origin: top left;
+  max-width: 100%;
+  max-height: 100%;
 }
 .board-editor-canvas-empty {
   height: 100%;
@@ -1112,6 +1420,38 @@ svg.chip-svg .bga-label {
 }
 .board-editor-wire:hover {
   stroke: #fb7185;
+}
+.board-editor-wire-handle {
+  fill: rgba(15,23,42,.94);
+  stroke: rgba(248,250,252,.82);
+  stroke-width: 1.5;
+  cursor: grab;
+}
+.board-editor-wire-handle:hover {
+  fill: rgba(251,191,36,.3);
+  stroke: #fbbf24;
+}
+.board-editor-wire-handle:active {
+  cursor: grabbing;
+}
+.board-editor-wire-reset {
+  cursor: pointer;
+}
+.board-editor-wire-reset-chip {
+  fill: rgba(15,23,42,.96);
+  stroke: rgba(248,250,252,.35);
+  stroke-width: 1;
+}
+.board-editor-wire-reset:hover .board-editor-wire-reset-chip {
+  fill: rgba(127,29,29,.92);
+  stroke: rgba(254,202,202,.5);
+}
+.board-editor-wire-reset-label {
+  fill: var(--fg);
+  font-size: 9px;
+  font-family: Consolas, 'Courier New', monospace;
+  pointer-events: none;
+  text-transform: uppercase;
 }
 .board-editor-mcu-body {
   fill: rgba(30,41,59,.94);
@@ -1226,6 +1566,1557 @@ svg.chip-svg .bga-label {
 }
 .tab-content[data-app-content="board-editor"] {
   overflow: auto;
+}
+.tab-content[data-app-content="lvgl-layout"] {
+  overflow: auto;
+}
+.tab-content[data-app-content="interrupts"] {
+  overflow: auto;
+}
+.tab-content[data-app-content="protocols"] {
+  overflow: auto;
+}
+.lvgl-layout {
+  display: grid;
+  grid-template-columns: clamp(190px, 20vw, 260px) minmax(0, 1fr) clamp(210px, 22vw, 300px);
+  flex: 1;
+  min-height: 0;
+  background: linear-gradient(180deg, rgba(15,23,42,.94), rgba(15,23,42,.86));
+}
+.lvgl-layout-sidebar,
+.lvgl-layout-panel {
+  background: color-mix(in srgb, var(--bg2) 92%, transparent);
+  border-right: 1px solid var(--border);
+  padding: 16px;
+  overflow: auto;
+  min-width: 0;
+}
+.lvgl-layout-panel {
+  border-right: 0;
+  border-left: 1px solid var(--border);
+}
+.lvgl-layout-sidebar h3,
+.lvgl-layout-panel h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  letter-spacing: .08em;
+  margin-bottom: 10px;
+}
+.lvgl-layout-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+.lvgl-layout-title {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.lvgl-layout-title h2 {
+  margin: 0;
+  font-size: 20px;
+}
+.lvgl-layout-title p {
+  margin: 0;
+  color: var(--fg-dim);
+  font-size: 13px;
+}
+.lvgl-layout-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.lvgl-layout-tool-btn.active {
+  border-color: rgba(56,189,248,.7);
+  background: rgba(14,116,144,.18);
+}
+.lvgl-layout-snap-btn.active {
+  border-color: rgba(74,222,128,.65);
+  background: rgba(22,101,52,.18);
+}
+.lvgl-layout-zoom-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 58px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(15,23,42,.65);
+  color: var(--fg-dim);
+  font-size: 12px;
+}
+.lvgl-layout-quick-style {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: end;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(15,23,42,.4);
+}
+.lvgl-layout-quick-style-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 84px;
+}
+.lvgl-layout-quick-style-field label {
+  font-size: 10px;
+  color: var(--fg-dim);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+.lvgl-layout-quick-style-field input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(15,23,42,.72);
+  color: var(--fg);
+  padding: 7px 9px;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+.lvgl-layout-quick-style-field input[type="color"] {
+  min-height: 38px;
+  padding: 4px;
+}
+.lvgl-layout-quick-style-note {
+  flex: 1 1 220px;
+  color: var(--fg-dim);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.lvgl-history-btn:disabled {
+  opacity: .5;
+  cursor: default;
+}
+.lvgl-layout-stage-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  min-height: 0;
+  padding: 18px;
+  overflow: auto;
+}
+.lvgl-layout-canvas-wrap {
+  flex: 1;
+  min-height: clamp(320px, 48vh, 420px);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at top, rgba(56,189,248,.10), transparent 28%),
+    linear-gradient(180deg, rgba(15,23,42,.96), rgba(15,23,42,.78));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(10px, 2vw, 20px);
+  overflow: auto;
+  cursor: default;
+}
+.lvgl-layout-canvas-wrap.hand-tool {
+  cursor: grab;
+}
+.lvgl-layout-canvas-wrap.hand-tool.panning {
+  cursor: grabbing;
+}
+.lvgl-layout-stage-viewport {
+  transform-origin: center center;
+  will-change: transform;
+}
+.lvgl-layout-stage {
+  position: relative;
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, rgba(30,41,59,.98), rgba(15,23,42,.96));
+  box-shadow: 0 24px 70px rgba(2,6,23,.55);
+  border: 1px solid rgba(148,163,184,.18);
+  overflow: hidden;
+}
+.lvgl-layout-stage::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(148,163,184,.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148,163,184,.08) 1px, transparent 1px);
+  background-size: 20px 20px;
+  pointer-events: none;
+}
+.lvgl-layout-node {
+  position: absolute;
+  border: 1px solid rgba(148,163,184,.34);
+  border-radius: 14px;
+  background: rgba(51,65,85,.92);
+  color: var(--fg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 8px;
+  cursor: grab;
+  user-select: none;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.lvgl-layout-node.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(56,189,248,.24);
+}
+.lvgl-layout-node.multi-selected:not(.selected) {
+  border-color: rgba(56,189,248,.45);
+  box-shadow: 0 0 0 1px rgba(56,189,248,.16);
+}
+.lvgl-layout-node.dragging {
+  cursor: grabbing;
+  opacity: .92;
+}
+.lvgl-layout-node.resizing {
+  cursor: nwse-resize;
+}
+.lvgl-layout-node.t-screen {
+  border-style: dashed;
+  background: rgba(15,23,42,.42);
+}
+.lvgl-layout-node.t-button {
+  background: linear-gradient(180deg, rgba(59,130,246,.96), rgba(37,99,235,.86));
+}
+.lvgl-layout-node.t-label {
+  background: rgba(30,41,59,.86);
+}
+.lvgl-layout-node.t-panel,
+.lvgl-layout-node.t-container {
+  background: rgba(71,85,105,.88);
+}
+.lvgl-layout-node.t-slider {
+  background: linear-gradient(90deg, rgba(34,197,94,.24), rgba(34,197,94,.10));
+}
+.lvgl-layout-node.t-bar {
+  background: linear-gradient(90deg, rgba(251,191,36,.32), rgba(251,191,36,.14));
+}
+.lvgl-layout-node.t-image {
+  background: linear-gradient(135deg, rgba(216,180,254,.30), rgba(56,189,248,.18));
+}
+.lvgl-layout-node-label {
+  pointer-events: none;
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.lvgl-layout-resize-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #f8fafc;
+  border: 2px solid rgba(56,189,248,.85);
+  box-shadow: 0 0 0 1px rgba(15,23,42,.8);
+  z-index: 3;
+}
+.lvgl-layout-resize-handle.h-nw {
+  left: -6px;
+  top: -6px;
+  cursor: nwse-resize;
+}
+.lvgl-layout-resize-handle.h-ne {
+  right: -6px;
+  top: -6px;
+  cursor: nesw-resize;
+}
+.lvgl-layout-resize-handle.h-sw {
+  left: -6px;
+  bottom: -6px;
+  cursor: nesw-resize;
+}
+.lvgl-layout-resize-handle.h-se {
+  right: -6px;
+  bottom: -6px;
+  cursor: nwse-resize;
+}
+.lvgl-layout-guide {
+  position: absolute;
+  background: rgba(74,222,128,.9);
+  pointer-events: none;
+  z-index: 2;
+  box-shadow: 0 0 0 1px rgba(15,23,42,.45);
+}
+.lvgl-layout-guide.v {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
+.lvgl-layout-guide.h {
+  left: 0;
+  right: 0;
+  height: 1px;
+}
+.lvgl-layout-stage-meta {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: var(--fg-dim);
+  font-size: 12px;
+}
+.lvgl-layout-stage-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  margin-left: 8px;
+  border-radius: 999px;
+  background: rgba(251,191,36,.18);
+  color: var(--yellow);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+.lvgl-layout-palette {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.lvgl-layout-palette-btn {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(15,23,42,.72);
+  color: var(--fg);
+  padding: 10px 8px;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.lvgl-layout-palette-btn:hover {
+  border-color: var(--accent);
+}
+.lvgl-layout-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.lvgl-layout-sidebar-actions {
+  display: flex;
+  margin-bottom: 10px;
+}
+.lvgl-layout-style-library {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+.lvgl-layout-style-item {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: rgba(15,23,42,.45);
+  color: var(--fg);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  cursor: pointer;
+}
+.lvgl-layout-style-item.active {
+  border-color: rgba(56,189,248,.6);
+  background: rgba(14,116,144,.18);
+}
+.lvgl-layout-style-name {
+  font-size: 12px;
+  font-weight: 600;
+}
+.lvgl-layout-style-meta,
+.lvgl-layout-style-check-meta {
+  color: var(--fg-dim);
+  font-size: 10px;
+}
+.lvgl-layout-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.lvgl-layout-section-title {
+  font-size: 11px;
+  color: var(--fg-dim);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+.lvgl-layout-style-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.lvgl-layout-style-check {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 12px;
+}
+.lvgl-layout-node.style-driven {
+  outline: 1px dashed rgba(251,191,36,.5);
+}
+.lvgl-layout-node-style-badges {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 4px;
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.lvgl-layout-node-style-badge {
+  font-size: 9px;
+  border-radius: 999px;
+  padding: 2px 6px;
+  background: rgba(15,23,42,.55);
+  border: 1px solid rgba(148,163,184,.25);
+}
+.lvgl-layout-empty.compact {
+  padding: 12px;
+  font-size: 12px;
+}
+.lvgl-layout-tree-item {
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: rgba(15,23,42,.45);
+  color: var(--fg);
+  padding: 9px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.lvgl-layout-tree-item.active {
+  border-color: rgba(56,189,248,.6);
+  background: rgba(14,116,144,.18);
+}
+.lvgl-layout-tree-item.child {
+  margin-left: 16px;
+}
+.lvgl-layout-tree-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.lvgl-layout-tree-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(251,191,36,.18);
+  color: var(--yellow);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+.lvgl-layout-tree-meta {
+  color: var(--fg-dim);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+.lvgl-layout-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.lvgl-layout-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.lvgl-layout-field.full {
+  grid-column: 1 / -1;
+}
+.lvgl-layout-field label {
+  font-size: 11px;
+  color: var(--fg-dim);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+.lvgl-layout-field input,
+.lvgl-layout-field select,
+.lvgl-layout-field textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(15,23,42,.72);
+  color: var(--fg);
+  padding: 8px 10px;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+.lvgl-layout-field textarea {
+  min-height: 90px;
+  resize: vertical;
+  font-family: Consolas, 'Courier New', monospace;
+}
+.lvgl-layout-empty {
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  padding: 20px 14px;
+  text-align: center;
+  color: var(--fg-dim);
+  font-size: 13px;
+}
+.lvgl-layout-output {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(15,23,42,.78);
+  padding: 12px;
+}
+.lvgl-layout-validation {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(15,23,42,.76);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.lvgl-layout-validation-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+.lvgl-layout-validation-head h3 {
+  margin: 0;
+}
+.lvgl-layout-validation-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.lvgl-layout-validation-copy p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--fg-dim);
+}
+.lvgl-layout-validation-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.lvgl-layout-validation-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.lvgl-layout-validation-filters select {
+  min-width: 132px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(15,23,42,.72);
+  color: var(--fg);
+  padding: 6px 9px;
+  font-size: 12px;
+}
+.lvgl-layout-validation-filters input {
+  min-width: 180px;
+  flex: 1 1 220px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(15,23,42,.72);
+  color: var(--fg);
+  padding: 6px 9px;
+  font-size: 12px;
+}
+.lvgl-layout-validation-filters input::placeholder {
+  color: var(--fg-dim);
+}
+.lvgl-layout-validation-filter-chip {
+  font-size: 11px;
+  color: var(--fg-dim);
+}
+.lvgl-layout-validation-badge {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 9px;
+  font-size: 11px;
+  color: var(--fg-dim);
+  background: rgba(15,23,42,.48);
+}
+.lvgl-layout-validation-badge.sev-error {
+  border-color: rgba(244,63,94,.45);
+  color: #fecdd3;
+  background: rgba(127,29,29,.24);
+}
+.lvgl-layout-validation-badge.sev-warning {
+  border-color: rgba(251,191,36,.4);
+  color: #fde68a;
+  background: rgba(120,53,15,.24);
+}
+.lvgl-layout-validation-badge.sev-info {
+  border-color: rgba(56,189,248,.4);
+  color: #bae6fd;
+  background: rgba(12,74,110,.24);
+}
+.lvgl-layout-validation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.lvgl-layout-validation-group {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(15,23,42,.38);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.lvgl-layout-validation-group-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+.lvgl-layout-validation-group-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg);
+}
+.lvgl-layout-validation-group-meta {
+  font-size: 11px;
+  color: var(--fg-dim);
+}
+.lvgl-layout-validation-group-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.lvgl-layout-validation-item {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(15,23,42,.45);
+  color: var(--fg);
+  padding: 10px 12px;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.lvgl-layout-validation-item.actionable {
+  cursor: pointer;
+}
+.lvgl-layout-validation-item.actionable:hover {
+  border-color: rgba(56,189,248,.45);
+  background: rgba(14,116,144,.16);
+}
+.lvgl-layout-validation-item.sev-error {
+  border-left: 3px solid rgba(244,63,94,.7);
+}
+.lvgl-layout-validation-item.sev-warning {
+  border-left: 3px solid rgba(251,191,36,.7);
+}
+.lvgl-layout-validation-item.sev-info {
+  border-left: 3px solid rgba(56,189,248,.7);
+}
+.lvgl-layout-validation-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+  font-size: 11px;
+  color: var(--fg-dim);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.lvgl-layout-validation-message {
+  font-size: 12px;
+  line-height: 1.5;
+}
+.lvgl-layout-validation-target {
+  font-size: 11px;
+  color: var(--accent);
+}
+.lvgl-layout-validation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.lvgl-layout-validation-action-btn {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(15,23,42,.72);
+  color: var(--fg);
+  padding: 5px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.lvgl-layout-validation-action-btn:hover {
+  border-color: rgba(56,189,248,.45);
+  background: rgba(14,116,144,.16);
+}
+.lvgl-layout-validation-action-btn.rename {
+  border-color: rgba(251,191,36,.4);
+  color: #fde68a;
+}
+.lvgl-layout-validation-action-btn.rename:hover {
+  background: rgba(120,53,15,.24);
+}
+.lvgl-layout-symbol-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid rgba(56,189,248,.2);
+  border-radius: 12px;
+  background: rgba(15,23,42,.46);
+  padding: 10px 12px;
+}
+.lvgl-layout-symbol-preview-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.lvgl-layout-symbol-preview-copy p {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--fg-dim);
+}
+.lvgl-layout-symbol-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 8px;
+}
+.lvgl-layout-symbol-preview-item {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(15,23,42,.6);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.lvgl-layout-symbol-preview-item.matching-issue {
+  border-color: rgba(251,191,36,.42);
+  background: rgba(120,53,15,.22);
+  box-shadow: inset 0 0 0 1px rgba(251,191,36,.12);
+}
+.lvgl-layout-symbol-preview-item label {
+  font-size: 10px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+}
+.lvgl-layout-symbol-preview-item.matching-issue label {
+  color: #fde68a;
+}
+.lvgl-layout-symbol-preview-item code {
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 12px;
+  color: var(--fg);
+  word-break: break-word;
+}
+.lvgl-layout-symbol-preview-issue-note {
+  font-size: 11px;
+  color: #fde68a;
+}
+.lvgl-layout-output pre {
+  margin: 0;
+  white-space: pre-wrap;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fg);
+  font-family: Consolas, 'Courier New', monospace;
+}
+.lvgl-layout-import-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.lvgl-layout-import-preview {
+  min-height: 120px;
+  margin-top: 12px;
+}
+.zcatalog {
+  display: grid;
+  grid-template-columns: 290px minmax(0, 1fr);
+  gap: 18px;
+  flex: 1;
+  min-height: 0;
+}
+.zcatalog-sidebar,
+.zcatalog-main {
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: rgba(15,23,42,.74);
+  padding: 16px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.zcatalog-sidebar h3,
+.zcatalog-main h2,
+.zcatalog-main h3 {
+  margin: 0;
+}
+.zcatalog-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.zcatalog-controls input,
+.zcatalog-controls select {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(15,23,42,.72);
+  color: var(--fg);
+  padding: 8px 10px;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+.zcatalog-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.zcatalog-summary {
+  font-size: 12px;
+  color: var(--fg-dim);
+  line-height: 1.5;
+}
+.zcatalog-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: auto;
+  min-height: 0;
+}
+.zcatalog-item {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: rgba(15,23,42,.48);
+  color: var(--fg);
+  padding: 10px 12px;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.zcatalog-item.active {
+  border-color: rgba(56,189,248,.55);
+  background: rgba(14,116,144,.18);
+}
+.zcatalog-item-meta,
+.zcatalog-detail-meta,
+.zcatalog-chip {
+  font-size: 11px;
+  color: var(--fg-dim);
+}
+.zcatalog-chip-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.zcatalog-chip {
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(15,23,42,.48);
+}
+.zcatalog-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+}
+.zcatalog-detail-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+.zcatalog-detail-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.zcatalog-prop-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.zcatalog-prop-table th,
+.zcatalog-prop-table td {
+  border-bottom: 1px solid rgba(148,163,184,.14);
+  padding: 8px 6px;
+  vertical-align: top;
+  text-align: left;
+}
+.zcatalog-prop-table th {
+  color: var(--fg-dim);
+  font-weight: 600;
+}
+.zcatalog-empty {
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  padding: 22px 16px;
+  text-align: center;
+  color: var(--fg-dim);
+  font-size: 13px;
+}
+.zcatalog-note {
+  font-size: 12px;
+  color: var(--fg-dim);
+  line-height: 1.6;
+}
+.lvgl-layout-simlog {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(15,23,42,.72);
+  padding: 10px 12px;
+}
+.lvgl-layout-simlog h3 {
+  margin: 0 0 8px 0;
+}
+.lvgl-layout-simlog-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--fg-dim);
+  font-size: 12px;
+  min-height: 32px;
+}
+.lvgl-layout-simlog-entry {
+  border-left: 2px solid rgba(56,189,248,.45);
+  padding-left: 8px;
+}
+@media (max-width: 1360px) {
+  .lvgl-layout {
+    grid-template-columns: 190px minmax(0, 1fr) 210px;
+  }
+  .lvgl-layout-stage-shell {
+    padding: 14px;
+  }
+  .lvgl-layout-title h2 {
+    font-size: 18px;
+  }
+  .lvgl-layout-title p {
+    font-size: 12px;
+  }
+}
+@media (max-width: 1100px) {
+  .lvgl-layout {
+    grid-template-columns: 170px minmax(0, 1fr) 190px;
+  }
+  .lvgl-layout-sidebar,
+  .lvgl-layout-panel {
+    padding: 12px;
+  }
+  .lvgl-layout-palette {
+    grid-template-columns: 1fr;
+  }
+  .lvgl-layout-form {
+    grid-template-columns: 1fr;
+  }
+  .zcatalog {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 640px) {
+  .lvgl-layout {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "sidebar"
+      "stage"
+      "panel";
+  }
+  .lvgl-layout-sidebar {
+    grid-area: sidebar;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .lvgl-layout-stage-shell {
+    grid-area: stage;
+    min-height: auto;
+    padding: 14px;
+  }
+  .lvgl-layout-panel {
+    grid-area: panel;
+    border-left: 0;
+    border-right: 0;
+    border-top: 1px solid var(--border);
+  }
+  .lvgl-layout-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .lvgl-layout-toolbar {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .lvgl-layout-stage-meta {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+@media (max-width: 520px) {
+  .lvgl-layout-sidebar,
+  .lvgl-layout-panel,
+  .lvgl-layout-stage-shell {
+    padding: 12px;
+  }
+  .lvgl-layout-toolbar {
+    grid-template-columns: 1fr;
+  }
+  .lvgl-layout-canvas-wrap {
+    min-height: 280px;
+    padding: 10px;
+  }
+  .lvgl-layout-title h2 {
+    font-size: 17px;
+  }
+  .lvgl-layout-title p,
+  .lvgl-layout-stage-meta,
+  .lvgl-layout-node-label,
+  .lvgl-layout-simlog-list,
+  .lvgl-layout-validation-message,
+  .lvgl-layout-output pre {
+    font-size: 11px;
+  }
+}
+.proto-editor {
+  display: grid;
+  grid-template-columns: clamp(190px, 20vw, 250px) minmax(0, 1fr) clamp(210px, 22vw, 290px);
+  flex: 1;
+  min-height: 0;
+  background: linear-gradient(180deg, rgba(15,23,42,.94), rgba(15,23,42,.86));
+}
+.proto-editor-sidebar,
+.proto-editor-panel {
+  background: color-mix(in srgb, var(--bg2) 92%, transparent);
+  border-right: 1px solid var(--border);
+  padding: 16px;
+  overflow: auto;
+  min-width: 0;
+}
+.proto-editor-panel {
+  border-right: 0;
+  border-left: 1px solid var(--border);
+}
+.proto-editor-sidebar h3,
+.proto-editor-panel h3,
+.proto-editor-preview h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  letter-spacing: .08em;
+  margin-bottom: 10px;
+}
+.proto-editor-main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+.proto-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.proto-editor-title h2 {
+  margin: 0;
+  font-size: 20px;
+}
+.proto-editor-title p {
+  margin: 4px 0 0 0;
+  color: var(--fg-dim);
+  font-size: 13px;
+}
+.proto-editor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.proto-editor-summary {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(15,23,42,.56);
+  color: var(--fg-dim);
+  padding: 10px 12px;
+  font-size: 12px;
+}
+.proto-editor-catalog,
+.proto-editor-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.proto-editor-card,
+.proto-editor-instance {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(15,23,42,.65);
+  padding: 12px;
+}
+.proto-editor-card.active,
+.proto-editor-instance.active {
+  border-color: rgba(56,189,248,.6);
+  box-shadow: 0 0 0 1px rgba(56,189,248,.24);
+}
+.proto-editor-card-top,
+.proto-editor-instance-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.proto-editor-card-title,
+.proto-editor-instance-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--fg);
+}
+.proto-editor-card-meta,
+.proto-editor-instance-meta,
+.proto-editor-note {
+  color: var(--fg-dim);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.proto-editor-card-summary,
+.proto-editor-instance-summary {
+  margin-top: 8px;
+  color: var(--fg);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.proto-editor-instance-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+.proto-editor-card-btn {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+.proto-editor-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--fg-dim);
+  font-size: 11px;
+}
+.proto-editor-empty {
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  padding: 20px 14px;
+  text-align: center;
+  color: var(--fg-dim);
+  font-size: 13px;
+}
+.proto-editor-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.proto-editor-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.proto-editor-field.full {
+  grid-column: 1 / -1;
+}
+.proto-editor-field label {
+  font-size: 11px;
+  color: var(--fg-dim);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+.proto-editor-field-check label {
+  text-transform: none;
+  letter-spacing: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg);
+}
+.proto-editor-field input,
+.proto-editor-field select,
+.proto-editor-field textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(15,23,42,.72);
+  color: var(--fg);
+  padding: 8px 10px;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+.proto-editor-field textarea {
+  min-height: 96px;
+  resize: vertical;
+  font-family: Consolas, 'Courier New', monospace;
+}
+.proto-editor-preview {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: rgba(15,23,42,.72);
+  padding: 14px;
+  min-width: 0;
+}
+.proto-editor-preview-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.proto-editor-preview-tab {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(30,41,59,.82);
+  color: var(--fg-dim);
+  padding: 6px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.proto-editor-preview-tab.active {
+  border-color: var(--accent);
+  color: var(--fg);
+  background: rgba(14,116,144,.18);
+}
+.proto-editor-preview pre {
+  margin: 0;
+  white-space: pre-wrap;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fg);
+  font-family: Consolas, 'Courier New', monospace;
+}
+.irq-editor {
+  display: grid;
+  grid-template-columns: clamp(210px, 22vw, 280px) minmax(0, 1fr) clamp(220px, 24vw, 320px);
+  flex: 1;
+  min-height: 0;
+  background: linear-gradient(180deg, rgba(15,23,42,.94), rgba(15,23,42,.86));
+}
+.irq-editor-sidebar,
+.irq-editor-panel {
+  background: color-mix(in srgb, var(--bg2) 92%, transparent);
+  border-right: 1px solid var(--border);
+  padding: 16px;
+  overflow: auto;
+  min-width: 0;
+}
+.irq-editor-panel {
+  border-right: 0;
+  border-left: 1px solid var(--border);
+}
+.irq-editor-sidebar h3,
+.irq-editor-panel h3,
+.irq-editor-section h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  letter-spacing: .08em;
+  margin-bottom: 10px;
+}
+.irq-editor-main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+.irq-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.irq-editor-title h2 {
+  margin: 0;
+  font-size: 20px;
+}
+.irq-editor-title p {
+  margin: 4px 0 0 0;
+  color: var(--fg-dim);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.irq-editor-summary {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(15,23,42,.56);
+  color: var(--fg-dim);
+  padding: 10px 12px;
+  font-size: 12px;
+}
+.irq-editor-list,
+.irq-editor-sections,
+.irq-editor-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.irq-editor-item,
+.irq-editor-card,
+.irq-editor-note-card,
+.irq-editor-detail {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(15,23,42,.68);
+  padding: 12px;
+}
+.irq-editor-item {
+  cursor: pointer;
+}
+.irq-editor-item.active {
+  border-color: rgba(56,189,248,.6);
+  box-shadow: 0 0 0 1px rgba(56,189,248,.24);
+}
+.irq-editor-item-top,
+.irq-editor-detail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.irq-editor-item-title,
+.irq-editor-card-title,
+.irq-editor-detail-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--fg);
+}
+.irq-editor-item-meta,
+.irq-editor-card-meta,
+.irq-editor-detail-meta,
+.irq-editor-note-text,
+.irq-editor-empty {
+  color: var(--fg-dim);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.irq-editor-badge {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 10px;
+  color: var(--fg-dim);
+  background: rgba(30,41,59,.82);
+  white-space: nowrap;
+}
+.irq-editor-badge.attention {
+  border-color: rgba(248,113,113,.4);
+  color: #fecaca;
+  background: rgba(127,29,29,.25);
+}
+.irq-editor-badge.moderate {
+  border-color: rgba(250,204,21,.4);
+  color: #fde68a;
+  background: rgba(113,63,18,.22);
+}
+.irq-editor-badge.stable {
+  border-color: rgba(34,197,94,.35);
+  color: #bbf7d0;
+  background: rgba(20,83,45,.22);
+}
+.irq-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.irq-editor-card-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--fg);
+  margin-top: 8px;
+}
+.irq-editor-card-hint {
+  color: var(--fg-dim);
+  font-size: 11px;
+  margin-top: 6px;
+  line-height: 1.45;
+}
+.irq-editor-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.irq-editor-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.irq-editor-table th,
+.irq-editor-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(69,71,90,.6);
+  vertical-align: top;
+  text-align: left;
+}
+.irq-editor-table th {
+  color: var(--fg-dim);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+.irq-editor-table td {
+  color: var(--fg);
+}
+.irq-editor-table tr:last-child td {
+  border-bottom: 0;
+}
+.irq-editor-list-inline {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+.irq-editor-list-inline div {
+  color: var(--fg);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.irq-editor-empty {
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  padding: 20px 14px;
+  text-align: center;
+}
+@media (max-width: 1320px) {
+  .irq-editor {
+    grid-template-columns: 190px minmax(0, 1fr) 220px;
+  }
+}
+@media (max-width: 1040px) {
+  .irq-editor {
+    grid-template-columns: 180px minmax(0, 1fr) 200px;
+  }
+  .irq-editor-sidebar,
+  .irq-editor-panel,
+  .irq-editor-main {
+    padding: 12px;
+  }
+  .irq-editor-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 640px) {
+  .irq-editor {
+    grid-template-columns: 1fr;
+  }
+  .irq-editor-sidebar,
+  .irq-editor-panel {
+    border-right: 0;
+    border-left: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .irq-editor-panel {
+    border-bottom: 0;
+    border-top: 1px solid var(--border);
+  }
+  .irq-editor-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+@media (max-width: 520px) {
+  .irq-editor-main,
+  .irq-editor-sidebar,
+  .irq-editor-panel {
+    padding: 12px;
+  }
+  .irq-editor-table,
+  .irq-editor-table tbody,
+  .irq-editor-table tr,
+  .irq-editor-table td,
+  .irq-editor-table th {
+    display: block;
+    width: 100%;
+  }
+  .irq-editor-table thead {
+    display: none;
+  }
+  .irq-editor-table td {
+    padding: 6px 0;
+  }
+}
+@media (max-width: 1320px) {
+  .proto-editor {
+    grid-template-columns: 180px minmax(0, 1fr) 210px;
+  }
+}
+@media (max-width: 1040px) {
+  .proto-editor {
+    grid-template-columns: 170px minmax(0, 1fr) 190px;
+  }
+  .proto-editor-sidebar,
+  .proto-editor-panel,
+  .proto-editor-main {
+    padding: 12px;
+  }
+  .proto-editor-form {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 640px) {
+  .proto-editor {
+    grid-template-columns: 1fr;
+  }
+  .proto-editor-sidebar,
+  .proto-editor-panel {
+    border-right: 0;
+    border-left: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .proto-editor-panel {
+    border-bottom: 0;
+    border-top: 1px solid var(--border);
+  }
+  .proto-editor-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+@media (max-width: 520px) {
+  .proto-editor-main,
+  .proto-editor-sidebar,
+  .proto-editor-panel {
+    padding: 12px;
+  }
+  .proto-editor-toolbar {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+  .proto-editor-preview-tabs {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+  .proto-editor-preview pre,
+  .proto-editor-card-summary,
+  .proto-editor-instance-summary {
+    font-size: 11px;
+  }
 }
 @media (max-width: 1280px) {
   .board-editor {
@@ -1774,6 +3665,38 @@ svg.chip-svg .bga-label {
   width: calc(100% - 20px);
 }
 .modcfg-search::placeholder { color: var(--fg-dim); }
+.clkcfg-search,
+.board-editor-search,
+.lvgl-layout-search {
+  padding: 8px 10px;
+  margin: 0 0 8px;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 12px;
+  width: 100%;
+}
+.clkcfg-search::placeholder,
+.board-editor-search::placeholder,
+.lvgl-layout-search::placeholder {
+  color: var(--fg-dim);
+}
+.pkg-search,
+.sns-search {
+  padding: 8px 10px;
+  margin: 0 0 8px;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 12px;
+  width: 100%;
+}
+.pkg-search::placeholder,
+.sns-search::placeholder {
+  color: var(--fg-dim);
+}
 
 /* ─── Peripheral Configurator ──────────────────────────────── */
 .pcfg {
@@ -1997,6 +3920,29 @@ svg.chip-svg .bga-label {
   border: 1px solid var(--border);
   border-radius: 6px;
 }
+.clkcfg-mode-btn {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  background: var(--bg);
+  color: var(--fg-dim);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all .15s;
+}
+.clkcfg-mode-btn:hover {
+  border-color: var(--accent);
+  color: var(--fg);
+}
+.clkcfg-mode-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #111;
+}
 .clkcfg-node-list {
   flex: 1;
   overflow-y: auto;
@@ -2165,6 +4111,258 @@ svg.chip-svg .bga-label {
   font-family: Consolas, 'Courier New', monospace;
   margin-top: 2px;
 }
+.clkcfg-overview-shell {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 10%, transparent), transparent 42%),
+    linear-gradient(180deg, color-mix(in srgb, var(--bg3) 72%, transparent), var(--bg2));
+  overflow: hidden;
+}
+.clkcfg-overview-canvas {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  padding: 18px;
+  box-sizing: border-box;
+}
+.clkcfg-overview-columns {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+  align-items: start;
+  width: 100%;
+  gap: var(--clkcfg-overview-gap, 18px);
+}
+.clkcfg-overview-column {
+  min-width: 0;
+  width: auto;
+  max-width: none;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.clkcfg-overview-column-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  color: var(--fg-dim);
+  padding-left: 2px;
+}
+.clkcfg-overview-node {
+  border: 1px solid color-mix(in srgb, var(--border) 82%, var(--accent));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg2) 90%, white 4%);
+  box-shadow: 0 10px 20px rgba(0,0,0,.18);
+  padding: 12px 12px 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  cursor: pointer;
+  transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease;
+}
+.clkcfg-overview-node:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  box-shadow: 0 14px 28px rgba(0,0,0,.24);
+}
+.clkcfg-overview-top {
+  display: flex;
+  align-items: center;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.clkcfg-overview-icon {
+  font-size: 16px;
+}
+.clkcfg-overview-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 700;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.clkcfg-overview-type {
+  font-size: 9px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  overflow-wrap: anywhere;
+}
+.clkcfg-overview-type.t-source  { background: var(--teal); color: #111; }
+.clkcfg-overview-type.t-pll     { background: var(--yellow); color: #111; }
+.clkcfg-overview-type.t-mux     { background: var(--mauve); color: #111; }
+.clkcfg-overview-type.t-divider { background: var(--accent); color: #111; }
+.clkcfg-overview-type.t-output  { background: var(--green); color: #111; }
+.clkcfg-overview-freq {
+  font-family: Consolas, 'Courier New', monospace;
+  color: var(--green);
+  font-size: 16px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.clkcfg-overview-copy {
+  color: var(--fg-dim);
+  font-size: 11px;
+  line-height: 1.45;
+  min-height: 32px;
+  overflow-wrap: anywhere;
+}
+.clkcfg-overview-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--fg-dim);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  overflow-wrap: anywhere;
+}
+.clkcfg-overview-link {
+  align-self: flex-start;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  color: var(--fg);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.clkcfg-overview-link:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.clkcfg-overview-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(130px, 100%), 1fr));
+  gap: 10px;
+  padding: 0 18px 18px 18px;
+}
+.clkcfg-overview-stat {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--bg2) 90%, white 3%);
+}
+.clkcfg-overview-stat span {
+  display: block;
+  color: var(--fg-dim);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  margin-bottom: 5px;
+}
+.clkcfg-overview-stat strong {
+  font-size: 14px;
+  color: var(--fg);
+}
+.clkcfg-overview-wires {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+  overflow: visible;
+}
+.clkcfg-overview-wire {
+  fill: none;
+  stroke: rgba(121, 162, 255, 0.75);
+  stroke-width: 2.2;
+  marker-end: url(#clkArrowHead);
+}
+.clkcfg-overview-junction {
+  fill: rgba(121, 162, 255, 0.95);
+}
+.clkcfg-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+.clkcfg-summary-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.clkcfg-summary-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.clkcfg-summary-name {
+  flex: 1;
+  font-weight: 600;
+  font-size: 13px;
+}
+.clkcfg-summary-type {
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.clkcfg-summary-type.t-source  { background: var(--teal); color: #111; }
+.clkcfg-summary-type.t-pll     { background: var(--yellow); color: #111; }
+.clkcfg-summary-type.t-mux     { background: var(--mauve); color: #111; }
+.clkcfg-summary-type.t-divider { background: var(--accent); color: #111; }
+.clkcfg-summary-type.t-output  { background: var(--green); color: #111; }
+.clkcfg-summary-freq {
+  font-family: Consolas, 'Courier New', monospace;
+  color: var(--green);
+  font-size: 12px;
+}
+.clkcfg-summary-desc {
+  color: var(--fg-dim);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.clkcfg-all-node-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.clkcfg-all-node-copy {
+  flex: 1;
+  min-width: 0;
+}
+.clkcfg-all-node-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 14px;
+}
+.clkcfg-all-node-meta {
+  margin-top: 4px;
+  color: var(--fg-dim);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.clkcfg-link-btn {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--accent);
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.clkcfg-link-btn:hover {
+  border-color: var(--accent);
+  background: var(--bg3);
+}
 </style>
 </head>
 <body>
@@ -2176,9 +4374,34 @@ svg.chip-svg .bga-label {
 </div>
 
 <!-- ─── Tab Navigation ──────────────────────────────────────── -->
+<div class="app-tab-selector">
+  <label class="app-tab-selector-label" for="appTabSelect">Section</label>
+  <select id="appTabSelect" class="app-tab-select" aria-label="Select application section">
+    <option value="modules">Module Configurator</option>
+    <option value="lvgl-layout">LVGL Layout</option>
+    <option value="protocols">Protocol Editor</option>
+    <option value="interrupts">Interrupt Configurator</option>
+    <option value="peripherals">Peripheral Configurator</option>
+    <option value="clock">Clock Configurator</option>
+    <option value="configurator">Pin Configurator</option>
+    <option value="board-editor">Board Editor</option>
+    <option value="packages">Package Manager</option>
+    <option value="sensors">Sensor Parser</option>
+    <option value="zephyr-catalog">Zephyr Catalog</option>
+  </select>
+</div>
 <div class="app-tabs">
   <div class="app-tab active" data-app-tab="modules">
     <span class="tab-icon">&#9881;</span>Module Configurator
+  </div>
+  <div class="app-tab" data-app-tab="lvgl-layout">
+    <span class="tab-icon">🖼</span>LVGL Layout
+  </div>
+  <div class="app-tab" data-app-tab="protocols">
+    <span class="tab-icon">📡</span>Protocol Editor
+  </div>
+  <div class="app-tab" data-app-tab="interrupts">
+    <span class="tab-icon">⚠</span>Interrupt Configurator
   </div>
   <div class="app-tab" data-app-tab="peripherals">
     <span class="tab-icon">🔧</span>Peripheral Configurator
@@ -2197,6 +4420,9 @@ svg.chip-svg .bga-label {
   </div>
   <div class="app-tab" data-app-tab="sensors">
     <span class="tab-icon">🔬</span>Sensor Parser
+  </div>
+  <div class="app-tab" data-app-tab="zephyr-catalog">
+    <span class="tab-icon">📚</span>Zephyr Catalog
   </div>
 </div>
 
@@ -2225,6 +4451,290 @@ svg.chip-svg .bga-label {
 
 </div>
 </div><!-- /tab modules -->
+
+<!-- ══════════════════════════════════════════════════════════════
+     TAB: LVGL Layout Editor
+     ══════════════════════════════════════════════════════════ -->
+<div class="tab-content" data-app-content="lvgl-layout">
+<div class="lvgl-layout">
+  <div class="lvgl-layout-sidebar">
+    <h3>Widget Palette</h3>
+    <div class="lvgl-layout-palette" id="lvglPalette">
+      <button class="lvgl-layout-palette-btn" data-lvgl-add="screen">🪟 Screen</button>
+      <button class="lvgl-layout-palette-btn" data-lvgl-add="container">▣ Container</button>
+      <button class="lvgl-layout-palette-btn" data-lvgl-add="panel">◫ Panel</button>
+      <button class="lvgl-layout-palette-btn" data-lvgl-add="label">Aa Label</button>
+      <button class="lvgl-layout-palette-btn" data-lvgl-add="button">⦿ Button</button>
+      <button class="lvgl-layout-palette-btn" data-lvgl-add="slider">⇆ Slider</button>
+      <button class="lvgl-layout-palette-btn" data-lvgl-add="bar">▤ Bar</button>
+      <button class="lvgl-layout-palette-btn" data-lvgl-add="image">🖼 Image</button>
+    </div>
+
+    <h3>Layout Tree</h3>
+    <input class="lvgl-layout-search" id="lvglTreeSearch" type="text" placeholder="Search layout tree..." hidden>
+    <div class="lvgl-layout-tree" id="lvglTree"></div>
+
+    <h3>Shared Styles</h3>
+    <div class="lvgl-layout-sidebar-actions">
+      <button class="btn" id="lvglBtnAddStyle">New Shared Style</button>
+    </div>
+    <input class="lvgl-layout-search" id="lvglStyleSearch" type="text" placeholder="Search shared styles..." hidden>
+    <div class="lvgl-layout-style-library" id="lvglStyleLibrary"></div>
+  </div>
+
+  <div class="lvgl-layout-stage-shell">
+    <div class="lvgl-layout-header">
+      <div class="lvgl-layout-title">
+        <h2>LVGL Layout Editor</h2>
+        <p>Compose a screen visually, drag widgets into place, and generate starter LVGL code.</p>
+      </div>
+      <div class="lvgl-layout-toolbar">
+        <button class="btn lvgl-layout-tool-btn active" id="lvglBtnSelectTool">Select</button>
+        <button class="btn lvgl-layout-tool-btn" id="lvglBtnHandTool">Hand</button>
+        <button class="btn lvgl-layout-snap-btn active" id="lvglBtnSnapToggle">Snap</button>
+        <button class="btn" id="lvglBtnZoomOut">-</button>
+        <span class="lvgl-layout-zoom-chip" id="lvglZoomLevel">100%</span>
+        <button class="btn" id="lvglBtnZoomIn">+</button>
+        <button class="btn" id="lvglBtnZoomReset">Reset View</button>
+        <select class="board-editor-canvas-input" id="lvglPresetSelect">
+          <option value="phone">Phone 360 x 640</option>
+          <option value="dashboard">Dashboard 480 x 272</option>
+          <option value="watch">Watch 240 x 240</option>
+          <option value="panel">Panel 800 x 480</option>
+        </select>
+        <button class="btn" id="lvglBtnAddScreen">New Screen</button>
+        <button class="btn" id="lvglBtnImportGui">Import GUI</button>
+        <button class="btn" id="lvglBtnSaveGui">Save GUI</button>
+        <button class="btn lvgl-history-btn" id="lvglBtnCopy" disabled>Copy Widget</button>
+        <button class="btn lvgl-history-btn" id="lvglBtnPaste" disabled>Paste Widget</button>
+        <button class="btn lvgl-history-btn" id="lvglBtnDuplicate" disabled>Duplicate Widget</button>
+        <button class="btn lvgl-history-btn" id="lvglBtnUndo" disabled>Undo</button>
+        <button class="btn lvgl-history-btn" id="lvglBtnRedo" disabled>Redo</button>
+        <button class="btn" id="lvglBtnSimulate">Start Simulation</button>
+        <button class="btn" id="lvglBtnReset">Reset Layout</button>
+        <button class="btn btn-accent" id="lvglBtnGenerate">Generate LVGL Code</button>
+      </div>
+      <div class="lvgl-layout-quick-style" id="lvglQuickStyleBar">
+        <div class="lvgl-layout-quick-style-field">
+          <label for="lvglQuickStyleBg">Fill</label>
+          <input type="color" id="lvglQuickStyleBg" value="#334155">
+        </div>
+        <div class="lvgl-layout-quick-style-field">
+          <label for="lvglQuickStyleColor">Text</label>
+          <input type="color" id="lvglQuickStyleColor" value="#f8fafc">
+        </div>
+        <div class="lvgl-layout-quick-style-field">
+          <label for="lvglQuickStyleRadius">Radius</label>
+          <input type="number" id="lvglQuickStyleRadius" min="0" step="1" value="14">
+        </div>
+        <div class="lvgl-layout-quick-style-note" id="lvglQuickStyleHint">Select a locally styled widget to edit fill, text, and radius directly from the canvas toolbar.</div>
+      </div>
+    </div>
+
+    <div class="lvgl-layout-canvas-wrap">
+      <div class="lvgl-layout-stage-viewport" id="lvglStageViewport">
+        <div class="lvgl-layout-stage" id="lvglStage"></div>
+      </div>
+    </div>
+
+    <div class="lvgl-layout-stage-meta">
+      <span id="lvglStageMeta">Screen 360 x 640</span>
+      <span id="lvglSelectionMeta">No widget selected</span>
+    </div>
+
+    <div class="lvgl-layout-simlog">
+      <h3>Simulation Log</h3>
+      <div class="lvgl-layout-simlog-list" id="lvglSimLog">
+        <div class="lvgl-layout-simlog-entry">Simulation is idle.</div>
+      </div>
+    </div>
+
+    <div class="lvgl-layout-validation" id="lvglValidationPanel">
+      <div class="lvgl-layout-validation-head">
+        <div class="lvgl-layout-validation-copy">
+          <h3>Layout Validation</h3>
+          <p>Review layout and code-generation risks directly in the editor. Click a finding to focus the related screen, widget, or style when available.</p>
+        </div>
+        <div class="lvgl-layout-validation-summary" id="lvglValidationSummary">
+          <span class="lvgl-layout-validation-badge">Checking layout...</span>
+        </div>
+      </div>
+      <div class="lvgl-layout-validation-filters">
+        <span class="lvgl-layout-validation-filter-chip">Filter:</span>
+        <input id="lvglValidationSearch" type="text" placeholder="Search findings, symbols, targets..." aria-label="Search validation findings">
+        <select id="lvglValidationSeverityFilter" aria-label="Filter validation findings by severity">
+          <option value="all">All severities</option>
+          <option value="error">Errors</option>
+          <option value="warning">Warnings</option>
+          <option value="info">Info</option>
+        </select>
+        <select id="lvglValidationScopeFilter" aria-label="Filter validation findings by scope">
+          <option value="all">All scopes</option>
+          <option value="screen">Screens</option>
+          <option value="widget">Widgets</option>
+          <option value="style">Styles</option>
+        </select>
+        <button class="btn" type="button" id="lvglBtnApplyValidationRenames">Apply Rename Fixes</button>
+        <button class="btn" type="button" id="lvglBtnResetValidationFilters">Clear Filters</button>
+      </div>
+      <div class="lvgl-layout-validation-list" id="lvglValidationList">
+        <div class="lvgl-layout-empty compact">Validation findings will appear here as you edit the layout.</div>
+      </div>
+    </div>
+
+    <div class="lvgl-layout-output">
+      <pre id="lvglCodePre">Press "Generate LVGL Code" to export the current layout as starter C code.</pre>
+    </div>
+  </div>
+
+  <div class="lvgl-layout-panel">
+    <h3>Widget Properties</h3>
+    <div id="lvglPropsPanel" class="lvgl-layout-empty">Select a widget from the canvas or tree to edit its properties.</div>
+  </div>
+</div>
+</div><!-- /tab lvgl-layout -->
+
+<div class="modal-backdrop" id="lvglImportModal">
+  <div class="modal" style="max-width:760px;">
+    <h3>Import GUI Layout</h3>
+    <p style="font-size:12px;color:var(--fg-dim);margin:-8px 0 16px;">Import a saved GUI JSON file, infer the canvas from Zephyr display config, or seed the editor from a display datasheet PDF.</p>
+    <div class="lvgl-layout-form">
+      <div class="lvgl-layout-field full">
+        <label>Import Mode</label>
+        <select id="lvglImportMode">
+          <option value="json">Saved GUI JSON</option>
+          <option value="zephyr">Zephyr Display Config</option>
+          <option value="display-pdf">Display Datasheet PDF</option>
+        </select>
+      </div>
+      <div class="lvgl-layout-field full">
+        <label>External Source</label>
+        <div class="path-input-row">
+          <input type="text" id="lvglImportSource" placeholder="C:\GIT\layouts\ui_layout.lvgl.json or https://example.com/ui_layout.json">
+          <button class="btn" type="button" id="lvglBtnBrowseImportSource">Browse File</button>
+        </div>
+      </div>
+      <div class="lvgl-layout-field full">
+        <div class="lvgl-layout-import-actions">
+          <button class="btn" id="lvglBtnPreviewSource">Load Source</button>
+          <label class="btn" id="lvglImportFileTrigger" for="lvglImportFile">Choose JSON</label>
+          <span id="lvglImportFileName" style="font-size:12px;color:var(--fg-dim);align-self:center;">No file selected</span>
+          <input type="file" id="lvglImportFile" accept=".json,.zpinproj,.lvgl" style="display:none;">
+        </div>
+      </div>
+      <div class="lvgl-layout-field full">
+        <label id="lvglImportJsonLabel">Paste JSON</label>
+        <textarea id="lvglImportJson" placeholder="Paste a saved GUI JSON document or a .zpinproj payload here..."></textarea>
+      </div>
+      <div class="lvgl-layout-field full">
+        <div class="lvgl-layout-import-actions">
+          <button class="btn" id="lvglBtnPreviewJson">Preview Pasted JSON</button>
+        </div>
+      </div>
+    </div>
+    <div class="lvgl-layout-import-preview">
+      <div id="lvglImportPreview" class="lvgl-layout-empty compact">Load a file, URL, or pasted JSON to preview the imported GUI.</div>
+    </div>
+    <div class="modal-btns" style="margin-top:16px;">
+      <button class="btn" id="lvglBtnCancelImport">Cancel</button>
+      <button class="btn btn-accent" id="lvglBtnApplyImport" disabled>Import GUI</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="lvglSaveModal">
+  <div class="modal" style="max-width:560px;">
+    <h3>Save GUI Layout</h3>
+    <p style="font-size:12px;color:var(--fg-dim);margin:-8px 0 16px;">Write the current LVGL editor state to a reusable JSON file that can be imported again later.</p>
+    <label style="font-size:12px;color:var(--fg-dim);display:block;margin-bottom:4px;">Destination file</label>
+    <div class="path-input-row">
+      <input type="text" id="lvglSaveFilePath" placeholder="C:\GIT\layouts\ui_layout.lvgl.json">
+      <button class="btn" type="button" id="lvglBtnBrowseSaveFilePath">Browse</button>
+    </div>
+    <div class="modal-btns" style="margin-top:16px;">
+      <button class="btn" id="lvglBtnCancelSaveGui">Cancel</button>
+      <button class="btn btn-accent" id="lvglBtnConfirmSaveGui">Save GUI</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     TAB: Protocol Editor
+     ══════════════════════════════════════════════════════════ -->
+<div class="tab-content" data-app-content="protocols">
+<div class="proto-editor">
+  <div class="proto-editor-sidebar">
+    <h3>Interface Library</h3>
+    <div class="proto-editor-catalog" id="protoCatalog"></div>
+    <div class="proto-editor-note">Compose Bluetooth, USB, and serial interfaces as reusable starter blocks, then generate matching Zephyr configuration and init scaffolding.</div>
+  </div>
+
+  <div class="proto-editor-main">
+    <div class="proto-editor-header">
+      <div class="proto-editor-title">
+        <h2>Protocol Editor</h2>
+        <p>Compose communication interfaces such as Bluetooth and USB, tune their parameters, and export a starter protocol stack.</p>
+      </div>
+      <div class="proto-editor-toolbar">
+        <button class="btn" id="protoBtnReset">Reset Composition</button>
+        <button class="btn btn-accent" id="protoBtnGenerate">Generate Protocol Stack</button>
+      </div>
+    </div>
+
+    <div class="proto-editor-summary" id="protoSummaryMeta">0 interfaces in composition • 0 enabled</div>
+
+    <div class="proto-editor-composer" id="protoComposition"></div>
+
+    <div class="proto-editor-preview">
+      <h3>Generated Output</h3>
+      <div class="proto-editor-preview-tabs">
+        <button class="proto-editor-preview-tab active" data-proto-preview="prj_conf">prj.conf</button>
+        <button class="proto-editor-preview-tab" data-proto-preview="overlay">.overlay</button>
+        <button class="proto-editor-preview-tab" data-proto-preview="header">protocol_stack.h</button>
+        <button class="proto-editor-preview-tab" data-proto-preview="code">protocol_stack.c</button>
+        <button class="proto-editor-preview-tab" data-proto-preview="integration">Integration Guide</button>
+      </div>
+      <pre id="protoPreviewPre">Add an enabled interface to generate Zephyr Kconfig settings.</pre>
+    </div>
+  </div>
+
+  <div class="proto-editor-panel">
+    <h3>Interface Parameters</h3>
+    <div id="protoPropsPanel" class="proto-editor-empty">Select an interface instance to adjust transport-specific settings.</div>
+  </div>
+</div>
+</div><!-- /tab protocols -->
+
+<!-- ══════════════════════════════════════════════════════════════
+     TAB: Interrupt Configurator
+     ══════════════════════════════════════════════════════════ -->
+<div class="tab-content" data-app-content="interrupts">
+<div class="irq-editor">
+  <div class="irq-editor-sidebar">
+    <h3>Active Sources</h3>
+    <div class="irq-editor-list" id="irqSourceList"></div>
+    <div class="irq-editor-note-text">This view synthesizes interrupt-sensitive paths from enabled peripherals, peripheral/module Kconfig state, and protocol templates. It does not infer raw NVIC numbers when the board model does not provide them.</div>
+  </div>
+
+  <div class="irq-editor-main">
+    <div class="irq-editor-header">
+      <div class="irq-editor-title">
+        <h2>Interrupt Configurator</h2>
+        <p>Review interrupt-driven features, startup priorities, and the subsystems most likely to affect scheduling, latency, and bring-up order on the current board.</p>
+      </div>
+    </div>
+
+    <div class="irq-editor-summary" id="irqSummaryMeta">No board loaded.</div>
+
+    <div id="irqMainReport" class="irq-editor-sections"></div>
+  </div>
+
+  <div class="irq-editor-panel">
+    <h3>Selected Source</h3>
+    <div id="irqDetailPanel" class="irq-editor-empty">Select an interrupt-sensitive source to inspect its priority and likely system impact.</div>
+  </div>
+</div>
+</div><!-- /tab interrupts -->
 
 <!-- ══════════════════════════════════════════════════════════════
      TAB 1: Peripheral Configurator
@@ -2268,8 +4778,10 @@ svg.chip-svg .bga-label {
     <select class="clkcfg-tree-select" id="clkTreeSelect">
       <option value="">Loading...</option>
     </select>
+    <button class="clkcfg-mode-btn" id="clkAllSettingsBtn">All Settings</button>
 
     <h3>Clock Nodes</h3>
+    <input class="clkcfg-search" id="clkSearch" type="text" placeholder="Search clock nodes..." hidden>
     <div class="clkcfg-node-list" id="clkNodeList"></div>
   </div>
 
@@ -2303,6 +4815,8 @@ svg.chip-svg .bga-label {
   <button class="btn" id="btnSaveProject" title="Save project file (.zpinproj)">&#128190; Save Project</button>
   <button class="btn btn-accent" id="btnSave">Save to Project</button>
 </div>
+
+<div class="config-health-panel" id="configHealthPanel"></div>
 
 <!-- ─── Main ────────────────────────────────────────────────── -->
 <div class="main">
@@ -2387,6 +4901,7 @@ svg.chip-svg .bga-label {
 
     <div class="board-editor-drafts">
       <h3>Saved Drafts</h3>
+      <input class="board-editor-search" id="boardEditorDraftSearch" type="text" placeholder="Search saved drafts..." hidden>
       <div class="board-editor-draft-list" id="boardEditorDraftList">
         <div class="empty-state" style="padding: 18px 12px;">No saved board drafts yet.</div>
       </div>
@@ -2408,6 +4923,7 @@ svg.chip-svg .bga-label {
         <div class="board-editor-canvas-panel">
           <div class="board-editor-canvas-toolbar">
             <div class="board-editor-canvas-form">
+              <input class="board-editor-canvas-input" id="boardEditorDeviceLibrarySearch" type="text" placeholder="Search library devices..." hidden>
               <select class="board-editor-canvas-input" id="boardEditorDeviceLibrary">
                 <option value="">Supported devices and parsed sensors</option>
               </select>
@@ -2466,6 +4982,7 @@ svg.chip-svg .bga-label {
     </div>
 
     <h3>Parsed Datasheets</h3>
+    <input class="pkg-search" id="pkgJobSearch" type="text" placeholder="Search parsed datasheets..." hidden>
     <div class="pkg-job-list" id="pkgJobList">
       <div class="empty-state" style="padding:20px;">
         <div>No datasheets parsed yet</div>
@@ -2516,6 +5033,7 @@ svg.chip-svg .bga-label {
     </div>
 
     <h3>Parsed Sensors</h3>
+    <input class="sns-search" id="snsJobSearch" type="text" placeholder="Search parsed sensors..." hidden>
     <div class="sns-job-list" id="snsJobList">
       <div class="empty-state" style="padding:20px;">
         <div>No sensors parsed yet</div>
@@ -2537,6 +5055,42 @@ svg.chip-svg .bga-label {
 </div>
 </div><!-- /tab sensors -->
 
+<!-- ══════════════════════════════════════════════════════════════
+     TAB: Zephyr Catalog
+     ══════════════════════════════════════════════════════════ -->
+<div class="tab-content" data-app-content="zephyr-catalog">
+<div class="zcatalog">
+  <div class="zcatalog-sidebar">
+    <h3>Catalog Source</h3>
+    <div class="zcatalog-controls">
+      <div class="path-input-row">
+        <input type="text" id="zephyrCatalogRoot" placeholder="Zephyr root, e.g. C:\GIT\WORK\codelayer\locator_base\zephyr">
+        <button class="btn" type="button" id="btnBrowseZephyrCatalogRoot">Browse</button>
+      </div>
+      <div class="zcatalog-actions">
+        <button class="btn" id="zephyrCatalogRefresh">Refresh Catalog</button>
+      </div>
+    </div>
+    <h3>Filters</h3>
+    <div class="zcatalog-controls">
+      <select id="zephyrCatalogKind">
+        <option value="all">All Items</option>
+        <option value="mcu">MCUs</option>
+        <option value="sensor">Sensors</option>
+      </select>
+      <input type="text" id="zephyrCatalogSearch" placeholder="Search by name, compatible, vendor, or board...">
+    </div>
+    <div class="zcatalog-summary" id="zephyrCatalogSummary">Load the local Zephyr tree to browse supported boards and sensor bindings.</div>
+    <div class="zcatalog-list" id="zephyrCatalogList"></div>
+  </div>
+  <div class="zcatalog-main">
+    <div class="zcatalog-detail" id="zephyrCatalogDetail">
+      <div class="zcatalog-empty">Select an MCU board or sensor binding to inspect its Zephyr parameters and send it into the current workflow.</div>
+    </div>
+  </div>
+</div>
+</div><!-- /tab zephyr-catalog -->
+
 <!-- ─── Save dialog ─────────────────────────────────────────── -->
 <div class="modal-backdrop" id="saveModal">
   <div class="modal">
@@ -2544,7 +5098,10 @@ svg.chip-svg .bga-label {
     <label style="font-size:12px;color:var(--fg-dim);display:block;margin-bottom:4px;">
       Project directory (absolute path)
     </label>
-    <input type="text" id="projectPath" placeholder="C:\GIT\WORK\codelayer\locator_base\apps\locator_base">
+    <div class="path-input-row">
+      <input type="text" id="projectPath" placeholder="C:\GIT\WORK\codelayer\locator_base\apps\locator_base">
+      <button class="btn" type="button" id="btnBrowseProjectPath">Browse</button>
+    </div>
     <div class="modal-btns">
       <button class="btn" id="btnCancelSave">Cancel</button>
       <button class="btn btn-accent" id="btnConfirmSave">Save Files</button>
@@ -2562,7 +5119,10 @@ svg.chip-svg .bga-label {
     <label style="font-size:12px;color:var(--fg-dim);display:block;margin-bottom:4px;">
       File path (absolute)
     </label>
-    <input type="text" id="projectFilePath" placeholder="C:\GIT\my_project\pin_config.zpinproj">
+    <div class="path-input-row">
+      <input type="text" id="projectFilePath" placeholder="C:\GIT\my_project\pin_config.zpinproj">
+      <button class="btn" type="button" id="btnBrowseProjectFilePath">Browse</button>
+    </div>
     <div class="modal-btns">
       <button class="btn" id="btnCancelSaveProject">Cancel</button>
       <button class="btn btn-accent" id="btnConfirmSaveProject">Save Project</button>
@@ -2580,7 +5140,10 @@ svg.chip-svg .bga-label {
     <label style="font-size:12px;color:var(--fg-dim);display:block;margin-bottom:4px;">
       File path (absolute)
     </label>
-    <input type="text" id="loadProjectFilePath" placeholder="C:\GIT\my_project\pin_config.zpinproj">
+    <div class="path-input-row">
+      <input type="text" id="loadProjectFilePath" placeholder="C:\GIT\my_project\pin_config.zpinproj">
+      <button class="btn" type="button" id="btnBrowseLoadProjectFilePath">Browse</button>
+    </div>
     <div class="modal-btns">
       <button class="btn" id="btnCancelLoadProject">Cancel</button>
       <button class="btn btn-accent" id="btnConfirmLoadProject">Load Project</button>
@@ -2622,8 +5185,11 @@ svg.chip-svg .bga-label {
       <label style="font-size:12px;color:var(--fg-dim);display:block;margin-bottom:4px;">
         Zephyr project directory (absolute path)
       </label>
-      <input type="text" id="impProjectPath" placeholder="C:\GIT\WORK\codelayer\locator_base\apps\locator_base">
-      <button class="btn" id="impBtnScan" style="margin-bottom:12px;">Scan Directory</button>
+      <div class="path-input-row" style="margin-bottom:12px;">
+        <input type="text" id="impProjectPath" placeholder="C:\GIT\WORK\codelayer\locator_base\apps\locator_base">
+        <button class="btn" type="button" id="impBtnBrowseProjectPath">Browse</button>
+        <button class="btn" id="impBtnScan">Scan Directory</button>
+      </div>
       <div class="imp-file-list" id="impFileList"></div>
     </div>
 
@@ -2651,6 +5217,12 @@ svg.chip-svg .bga-label {
 <!-- ─── Toast ───────────────────────────────────────────────── -->
 <div class="toast" id="toast"></div>
 
-<script src="main.js"></script>
+  <script src="main.js"></script>
+  <script src="lvgl-registry.js"></script>
+  <script src="lvgl-model.js"></script>
+  <script src="lvgl-build.js"></script>
+  <script src="lvgl-ui.js"></script>
+  <script src="protocol-editor.js"></script>
+  <script src="interrupt-configurator.js"></script>
 </body>
 </html>

@@ -19,11 +19,20 @@ import json
 import logging
 import os
 import pathlib
+import datetime as dt
 import sys
 import threading
+import base64
+import io
+import re
+import urllib.error
+import urllib.request
 import uuid
+import shutil
+import mimetypes
 
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, redirect, request, send_file, send_from_directory, Response
+import pdfplumber
 from werkzeug.utils import secure_filename
 
 # Ensure package is importable when run directly
@@ -31,21 +40,33 @@ _HERE = pathlib.Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
+_FRONTEND_DIST_DIR = _HERE / "frontend" / "dist"
+_FRONTEND_MIME_TYPES = {
+    ".js": "application/javascript",
+    ".css": "text/css",
+    ".html": "text/html",
+    ".json": "application/json",
+    ".svg": "image/svg+xml",
+}
+
 from board_schema import board_to_frontend
 from boards import BOARDS
+from demo_app_generator import materialize_demo_app
 from dts_generator import ExternalDeviceConfig, PinAssignment, PeripheralConfig, generate
 from pdf_parser import parse_datasheet, DatasheetInfo
 from package_generator import generate_board_files
 from overlay_parser import parse_import, import_result_to_json
-from datasheet_fetcher import identify_vendor, download_datasheet, fetch_and_parse
+from datasheet_fetcher import identify_vendor, download_datasheet, fetch_and_parse, search_datasheet_candidates
 from driver_generator import (
     DriverSpec, DRIVER_TYPES, generate_driver, driver_to_json, spec_from_json,
 )
+from project_model import build_project_document, normalize_project_document
 from sensor_parser import (
     parse_sensor_datasheet, SensorDatasheetInfo,
     sensor_info_to_json, sensor_info_from_json,
     identify_sensor, generate_register_header, generate_register_defines,
 )
+from zephyr_catalog import load_zephyr_catalog
 
 
 app = Flask(
@@ -61,6 +82,8 @@ log = logging.getLogger(__name__)
 
 _UPLOAD_DIR = _HERE / ".uploads"
 _UPLOAD_DIR.mkdir(exist_ok=True)
+_BOARD_EDITOR_DRAFT_DIR = _HERE / ".board-editor-drafts"
+_BOARD_EDITOR_DRAFT_DIR.mkdir(exist_ok=True)
 
 # In-memory store for parsed PDFs (session-scoped, keyed by job_id)
 _PARSED_JOBS: dict[str, dict] = {}
@@ -113,11 +136,713 @@ def _match_alt_function(board, pin_name: str, peripheral: str, signal: str, func
     return None
 
 
+LVGL_LAYOUT_FILE_VERSION = 1
+
+
+def _ensure_board_editor_draft_dir() -> pathlib.Path:
+    _BOARD_EDITOR_DRAFT_DIR.mkdir(parents=True, exist_ok=True)
+    return _BOARD_EDITOR_DRAFT_DIR
+
+
+def _normalize_draft_filename(filename: str | None, board: dict | None = None) -> str:
+    candidate = (filename or "").strip()
+    if not candidate and isinstance(board, dict):
+        candidate = str(board.get("board") or board.get("soc") or "board_draft").strip()
+    candidate = secure_filename(candidate or "board_draft")
+    if not candidate.lower().endswith(".json"):
+        candidate = f"{candidate}.json"
+    return candidate
+
+
+def _draft_file_path(filename: str) -> pathlib.Path:
+    draft_dir = _ensure_board_editor_draft_dir()
+    normalized = _normalize_draft_filename(filename)
+    path = (draft_dir / normalized).resolve()
+    if path.parent != draft_dir.resolve():
+        raise ValueError("Invalid draft filename")
+    return path
+
+
+def _draft_metadata(path: pathlib.Path) -> dict:
+    stat = path.stat()
+    return {
+        "filename": path.name,
+        "size": stat.st_size,
+        "updated_at": dt.datetime.fromtimestamp(stat.st_mtime, tz=dt.timezone.utc).isoformat(),
+    }
+
+
+def _normalize_dialog_filetypes(filetypes: object) -> list[tuple[str, str]]:
+    normalized: list[tuple[str, str]] = []
+    if not isinstance(filetypes, list):
+        return normalized
+
+    for entry in filetypes:
+        if not isinstance(entry, dict):
+            continue
+        label = str(entry.get("name") or "Files").strip() or "Files"
+        patterns = entry.get("patterns")
+        if isinstance(patterns, str):
+            pattern_text = patterns.strip()
+        elif isinstance(patterns, list):
+            parts = [str(pattern).strip() for pattern in patterns if str(pattern).strip()]
+            pattern_text = " ".join(parts)
+        else:
+            pattern_text = ""
+        if pattern_text:
+            normalized.append((label, pattern_text))
+
+    return normalized
+
+
+def _resolve_dialog_initial_values(dialog_kind: str, initial_path: str) -> dict[str, str]:
+    if not initial_path:
+        return {}
+
+    candidate = pathlib.Path(initial_path).expanduser()
+
+    if dialog_kind == "directory":
+        directory = candidate if candidate.is_dir() else candidate.parent
+        return {"initialdir": str(directory)} if directory.exists() else {}
+
+    if candidate.exists() and candidate.is_dir():
+        return {"initialdir": str(candidate)}
+
+    directory = candidate.parent
+    values: dict[str, str] = {}
+    if directory.exists():
+        values["initialdir"] = str(directory)
+    if candidate.name:
+        values["initialfile"] = candidate.name
+    return values
+
+
+def _open_native_path_dialog(
+    dialog_kind: str,
+    *,
+    title: str = "",
+    initial_path: str = "",
+    filetypes: object = None,
+    default_extension: str = "",
+) -> str:
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+    except Exception as exc:
+        raise RuntimeError(f"Native file dialogs are unavailable: {exc}") from exc
+
+    if dialog_kind not in {"open-file", "save-file", "directory"}:
+        raise ValueError("Unsupported dialog_kind")
+
+    root = tk.Tk()
+    root.withdraw()
+    try:
+        root.attributes("-topmost", True)
+    except Exception:
+        pass
+
+    options: dict[str, object] = {}
+    if title:
+        options["title"] = title
+    options.update(_resolve_dialog_initial_values(dialog_kind, initial_path))
+
+    selection = ""
+    try:
+        if dialog_kind == "directory":
+            selection = filedialog.askdirectory(**options)
+        else:
+            normalized_filetypes = _normalize_dialog_filetypes(filetypes)
+            if normalized_filetypes:
+                options["filetypes"] = normalized_filetypes
+            if default_extension:
+                options["defaultextension"] = default_extension
+            if dialog_kind == "open-file":
+                selection = filedialog.askopenfilename(**options)
+            else:
+                selection = filedialog.asksaveasfilename(**options)
+    finally:
+        root.destroy()
+
+    return str(selection or "")
+
+_EXTERNAL_WIDGET_TYPE_MAP = {
+    "button": "button",
+    "btn": "button",
+    "textbutton": "button",
+    "iconbutton": "button",
+    "label": "label",
+    "text": "label",
+    "textlabel": "label",
+    "statictext": "label",
+    "container": "container",
+    "group": "container",
+    "flexcontainer": "container",
+    "panel": "panel",
+    "rectangle": "panel",
+    "card": "panel",
+    "slider": "slider",
+    "scale": "slider",
+    "bar": "bar",
+    "progress": "bar",
+    "progressbar": "bar",
+    "image": "image",
+    "bitmap": "image",
+    "picture": "image",
+}
+
+
+def _slugify_identifier(value: object, fallback: str) -> str:
+    raw = str(value or "").strip().lower()
+    if not raw:
+        raw = fallback
+    cleaned = [ch if ch.isalnum() else "_" for ch in raw]
+    collapsed = "".join(cleaned).strip("_") or fallback
+    while "__" in collapsed:
+        collapsed = collapsed.replace("__", "_")
+    return collapsed
+
+
+def _int_value(value: object, default: int) -> int:
+    try:
+        return int(round(float(value)))
+    except (TypeError, ValueError):
+        return default
+
+
+def _color_value(value: object, default: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return default
+    if text.startswith("#"):
+        return text
+    if text.startswith("0x") and len(text) in (8, 10):
+        return f"#{text[2:8]}"
+    return default
+
+
+def _extract_external_text(widget: dict[str, object], fallback: str) -> str:
+    for key in ("text", "label", "caption", "title", "asset", "src", "source"):
+        value = widget.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return fallback
+
+
+def _extract_external_style_values(style_like: object) -> tuple[dict[str, object], list[str]]:
+    values = {}
+    refs = []
+    if isinstance(style_like, dict):
+        values["bg"] = _color_value(style_like.get("background") or style_like.get("bg") or style_like.get("fillColor"), "")
+        values["color"] = _color_value(style_like.get("color") or style_like.get("textColor") or style_like.get("fg"), "")
+        radius_raw = style_like.get("radius") or style_like.get("borderRadius")
+        if radius_raw is not None:
+            values["radius"] = _int_value(radius_raw, 0)
+        ref = style_like.get("id") or style_like.get("name") or style_like.get("style")
+        if ref:
+            refs.append(_slugify_identifier(ref, "style"))
+    elif isinstance(style_like, str) and style_like.strip():
+        refs.append(_slugify_identifier(style_like, "style"))
+    cleaned = {key: value for key, value in values.items() if value not in ("", None)}
+    return cleaned, refs
+
+
+def _convert_external_shared_styles(payload: dict[str, object]) -> list[dict[str, object]]:
+    shared_styles = []
+    for index, style in enumerate(payload.get("styles") or [], start=1):
+        if not isinstance(style, dict):
+            continue
+        style_id = _slugify_identifier(style.get("id") or style.get("name"), f"style_{index}")
+        values, _ = _extract_external_style_values(style)
+        shared_styles.append({
+            "id": style_id,
+            "name": str(style.get("name") or style.get("id") or style_id),
+            "part": str(style.get("part") or "LV_PART_MAIN"),
+            "state": str(style.get("state") or "default"),
+            "values": values,
+        })
+    return shared_styles
+
+
+def _map_external_widget_type(raw_type: object) -> str:
+    normalized = _slugify_identifier(raw_type, "panel").replace("_", "")
+    return _EXTERNAL_WIDGET_TYPE_MAP.get(normalized, "panel")
+
+
+def _convert_external_widget(widget: dict[str, object], screen_index: int, widget_index: int) -> list[dict[str, object]]:
+    widget_type = _map_external_widget_type(widget.get("type") or widget.get("kind") or widget.get("widgetType"))
+    base_name = _slugify_identifier(widget.get("name") or widget.get("id") or widget.get("label"), f"{widget_type}_{widget_index}")
+    style_values, inline_refs = _extract_external_style_values(widget.get("style"))
+    explicit_values, explicit_refs = _extract_external_style_values(widget.get("styles"))
+    style_refs = []
+    for ref in [*(inline_refs or []), *(explicit_refs or []), *[_slugify_identifier(value, "style") for value in (widget.get("styleId"), widget.get("styleName")) if value]]:
+        if ref and ref not in style_refs:
+            style_refs.append(ref)
+
+    node = {
+        "id": f"{widget_type}_{screen_index}_{widget_index}",
+        "type": widget_type,
+        "name": base_name,
+        "text": _extract_external_text(widget, base_name.replace("_", " ").title()),
+        "x": _int_value(widget.get("x") or widget.get("left"), 16),
+        "y": _int_value(widget.get("y") or widget.get("top"), 16),
+        "w": _int_value(widget.get("width") or widget.get("w"), 160 if widget_type != "label" else 180),
+        "h": _int_value(widget.get("height") or widget.get("h"), 56 if widget_type == "button" else 44),
+        "bg": _color_value(widget.get("background") or widget.get("bg") or style_values.get("bg") or explicit_values.get("bg"), "#334155" if widget_type != "button" else "#2563eb"),
+        "color": _color_value(widget.get("color") or widget.get("textColor") or style_values.get("color") or explicit_values.get("color"), "#f8fafc"),
+        "radius": _int_value(widget.get("radius") or widget.get("borderRadius") or style_values.get("radius") or explicit_values.get("radius"), 14),
+        "action": "none",
+        "targetScreenId": "",
+        "transition": "move_left",
+        "transitionDuration": 220,
+        "styleMode": "shared" if style_refs else "local",
+        "styleRefs": style_refs,
+        "styles": {},
+    }
+
+    navigation = widget.get("navigation") if isinstance(widget.get("navigation"), dict) else {}
+    target = widget.get("targetScreenId") or widget.get("targetPage") or navigation.get("target") or navigation.get("page")
+    if target:
+        node["action"] = "goto"
+        node["targetScreenId"] = _slugify_identifier(target, "screen_root")
+        transition = widget.get("transition") or navigation.get("transition")
+        if transition:
+            node["transition"] = _slugify_identifier(transition, "move_left")
+        duration = widget.get("transitionDuration") or navigation.get("duration")
+        if duration is not None:
+            node["transitionDuration"] = _int_value(duration, 220)
+
+    children = []
+    for child_index, child in enumerate(widget.get("children") or widget.get("widgets") or [], start=1):
+        if isinstance(child, dict):
+            children.extend(_convert_external_widget(child, screen_index, widget_index * 100 + child_index))
+
+    return [node, *children]
+
+
+def _convert_external_pages_schema(payload: dict[str, object]) -> dict[str, object]:
+    pages = payload.get("pages") or payload.get("screens")
+    if not isinstance(pages, list) or not pages:
+        raise ValueError("External GUI schema must contain a non-empty pages array")
+
+    default_width = _int_value(payload.get("width") or payload.get("displayWidth"), 480)
+    default_height = _int_value(payload.get("height") or payload.get("displayHeight"), 272)
+    screens = []
+    for index, page in enumerate(pages, start=1):
+        if not isinstance(page, dict):
+            continue
+        screen_id = _slugify_identifier(page.get("id") or page.get("name"), f"screen_{index}")
+        widgets = []
+        for widget_index, widget in enumerate(page.get("widgets") or page.get("children") or [], start=1):
+            if isinstance(widget, dict):
+                widgets.extend(_convert_external_widget(widget, index, widget_index))
+        screens.append({
+            "id": screen_id,
+            "type": "screen",
+            "name": screen_id,
+            "text": str(page.get("title") or page.get("name") or f"Screen {index}"),
+            "x": 0,
+            "y": 0,
+            "w": _int_value(page.get("width") or page.get("w"), default_width),
+            "h": _int_value(page.get("height") or page.get("h"), default_height),
+            "bg": _color_value(page.get("background") or page.get("bg"), "#0f172a"),
+            "color": _color_value(page.get("color") or page.get("textColor"), "#f8fafc"),
+            "radius": _int_value(page.get("radius") or page.get("borderRadius"), 24),
+            "entryActionName": str(page.get("entryActionName") or ""),
+            "styleRefs": [],
+            "styles": {},
+            "nodes": widgets,
+        })
+
+    if not screens:
+        raise ValueError("External GUI schema did not produce any importable pages")
+
+    startup = payload.get("startupPage") or payload.get("startupScreenId") or payload.get("initialPage") or screens[0]["id"]
+    startup_id = _slugify_identifier(startup, screens[0]["id"])
+    if not any(screen["id"] == startup_id for screen in screens):
+        startup_id = screens[0]["id"]
+
+    preset = "dashboard"
+    if default_width <= 260 and default_height <= 260:
+        preset = "watch"
+    elif default_width >= 760:
+        preset = "panel"
+    elif default_width <= 380 and default_height >= 500:
+        preset = "phone"
+
+    return {
+        "preset": preset,
+        "currentScreenId": startup_id,
+        "startupScreenId": startup_id,
+        "selectedId": startup_id,
+        "selectedStyleId": "",
+        "styleSchemaVersion": 1,
+        "sharedStyles": _convert_external_shared_styles(payload),
+        "simulation": {
+            "running": False,
+            "activeScreenId": startup_id,
+            "log": ["Simulation is idle."],
+        },
+        "screens": screens,
+    }
+
+
+def _extract_lvgl_layout(payload):
+    """Extract an LVGL layout from supported wrapper formats."""
+    if not isinstance(payload, dict):
+        raise ValueError("Expected a JSON object containing an LVGL layout")
+
+    if isinstance(payload.get("lvgl_layout"), dict):
+        return _extract_lvgl_layout(payload["lvgl_layout"])
+
+    if isinstance(payload.get("layout"), dict):
+        return _extract_lvgl_layout(payload["layout"])
+
+    if isinstance(payload.get("state"), dict):
+        return _extract_lvgl_layout(payload["state"])
+
+    if isinstance(payload.get("pages"), list):
+        return _convert_external_pages_schema(payload)
+
+    if isinstance(payload.get("screens"), list) or isinstance(payload.get("nodes"), list):
+        return payload
+
+    raise ValueError("JSON does not contain an LVGL layout. Expected lvgl_layout, layout, state, screens, or nodes.")
+
+
+def _read_lvgl_import_text(body: dict[str, object]) -> tuple[str, str]:
+    text = str(body.get("text", "") or "").strip()
+    if text:
+        return text, "pasted JSON"
+
+    file_path = str(body.get("file_path", "") or "").strip()
+    if file_path:
+        path = pathlib.Path(file_path)
+        if not path.is_file():
+            raise FileNotFoundError(f"File not found: {path}")
+        return path.read_text(encoding="utf-8"), str(path)
+
+    url = str(body.get("url", "") or "").strip()
+    if url:
+        with urllib.request.urlopen(url, timeout=8) as response:
+            charset = response.headers.get_content_charset() or "utf-8"
+            return response.read().decode(charset), url
+
+    raise ValueError("Provide text, file_path, or url")
+
+
+def _scan_zephyr_project_files(project: pathlib.Path) -> list[dict[str, str]]:
+    found = []
+    search_dirs = [project]
+    boards_dir = project / "boards"
+    if boards_dir.is_dir():
+        search_dirs.append(boards_dir)
+
+    for directory in search_dirs:
+        for file_path in sorted(directory.iterdir()):
+            if file_path.is_file() and file_path.suffix.lower() in (".overlay", ".conf", ".dts", ".dtsi"):
+                found.append({
+                    "path": str(file_path),
+                    "relative": str(file_path.relative_to(project)),
+                    "content": file_path.read_text(encoding="utf-8", errors="replace"),
+                })
+
+    prj_conf = project / "prj.conf"
+    if prj_conf.is_file() and not any(item["relative"] == "prj.conf" for item in found):
+        found.insert(0, {
+            "path": str(prj_conf),
+            "relative": "prj.conf",
+            "content": prj_conf.read_text(encoding="utf-8", errors="replace"),
+        })
+
+    return found
+
+
+def _read_zephyr_import_text(body: dict[str, object]) -> tuple[str, str]:
+    text = str(body.get("text", "") or "").strip()
+    if text:
+        return text, "pasted Zephyr text"
+
+    file_path = str(body.get("file_path", "") or body.get("project_path", "") or "").strip()
+    if file_path:
+        path = pathlib.Path(file_path)
+        if path.is_dir():
+            files = _scan_zephyr_project_files(path)
+            if not files:
+                raise ValueError(f"No Zephyr config files found in project: {path}")
+            combined = []
+            for item in files:
+                combined.append(f"# FILE: {item['relative']}")
+                combined.append(item["content"])
+                combined.append("")
+            return "\n".join(combined).strip(), f"Zephyr project {path}"
+        if not path.is_file():
+            raise FileNotFoundError(f"File not found: {path}")
+        return path.read_text(encoding="utf-8"), str(path)
+
+    url = str(body.get("url", "") or "").strip()
+    if url:
+        with urllib.request.urlopen(url, timeout=8) as response:
+            charset = response.headers.get_content_charset() or "utf-8"
+            return response.read().decode(charset), url
+
+    raise ValueError("Provide Zephyr text, a file path, a project path, or a URL")
+
+
+def _read_lvgl_import_bytes(body: dict[str, object]) -> tuple[bytes, str]:
+    encoded = str(body.get("binary_base64", "") or "").strip()
+    if encoded:
+        try:
+            data = base64.b64decode(encoded, validate=True)
+        except ValueError as exc:
+            raise ValueError("Invalid base64 payload") from exc
+        source = str(body.get("filename", "") or "uploaded PDF").strip() or "uploaded PDF"
+        return data, source
+
+    file_path = str(body.get("file_path", "") or "").strip()
+    if file_path:
+        path = pathlib.Path(file_path)
+        if not path.is_file():
+            raise FileNotFoundError(f"File not found: {path}")
+        return path.read_bytes(), str(path)
+
+    url = str(body.get("url", "") or "").strip()
+    if url:
+        with urllib.request.urlopen(url, timeout=8) as response:
+            return response.read(), url
+
+    raise ValueError("Provide binary_base64, file_path, or url")
+
+
+def _lvgl_preset_for_resolution(width: int, height: int) -> str:
+    if width <= 260 and height <= 260:
+        return "watch"
+    if width >= 760:
+        return "panel"
+    if width <= 380 and height >= 500:
+        return "phone"
+    return "dashboard"
+
+
+def _build_display_seed_layout(width: int, height: int, source: str, title: str = "Imported Display", details: dict | None = None) -> dict[str, object]:
+    preset = _lvgl_preset_for_resolution(width, height)
+    return {
+        "preset": preset,
+        "currentScreenId": "screen_root",
+        "startupScreenId": "screen_root",
+        "selectedId": "screen_root",
+        "selectedStyleId": "",
+        "styleSchemaVersion": 1,
+        "sharedStyles": [],
+        "simulation": {
+            "running": False,
+            "activeScreenId": "screen_root",
+            "log": [f"Imported display seed from {source}."],
+        },
+        "importMeta": {
+            "source": source,
+            "kind": "display-seed",
+            **(details or {}),
+        },
+        "screens": [
+            {
+                "id": "screen_root",
+                "type": "screen",
+                "name": "screen_main",
+                "text": title,
+                "x": 0,
+                "y": 0,
+                "w": width,
+                "h": height,
+                "bg": "#0f172a",
+                "color": "#f8fafc",
+                "radius": 24,
+                "entryActionName": "",
+                "styleRefs": [],
+                "styles": {},
+                "nodes": [],
+            }
+        ],
+    }
+
+
+def _first_resolution_value(text: str, patterns: list[str]) -> int | None:
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            return _int_value(match.group(1), 0) or None
+    return None
+
+
+def _extract_zephyr_display_label(text: str, source: str) -> str:
+    compatible = re.search(r'compatible\s*=\s*"([^"]+)"', text, re.IGNORECASE)
+    if compatible:
+        return compatible.group(1)
+
+    enabled_driver = re.search(r'CONFIG_([A-Z0-9_]*(?:ILI|ST|SSD|GC9|RM6|HX|JD)[A-Z0-9_]*)\s*=\s*y', text, re.IGNORECASE)
+    if enabled_driver:
+        return enabled_driver.group(1)
+
+    return pathlib.Path(source).stem if source and source != "pasted JSON" else "Zephyr display"
+
+
+def _extract_lvgl_layout_from_zephyr(text: str, source: str) -> dict[str, object]:
+    width = _first_resolution_value(text, [
+        r'CONFIG_LV_HOR_RES_MAX\s*=\s*(\d+)',
+        r'CONFIG_LV_HOR_RES\s*=\s*(\d+)',
+        r'\bx-resolution\s*=\s*<(\d+)>',
+        r'\bwidth\s*=\s*<(\d+)>',
+        r'\bhorizontal[-_ ]resolution\s*=\s*<(\d+)>',
+    ])
+    height = _first_resolution_value(text, [
+        r'CONFIG_LV_VER_RES_MAX\s*=\s*(\d+)',
+        r'CONFIG_LV_VER_RES\s*=\s*(\d+)',
+        r'\by-resolution\s*=\s*<(\d+)>',
+        r'\bheight\s*=\s*<(\d+)>',
+        r'\bvertical[-_ ]resolution\s*=\s*<(\d+)>',
+    ])
+
+    if not width or not height:
+        pair = re.search(r'(?:resolution|display|panel|screen)[^\n\r]{0,48}?(\d{2,5})\s*[x×]\s*(\d{2,5})', text, re.IGNORECASE)
+        if pair:
+            width = width or _int_value(pair.group(1), 0)
+            height = height or _int_value(pair.group(2), 0)
+
+    if not width or not height:
+        raise ValueError("Could not infer display resolution from Zephyr text. Include LVGL resolution Kconfig or display width/height properties.")
+
+    label = _extract_zephyr_display_label(text, source)
+    return _build_display_seed_layout(width, height, source, title=f"{label} display", details={
+        "kind": "zephyr-display",
+        "display": {
+            "label": label,
+            "width": width,
+            "height": height,
+        },
+    })
+
+
+def _extract_display_pdf_text(pdf_bytes: bytes) -> str:
+    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+        pages = []
+        for page in pdf.pages[:12]:
+            pages.append(page.extract_text() or "")
+    return "\n".join(pages)
+
+
+def _score_resolution_context(context: str) -> int:
+    score = 0
+    lowered = context.lower()
+    for keyword in ("resolution", "pixel", "pixels", "dot", "dots", "display", "lcd", "tft", "panel", "rgb"):
+        if keyword in lowered:
+            score += 3
+    for keyword in ("active area", "graphic", "screen"):
+        if keyword in lowered:
+            score += 1
+    return score
+
+
+def _extract_display_resolution_from_text(text: str) -> tuple[int, int]:
+    candidates: list[tuple[int, int, int]] = []
+    patterns = [
+        r'(\d{2,5})\s*(?:RGB)?\s*[x×]\s*(\d{2,5})',
+        r'(\d{2,5})\s*(?:\([A-Z]+\))?\s*[x×]\s*(\d{2,5})',
+    ]
+    seen_matches: set[tuple[int, int, int]] = set()
+    for pattern in patterns:
+        for match in re.finditer(pattern, text, re.IGNORECASE):
+            width = _int_value(match.group(1), 0)
+            height = _int_value(match.group(2), 0)
+            match_key = (match.start(), width, height)
+            if match_key in seen_matches:
+                continue
+            seen_matches.add(match_key)
+            if min(width, height) < 32 or max(width, height) > 4096:
+                continue
+            start = max(0, match.start() - 64)
+            end = min(len(text), match.end() + 64)
+            context = text[start:end]
+            score = _score_resolution_context(context)
+            candidates.append((score, width * height, candidates.__len__()))
+            candidates[-1] = (score, width * height, candidates[-1][2], width, height)
+
+    if not candidates:
+        raise ValueError("Could not infer display resolution from the PDF. Use a datasheet page that contains the panel resolution.")
+
+    best = max(candidates, key=lambda item: (item[0], item[1]))
+    return best[3], best[4]
+
+
+def _extract_display_pdf_label(text: str, source: str) -> str:
+    for pattern in (
+        r'\b((?:ILI|ST|SSD|GC9|RM6|HX|JD)\d{2,5}[A-Z]*)\b',
+        r'\b([A-Z]{2,6}\d{2,5}[A-Z0-9-]*)\b',
+    ):
+        match = re.search(pattern, text)
+        if match:
+            return match.group(1)
+    return pathlib.Path(source).stem or "Display PDF"
+
+
+def _extract_lvgl_layout_from_display_pdf(pdf_bytes: bytes, source: str) -> dict[str, object]:
+    text = _extract_display_pdf_text(pdf_bytes)
+    width, height = _extract_display_resolution_from_text(text)
+    label = _extract_display_pdf_label(text, source)
+    return _build_display_seed_layout(width, height, source, title=f"{label} display", details={
+        "kind": "display-pdf",
+        "display": {
+            "label": label,
+            "width": width,
+            "height": height,
+        },
+    })
+
+
 # ── Routes ────────────────────────────────────────────────────────────
 
 @app.route("/")
 def index():
-    return send_from_directory(app.static_folder, "index.html")
+    return redirect("/app")
+
+
+def _serve_frontend_asset(asset_path: str = "index.html"):
+    dist_dir = _FRONTEND_DIST_DIR
+    if not dist_dir.is_dir():
+        return Response(
+            "Frontend bundle not found. Build the React workspace under frontend/ first.",
+            status=404,
+            mimetype="text/plain",
+        )
+
+    requested = (dist_dir / asset_path).resolve()
+    dist_root = dist_dir.resolve()
+    if requested != dist_root and dist_root not in requested.parents:
+        return Response(status=404)
+
+    if requested.is_file():
+        mime_type = _FRONTEND_MIME_TYPES.get(requested.suffix.lower())
+        if not mime_type:
+            mime_type, _ = mimetypes.guess_type(str(requested))
+        return send_file(
+            requested,
+            mimetype=mime_type,
+            as_attachment=False,
+        )
+
+    return send_file(dist_root / "index.html", mimetype="text/html")
+
+
+@app.route("/app")
+@app.route("/app/<path:asset_path>")
+def frontend_app(asset_path: str = "index.html"):
+    return _serve_frontend_asset(asset_path)
+
+
+@app.route("/favicon.ico")
+def favicon():
+    icon = pathlib.Path(app.static_folder) / "favicon.ico"
+    if icon.is_file():
+        return send_from_directory(app.static_folder, "favicon.ico")
+    return Response(status=204)
 
 
 @app.route("/api/boards")
@@ -140,6 +865,63 @@ def get_board(name: str):
     if brd is None:
         return jsonify({"error": f"Board '{name}' not found"}), 404
     return jsonify(board_to_frontend(brd))
+
+
+@app.route("/api/board-editor/drafts")
+def list_board_editor_drafts():
+    draft_dir = _ensure_board_editor_draft_dir()
+    drafts = [_draft_metadata(path) for path in sorted(draft_dir.glob("*.json"), key=lambda item: item.stat().st_mtime, reverse=True)]
+    return jsonify({"drafts": drafts})
+
+
+@app.route("/api/board-editor/draft/<filename>")
+def load_board_editor_draft(filename: str):
+    try:
+        path = _draft_file_path(filename)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    if not path.is_file():
+        return jsonify({"error": f"Draft '{path.name}' not found."}), 404
+
+    try:
+        board = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return jsonify({"error": f"Invalid draft '{path.name}': {exc}"}), 400
+
+    return jsonify({"filename": path.name, "board": board})
+
+
+@app.route("/api/board-editor/save", methods=["POST"])
+def save_board_editor_draft():
+    body = request.get_json(force=True)
+    board = body.get("board")
+    if not isinstance(board, dict):
+        return jsonify({"error": "Provide a board object to save."}), 400
+
+    filename = _normalize_draft_filename(body.get("filename"), board)
+    path = _draft_file_path(filename)
+    path.write_text(json.dumps(board, indent=2), encoding="utf-8")
+    return jsonify({"filename": path.name})
+
+
+@app.route("/api/board-editor/delete", methods=["POST"])
+def delete_board_editor_draft():
+    body = request.get_json(force=True)
+    filename = str(body.get("filename") or "").strip()
+    if not filename:
+        return jsonify({"error": "Provide a draft filename to delete."}), 400
+
+    try:
+        path = _draft_file_path(filename)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    if not path.is_file():
+        return jsonify({"error": f"Draft '{path.name}' not found."}), 404
+
+    path.unlink()
+    return jsonify({"filename": path.name})
 
 
 @app.route("/api/generate", methods=["POST"])
@@ -310,20 +1092,7 @@ def project_file_save():
     # Ensure parent directory exists
     fp.parent.mkdir(parents=True, exist_ok=True)
 
-    project = {
-        "version": PROJECT_FILE_VERSION,
-        "board_id": body.get("board_id", ""),
-        "pin_states": body.get("pin_states", {}),
-        "periph_states": body.get("periph_states", {}),
-        "periph_core_states": body.get("periph_core_states", {}),
-        "external_device_states": body.get("external_device_states", {}),
-        "generated_overlay": body.get("generated_overlay", ""),
-        "generated_conf": body.get("generated_conf", ""),
-        "sensor_jobs": body.get("sensor_jobs", []),
-        "sensor_selected": body.get("sensor_selected", ""),
-        "mcu_jobs": body.get("mcu_jobs", []),
-        "mcu_selected": body.get("mcu_selected", ""),
-    }
+    project = build_project_document(body)
 
     fp.write_text(json.dumps(project, indent=2), encoding="utf-8")
 
@@ -351,11 +1120,136 @@ def project_file_load():
         return jsonify({"error": f"File not found: {fp}"}), 404
 
     try:
-        project = json.loads(fp.read_text(encoding="utf-8"))
+        project = normalize_project_document(json.loads(fp.read_text(encoding="utf-8")))
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:
         return jsonify({"error": f"Invalid project file: {exc}"}), 400
 
     return jsonify(project)
+
+
+@app.route("/api/demo-app/export", methods=["POST"])
+def export_demo_app():
+    body = request.get_json(force=True)
+    output_dir = pathlib.Path(str(body.get("output_dir") or "").strip())
+    if not str(output_dir):
+        return jsonify({"error": "Missing output_dir"}), 400
+
+    overwrite = bool(body.get("overwrite"))
+    if output_dir.exists() and any(output_dir.iterdir()) and not overwrite:
+        return jsonify({"error": f"Output directory is not empty: {output_dir}"}), 400
+
+    if output_dir.exists() and overwrite:
+        shutil.rmtree(output_dir)
+
+    project_payload = body.get("project") if isinstance(body.get("project"), dict) else body
+    project = normalize_project_document(project_payload)
+    testbench_cmake = (_HERE / "testbench" / "CMakeLists.txt").read_text(encoding="utf-8")
+    result = materialize_demo_app(project, output_dir, testbench_cmake=testbench_cmake)
+    return jsonify({"saved": True, **result})
+
+
+@app.route("/api/path-dialog", methods=["POST"])
+def path_dialog():
+    body = request.get_json(force=True)
+    dialog_kind = str(body.get("dialog_kind") or "").strip().lower()
+
+    if dialog_kind not in {"open-file", "save-file", "directory"}:
+        return jsonify({"error": "Unsupported dialog_kind. Use open-file, save-file, or directory."}), 400
+
+    try:
+        path = _open_native_path_dialog(
+            dialog_kind,
+            title=str(body.get("title") or "").strip(),
+            initial_path=str(body.get("initial_path") or "").strip(),
+            filetypes=body.get("filetypes"),
+            default_extension=str(body.get("default_extension") or "").strip(),
+        )
+    except RuntimeError as exc:
+        return jsonify({"error": str(exc)}), 503
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        log.exception("Native path dialog failed")
+        return jsonify({"error": f"Failed to open native path dialog: {exc}"}), 500
+
+    return jsonify({
+        "path": path,
+        "cancelled": not bool(path),
+    })
+
+
+@app.route("/api/zephyr/catalog", methods=["GET"])
+def zephyr_catalog():
+    zephyr_root = request.args.get("zephyr_root", "").strip() or None
+    refresh = request.args.get("refresh", "").strip().lower() in {"1", "true", "yes"}
+
+    try:
+        catalog = load_zephyr_catalog(zephyr_root, refresh=refresh)
+    except FileNotFoundError as exc:
+        return jsonify({"error": str(exc)}), 404
+    except Exception as exc:
+        return jsonify({"error": f"Failed to load Zephyr catalog: {exc}"}), 400
+
+    return jsonify(catalog)
+
+
+@app.route("/api/lvgl/import", methods=["POST"])
+def lvgl_import_layout():
+    """Import an LVGL layout from JSON, Zephyr display config, or a display datasheet PDF."""
+    body = request.get_json(force=True)
+    source_kind = str(body.get("source_kind") or "json").strip().lower().replace("_", "-")
+
+    try:
+        if source_kind == "json":
+            raw_text, source = _read_lvgl_import_text(body)
+            payload = json.loads(raw_text)
+            layout = _extract_lvgl_layout(payload)
+        elif source_kind == "zephyr":
+            raw_text, source = _read_zephyr_import_text(body)
+            layout = _extract_lvgl_layout_from_zephyr(raw_text, source)
+        elif source_kind in {"pdf", "display-pdf"}:
+            pdf_bytes, source = _read_lvgl_import_bytes(body)
+            layout = _extract_lvgl_layout_from_display_pdf(pdf_bytes, source)
+        else:
+            raise ValueError("Unsupported LVGL import source. Use json, zephyr, or display-pdf.")
+    except FileNotFoundError as exc:
+        return jsonify({"error": str(exc)}), 404
+    except urllib.error.URLError as exc:
+        return jsonify({"error": f"Unable to fetch source: {exc}"}), 400
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    return jsonify({
+        "source": source,
+        "layout": layout,
+    })
+
+
+@app.route("/api/lvgl/export", methods=["POST"])
+def lvgl_export_layout():
+    """Save the current LVGL layout to a reusable JSON file."""
+    body = request.get_json(force=True)
+    file_path = str(body.get("file_path", "") or "").strip()
+    layout = body.get("layout")
+
+    if not file_path:
+        return jsonify({"error": "Missing file_path"}), 400
+    if not isinstance(layout, dict):
+        return jsonify({"error": "Missing layout"}), 400
+
+    fp = pathlib.Path(file_path)
+    if not fp.suffix:
+        fp = pathlib.Path(f"{fp}.lvgl.json")
+    fp.parent.mkdir(parents=True, exist_ok=True)
+
+    document = {
+        "version": LVGL_LAYOUT_FILE_VERSION,
+        "kind": "lvgl-layout",
+        "lvgl_layout": layout,
+    }
+    fp.write_text(json.dumps(document, indent=2), encoding="utf-8")
+
+    return jsonify({"saved": True, "file_path": str(fp)})
 
 
 # ── Package Generator API ────────────────────────────────────────────
@@ -940,6 +1834,12 @@ def api_identify_mcu():
             break
 
     result = identify_vendor(pn)
+    try:
+        search_candidates = search_datasheet_candidates(pn, result, max_results=5)
+    except Exception as exc:
+        log.warning("Datasheet search preview failed for %s: %s", pn, exc)
+        search_candidates = []
+
     return jsonify({
         "part_number": pn,
         "known": result is not None,
@@ -948,6 +1848,7 @@ def api_identify_mcu():
         "vendor_name": result.vendor_name if result else None,
         "family": result.family if result else None,
         "datasheet_urls": result.datasheet_urls if result else [],
+        "search_candidates": search_candidates,
     })
 
 

@@ -12,24 +12,82 @@
 
 // ── State ────────────────────────────────────────────────────────────
 let boardData    = null;   // Current board definition from API
+let availableBoards = [];  // Board list metadata from API
 let pinStates    = {};     // { pin_number: { af, props } }
 let periphStates = {};     // { periph_name: enabled }
 let periphCoreStates = {}; // { periph_name: core_id }
 let externalDeviceStates = {}; // { device_id: { selected, bus } }
 let selectedPin  = null;   // Currently selected pin number
+let highlightedPeripheral = ""; // Peripheral currently highlighted on the chip
+let highlightedPeripheralSignal = ""; // Specific signal currently highlighted on the chip
 let boardEditorDrafts = [];
 
 let generatedOverlay = "";
 let generatedConf    = "";
 let generatedTargets = {};
+let generatedFragments = {
+  pin: { overlay: "", prj_conf: "" },
+  modules: { overlay: "", prj_conf: "" },
+  peripherals: { overlay: "", prj_conf: "" },
+  clock: { overlay: "", prj_conf: "" },
+  protocols: { overlay: "", prj_conf: "", code: "", header: "", integration: "" },
+  lvgl: { overlay: "", prj_conf: "", code: "", header: "", hooksHeader: "", hooks: "", integration: "" },
+};
+const LVGL_LAYOUT_PRESETS = {
+  phone: { width: 360, height: 640, label: "Phone 360 x 640" },
+  dashboard: { width: 480, height: 272, label: "Dashboard 480 x 272" },
+  watch: { width: 240, height: 240, label: "Watch 240 x 240" },
+  panel: { width: 800, height: 480, label: "Panel 800 x 480" },
+};
+const LVGL_SCREEN_TRANSITIONS = {
+  none: { label: "No animation", anim: "LV_SCR_LOAD_ANIM_NONE" },
+  move_left: { label: "Move left", anim: "LV_SCR_LOAD_ANIM_MOVE_LEFT" },
+  move_right: { label: "Move right", anim: "LV_SCR_LOAD_ANIM_MOVE_RIGHT" },
+  move_top: { label: "Move up", anim: "LV_SCR_LOAD_ANIM_MOVE_TOP" },
+  move_bottom: { label: "Move down", anim: "LV_SCR_LOAD_ANIM_MOVE_BOTTOM" },
+  fade_in: { label: "Fade in", anim: "LV_SCR_LOAD_ANIM_FADE_IN" },
+  fade_on: { label: "Fade on", anim: "LV_SCR_LOAD_ANIM_FADE_ON" },
+  over_left: { label: "Over left", anim: "LV_SCR_LOAD_ANIM_OVER_LEFT" },
+  over_right: { label: "Over right", anim: "LV_SCR_LOAD_ANIM_OVER_RIGHT" },
+};
+let lvglLayoutState = null;
+let lvglLayoutDrag = null;
+let lvglLayoutNextId = 1;
+window.LVGL_LAYOUT_PRESETS = LVGL_LAYOUT_PRESETS;
+window.LVGL_SCREEN_TRANSITIONS = LVGL_SCREEN_TRANSITIONS;
+Object.defineProperty(window, "lvglLayoutState", {
+  get() { return lvglLayoutState; },
+  set(value) { lvglLayoutState = value; },
+});
+Object.defineProperty(window, "lvglLayoutDrag", {
+  get() { return lvglLayoutDrag; },
+  set(value) { lvglLayoutDrag = value; },
+});
+Object.defineProperty(window, "lvglLayoutNextId", {
+  get() { return lvglLayoutNextId; },
+  set(value) { lvglLayoutNextId = value; },
+});
 let activeTab        = "overlay";
 let boardEditorPendingDelete = "";
 let boardEditorPreviewBoard = null;
 let boardEditorCanvasStart = null;
 let boardEditorCanvasDrag = null;
+let boardEditorWireHandleDrag = null;
 let boardEditorPreviewTimer = null;
 let boardEditorDeviceLibrary = [];
 let boardEditorCanvasZoom = 1.0;
+let boardEditorCanvasFitMode = true;
+let boardEditorCanvasResizeObserver = null;
+let clkOverviewResizeObserver = null;
+let zephyrCatalogExternalDevices = [];
+let zephyrCatalogBoardEditorEntries = [];
+let zephyrCatalogItems = [];
+let zephyrCatalogRoot = "";
+let zephyrCatalogActiveKey = "";
+let zephyrCatalogFilter = "all";
+let zephyrCatalogSearch = "";
+let zephyrCatalogSummary = { mcu_count: 0, sensor_count: 0 };
+const LARGE_LIST_SEARCH_THRESHOLD = 5;
 
 // Zoom state
 let chipZoom = 1.0;
@@ -89,6 +147,7 @@ const DEFAULT_EXTERNAL_DEVICE_CATALOG = [
 // ── DOM refs ─────────────────────────────────────────────────────────
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
+window.$ = $;
 
 const boardSelect  = $("#boardSelect");
 const chipLabel    = $("#chipLabel");
@@ -108,6 +167,79 @@ function toast(msg) {
   el.textContent = msg;
   el.classList.add("show");
   setTimeout(() => el.classList.remove("show"), 2500);
+}
+
+async function requestPathDialog({ dialogKind, title = "", initialPath = "", fileTypes = [], defaultExtension = "" }) {
+  const res = await fetch("/api/path-dialog", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      dialog_kind: dialogKind,
+      title,
+      initial_path: initialPath,
+      filetypes: fileTypes,
+      default_extension: defaultExtension,
+    }),
+  });
+  const payload = await res.json();
+  if (!res.ok) {
+    throw new Error(payload.error || "Failed to open native path dialog");
+  }
+  return payload;
+}
+
+function bindPathBrowseButton(buttonSelector, inputSelector, resolveOptions, onSelected) {
+  const button = $(buttonSelector);
+  const input = $(inputSelector);
+  if (!button || !input) return;
+
+  button.addEventListener("click", async () => {
+    try {
+      const options = typeof resolveOptions === "function"
+        ? resolveOptions(input)
+        : (resolveOptions || {});
+      const result = await requestPathDialog({
+        ...options,
+        initialPath: input.value.trim(),
+      });
+      if (result.cancelled || !result.path) return;
+      input.value = result.path;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      if (typeof onSelected === "function") {
+        await onSelected(input, result);
+      }
+    } catch (err) {
+      toast(err.message || "Failed to open path browser");
+    }
+  });
+}
+
+function lvglImportBrowseDialogOptions() {
+  const mode = lvglCurrentImportMode();
+  if (mode === "zephyr") {
+    return {
+      dialogKind: "directory",
+      title: "Select Zephyr project directory",
+    };
+  }
+  if (mode === "display-pdf") {
+    return {
+      dialogKind: "open-file",
+      title: "Select display datasheet PDF",
+      fileTypes: [
+        { name: "PDF files", patterns: ["*.pdf"] },
+        { name: "All files", patterns: ["*.*"] },
+      ],
+    };
+  }
+  return {
+    dialogKind: "open-file",
+    title: "Select LVGL layout source",
+    fileTypes: [
+      { name: "Layout files", patterns: ["*.json", "*.lvgl", "*.zpinproj"] },
+      { name: "All files", patterns: ["*.*"] },
+    ],
+  };
 }
 
 function periphColor(periph) {
@@ -151,6 +283,26 @@ function inferDeviceBusFamily(device) {
   return "";
 }
 
+function resolveThresholdSearch(inputId, totalCount, incomingFilter = null) {
+  const input = document.getElementById(inputId);
+  const normalizedIncoming = typeof incomingFilter === "string"
+    ? incomingFilter.trim().toLowerCase()
+    : null;
+  if (!input) return normalizedIncoming || "";
+
+  const visible = totalCount > LARGE_LIST_SEARCH_THRESHOLD;
+  input.hidden = !visible;
+  if (!visible) {
+    if (input.value) input.value = "";
+    return "";
+  }
+
+  if (normalizedIncoming !== null && input.value.trim().toLowerCase() !== normalizedIncoming) {
+    input.value = normalizedIncoming;
+  }
+  return normalizedIncoming !== null ? normalizedIncoming : input.value.trim().toLowerCase();
+}
+
 function normalizeExternalDevice(device) {
   return {
     id: String(device.id || "").trim(),
@@ -172,7 +324,7 @@ function normalizeExternalDevice(device) {
 
 function getExternalDeviceCatalog() {
   const merged = new Map();
-  [...DEFAULT_EXTERNAL_DEVICE_CATALOG, ...(boardData?.external_devices || [])]
+  [...DEFAULT_EXTERNAL_DEVICE_CATALOG, ...zephyrCatalogExternalDevices, ...(boardData?.external_devices || [])]
     .map(normalizeExternalDevice)
     .filter(device => device.id)
     .forEach(device => {
@@ -191,6 +343,58 @@ function getPeripheralOptionsForBusFamily(busFamily) {
       enabled: !!periphStates[peripheral.name],
     }))
     .sort((left, right) => Number(right.enabled) - Number(left.enabled) || left.name.localeCompare(right.name));
+}
+
+function peripheralRecord(peripheralName) {
+  return boardData?.peripherals?.find(peripheral => peripheral.name === peripheralName) || null;
+}
+
+function normalizeSignalToken(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function signalAliasTokens(signal) {
+  const token = normalizeSignalToken(signal);
+  if (!token) return [];
+
+  const aliases = new Set([token]);
+  const aliasMap = {
+    copi: ["mosi"],
+    pico: ["mosi"],
+    mosi: ["copi", "pico"],
+    cipo: ["miso"],
+    poci: ["miso"],
+    miso: ["cipo", "poci"],
+    sclk: ["sck", "clk"],
+    clk: ["sck", "sclk"],
+    sck: ["sclk", "clk"],
+    nss: ["cs", "ss"],
+    ss: ["cs", "nss"],
+    chipselect: ["cs"],
+    cs: ["ss", "nss", "chipselect"],
+    tx: ["txd"],
+    txd: ["tx"],
+    rx: ["rxd"],
+    rxd: ["rx"],
+  };
+  (aliasMap[token] || []).forEach((alias) => aliases.add(alias));
+  return [...aliases];
+}
+
+function assignedSignalsByPeripheral() {
+  const assigned = {};
+  Object.values(pinStates || {}).forEach((state) => {
+    const peripheral = state?.af?.peripheral;
+    if (!peripheral) return;
+    if (!assigned[peripheral]) assigned[peripheral] = new Set();
+    signalAliasTokens(state.af.signal || state.af.name || state.af.function_id).forEach((token) => {
+      assigned[peripheral].add(token);
+    });
+  });
+  return assigned;
 }
 
 function initExternalDeviceStates() {
@@ -301,6 +505,7 @@ function wireExternalDeviceControls(panel) {
       if (externalDeviceStates[deviceId].selected) {
         enableDeviceBus(deviceId);
       }
+      renderConfigPanel();
     });
   });
 }
@@ -310,6 +515,78 @@ function collectOutputViews() {
     { id: "overlay", label: ".overlay", content: generatedOverlay },
     { id: "conf", label: "prj.conf", content: generatedConf },
   ];
+
+  if (generatedFragments.protocols?.code) {
+    views.push({
+      id: "protocols:protocol_stack.c",
+      label: "protocols:protocol_stack.c",
+      content: generatedFragments.protocols.code,
+    });
+  }
+  if (generatedFragments.protocols?.header) {
+    views.push({
+      id: "protocols:protocol_stack.h",
+      label: "protocols:protocol_stack.h",
+      content: generatedFragments.protocols.header,
+    });
+  }
+  if (generatedFragments.protocols?.integration) {
+    views.push({
+      id: "protocols:protocol_stack_integration.md",
+      label: "protocols:protocol_stack_integration.md",
+      content: generatedFragments.protocols.integration,
+    });
+  }
+
+  if (generatedFragments.lvgl?.code) {
+    views.push({
+      id: "lvgl:ui_layout.c",
+      label: "lvgl:ui_layout.c",
+      content: generatedFragments.lvgl.code,
+    });
+  }
+  if (generatedFragments.lvgl?.header) {
+    views.push({
+      id: "lvgl:ui_layout.h",
+      label: "lvgl:ui_layout.h",
+      content: generatedFragments.lvgl.header,
+    });
+  }
+  if (generatedFragments.lvgl?.hooksHeader) {
+    views.push({
+      id: "lvgl:ui_layout_hooks.h",
+      label: "lvgl:ui_layout_hooks.h",
+      content: generatedFragments.lvgl.hooksHeader,
+    });
+  }
+  if (generatedFragments.lvgl?.hooks) {
+    views.push({
+      id: "lvgl:ui_layout_hooks.template.c",
+      label: "lvgl:ui_layout_hooks.template.c",
+      content: generatedFragments.lvgl.hooks,
+    });
+  }
+  if (generatedFragments.lvgl?.integration) {
+    views.push({
+      id: "lvgl:ui_layout_integration.md",
+      label: "lvgl:ui_layout_integration.md",
+      content: generatedFragments.lvgl.integration,
+    });
+  }
+  if (generatedFragments.lvgl?.validation) {
+    views.push({
+      id: "lvgl:ui_layout_validation.md",
+      label: "lvgl:ui_layout_validation.md",
+      content: generatedFragments.lvgl.validation,
+    });
+  }
+  if (generatedFragments.lvgl?.styleSchema) {
+    views.push({
+      id: "lvgl:style_schema.json",
+      label: "lvgl:style_schema.json",
+      content: generatedFragments.lvgl.styleSchema,
+    });
+  }
 
   for (const target of ["arduino", "baremetal"]) {
     const files = generatedTargets[target] || {};
@@ -324,6 +601,1026 @@ function collectOutputViews() {
 
   return views.filter(view => view.content);
 }
+
+function aggregateGeneratedText(sections, options = {}) {
+  const {
+    commentPrefix = "#",
+    title = "Generated by Zephyr Pin Configurator",
+  } = options;
+
+  const nonEmpty = sections
+    .map(section => ({
+      title: section.title,
+      content: String(section.content || "").trim(),
+    }))
+    .filter(section => section.content);
+
+  if (!nonEmpty.length) return "";
+
+  const lines = [
+    `${commentPrefix} ${title}`,
+    "",
+  ];
+
+  nonEmpty.forEach((section, index) => {
+    lines.push(`${commentPrefix} ── ${section.title} ${"─".repeat(Math.max(1, 56 - section.title.length))}`);
+    lines.push(section.content);
+    if (index < nonEmpty.length - 1) {
+      lines.push("");
+    }
+  });
+
+  return lines.join("\n").trim();
+}
+
+function refreshGeneratedOutputs() {
+  generatedOverlay = aggregateGeneratedText([
+    { title: "Pin Configurator", content: generatedFragments.pin.overlay },
+    { title: "Peripheral Configurator", content: generatedFragments.peripherals.overlay },
+    { title: "Protocol Editor", content: generatedFragments.protocols.overlay },
+    { title: "Clock Configurator", content: generatedFragments.clock.overlay },
+  ], {
+    title: "Aggregated Zephyr overlay",
+  });
+
+  generatedConf = aggregateGeneratedText([
+    { title: "Pin Configurator", content: generatedFragments.pin.prj_conf },
+    { title: "Module Configurator", content: generatedFragments.modules.prj_conf },
+    { title: "Peripheral Configurator", content: generatedFragments.peripherals.prj_conf },
+    { title: "Protocol Editor", content: generatedFragments.protocols.prj_conf },
+    { title: "Clock Configurator", content: generatedFragments.clock.prj_conf },
+    { title: "LVGL Layout Editor", content: generatedFragments.lvgl.prj_conf },
+  ], {
+    title: "Aggregated Zephyr project configuration",
+  });
+
+  renderOutputTabs();
+  if (generatedOverlay || generatedConf) {
+    showOutput(activeTab);
+  }
+}
+
+function zephyrCatalogStorageRoot() {
+  return localStorage.getItem("zpincfg_zephyr_catalog_root") || "";
+}
+
+function zephyrCatalogSaveRoot(root) {
+  if (root) {
+    localStorage.setItem("zpincfg_zephyr_catalog_root", root);
+  }
+}
+
+function zephyrCatalogInferPart(item) {
+  if (item.kind === "mcu") {
+    return item.socs?.[0] || item.name;
+  }
+  const compatible = String(item.compatible || "");
+  return compatible.includes(",") ? compatible.split(",", 2)[1].toUpperCase() : (item.name || item.label || compatible);
+}
+
+function zephyrCatalogResolveBoardId(item) {
+  if (!item || item.kind !== "mcu") return "";
+  const tokens = new Set([
+    item.name,
+    item.label,
+    ...(item.socs || []),
+  ].map((value) => normalizeSearchToken(value)).filter(Boolean));
+
+  const exactBoard = availableBoards.find((board) => tokens.has(normalizeSearchToken(board.board)));
+  if (exactBoard) return exactBoard.id;
+
+  const exactId = availableBoards.find((board) => tokens.has(normalizeSearchToken(board.id)));
+  if (exactId) return exactId.id;
+
+  const exactSoc = availableBoards.find((board) => tokens.has(normalizeSearchToken(board.name)));
+  if (exactSoc) return exactSoc.id;
+
+  const loose = availableBoards.find((board) => {
+    const searchFields = [board.id, board.board, board.name].map((value) => normalizeSearchToken(value));
+    return [...tokens].some((token) => searchFields.some((field) => field && (field.includes(token) || token.includes(field))));
+  });
+  return loose?.id || "";
+}
+
+function zephyrCatalogBindingSummary(item) {
+  const propNames = (item.properties || []).slice(0, 6).map((prop) => prop.name);
+  const propSuffix = propNames.length ? ` Properties: ${propNames.join(", ")}.` : "";
+  const pathSuffix = item.binding_paths?.length ? ` Binding: ${item.binding_paths[0]}.` : "";
+  return `${item.description || `Imported from Zephyr binding ${item.compatible || item.name}.`}${propSuffix}${pathSuffix}`.trim();
+}
+
+function zephyrCatalogSensorDevice(item) {
+  const compatible = String(item.compatible || item.name || "sensor");
+  const busFamily = item.buses?.[0] || "i2c";
+  return normalizeExternalDevice({
+    id: `zephyr_${compatible.replace(/[^a-zA-Z0-9]+/g, "_").toLowerCase()}`,
+    display: item.label || item.name || compatible,
+    category: "sensor",
+    bus_family: busFamily,
+    bus: `${busFamily}0`,
+    compatible,
+    address: "",
+    required_signals: boardEditorSignalsForBus(busFamily),
+    frameworks: ["zephyr"],
+    notes: zephyrCatalogBindingSummary(item),
+  });
+}
+
+function zephyrCatalogBoardLibraryEntry(item) {
+  const device = zephyrCatalogSensorDevice(item);
+  return {
+    key: `zephyr:${device.id}`,
+    source: "zephyr-catalog",
+    label: `${device.display} [zephyr]`,
+    device,
+  };
+}
+
+function zephyrCatalogUpsertBoardLibraryEntry(entry) {
+  const existing = zephyrCatalogBoardEditorEntries.findIndex((item) => item.key === entry.key);
+  if (existing >= 0) {
+    zephyrCatalogBoardEditorEntries.splice(existing, 1, entry);
+  } else {
+    zephyrCatalogBoardEditorEntries.push(entry);
+  }
+}
+
+function zephyrCatalogUpsertExternalDevice(device) {
+  const existing = zephyrCatalogExternalDevices.findIndex((item) => item.id === device.id);
+  if (existing >= 0) {
+    zephyrCatalogExternalDevices.splice(existing, 1, device);
+  } else {
+    zephyrCatalogExternalDevices.push(device);
+  }
+  const busOptions = getPeripheralOptionsForBusFamily(device.bus_family);
+  externalDeviceStates[device.id] = {
+    selected: true,
+    bus: busOptions[0]?.name || device.bus || "",
+  };
+}
+
+function zephyrCatalogVisibleItems() {
+  const search = zephyrCatalogSearch.trim().toLowerCase();
+  return zephyrCatalogItems.filter((item) => {
+    if (zephyrCatalogFilter !== "all" && item.kind !== zephyrCatalogFilter) {
+      return false;
+    }
+    if (!search) {
+      return true;
+    }
+    const haystack = [
+      item.label,
+      item.name,
+      item.vendor,
+      item.compatible,
+      ...(item.socs || []),
+      ...(item.buses || []),
+    ].join(" ").toLowerCase();
+    return haystack.includes(search);
+  });
+}
+
+function zephyrCatalogSelectedItem() {
+  return zephyrCatalogItems.find((item) => item.key === zephyrCatalogActiveKey) || null;
+}
+
+function zephyrCatalogRenderList() {
+  const list = $("#zephyrCatalogList");
+  if (!list) return;
+  const visible = zephyrCatalogVisibleItems();
+  if (!visible.length) {
+    list.innerHTML = '<div class="zcatalog-empty">No catalog items match the current filter.</div>';
+    return;
+  }
+  list.innerHTML = visible.map((item) => `
+    <button class="zcatalog-item${item.key === zephyrCatalogActiveKey ? " active" : ""}" data-zcatalog-key="${escapeHtml(item.key)}">
+      <strong>${escapeHtml(item.label || item.name)}</strong>
+      <span class="zcatalog-item-meta">${escapeHtml(item.kind === "mcu" ? `${item.vendor || "vendor"} • ${item.name}` : `${item.compatible} • ${item.buses?.join(", ") || "bus n/a"}`)}</span>
+    </button>
+  `).join("");
+  list.querySelectorAll("[data-zcatalog-key]").forEach((button) => {
+    button.addEventListener("click", () => {
+      zephyrCatalogActiveKey = button.dataset.zcatalogKey;
+      zephyrCatalogRender();
+    });
+  });
+}
+
+function zephyrCatalogDetailActions(item) {
+  if (item.kind === "mcu") {
+    return `
+      <div class="zcatalog-actions">
+        <button class="btn btn-accent" data-zcatalog-action="use-mcu-configurator">Use In Pin Configurator</button>
+        <button class="btn" data-zcatalog-action="use-mcu-package">Use In Package Manager</button>
+      </div>
+    `;
+  }
+  return `
+    <div class="zcatalog-actions">
+      <button class="btn btn-accent" data-zcatalog-action="use-sensor-configurator">Add To Pin Configurator</button>
+      <button class="btn" data-zcatalog-action="use-sensor-parser">Use In Sensor Parser</button>
+      <button class="btn" data-zcatalog-action="use-sensor-board-editor">Add To Board Editor</button>
+    </div>
+  `;
+}
+
+function zephyrCatalogRenderDetail() {
+  const detail = $("#zephyrCatalogDetail");
+  if (!detail) return;
+  const item = zephyrCatalogSelectedItem();
+  if (!item) {
+    detail.innerHTML = '<div class="zcatalog-empty">Select an MCU board or sensor binding to inspect its Zephyr parameters and send it into the current workflow.</div>';
+    return;
+  }
+
+  const chips = item.kind === "mcu"
+    ? (item.socs || []).map((soc) => `<span class="zcatalog-chip">${escapeHtml(soc)}</span>`).join("")
+    : (item.buses || []).map((bus) => `<span class="zcatalog-chip">${escapeHtml(bus)}</span>`).join("");
+
+  const parameterRows = item.kind === "mcu"
+    ? `
+      <tr><th>Board</th><td>${escapeHtml(item.name)}</td></tr>
+      <tr><th>Vendor</th><td>${escapeHtml(item.vendor || "-")}</td></tr>
+      <tr><th>Board File</th><td>${escapeHtml(item.board_path || "-")}</td></tr>
+      <tr><th>SoCs / Variants</th><td>${escapeHtml((item.socs || []).join(", ") || "-")}</td></tr>
+    `
+    : (item.properties || []).slice(0, 18).map((prop) => `
+      <tr>
+        <th>${escapeHtml(prop.name)}</th>
+        <td>${escapeHtml(prop.type)}${prop.required ? ' • required' : ''}${prop.description ? `<div class="zcatalog-detail-meta">${escapeHtml(prop.description)}</div>` : ''}</td>
+      </tr>
+    `).join("");
+
+  detail.innerHTML = `
+    <div class="zcatalog-detail">
+      <div class="zcatalog-detail-head">
+        <div>
+          <h2>${escapeHtml(item.label || item.name)}</h2>
+          <div class="zcatalog-detail-meta">${escapeHtml(item.kind === "mcu" ? item.directory || item.board_path || "" : item.compatible || "")}</div>
+        </div>
+        <div class="zcatalog-chip-row">${chips || '<span class="zcatalog-chip">No parameters</span>'}</div>
+      </div>
+      ${zephyrCatalogDetailActions(item)}
+      ${item.description ? `<div class="zcatalog-note">${escapeHtml(item.description)}</div>` : ""}
+      <div class="zcatalog-detail-section">
+        <h3>${item.kind === "mcu" ? "Board Parameters" : "Binding Parameters"}</h3>
+        <table class="zcatalog-prop-table"><tbody>${parameterRows}</tbody></table>
+      </div>
+      ${item.kind === "sensor" && item.binding_paths?.length ? `<div class="zcatalog-detail-section"><h3>Bindings</h3><div class="zcatalog-note">${item.binding_paths.map((path) => escapeHtml(path)).join('<br>')}</div></div>` : ""}
+    </div>
+  `;
+
+  detail.querySelectorAll("[data-zcatalog-action]").forEach((button) => {
+    button.addEventListener("click", () => void zephyrCatalogHandleAction(button.dataset.zcatalogAction, item));
+  });
+}
+
+function zephyrCatalogRenderSummary() {
+  const summary = $("#zephyrCatalogSummary");
+  if (!summary) return;
+  summary.textContent = zephyrCatalogItems.length
+    ? `Root: ${zephyrCatalogRoot} • ${zephyrCatalogSummary.mcu_count} MCU boards • ${zephyrCatalogSummary.sensor_count} sensors`
+    : "Load the local Zephyr tree to browse supported boards and sensor bindings.";
+}
+
+function zephyrCatalogRender() {
+  zephyrCatalogRenderSummary();
+  zephyrCatalogRenderList();
+  zephyrCatalogRenderDetail();
+}
+
+function updateAppTabOverflowState() {
+  const tabStrip = document.querySelector(".app-tabs");
+  if (!tabStrip) return;
+  const maxScroll = Math.max(0, tabStrip.scrollWidth - tabStrip.clientWidth);
+  const epsilon = 4;
+  tabStrip.classList.toggle("can-scroll-left", tabStrip.scrollLeft > epsilon);
+  tabStrip.classList.toggle("can-scroll-right", maxScroll - tabStrip.scrollLeft > epsilon);
+}
+
+function activateAppTab(target) {
+  $$(".app-tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.appTab === target));
+  $$(".tab-content").forEach((content) => content.classList.toggle("active", content.dataset.appContent === target));
+  const selector = document.getElementById("appTabSelect");
+  if (selector && selector.value !== target) selector.value = target;
+  const activeTabButton = document.querySelector(`.app-tab[data-app-tab="${target}"]`);
+  activeTabButton?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+  window.setTimeout(updateAppTabOverflowState, 220);
+}
+
+async function openAppTab(target) {
+  activateAppTab(target);
+
+  if (target === "packages") {
+    pkgLoadExisting();
+  }
+  if (target === "board-editor") {
+    updateBoardEditorMeta();
+    loadBoardEditorDrafts();
+    loadBoardEditorDeviceLibrary();
+  }
+  if (target === "peripherals") {
+    pcfgLoadBoards();
+  }
+  if (target === "lvgl-layout") {
+    lvglRender();
+  }
+  if (target === "protocols") {
+    protocolRender();
+  }
+  if (target === "interrupts") {
+    interruptRender();
+  }
+  if (target === "clock") {
+    try {
+      await boardLoadPromise;
+    } catch {
+      // Keep the tab responsive even if the board load failed.
+    }
+    await clkLoadTrees();
+  }
+  if (target === "sensors") {
+    snsLoadJobs();
+  }
+  if (target === "zephyr-catalog") {
+    void zephyrCatalogLoad();
+  }
+}
+
+async function zephyrCatalogUseMcuInConfigurator(item) {
+  const boardId = zephyrCatalogResolveBoardId(item);
+  activateAppTab("configurator");
+  if (boardId) {
+    await loadBoard(boardId);
+    const matchedBoard = availableBoards.find((board) => board.id === boardId);
+    toast(`Loaded board ${(matchedBoard?.board || matchedBoard?.name || boardId)} from the Zephyr catalog.`);
+    return;
+  }
+  toast(`No local board matched ${item.name}. Copied part into Package Manager instead.`);
+  await zephyrCatalogUseMcuInPackage(item);
+}
+
+async function zephyrCatalogUseMcuInPackage(item) {
+  activateAppTab("packages");
+  const input = $("#mcuPartInput");
+  if (input) {
+    input.value = zephyrCatalogInferPart(item);
+    await mcuLookup();
+  }
+}
+
+async function zephyrCatalogUseSensorInParser(item) {
+  activateAppTab("sensors");
+  const input = $("#snsPartInput");
+  if (input) {
+    input.value = zephyrCatalogInferPart(item);
+    await snsIdentifySensor();
+  }
+}
+
+async function zephyrCatalogUseSensorInConfigurator(item) {
+  const device = zephyrCatalogSensorDevice(item);
+  zephyrCatalogUpsertExternalDevice(device);
+  activateAppTab("configurator");
+  renderConfigPanel();
+  toast(`Added ${device.display} to the Pin Configurator device catalog.`);
+}
+
+async function zephyrCatalogUseSensorInBoardEditor(item) {
+  const entry = zephyrCatalogBoardLibraryEntry(item);
+  zephyrCatalogUpsertBoardLibraryEntry(entry);
+  activateAppTab("board-editor");
+  loadBoardEditorDeviceLibrary();
+  const select = $("#boardEditorDeviceLibrary");
+  if (select) {
+    select.value = entry.key;
+  }
+  addBoardEditorLibraryDevice();
+}
+
+async function zephyrCatalogHandleAction(action, item) {
+  try {
+    if (action === "use-mcu-configurator") {
+      await zephyrCatalogUseMcuInConfigurator(item);
+      return;
+    }
+    if (action === "use-mcu-package") {
+      await zephyrCatalogUseMcuInPackage(item);
+      return;
+    }
+    if (action === "use-sensor-configurator") {
+      await zephyrCatalogUseSensorInConfigurator(item);
+      return;
+    }
+    if (action === "use-sensor-parser") {
+      await zephyrCatalogUseSensorInParser(item);
+      return;
+    }
+    if (action === "use-sensor-board-editor") {
+      await zephyrCatalogUseSensorInBoardEditor(item);
+    }
+  } catch (error) {
+    toast(`Zephyr catalog action failed: ${error.message}`);
+  }
+}
+
+async function zephyrCatalogReadResponse(response) {
+  const contentType = (response.headers.get("content-type") || "").toLowerCase();
+  const rawText = await response.text();
+  if (contentType.includes("application/json")) {
+    try {
+      return { payload: JSON.parse(rawText), rawText, contentType };
+    } catch {
+      return { payload: null, rawText, contentType };
+    }
+  }
+  return { payload: null, rawText, contentType };
+}
+
+function zephyrCatalogResponseError(response, parsed) {
+  const origin = `${window.location.protocol}//${window.location.host}`;
+  const snippet = String(parsed?.rawText || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80);
+
+  if (!response.ok && parsed?.contentType.includes("text/html")) {
+    return new Error(
+      `Catalog endpoint is unavailable on ${origin} (HTTP ${response.status}). This usually means the page is connected to an older server instance that does not expose /api/zephyr/catalog.`
+    );
+  }
+  if (!response.ok) {
+    return new Error(parsed?.payload?.error || `Unable to load catalog (HTTP ${response.status}).`);
+  }
+  if (!parsed?.payload) {
+    return new Error(
+      `Catalog endpoint on ${origin} did not return JSON. Received ${parsed?.contentType || "unknown content"}${snippet ? `: ${snippet}` : ""}`
+    );
+  }
+  return null;
+}
+
+async function zephyrCatalogLoad(options = {}) {
+  const { refresh = false } = options;
+  const rootInput = $("#zephyrCatalogRoot");
+  const root = rootInput?.value.trim() || zephyrCatalogStorageRoot();
+  const summary = $("#zephyrCatalogSummary");
+  if (summary) {
+    summary.textContent = "Loading Zephyr MCU and sensor catalog...";
+  }
+
+  const params = new URLSearchParams();
+  if (root) params.set("zephyr_root", root);
+  if (refresh) params.set("refresh", "1");
+
+  try {
+    const response = await fetch(`/api/zephyr/catalog?${params.toString()}`);
+    const parsed = await zephyrCatalogReadResponse(response);
+    const responseError = zephyrCatalogResponseError(response, parsed);
+    if (responseError) {
+      throw responseError;
+    }
+    const payload = parsed.payload;
+    zephyrCatalogRoot = payload.root || root;
+    zephyrCatalogSummary = payload.summary || { mcu_count: 0, sensor_count: 0 };
+    zephyrCatalogItems = [
+      ...(payload.mcus || []),
+      ...(payload.sensors || []),
+    ];
+    if (rootInput) {
+      rootInput.value = zephyrCatalogRoot;
+    }
+    zephyrCatalogSaveRoot(zephyrCatalogRoot);
+    if (!zephyrCatalogItems.some((item) => item.key === zephyrCatalogActiveKey)) {
+      zephyrCatalogActiveKey = zephyrCatalogItems[0]?.key || "";
+    }
+    zephyrCatalogRender();
+  } catch (error) {
+    zephyrCatalogItems = [];
+    zephyrCatalogActiveKey = "";
+    zephyrCatalogSummary = { mcu_count: 0, sensor_count: 0 };
+    zephyrCatalogRender();
+    const detail = $("#zephyrCatalogDetail");
+    if (detail) {
+      detail.innerHTML = `<div class="zcatalog-empty">${escapeHtml(error.message)}</div>`;
+    }
+  }
+}
+
+function zephyrCatalogInit() {
+  const rootInput = $("#zephyrCatalogRoot");
+  const refreshButton = $("#zephyrCatalogRefresh");
+  const kindSelect = $("#zephyrCatalogKind");
+  const searchInput = $("#zephyrCatalogSearch");
+  if (!rootInput || !refreshButton || !kindSelect || !searchInput) {
+    return;
+  }
+
+  rootInput.value = zephyrCatalogStorageRoot();
+  refreshButton.addEventListener("click", () => void zephyrCatalogLoad({ refresh: true }));
+  rootInput.addEventListener("change", () => void zephyrCatalogLoad({ refresh: true }));
+  kindSelect.addEventListener("change", () => {
+    zephyrCatalogFilter = kindSelect.value;
+    zephyrCatalogRender();
+  });
+  searchInput.addEventListener("input", () => {
+    zephyrCatalogSearch = searchInput.value;
+    zephyrCatalogRender();
+  });
+}
+
+function lvglPreset(presetKey) {
+  return window.LvglModel?.preset(presetKey) || LVGL_LAYOUT_PRESETS[presetKey] || LVGL_LAYOUT_PRESETS.phone;
+}
+
+function lvglScreenNodeForPreset(presetKey, id = "screen_root", name = "screen_main") {
+  return window.LvglModel?.createScreenNode(presetKey, id, name) || {
+    id,
+    type: "screen",
+    name,
+    text: "Main Screen",
+    x: 0,
+    y: 0,
+    w: lvglPreset(presetKey).width,
+    h: lvglPreset(presetKey).height,
+    bg: "#0f172a",
+    color: "#f8fafc",
+    radius: 24,
+  };
+}
+
+function lvglDefaultState() {
+  return window.LvglModel?.defaultState() || {
+    preset: "phone",
+    currentScreenId: "screen_root",
+    startupScreenId: "screen_root",
+    selectedId: "screen_root",
+    code: "",
+    simulation: {
+      running: false,
+      activeScreenId: "screen_root",
+      log: ["Simulation is idle."],
+    },
+    screens: [{
+      ...lvglScreenNodeForPreset("phone"),
+      nodes: [],
+    }],
+  };
+}
+
+function lvglEnsureState() {
+  lvglLayoutState = window.LvglModel?.normalizeState(lvglLayoutState, {
+    cloneJson,
+  }) || lvglLayoutState || lvglDefaultState();
+  return lvglLayoutState;
+}
+
+function lvglWidgetSupportsAction(type) {
+  return window.LvglRegistry?.widgetSupportsAction(type) || (type && type !== "screen");
+}
+
+function lvglTransition(key) {
+  return LVGL_SCREEN_TRANSITIONS[key] || LVGL_SCREEN_TRANSITIONS.move_left;
+}
+
+function lvglCodeSymbol(name, fallback = "node") {
+  const raw = String(name || fallback)
+    .trim()
+    .replace(/[^a-zA-Z0-9_]+/g, "_")
+    .replace(/^_+/, "");
+  const normalized = raw || fallback;
+  return /^[A-Za-z_]/.test(normalized) ? normalized : `_${normalized}`;
+}
+
+function lvglNodeEventType(node) {
+  return window.LvglRegistry?.nodeEventType(node) || "";
+}
+
+function lvglNodeHookName(screenSymbol, node) {
+  return `ui_on_${screenSymbol}_${lvglCodeSymbol(node.name, node.type)}_event`;
+}
+
+function lvglBuildPrjConf() {
+  return window.LvglBuild?.buildPrjConf(lvglEnsureState()) || "CONFIG_DISPLAY=y\nCONFIG_LVGL=y";
+}
+
+function lvglBuildHeader() {
+  return window.LvglBuild?.buildHeader(lvglEnsureState()) || "";
+}
+
+function lvglBuildHooksHeader() {
+  return window.LvglBuild?.buildHooksHeader(lvglEnsureState()) || "";
+}
+
+function lvglBuildHooksSource() {
+  return window.LvglBuild?.buildHooksSource(lvglEnsureState()) || "";
+}
+
+function lvglBuildIntegrationGuide() {
+  const state = lvglEnsureState();
+  const issues = window.LvglModel?.validateState(state) || [];
+  return window.LvglBuild?.buildIntegrationGuide(state, issues) || "";
+}
+
+function lvglSyncGeneratedOutputs(rebuildCode = false) {
+  const state = lvglEnsureState();
+  if (rebuildCode || !state.code) {
+    state.code = lvglBuildCode();
+  }
+  const artifacts = window.LvglBuild?.buildArtifacts(state) || {
+    overlay: "",
+    prj_conf: lvglBuildPrjConf(),
+    code: state.code || "",
+    header: lvglBuildHeader(),
+    hooksHeader: lvglBuildHooksHeader(),
+    hooks: lvglBuildHooksSource(),
+    integration: lvglBuildIntegrationGuide(),
+    validation: "",
+    styleSchema: "",
+  };
+  generatedFragments.lvgl = {
+    ...artifacts,
+    code: state.code || artifacts.code || "",
+  };
+  refreshGeneratedOutputs();
+}
+
+function lvglActivateSimulationScreen(screenId, reason = "") {
+  const state = lvglEnsureState();
+  const target = lvglFindScreen(screenId);
+  if (!target) return;
+  state.simulation.activeScreenId = target.id;
+  if (reason) {
+    lvglAddLog(`${reason} -> ${target.name}`);
+  }
+  if (target.entryActionName) {
+    lvglAddLog(`Enter ${target.name}: ${target.entryActionName}()`);
+  }
+}
+
+function lvglFindScreen(screenId) {
+  const state = lvglEnsureState();
+  return state.screens.find(screen => screen.id === screenId) || state.screens[0] || null;
+}
+
+function lvglCurrentScreen() {
+  const state = lvglEnsureState();
+  const targetId = state.simulation.running
+    ? (state.simulation.activeScreenId || state.currentScreenId)
+    : state.currentScreenId;
+  return lvglFindScreen(targetId);
+}
+
+function lvglCurrentDesignScreen() {
+  const state = lvglEnsureState();
+  return lvglFindScreen(state.currentScreenId);
+}
+
+function lvglFindNode(nodeId) {
+  const state = lvglEnsureState();
+  for (const screen of state.screens) {
+    if (screen.id === nodeId) {
+      return { screen, node: screen, isScreen: true };
+    }
+    const node = (screen.nodes || []).find(entry => entry.id === nodeId);
+    if (node) {
+      return { screen, node, isScreen: false };
+    }
+  }
+  const fallback = state.screens[0] || null;
+  return fallback ? { screen: fallback, node: fallback, isScreen: true } : null;
+}
+
+function lvglSelectedNode() {
+  const found = lvglFindNode(lvglEnsureState().selectedId);
+  return found ? found.node : null;
+}
+
+function lvglClampNode(node, screen = null) {
+  const targetScreen = screen || lvglCurrentDesignScreen();
+  if (!node || node.type === "screen" || !targetScreen) return;
+  node.w = Math.max(36, Number(node.w) || 120);
+  node.h = Math.max(24, Number(node.h) || 48);
+  node.x = Math.max(0, Math.min(targetScreen.w - node.w, Number(node.x) || 0));
+  node.y = Math.max(0, Math.min(targetScreen.h - node.h, Number(node.y) || 0));
+}
+
+function lvglAllocateNodeId(prefix) {
+  const id = `${prefix}_${lvglLayoutNextId}`;
+  lvglLayoutNextId += 1;
+  return id;
+}
+
+function lvglCreateNode(type) {
+  const state = lvglEnsureState();
+  const screen = lvglCurrentDesignScreen();
+  const base = window.LvglRegistry?.createNode(type, {
+    screen,
+    presetKey: state.preset,
+    allocateNodeId: lvglAllocateNodeId,
+    createScreenNode: lvglScreenNodeForPreset,
+  }) || {
+    id: lvglAllocateNodeId(type),
+    type,
+    name: `${type}_${(screen?.nodes?.length || 0) + 1}`,
+    text: type.charAt(0).toUpperCase() + type.slice(1),
+    x: 16,
+    y: 16,
+    w: 160,
+    h: 56,
+    bg: "#334155",
+    color: "#f8fafc",
+    radius: 14,
+    action: "none",
+    targetScreenId: "",
+    transition: "move_left",
+    transitionDuration: 220,
+  };
+  lvglClampNode(base, screen);
+  return base;
+}
+
+function lvglAddLog(message) {
+  return window.LvglUi?.addLog(message);
+}
+
+function lvglRenderSimLog() {
+  return window.LvglUi?.renderSimLog();
+}
+
+function lvglRenderTree() {
+  return window.LvglUi?.renderTree();
+}
+
+function lvglNodeLabel(node) {
+  return escapeHtml(window.LvglRegistry?.nodeLabel(node) || node.name);
+}
+
+function lvglRenderStage() {
+  return window.LvglUi?.renderStage();
+}
+
+function lvglRenderProps() {
+  return window.LvglUi?.renderProps();
+}
+
+function lvglBuildCode() {
+  return window.LvglBuild?.buildCode(lvglEnsureState()) || "";
+}
+
+function lvglRender() {
+  return window.LvglUi?.render();
+}
+
+function lvglResetLayout() {
+  return window.LvglUi?.resetLayout();
+}
+
+function lvglApplyPreset(presetKey) {
+  return window.LvglUi?.applyPreset(presetKey);
+}
+
+function lvglAddWidget(type) {
+  return window.LvglUi?.addWidget(type);
+}
+
+function lvglSerializeState() {
+  return window.LvglUi?.serializeState() || cloneJson(lvglEnsureState());
+}
+
+function lvglRestoreState(nextState, options = {}) {
+  return window.LvglUi?.restoreState(nextState, options);
+}
+
+function lvglInit() {
+  return window.LvglUi?.init();
+}
+
+let lvglPendingImportLayout = null;
+let lvglPendingImportSource = "";
+
+const LVGL_IMPORT_MODES = {
+  json: {
+    sourceKind: "json",
+    sourcePlaceholder: "C:\\GIT\\layouts\\ui_layout.lvgl.json or https://example.com/ui_layout.json",
+    sourceButton: "Load Source",
+    pasteLabel: "Paste JSON",
+    pastePlaceholder: "Paste a saved GUI JSON document or a .zpinproj payload here...",
+    pasteButton: "Preview Pasted JSON",
+    fileAccept: ".json,.zpinproj,.lvgl",
+    fileHint: "Choose JSON",
+    previewEmpty: "Load a file, URL, or pasted JSON to preview the imported GUI.",
+    allowPaste: true,
+  },
+  zephyr: {
+    sourceKind: "zephyr",
+    sourcePlaceholder: "C:\\GIT\\app, C:\\GIT\\app\\prj.conf, board.overlay, or a raw Zephyr config snippet",
+    sourceButton: "Load Zephyr Source",
+    pasteLabel: "Paste Zephyr Config",
+    pastePlaceholder: "Paste prj.conf, LVGL Kconfig, or display devicetree text with width/height or LVGL resolution settings...",
+    pasteButton: "Preview Zephyr Display",
+    fileAccept: ".conf,.overlay,.dts,.dtsi,.txt,.config",
+    fileHint: "Choose Zephyr File",
+    previewEmpty: "Load a Zephyr project directory, Kconfig file, or devicetree text to infer the LVGL display size.",
+    allowPaste: true,
+  },
+  "display-pdf": {
+    sourceKind: "display-pdf",
+    sourcePlaceholder: "C:\\GIT\\displays\\panel.pdf or https://vendor.example/display.pdf",
+    sourceButton: "Load PDF Source",
+    pasteLabel: "Paste PDF",
+    pastePlaceholder: "Display PDF import works from a local file, file path, or URL.",
+    pasteButton: "Preview PDF",
+    fileAccept: ".pdf,application/pdf",
+    fileHint: "Choose PDF",
+    previewEmpty: "Load a display datasheet PDF to infer the panel resolution and seed the LVGL canvas.",
+    allowPaste: false,
+  },
+};
+
+function lvglCurrentImportMode() {
+  return $("#lvglImportMode")?.value || "json";
+}
+
+function lvglImportModeConfig(mode = lvglCurrentImportMode()) {
+  return LVGL_IMPORT_MODES[mode] || LVGL_IMPORT_MODES.json;
+}
+
+function lvglImportSourcePayload(source, mode = lvglCurrentImportMode()) {
+  const payload = /^https?:\/\//i.test(source)
+    ? { url: source }
+    : { file_path: source };
+  return {
+    ...payload,
+    source_kind: lvglImportModeConfig(mode).sourceKind,
+  };
+}
+
+function lvglPreviewEmptyMessage(mode = lvglCurrentImportMode()) {
+  return lvglImportModeConfig(mode).previewEmpty;
+}
+
+function lvglUpdateImportModeUi(mode = lvglCurrentImportMode()) {
+  const config = lvglImportModeConfig(mode);
+  const source = $("#lvglImportSource");
+  const sourceBtn = $("#lvglBtnPreviewSource");
+  const browseBtn = $("#lvglBtnBrowseImportSource");
+  const pasteLabel = $("#lvglImportJsonLabel");
+  const pasteInput = $("#lvglImportJson");
+  const pasteBtn = $("#lvglBtnPreviewJson");
+  const fileInput = $("#lvglImportFile");
+  const fileLabel = $("#lvglImportFileTrigger");
+  if (source) source.placeholder = config.sourcePlaceholder;
+  if (sourceBtn) sourceBtn.textContent = config.sourceButton;
+  if (browseBtn) browseBtn.textContent = mode === "zephyr" ? "Browse Folder" : "Browse File";
+  if (pasteLabel) pasteLabel.textContent = config.pasteLabel;
+  if (pasteInput) {
+    pasteInput.placeholder = config.pastePlaceholder;
+    pasteInput.disabled = !config.allowPaste;
+    pasteInput.hidden = !config.allowPaste;
+  }
+  if (pasteBtn) {
+    pasteBtn.textContent = config.pasteButton;
+    pasteBtn.disabled = !config.allowPaste;
+    pasteBtn.hidden = !config.allowPaste;
+  }
+  if (fileInput) fileInput.setAttribute("accept", config.fileAccept);
+  if (fileLabel) fileLabel.textContent = config.fileHint;
+  lvglClearImportPreview(mode);
+}
+
+function lvglClearImportPreview(mode = lvglCurrentImportMode()) {
+  lvglPendingImportLayout = null;
+  lvglPendingImportSource = "";
+  const preview = $("#lvglImportPreview");
+  if (preview) {
+    preview.className = "lvgl-layout-empty compact";
+    preview.textContent = lvglPreviewEmptyMessage(mode);
+  }
+  const applyBtn = $("#lvglBtnApplyImport");
+  if (applyBtn) applyBtn.disabled = true;
+}
+
+function lvglRenderImportPreview(layout, sourceLabel = "external source") {
+  const preview = $("#lvglImportPreview");
+  if (!preview) return;
+  const normalized = window.LvglModel?.normalizeState(layout, { cloneJson }) || layout;
+  const issues = window.LvglModel?.validateState(normalized) || [];
+  const widgetCount = (normalized.screens || []).reduce((total, screen) => total + ((screen.nodes || []).length), 0);
+  const primaryScreen = normalized.screens?.[0] || null;
+  preview.className = "";
+  preview.innerHTML = `
+    <div class="lvgl-layout-section">
+      <div class="lvgl-layout-section-title">Import Preview</div>
+      <div class="lvgl-layout-form">
+        <div class="lvgl-layout-field full">
+          <label>Source</label>
+          <input value="${escapeHtml(sourceLabel)}" disabled>
+        </div>
+        <div class="lvgl-layout-field">
+          <label>Screens</label>
+          <input value="${normalized.screens?.length || 0}" disabled>
+        </div>
+        <div class="lvgl-layout-field">
+          <label>Widgets</label>
+          <input value="${widgetCount}" disabled>
+        </div>
+        <div class="lvgl-layout-field">
+          <label>Shared Styles</label>
+          <input value="${normalized.sharedStyles?.length || 0}" disabled>
+        </div>
+        <div class="lvgl-layout-field">
+          <label>Display</label>
+          <input value="${primaryScreen ? `${primaryScreen.w || 0} x ${primaryScreen.h || 0}` : "Unknown"}" disabled>
+        </div>
+        <div class="lvgl-layout-field">
+          <label>Issues</label>
+          <input value="${issues.length}" disabled>
+        </div>
+        <div class="lvgl-layout-field full">
+          <label>Startup Screen</label>
+          <input value="${escapeHtml(normalized.startupScreenId || normalized.currentScreenId || "screen_root")}" disabled>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+async function lvglPreviewImport(payload) {
+  const res = await fetch("/api/lvgl/import", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const result = await res.json();
+  if (!res.ok) {
+    throw new Error(result.error || "Failed to import GUI layout");
+  }
+  lvglPendingImportLayout = result.layout || null;
+  lvglPendingImportSource = result.source || "external source";
+  lvglRenderImportPreview(lvglPendingImportLayout, lvglPendingImportSource);
+  const applyBtn = $("#lvglBtnApplyImport");
+  if (applyBtn) applyBtn.disabled = !lvglPendingImportLayout;
+  return result;
+}
+
+function lvglResetImportModal() {
+  $("#lvglImportMode") && ($("#lvglImportMode").value = "json");
+  $("#lvglImportSource") && ($("#lvglImportSource").value = "");
+  $("#lvglImportJson") && ($("#lvglImportJson").value = "");
+  $("#lvglImportFileName") && ($("#lvglImportFileName").textContent = "No file selected");
+  $("#lvglImportFile") && ($("#lvglImportFile").value = "");
+  lvglUpdateImportModeUi("json");
+}
+
+async function lvglReadSelectedFile(file, mode = lvglCurrentImportMode()) {
+  if (mode === "display-pdf") {
+    const buffer = await file.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    let binary = "";
+    const chunkSize = 0x8000;
+    for (let index = 0; index < bytes.length; index += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+    }
+    return {
+      source_kind: lvglImportModeConfig(mode).sourceKind,
+      binary_base64: btoa(binary),
+      filename: file.name,
+    };
+  }
+  return await file.text();
+}
+
+async function lvglImportFromPending() {
+  if (!lvglPendingImportLayout) {
+    toast("Preview a GUI layout before importing it");
+    return;
+  }
+  lvglRestoreState(lvglPendingImportLayout, {
+    logMessage: `Imported layout from ${lvglPendingImportSource}`,
+  });
+  $("#lvglImportModal")?.classList.remove("show");
+  toast(`Imported GUI from ${lvglPendingImportSource}`);
+}
+
+async function lvglSaveLayoutFile(filePath) {
+  const res = await fetch("/api/lvgl/export", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      file_path: filePath,
+      layout: lvglSerializeState(),
+    }),
+  });
+  const result = await res.json();
+  if (result.saved) {
+    toast(`GUI saved to ${result.file_path}`);
+  } else {
+    toast(`Error: ${result.error}`);
+  }
+}
+
+// Protocol and interrupt features are loaded from dedicated scripts.
 
 function appendOutputToggle() {
   const toggle = document.createElement("div");
@@ -363,28 +1660,43 @@ function renderOutputTabs() {
 
 // ── Board loading ────────────────────────────────────────────────────
 
+let boardLoadPromise = Promise.resolve();
+
 async function loadBoardList() {
   const res = await fetch("/api/boards");
   const boards = await res.json();
+  availableBoards = Array.isArray(boards) ? boards : [];
   boardSelect.innerHTML = "";
-  boards.forEach(b => {
+  availableBoards.forEach(b => {
     const opt = document.createElement("option");
     opt.value = b.id;
     const pkg = b.package ? ` – ${b.package}` : "";
     opt.textContent = `${b.name}${pkg}`;
     boardSelect.appendChild(opt);
   });
-  if (boards.length) {
-    await loadBoard(boards[0].id);
+  if (availableBoards.length) {
+    await loadBoard(availableBoards[0].id);
   }
 }
 
-async function loadBoard(name) {
+async function performBoardLoad(name) {
   const res = await fetch(`/api/board/${name}`);
-  applyBoardDefinition(await res.json(), { syncEditor: true });
+  const match = [...boardSelect.options].find(opt => opt.value === name);
+  if (match) {
+    boardSelect.value = match.value;
+  }
+  await applyBoardDefinition(await res.json(), { syncEditor: true });
 }
 
-function applyBoardDefinition(nextBoard, options = {}) {
+function loadBoard(name) {
+  boardLoadPromise = performBoardLoad(name).catch(err => {
+    console.error("Failed to load board:", err);
+    throw err;
+  });
+  return boardLoadPromise;
+}
+
+async function applyBoardDefinition(nextBoard, options = {}) {
   const { syncEditor = false } = options;
 
   boardData = nextBoard;
@@ -393,10 +1705,22 @@ function applyBoardDefinition(nextBoard, options = {}) {
   periphCoreStates = {};
   externalDeviceStates = {};
   selectedPin = null;
+  highlightedPeripheral = "";
+  highlightedPeripheralSignal = "";
   generatedOverlay = "";
   generatedConf = "";
   generatedTargets = {};
+  generatedFragments = {
+    pin: { overlay: "", prj_conf: "" },
+    modules: { overlay: "", prj_conf: "" },
+    peripherals: { overlay: "", prj_conf: "" },
+    clock: { overlay: "", prj_conf: "" },
+    protocols: { overlay: "", prj_conf: "", code: "", header: "", integration: "" },
+    lvgl: { overlay: "", prj_conf: "", code: "", header: "", hooksHeader: "", hooks: "", integration: "" },
+  };
   renderOutputTabs();
+  protocolSyncGeneratedOutputs();
+  lvglSyncGeneratedOutputs(false);
 
   chipLabel.textContent = boardData.soc;
   statsLabel.textContent =
@@ -417,6 +1741,10 @@ function applyBoardDefinition(nextBoard, options = {}) {
   renderPeripherals();
   renderChip();
   renderConfigPanel();
+  interruptRender();
+  clkAutoSelectTreeForBoard().catch(err => {
+    console.error("Failed to sync clock tree for board:", err);
+  });
 }
 
 function currentBoardForEditor() {
@@ -464,12 +1792,24 @@ function formatBoardDraftDate(timestamp) {
 function renderBoardEditorDrafts() {
   const list = $("#boardEditorDraftList");
   if (!list) return;
+  const filter = resolveThresholdSearch("boardEditorDraftSearch", boardEditorDrafts.length);
   if (!boardEditorDrafts.length) {
     list.innerHTML = '<div class="empty-state" style="padding: 18px 12px;">No saved board drafts yet.</div>';
     return;
   }
 
-  list.innerHTML = boardEditorDrafts.map(draft => `
+  const drafts = boardEditorDrafts.filter((draft) => {
+    if (!filter) return true;
+    const haystack = `${draft.filename} ${draft.updated_at || ""} ${draft.size || ""}`.toLowerCase();
+    return haystack.includes(filter);
+  });
+
+  if (!drafts.length) {
+    list.innerHTML = '<div class="empty-state" style="padding: 18px 12px;">No saved board drafts match the current search.</div>';
+    return;
+  }
+
+  list.innerHTML = drafts.map(draft => `
     <div class="board-editor-draft-item" data-board-draft="${escapeHtml(draft.filename)}">
       <div class="board-editor-draft-name">${escapeHtml(draft.filename)}</div>
       <div class="board-editor-draft-meta">${draft.size} bytes • ${escapeHtml(formatBoardDraftDate(draft.updated_at))}</div>
@@ -750,11 +2090,13 @@ function applyBoardEditorCanvasZoom() {
 }
 
 function boardEditorCanvasZoomIn() {
+  boardEditorCanvasFitMode = false;
   boardEditorCanvasZoom = Math.min(ZOOM_MAX, boardEditorCanvasZoom + ZOOM_STEP);
   applyBoardEditorCanvasZoom();
 }
 
 function boardEditorCanvasZoomOut() {
+  boardEditorCanvasFitMode = false;
   boardEditorCanvasZoom = Math.max(ZOOM_MIN, boardEditorCanvasZoom - ZOOM_STEP);
   applyBoardEditorCanvasZoom();
 }
@@ -762,11 +2104,25 @@ function boardEditorCanvasZoomOut() {
 function boardEditorCanvasFit() {
   const shell = $("#boardEditorCanvasShell");
   if (!shell) return;
+  boardEditorCanvasFitMode = true;
   const areaW = Math.max(200, shell.clientWidth - 32);
   const areaH = Math.max(180, shell.clientHeight - 32);
   boardEditorCanvasZoom = Math.min(areaW / BOARD_EDITOR_CANVAS_WIDTH, areaH / BOARD_EDITOR_CANVAS_HEIGHT);
   boardEditorCanvasZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, boardEditorCanvasZoom));
   applyBoardEditorCanvasZoom();
+}
+
+function bindBoardEditorCanvasAutoFit() {
+  const shell = $("#boardEditorCanvasShell");
+  if (!shell || typeof ResizeObserver !== "function") return;
+  if (!boardEditorCanvasResizeObserver) {
+    boardEditorCanvasResizeObserver = new ResizeObserver(() => {
+      if (!boardEditorCanvasFitMode) return;
+      boardEditorCanvasFit();
+    });
+  }
+  boardEditorCanvasResizeObserver.disconnect();
+  boardEditorCanvasResizeObserver.observe(shell);
 }
 
 function matchSupportedDeviceForPart(partNumber) {
@@ -859,6 +2215,7 @@ function buildBoardEditorSensorLibraryEntry(job) {
 function renderBoardEditorDeviceLibrary() {
   const select = $("#boardEditorDeviceLibrary");
   if (!select) return;
+  const filter = resolveThresholdSearch("boardEditorDeviceLibrarySearch", boardEditorDeviceLibrary.length);
 
   const placeholder = '<option value="">Supported devices and parsed sensors</option>';
   if (!boardEditorDeviceLibrary.length) {
@@ -866,12 +2223,22 @@ function renderBoardEditorDeviceLibrary() {
     return;
   }
 
+  const filteredEntries = boardEditorDeviceLibrary.filter((entry) => {
+    if (!filter) return true;
+    const haystack = `${entry.label} ${entry.device?.display || ""} ${entry.device?.compatible || ""}`.toLowerCase();
+    return haystack.includes(filter);
+  });
+
   select.innerHTML = [
     placeholder,
-    ...boardEditorDeviceLibrary.map((entry) => (
+    ...filteredEntries.map((entry) => (
       `<option value="${escapeHtml(entry.key)}">${escapeHtml(entry.label)}</option>`
     )),
   ].join("");
+
+  if (!filteredEntries.length) {
+    select.innerHTML = `${placeholder}<option value="" disabled>No library devices match the current search</option>`;
+  }
 }
 
 async function loadBoardEditorDeviceLibrary() {
@@ -885,6 +2252,10 @@ async function loadBoardEditorDeviceLibrary() {
       pins: device.required_signals,
     },
   }));
+
+  zephyrCatalogBoardEditorEntries.forEach((entry) => {
+    entries.push(cloneJson(entry));
+  });
 
   try {
     const res = await fetch("/api/sensor-jobs");
@@ -929,11 +2300,335 @@ function normalizeBoardEditorConnection(connection) {
     board_pin: Number(connection.board_pin),
     device_id: String(connection.device_id || "").trim(),
     device_pin: String(connection.device_pin || "").trim(),
+    route_points: Array.isArray(connection.route_points)
+      ? connection.route_points.map(normalizeBoardEditorRoutePoint).filter(Boolean)
+      : [],
   };
   if (!Number.isFinite(normalized.board_pin) || !normalized.device_id || !normalized.device_pin) {
     return null;
   }
   return normalized;
+}
+
+function normalizeBoardEditorRoutePoint(point) {
+  if (!point || typeof point !== "object") return null;
+  const normalized = {
+    x: Number(point.x),
+    y: Number(point.y),
+  };
+  if (!Number.isFinite(normalized.x) || !Number.isFinite(normalized.y)) {
+    return null;
+  }
+  return normalized;
+}
+
+function boardEditorAlternateLaneOffset(index) {
+  if (!Number.isInteger(index) || index <= 0) return 0;
+  const step = Math.ceil(index / 2);
+  return index % 2 === 1 ? step : -step;
+}
+
+function boardEditorClampCanvasPoint(point) {
+  return {
+    x: Math.max(32, Math.min(BOARD_EDITOR_CANVAS_WIDTH - 32, Number(point.x) || 0)),
+    y: Math.max(32, Math.min(BOARD_EDITOR_CANVAS_HEIGHT - 32, Number(point.y) || 0)),
+  };
+}
+
+function boardEditorNormalizeRect(rect) {
+  return {
+    id: String(rect.id || "rect"),
+    x: Number(rect.x),
+    y: Number(rect.y),
+    width: Number(rect.width),
+    height: Number(rect.height),
+  };
+}
+
+function boardEditorExpandedRect(rect, margin = 14) {
+  const normalized = boardEditorNormalizeRect(rect);
+  return {
+    ...normalized,
+    x: normalized.x - margin,
+    y: normalized.y - margin,
+    width: normalized.width + margin * 2,
+    height: normalized.height + margin * 2,
+  };
+}
+
+function boardEditorEndpointSide(point, rect, preferredSide = "") {
+  const side = String(preferredSide || "").toLowerCase();
+  if (side === "left" || side === "right" || side === "top" || side === "bottom") {
+    return side;
+  }
+  const distances = [
+    { side: "left", value: Math.abs(Number(point.x) - Number(rect.x)) },
+    { side: "right", value: Math.abs(Number(point.x) - (Number(rect.x) + Number(rect.width))) },
+    { side: "top", value: Math.abs(Number(point.y) - Number(rect.y)) },
+    { side: "bottom", value: Math.abs(Number(point.y) - (Number(rect.y) + Number(rect.height))) },
+  ].sort((left, right) => left.value - right.value);
+  return distances[0]?.side || "left";
+}
+
+function boardEditorEscapePoint(anchor, rect, side, margin = 36) {
+  switch (side) {
+    case "right":
+      return boardEditorClampCanvasPoint({ x: Number(rect.x) + Number(rect.width) + margin, y: Number(anchor.y) });
+    case "top":
+      return boardEditorClampCanvasPoint({ x: Number(anchor.x), y: Number(rect.y) - margin });
+    case "bottom":
+      return boardEditorClampCanvasPoint({ x: Number(anchor.x), y: Number(rect.y) + Number(rect.height) + margin });
+    case "left":
+    default:
+      return boardEditorClampCanvasPoint({ x: Number(rect.x) - margin, y: Number(anchor.y) });
+  }
+}
+
+function boardEditorRectIntersectsHorizontal(rect, y, x1, x2) {
+  const minX = Math.min(x1, x2);
+  const maxX = Math.max(x1, x2);
+  return Number(y) > Number(rect.y)
+    && Number(y) < Number(rect.y) + Number(rect.height)
+    && maxX > Number(rect.x)
+    && minX < Number(rect.x) + Number(rect.width);
+}
+
+function boardEditorRectIntersectsVertical(rect, x, y1, y2) {
+  const minY = Math.min(y1, y2);
+  const maxY = Math.max(y1, y2);
+  return Number(x) > Number(rect.x)
+    && Number(x) < Number(rect.x) + Number(rect.width)
+    && maxY > Number(rect.y)
+    && minY < Number(rect.y) + Number(rect.height);
+}
+
+function boardEditorPathPoints(points) {
+  const simplified = [];
+  points.forEach((point) => {
+    const clamped = boardEditorClampCanvasPoint(point);
+    const previous = simplified[simplified.length - 1];
+    if (previous && previous.x === clamped.x && previous.y === clamped.y) {
+      return;
+    }
+    simplified.push(clamped);
+  });
+  return simplified.filter((point, index, list) => {
+    if (index === 0 || index === list.length - 1) return true;
+    const prev = list[index - 1];
+    const next = list[index + 1];
+    const sameX = prev.x === point.x && point.x === next.x;
+    const sameY = prev.y === point.y && point.y === next.y;
+    return !(sameX || sameY);
+  });
+}
+
+function boardEditorPathPenalty(points, obstacles, sourceObstacleId, targetObstacleId) {
+  let penalty = 0;
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const start = points[index];
+    const end = points[index + 1];
+    const horizontal = start.y === end.y;
+    const vertical = start.x === end.x;
+    if (!horizontal && !vertical) {
+      penalty += 1000;
+      continue;
+    }
+    obstacles.forEach((obstacle) => {
+      if (index === 0 && obstacle.id === sourceObstacleId) return;
+      if (index === points.length - 2 && obstacle.id === targetObstacleId) return;
+      const intersects = horizontal
+        ? boardEditorRectIntersectsHorizontal(obstacle, start.y, start.x, end.x)
+        : boardEditorRectIntersectsVertical(obstacle, start.x, start.y, end.y);
+      if (intersects) {
+        penalty += 100;
+      }
+    });
+    penalty += Math.abs(Number(end.x) - Number(start.x)) + Math.abs(Number(end.y) - Number(start.y));
+  }
+  penalty += Math.max(0, points.length - 2) * 6;
+  return penalty;
+}
+
+function boardEditorLaneCandidates(obstacles, axis, start, end, laneIndex) {
+  const offset = boardEditorAlternateLaneOffset(laneIndex) * 26;
+  const low = axis === "x" ? 80 : 60;
+  const high = axis === "x" ? BOARD_EDITOR_CANVAS_WIDTH - 80 : BOARD_EDITOR_CANVAS_HEIGHT - 60;
+  const values = [
+    Number(start),
+    Number(end),
+    (Number(start) + Number(end)) / 2,
+  ];
+  obstacles.forEach((obstacle) => {
+    if (axis === "x") {
+      values.push(Number(obstacle.x) - 28, Number(obstacle.x) + Number(obstacle.width) + 28);
+    } else {
+      values.push(Number(obstacle.y) - 28, Number(obstacle.y) + Number(obstacle.height) + 28);
+    }
+  });
+  values.push(low + 10, high - 10);
+  return [...new Set(values.map((value) => Math.max(low, Math.min(high, Math.round(value + offset)))) )];
+}
+
+function boardEditorObstacleRects(packageLayout, deviceLayouts, sourceDeviceId, targetDeviceId) {
+  const obstacles = [boardEditorExpandedRect({
+    id: "mcu",
+    x: packageLayout.bodyX,
+    y: packageLayout.bodyY,
+    width: packageLayout.bodyW,
+    height: packageLayout.bodyH,
+  })];
+
+  deviceLayouts.forEach((layout) => {
+    const rect = layout.type === "package-device"
+      ? { id: `device:${layout.device.id}`, x: layout.bodyX, y: layout.bodyY, width: layout.bodyW, height: layout.bodyH }
+      : { id: `device:${layout.device.id}`, x: layout.x, y: layout.y, width: layout.width, height: layout.height };
+    if (layout.device.id === sourceDeviceId || layout.device.id === targetDeviceId) {
+      obstacles.push(boardEditorExpandedRect(rect, 8));
+      return;
+    }
+    obstacles.push(boardEditorExpandedRect(rect, 14));
+  });
+
+  return obstacles;
+}
+
+function boardEditorEndpointInfo(endpoint, rect, preferredSide, obstacleId) {
+  const anchor = { x: Number(endpoint.anchorX), y: Number(endpoint.anchorY) };
+  const side = boardEditorEndpointSide(anchor, rect, preferredSide);
+  return {
+    obstacleId,
+    rect,
+    side,
+    anchor,
+    escape: boardEditorEscapePoint(anchor, rect, side),
+  };
+}
+
+function boardEditorAutoRoutePoints(boardPin, devicePin, laneIndex, packageLayout, deviceLayouts, connection) {
+  const targetLayout = deviceLayouts.find((layout) => layout.device.id === connection.device_id);
+  const sourceRect = {
+    x: packageLayout.bodyX,
+    y: packageLayout.bodyY,
+    width: packageLayout.bodyW,
+    height: packageLayout.bodyH,
+  };
+  const targetRect = targetLayout
+    ? (targetLayout.type === "package-device"
+      ? { x: targetLayout.bodyX, y: targetLayout.bodyY, width: targetLayout.bodyW, height: targetLayout.bodyH }
+      : { x: targetLayout.x, y: targetLayout.y, width: targetLayout.width, height: targetLayout.height })
+    : { x: Number(devicePin.anchorX), y: Number(devicePin.anchorY), width: 1, height: 1 };
+
+  const sourceInfo = boardEditorEndpointInfo(boardPin, sourceRect, boardPin.side, "mcu");
+  const targetInfo = boardEditorEndpointInfo(devicePin, targetRect, devicePin.side || devicePin.anchorSide, `device:${connection.device_id}`);
+  const obstacles = boardEditorObstacleRects(packageLayout, deviceLayouts, "", connection.device_id);
+
+  const candidates = [];
+  boardEditorLaneCandidates(obstacles, "x", sourceInfo.escape.x, targetInfo.escape.x, laneIndex).forEach((laneX) => {
+    candidates.push(boardEditorPathPoints([
+      sourceInfo.anchor,
+      sourceInfo.escape,
+      { x: laneX, y: sourceInfo.escape.y },
+      { x: laneX, y: targetInfo.escape.y },
+      targetInfo.escape,
+      targetInfo.anchor,
+    ]));
+  });
+  boardEditorLaneCandidates(obstacles, "y", sourceInfo.escape.y, targetInfo.escape.y, laneIndex).forEach((laneY) => {
+    candidates.push(boardEditorPathPoints([
+      sourceInfo.anchor,
+      sourceInfo.escape,
+      { x: sourceInfo.escape.x, y: laneY },
+      { x: targetInfo.escape.x, y: laneY },
+      targetInfo.escape,
+      targetInfo.anchor,
+    ]));
+  });
+
+  const scored = candidates
+    .map((points) => ({
+      points,
+      penalty: boardEditorPathPenalty(points, obstacles, sourceInfo.obstacleId, targetInfo.obstacleId),
+    }))
+    .sort((left, right) => left.penalty - right.penalty);
+
+  const best = scored[0]?.points || [sourceInfo.anchor, sourceInfo.escape, targetInfo.escape, targetInfo.anchor];
+  return best.slice(1, -1);
+}
+
+function boardEditorBuildWirePath(points) {
+  if (!Array.isArray(points) || points.length < 2) return "";
+  return points
+    .map((point, index) => `${index === 0 ? "M" : "L"} ${Number(point.x)} ${Number(point.y)}`)
+    .join(" ");
+}
+
+function boardEditorResetBadgePosition(routePoints) {
+  if (!Array.isArray(routePoints) || !routePoints.length) return null;
+  const total = routePoints.reduce((acc, point) => ({
+    x: acc.x + Number(point.x),
+    y: acc.y + Number(point.y),
+  }), { x: 0, y: 0 });
+  return boardEditorClampCanvasPoint({
+    x: total.x / routePoints.length,
+    y: total.y / routePoints.length - 22,
+  });
+}
+
+function boardEditorResolvedRoutePoints(connection, boardPin, devicePin, laneIndex) {
+  const packageLayout = connection.__routePackageLayout;
+  const deviceLayouts = connection.__routeDeviceLayouts;
+  const explicit = Array.isArray(connection.route_points)
+    ? connection.route_points.map(normalizeBoardEditorRoutePoint).filter(Boolean)
+    : [];
+  if (explicit.length) {
+    return explicit.map(boardEditorClampCanvasPoint);
+  }
+  return boardEditorAutoRoutePoints(boardPin, devicePin, laneIndex, packageLayout, deviceLayouts, connection);
+}
+
+function boardEditorConnectionLayouts(board, boardPins, devicePins, packageLayout, deviceLayouts) {
+  const entries = board.manual_connections
+    .map((connection, index) => {
+      const boardPin = boardPins.get(Number(connection.board_pin));
+      const devicePin = devicePins.get(`${connection.device_id}:${connection.device_pin}`);
+      if (!boardPin || !devicePin) return null;
+      return {
+        index,
+        connection: {
+          ...connection,
+          __routePackageLayout: packageLayout,
+          __routeDeviceLayouts: deviceLayouts,
+        },
+        boardPin,
+        devicePin,
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => {
+      const leftScore = (Number(left.boardPin.anchorY) + Number(left.devicePin.anchorY)) / 2;
+      const rightScore = (Number(right.boardPin.anchorY) + Number(right.devicePin.anchorY)) / 2;
+      return leftScore - rightScore || left.index - right.index;
+    });
+
+  return entries.map((entry, laneIndex) => {
+    const explicitRoutePoints = Array.isArray(entry.connection.route_points)
+      ? entry.connection.route_points.map(normalizeBoardEditorRoutePoint).filter(Boolean)
+      : [];
+    entry.connection.__packageLayout = board.__packageLayout;
+    entry.connection.__deviceLayouts = board.__deviceLayouts;
+    const routePoints = boardEditorResolvedRoutePoints(entry.connection, entry.boardPin, entry.devicePin, laneIndex);
+    return {
+      ...entry,
+      hasCustomRoute: explicitRoutePoints.length > 0,
+      routePoints,
+      resetBadge: explicitRoutePoints.length > 0 ? boardEditorResetBadgePosition(routePoints) : null,
+      path: boardEditorBuildWirePath([
+        { x: entry.boardPin.anchorX, y: entry.boardPin.anchorY },
+        ...routePoints,
+        { x: entry.devicePin.anchorX, y: entry.devicePin.anchorY },
+      ]),
+    };
+  });
 }
 
 function queueBoardEditorPreviewSync() {
@@ -1313,19 +3008,23 @@ function renderBoardEditorCanvas(board) {
   const packageLayout = buildBoardEditorPackageLayout(board);
   const deviceLayouts = board.external_devices.map(buildBoardEditorDeviceLayout);
   const { boardPins, devicePins } = boardEditorConnectionMaps(packageLayout, deviceLayouts);
+  const connectionLayouts = boardEditorConnectionLayouts(board, boardPins, devicePins, packageLayout, deviceLayouts);
   const parts = [];
   parts.push(`<svg class="board-editor-canvas-svg" viewBox="0 0 ${BOARD_EDITOR_CANVAS_WIDTH} ${BOARD_EDITOR_CANVAS_HEIGHT}" xmlns="http://www.w3.org/2000/svg">`);
   parts.push(`<text x="46" y="44" class="board-editor-mcu-label" font-size="18">${escapeHtml(board.soc || board.board)}</text>`);
   parts.push(`<text x="46" y="66" class="board-editor-mcu-subtitle" font-size="12">${escapeHtml(board.package)} wiring canvas</text>`);
 
-  board.manual_connections.forEach((connection, index) => {
-    const boardPin = boardPins.get(Number(connection.board_pin));
-    const devicePin = devicePins.get(`${connection.device_id}:${connection.device_pin}`);
-    if (!boardPin || !devicePin) return;
-    const bendX = boardPin.anchorX < devicePin.anchorX
-      ? (boardPin.anchorX + devicePin.anchorX) / 2
-      : Math.max(boardPin.anchorX, devicePin.anchorX) + 60;
-    parts.push(`<path class="board-editor-wire" data-wire-index="${index}" d="M ${boardPin.anchorX} ${boardPin.anchorY} L ${bendX} ${boardPin.anchorY} L ${bendX} ${devicePin.anchorY} L ${devicePin.anchorX} ${devicePin.anchorY}" />`);
+  connectionLayouts.forEach((layout) => {
+    parts.push(`<path class="board-editor-wire" data-wire-index="${layout.index}" d="${layout.path}" />`);
+    layout.routePoints.forEach((point, pointIndex) => {
+      parts.push(`<circle class="board-editor-wire-handle" data-wire-index="${layout.index}" data-wire-point-index="${pointIndex}" cx="${point.x}" cy="${point.y}" r="6" />`);
+    });
+    if (layout.hasCustomRoute && layout.resetBadge) {
+      parts.push(`<g class="board-editor-wire-reset" data-wire-reset-index="${layout.index}" transform="translate(${layout.resetBadge.x} ${layout.resetBadge.y})">`);
+      parts.push(`<rect class="board-editor-wire-reset-chip" x="-18" y="-10" width="36" height="20" rx="10" />`);
+      parts.push('<text class="board-editor-wire-reset-label" x="0" y="4" text-anchor="middle">reset</text>');
+      parts.push("</g>");
+    }
   });
 
   parts.push(`<rect class="board-editor-mcu-body" x="${packageLayout.bodyX}" y="${packageLayout.bodyY}" width="${packageLayout.bodyW}" height="${packageLayout.bodyH}" rx="14" />`);
@@ -1414,7 +3113,11 @@ function renderBoardEditorCanvas(board) {
 
   parts.push("</svg>");
   shell.innerHTML = parts.join("");
-  applyBoardEditorCanvasZoom();
+  if (boardEditorCanvasFitMode) {
+    boardEditorCanvasFit();
+  } else {
+    applyBoardEditorCanvasZoom();
+  }
 
   const svg = shell.querySelector("svg");
   if (!svg) return;
@@ -1438,6 +3141,24 @@ function renderBoardEditorCanvas(board) {
   svg.querySelectorAll("[data-wire-index]").forEach((element) => {
     element.addEventListener("click", () => {
       removeBoardEditorConnection(Number(element.dataset.wireIndex));
+    });
+  });
+
+  svg.querySelectorAll("[data-wire-point-index]").forEach((element) => {
+    element.addEventListener("pointerdown", (event) => {
+      startBoardEditorWireHandleDrag(
+        Number(element.dataset.wireIndex),
+        Number(element.dataset.wirePointIndex),
+        event,
+        svg,
+      );
+    });
+  });
+
+  svg.querySelectorAll("[data-wire-reset-index]").forEach((element) => {
+    element.addEventListener("click", (event) => {
+      event.stopPropagation();
+      resetBoardEditorConnectionRoute(Number(element.dataset.wireResetIndex));
     });
   });
 
@@ -1512,6 +3233,16 @@ function removeBoardEditorConnection(index) {
   writeBoardEditorFromCanvas(board, `Removed wire from MCU pin ${connection.board_pin} to ${connection.device_id}.${connection.device_pin}.`);
 }
 
+function resetBoardEditorConnectionRoute(index) {
+  const board = boardEditorPreviewBoard || syncBoardEditorPreview();
+  if (!board || !Number.isInteger(index) || index < 0 || index >= board.manual_connections.length) return;
+  const connection = board.manual_connections[index];
+  if (!connection || !Array.isArray(connection.route_points) || !connection.route_points.length) return;
+  connection.route_points = [];
+  boardEditorCanvasStart = null;
+  writeBoardEditorFromCanvas(board, `Reset the route for MCU pin ${connection.board_pin} to ${connection.device_id}.${connection.device_pin}.`);
+}
+
 function nextBoardEditorDeviceId(board, label) {
   const base = slugifyBoardEditorToken(label);
   const known = new Set(board.external_devices.map(device => device.id));
@@ -1548,7 +3279,7 @@ function addBoardEditorCanvasDevice() {
   }, board.external_devices.length);
   board.external_devices.push(device);
   boardEditorCanvasStart = null;
-  writeBoardEditorFromCanvas(board, `Added ${device.display} to the canvas. Drag it into place and start wiring pins.`);
+  writeBoardEditorFromCanvas(board, `Added ${device.display} to the canvas. Drag it into place, then route wires with the node handles.`);
   if (nameInput) nameInput.value = "";
   if (pinsInput) pinsInput.value = "";
 }
@@ -1660,6 +3391,57 @@ function startBoardEditorDeviceDrag(deviceId, event, svg) {
   document.addEventListener("pointerup", onUp);
 }
 
+function startBoardEditorWireHandleDrag(wireIndex, pointIndex, event, svg) {
+  if (!boardEditorPreviewBoard || !Number.isInteger(wireIndex) || !Number.isInteger(pointIndex)) return;
+  event.preventDefault();
+  event.stopPropagation();
+
+  const connection = boardEditorPreviewBoard.manual_connections[wireIndex];
+  if (!connection) return;
+
+  const { boardPins, devicePins } = boardEditorConnectionMaps(
+    buildBoardEditorPackageLayout(boardEditorPreviewBoard),
+    boardEditorPreviewBoard.external_devices.map(buildBoardEditorDeviceLayout),
+  );
+  const connectionLayouts = boardEditorConnectionLayouts(boardEditorPreviewBoard, boardPins, devicePins);
+  const layout = connectionLayouts.find((entry) => entry.index === wireIndex);
+  if (!layout || !layout.routePoints[pointIndex]) return;
+
+  connection.route_points = layout.routePoints.map((point) => ({ x: point.x, y: point.y }));
+  boardEditorWireHandleDrag = { wireIndex, pointIndex };
+
+  const onMove = (moveEvent) => {
+    if (!boardEditorWireHandleDrag || !boardEditorPreviewBoard) return;
+    const currentSvg = $("#boardEditorCanvasShell svg");
+    if (!currentSvg) return;
+    const nextPoint = boardEditorClampCanvasPoint(boardEditorSvgPoint(currentSvg, moveEvent.clientX, moveEvent.clientY));
+    const activeConnection = boardEditorPreviewBoard.manual_connections[boardEditorWireHandleDrag.wireIndex];
+    if (!activeConnection || !Array.isArray(activeConnection.route_points)) return;
+    activeConnection.route_points[boardEditorWireHandleDrag.pointIndex] = nextPoint;
+    renderBoardEditorCanvas(boardEditorPreviewBoard);
+    setBoardEditorCanvasStatus("Dragging a wire node. Release to keep the updated route.");
+  };
+
+  const onUp = () => {
+    document.removeEventListener("pointermove", onMove);
+    document.removeEventListener("pointerup", onUp);
+    if (!boardEditorPreviewBoard || !boardEditorWireHandleDrag) {
+      boardEditorWireHandleDrag = null;
+      return;
+    }
+    const activeConnection = boardEditorPreviewBoard.manual_connections[boardEditorWireHandleDrag.wireIndex];
+    boardEditorWireHandleDrag = null;
+    if (!activeConnection) return;
+    writeBoardEditorFromCanvas(
+      boardEditorPreviewBoard,
+      `Updated the route for MCU pin ${activeConnection.board_pin} to ${activeConnection.device_id}.${activeConnection.device_pin}.`,
+    );
+  };
+
+  document.addEventListener("pointermove", onMove);
+  document.addEventListener("pointerup", onUp);
+}
+
 function initBoardEditor() {
   const loadBtn = $("#boardEditorBtnLoad");
   const validateBtn = $("#boardEditorBtnValidate");
@@ -1670,6 +3452,7 @@ function initBoardEditor() {
   const importBtn = $("#boardEditorBtnImport");
   const fileInput = $("#boardEditorFileInput");
   const librarySelect = $("#boardEditorDeviceLibrary");
+  const librarySearch = $("#boardEditorDeviceLibrarySearch");
   const addLibraryBtn = $("#boardEditorBtnAddLibrary");
   const addDeviceBtn = $("#boardEditorBtnAddDevice");
   const autoLayoutBtn = $("#boardEditorBtnAutoLayout");
@@ -1677,11 +3460,16 @@ function initBoardEditor() {
   const zoomOutBtn = $("#boardEditorZoomOut");
   const zoomInBtn = $("#boardEditorZoomIn");
   const zoomFitBtn = $("#boardEditorZoomFit");
+  const draftSearch = $("#boardEditorDraftSearch");
   const editor = $("#boardEditorJson");
 
   if (!loadBtn || !validateBtn || !formatBtn || !applyBtn || !saveRepoBtn || !exportBtn || !importBtn || !fileInput || !librarySelect || !addLibraryBtn || !addDeviceBtn || !autoLayoutBtn || !clearLinksBtn || !zoomOutBtn || !zoomInBtn || !zoomFitBtn || !editor) {
     return;
   }
+
+  draftSearch?.addEventListener("input", () => {
+    renderBoardEditorDrafts();
+  });
 
   loadBtn.addEventListener("click", () => {
     if (!boardData) {
@@ -1690,7 +3478,7 @@ function initBoardEditor() {
     }
     boardEditorCanvasStart = null;
     setBoardEditorText(currentBoardForEditor());
-    setBoardEditorCanvasStatus(`Loaded ${boardData.board} into the canvas. Click a package pin, then a device pin to wire them.`, "ok");
+    setBoardEditorCanvasStatus(`Loaded ${boardData.board} into the canvas. Click pins to wire them, then drag wire nodes to clean up routes.`, "ok");
     setBoardEditorStatus(`Loaded ${boardData.board} into the editor.`, "ok");
   });
 
@@ -1770,6 +3558,10 @@ function initBoardEditor() {
     if (pinsInput) pinsInput.value = (entry.device.required_signals || []).join(", ");
   });
 
+  librarySearch?.addEventListener("input", () => {
+    renderBoardEditorDeviceLibrary();
+  });
+
   addLibraryBtn.addEventListener("click", () => {
     try {
       addBoardEditorLibraryDevice();
@@ -1816,6 +3608,7 @@ function initBoardEditor() {
 
   void loadBoardEditorDrafts();
   void loadBoardEditorDeviceLibrary();
+  bindBoardEditorCanvasAutoFit();
   updateBoardEditorCanvasZoomLabel();
 }
 
@@ -1848,13 +3641,32 @@ function renderPeripherals() {
     panel.appendChild(h);
 
     periphs.forEach(p => {
+      const signalSummary = peripheralSignalSummary(p.name);
+      const signalEntries = peripheralSignalEntries(p.name);
       const row = document.createElement("div");
-      row.className = "periph-item" + (periphStates[p.name] ? " enabled" : "");
+      row.className = "periph-item"
+        + (periphStates[p.name] ? " enabled" : "")
+        + (highlightedPeripheral === p.name ? " active" : "");
       row.dataset.periph = p.name;
 
       row.innerHTML = `
         <span class="dot"></span>
-        <span class="periph-label">${p.display}</span>
+        <span class="periph-copy">
+          <span class="periph-label">${p.display}</span>
+          ${signalSummary ? `<span class="periph-signals">${escapeHtml(signalSummary)}</span>` : ""}
+          ${signalEntries.length ? `
+            <span class="periph-signal-chips">
+              ${signalEntries.map(({ signal, pins }) => `
+                <button
+                  type="button"
+                  class="periph-signal-chip${highlightedPeripheral === p.name && highlightedPeripheralSignal === signal ? " active" : ""}"
+                  data-periph-signal="${escapeHtml(signal)}"
+                  title="${escapeHtml(`${signal}: ${pins.join(", ")}`)}"
+                >${escapeHtml(signal)}</button>
+              `).join("")}
+            </span>
+          ` : ""}
+        </span>
         ${boardData.cores && boardData.cores.length > 1 && p.available_cores && p.available_cores.length > 1 ? `
           <select class="periph-core-select" data-periph-core="${p.name}">
             ${p.available_cores.map(coreId => {
@@ -1874,8 +3686,30 @@ function renderPeripherals() {
         coreSelect.addEventListener("click", e => e.stopPropagation());
         coreSelect.addEventListener("change", e => {
           periphCoreStates[p.name] = e.target.value;
+          renderConfigPanel();
+          interruptRefreshIfVisible();
         });
       }
+
+      row.querySelectorAll("[data-periph-signal]").forEach((button) => {
+        button.addEventListener("click", (event) => {
+          event.stopPropagation();
+          const signal = button.dataset.periphSignal || "";
+          const isSameSelection = highlightedPeripheral === p.name && highlightedPeripheralSignal === signal;
+          highlightedPeripheral = isSameSelection ? "" : p.name;
+          highlightedPeripheralSignal = isSameSelection ? "" : signal;
+          renderPeripherals();
+          renderChip();
+        });
+      });
+
+      row.addEventListener("click", () => {
+        const isSameSelection = highlightedPeripheral === p.name && !highlightedPeripheralSignal;
+        highlightedPeripheral = isSameSelection ? "" : p.name;
+        highlightedPeripheralSignal = "";
+        renderPeripherals();
+        renderChip();
+      });
 
       const toggle = row.querySelector(".periph-toggle");
       toggle.addEventListener("click", (e) => {
@@ -1884,11 +3718,472 @@ function renderPeripherals() {
         toggle.classList.toggle("on", periphStates[p.name]);
         row.classList.toggle("enabled", periphStates[p.name]);
         updatePinVisuals();
+        renderConfigPanel();
+        interruptRefreshIfVisible();
       });
 
       panel.appendChild(row);
     });
   }
+}
+
+function pinSupportsPeripheral(pin, peripheralName) {
+  if (!pin || !peripheralName) return false;
+  return Array.isArray(pin.alt_functions)
+    && pin.alt_functions.some((altFunction) => altFunction.peripheral === peripheralName);
+}
+
+function pinSupportsPeripheralSignal(pin, peripheralName, signalName) {
+  if (!pin || !peripheralName || !signalName) return false;
+  const wanted = new Set(signalAliasTokens(signalName));
+  return Array.isArray(pin.alt_functions)
+    && pin.alt_functions.some((altFunction) => {
+      if (altFunction.peripheral !== peripheralName) return false;
+      return signalAliasTokens(altFunction.signal || altFunction.name || altFunction.function_id)
+        .some((token) => wanted.has(token));
+    });
+}
+
+function peripheralSignalMap(peripheralName) {
+  const signals = new Map();
+  if (!boardData || !peripheralName) return signals;
+
+  (boardData.pins || []).forEach((pin) => {
+    (pin.alt_functions || []).forEach((altFunction) => {
+      if (altFunction.peripheral !== peripheralName) return;
+      const signalName = String(altFunction.signal || altFunction.name || `F${altFunction.function_id || "?"}`)
+        .trim()
+        .toUpperCase();
+      if (!signals.has(signalName)) signals.set(signalName, []);
+      const pins = signals.get(signalName);
+      if (!pins.includes(pin.name)) {
+        pins.push(pin.name);
+      }
+    });
+  });
+
+  return signals;
+}
+
+function peripheralSignalSummary(peripheralName) {
+  const signals = [...peripheralSignalMap(peripheralName).entries()]
+    .sort((left, right) => left[0].localeCompare(right[0]));
+
+  if (!signals.length) return "";
+
+  return signals
+    .slice(0, 4)
+    .map(([signal, pins]) => `${signal}: ${pins.slice(0, 3).join(", ")}${pins.length > 3 ? ", ..." : ""}`)
+    .join(" | ");
+}
+
+function peripheralSignalEntries(peripheralName) {
+  return [...peripheralSignalMap(peripheralName).entries()]
+    .sort((left, right) => left[0].localeCompare(right[0]))
+    .map(([signal, pins]) => ({ signal, pins }));
+}
+
+function addPinConflict(conflictMap, pinNum, conflict) {
+  const key = String(pinNum);
+  if (!conflictMap[key]) conflictMap[key] = [];
+  conflictMap[key].push(conflict);
+}
+
+function addConfigurationIssue(issues, issue) {
+  issues.push({
+    severity: "error",
+    affected: [],
+    ...issue,
+  });
+}
+
+function pinConflictSignalKey(af) {
+  if (!af || !af.peripheral || af.peripheral === "gpio") return "";
+  const signal = String(af.signal || af.name || af.function_id || "").trim();
+  if (!signal) return "";
+  return `${af.peripheral}::${signal}`;
+}
+
+function collectConfigurationHealth() {
+  const issues = [];
+  const signalClaims = {};
+  const assignedSignals = assignedSignalsByPeripheral();
+
+  for (const [pinNum, state] of Object.entries(pinStates || {})) {
+    if (!state?.af) continue;
+    const props = state.props || {};
+
+    if (state.af.peripheral !== "gpio" && !periphStates[state.af.peripheral]) {
+      addConfigurationIssue(issues, {
+        id: `pin:${pinNum}:peripheral-disabled`,
+        type: "peripheral-disabled",
+        scope: "pin",
+        pinNum: Number(pinNum),
+        peripheral: state.af.peripheral,
+        signal: state.af.signal || state.af.name || "",
+        title: `Peripheral ${state.af.peripheral} is disabled`,
+        summary: `This pin is configured for ${state.af.peripheral}${state.af.signal ? ` (${state.af.signal})` : ""}, but that peripheral is currently off.`,
+        affected: [
+          `Pin: ${pinLabelForConflict(pinNum)}`,
+          `Peripheral toggle: ${state.af.peripheral}`,
+        ],
+      });
+    }
+
+    if (props.bias_pull_up && props.bias_pull_down) {
+      addConfigurationIssue(issues, {
+        id: `pin:${pinNum}:pull-clash`,
+        type: "pull-clash",
+        scope: "pin",
+        pinNum: Number(pinNum),
+        title: "Pull-up and pull-down are both enabled",
+        summary: "The current bias properties request opposite electrical defaults on the same pad.",
+        affected: [
+          `Pin: ${pinLabelForConflict(pinNum)}`,
+          "bias_pull_up = true",
+          "bias_pull_down = true",
+        ],
+      });
+    }
+
+    const signalKey = pinConflictSignalKey(state.af);
+    if (!signalKey) continue;
+    if (!signalClaims[signalKey]) signalClaims[signalKey] = [];
+    signalClaims[signalKey].push({
+      pinNum: Number(pinNum),
+      peripheral: state.af.peripheral,
+      signal: state.af.signal || state.af.name || `F${state.af.function_id}`,
+    });
+  }
+
+  Object.values(signalClaims).forEach((claims) => {
+    if (!Array.isArray(claims) || claims.length < 2) return;
+    claims.forEach((claim) => {
+      addConfigurationIssue(issues, {
+        id: `pin:${claim.pinNum}:duplicate-signal:${claim.peripheral}:${claim.signal}`,
+        type: "duplicate-signal",
+        scope: "pin",
+        pinNum: claim.pinNum,
+        peripheral: claim.peripheral,
+        signal: claim.signal,
+        otherPins: claims
+          .map((entry) => entry.pinNum)
+          .filter((pinNum) => pinNum !== claim.pinNum),
+        title: `${claim.peripheral}.${claim.signal} is assigned more than once`,
+        summary: `Only one pin assignment should drive ${claim.peripheral}.${claim.signal}.`,
+        affected: claims.map((entry) => `Claimed on ${pinLabelForConflict(entry.pinNum)}`),
+      });
+    });
+  });
+
+  (boardData?.peripherals || []).forEach((peripheral) => {
+    const availableCores = Array.isArray(peripheral.available_cores)
+      ? peripheral.available_cores.filter(Boolean)
+      : [];
+    if (!availableCores.length) return;
+    const selectedCore = String(periphCoreStates[peripheral.name] || "").trim();
+    if (!selectedCore || availableCores.includes(selectedCore)) return;
+    addConfigurationIssue(issues, {
+      id: `peripheral:${peripheral.name}:invalid-core`,
+      type: "invalid-core",
+      scope: "peripheral",
+      peripheral: peripheral.name,
+      selectedCore,
+      availableCores,
+      title: `${peripheral.display || peripheral.name} is mapped to an unavailable core`,
+      summary: `The selected core ${selectedCore} is not listed for ${peripheral.display || peripheral.name}.`,
+      affected: [
+        `Peripheral: ${peripheral.display || peripheral.name}`,
+        `Selected core: ${selectedCore}`,
+        `Available cores: ${availableCores.join(", ")}`,
+      ],
+    });
+  });
+
+  getExternalDeviceCatalog().forEach((device) => {
+    const state = externalDeviceStates[device.id];
+    if (!state?.selected) return;
+    const bus = String(state.bus || device.bus || "").trim();
+    if (!bus) {
+      addConfigurationIssue(issues, {
+        id: `device:${device.id}:missing-bus`,
+        type: "device-missing-bus",
+        scope: "device",
+        deviceId: device.id,
+        title: `${device.display} has no selected bus`,
+        summary: "Choose a concrete board peripheral before generating output for this device.",
+        affected: [`Device: ${device.display}`],
+      });
+      return;
+    }
+
+    if (!periphStates[bus]) {
+      addConfigurationIssue(issues, {
+        id: `device:${device.id}:bus-disabled`,
+        type: "device-bus-disabled",
+        scope: "device",
+        deviceId: device.id,
+        peripheral: bus,
+        title: `${device.display} is bound to a disabled bus`,
+        summary: `${bus} is selected for this device, but the peripheral is currently off.`,
+        affected: [
+          `Device: ${device.display}`,
+          `Selected bus: ${bus}`,
+        ],
+      });
+    }
+
+    const missingSignals = (device.required_signals || []).filter((requiredSignal) => {
+      const aliases = signalAliasTokens(requiredSignal);
+      const assigned = assignedSignals[bus];
+      return !aliases.length || !assigned || !aliases.some((token) => assigned.has(token));
+    });
+    if (missingSignals.length) {
+      addConfigurationIssue(issues, {
+        id: `device:${device.id}:missing-signals`,
+        type: "device-missing-signals",
+        scope: "device",
+        deviceId: device.id,
+        peripheral: bus,
+        missingSignals,
+        title: `${device.display} is missing required bus signals`,
+        summary: `The selected bus ${bus} does not yet have all signals assigned for this device.`,
+        affected: [
+          `Device: ${device.display}`,
+          `Selected bus: ${bus}`,
+          `Missing: ${missingSignals.join(", ")}`,
+        ],
+      });
+    }
+  });
+
+  const byPin = {};
+  issues
+    .filter((issue) => issue.scope === "pin" && Number.isFinite(Number(issue.pinNum)))
+    .forEach((issue) => addPinConflict(byPin, issue.pinNum, issue));
+
+  return {
+    issues,
+    byPin,
+    blockerCount: issues.length,
+    pinIssueCount: issues.filter((issue) => issue.scope === "pin").length,
+    deviceIssueCount: issues.filter((issue) => issue.scope === "device").length,
+    peripheralIssueCount: issues.filter((issue) => issue.scope === "peripheral").length,
+  };
+}
+
+function collectPinConflicts() {
+  return collectConfigurationHealth().byPin;
+}
+
+function pinConflictsFor(pinNum, conflictMap = collectPinConflicts()) {
+  return conflictMap[String(pinNum)] || [];
+}
+
+function pinLabelForConflict(pinNum) {
+  const pin = boardData?.pins?.find((entry) => entry.number === Number(pinNum));
+  if (!pin) return `Pin ${pinNum}`;
+  return `${pin.name} (Pin ${pin.number})`;
+}
+
+function pinConflictHeadline(conflict) {
+  return conflict.title || "Configuration warning";
+}
+
+function pinConflictSummary(conflict) {
+  return conflict.summary || "Review this pin before generating output.";
+}
+
+function pinConflictAffectedItems(conflict) {
+  return Array.isArray(conflict.affected) ? conflict.affected : [];
+}
+
+function renderPinConflictActions(pinNum, conflict) {
+  switch (conflict.type) {
+    case "peripheral-disabled":
+      return `
+        <button class="btn" data-pin-fix="enable-peripheral" data-pin-num="${pinNum}" data-peripheral="${escapeHtml(conflict.peripheral)}">Enable ${escapeHtml(conflict.peripheral)}</button>
+        <button class="btn" data-pin-fix="clear-pin" data-pin-num="${pinNum}">Clear assignment</button>`;
+    case "duplicate-signal":
+      return `
+        <button class="btn" data-pin-fix="clear-other-pins" data-pin-num="${pinNum}" data-other-pins="${(conflict.otherPins || []).join(",")}">Keep this pin</button>
+        <button class="btn" data-pin-fix="clear-pin" data-pin-num="${pinNum}">Clear this pin</button>`;
+    case "pull-clash":
+      return `
+        <button class="btn" data-pin-fix="clear-pull-up" data-pin-num="${pinNum}">Disable pull-up</button>
+        <button class="btn" data-pin-fix="clear-pull-down" data-pin-num="${pinNum}">Disable pull-down</button>`;
+    default:
+      return "";
+  }
+}
+
+function renderPinConflictSection(pinNum, conflicts) {
+  if (!Array.isArray(conflicts) || !conflicts.length) return "";
+  return `
+    <div class="config-section pin-conflict-section">
+      <label>Configuration Health</label>
+      <div class="pin-conflict-summary">${conflicts.length} warning${conflicts.length === 1 ? "" : "s"} detected for this pin.</div>
+      ${conflicts.map((conflict) => `
+        <div class="pin-conflict-card">
+          <div class="pin-conflict-title">${escapeHtml(pinConflictHeadline(conflict))}</div>
+          <div class="pin-conflict-copy">${escapeHtml(pinConflictSummary(conflict))}</div>
+          <div class="pin-conflict-affected">
+            ${(pinConflictAffectedItems(conflict) || []).map((item) => `<div>${escapeHtml(item)}</div>`).join("")}
+          </div>
+          <div class="pin-conflict-actions">
+            ${renderPinConflictActions(pinNum, conflict)}
+          </div>
+        </div>`).join("")}
+    </div>`;
+}
+
+function applyPinConflictFix(action, pinNum, dataset = {}) {
+  const key = String(pinNum);
+  switch (action) {
+    case "enable-peripheral":
+      if (dataset.peripheral in periphStates) {
+        periphStates[dataset.peripheral] = true;
+        toast(`Enabled ${dataset.peripheral}`);
+      }
+      break;
+    case "clear-pin":
+      delete pinStates[key];
+      toast(`Cleared ${pinLabelForConflict(pinNum)}`);
+      break;
+    case "clear-other-pins":
+      String(dataset.otherPins || "")
+        .split(",")
+        .map((value) => Number(value))
+        .filter((value) => Number.isFinite(value))
+        .forEach((otherPinNum) => {
+          delete pinStates[String(otherPinNum)];
+        });
+      toast(`Kept ${pinLabelForConflict(pinNum)} and cleared duplicate signal assignments`);
+      break;
+    case "clear-pull-up":
+      if (!pinStates[key]) pinStates[key] = { af: null, props: {} };
+      if (!pinStates[key].props) pinStates[key].props = {};
+      pinStates[key].props.bias_pull_up = false;
+      toast(`Disabled pull-up on ${pinLabelForConflict(pinNum)}`);
+      break;
+    case "clear-pull-down":
+      if (!pinStates[key]) pinStates[key] = { af: null, props: {} };
+      if (!pinStates[key].props) pinStates[key].props = {};
+      pinStates[key].props.bias_pull_down = false;
+      toast(`Disabled pull-down on ${pinLabelForConflict(pinNum)}`);
+      break;
+    default:
+      return;
+  }
+
+  renderPeripherals();
+  renderChip();
+  renderConfigPanel();
+  interruptRefreshIfVisible();
+}
+
+function renderHealthIssueActions(issue) {
+  if (!issue) return "";
+  if (issue.scope === "pin" && Number.isFinite(Number(issue.pinNum))) {
+    return `<button class="btn" data-health-action="open-pin" data-pin-num="${Number(issue.pinNum)}">Open pin</button>`;
+  }
+  if (issue.type === "invalid-core") {
+    const fallbackCore = issue.availableCores?.[0] || "";
+    return `<button class="btn" data-health-action="reset-core" data-peripheral="${escapeHtml(issue.peripheral || "")}" data-core="${escapeHtml(fallbackCore)}">Reset core</button>`;
+  }
+  if (issue.type === "device-bus-disabled") {
+    return `<button class="btn" data-health-action="enable-peripheral" data-peripheral="${escapeHtml(issue.peripheral || "")}">Enable bus</button>`;
+  }
+  return "";
+}
+
+function applyHealthAction(action, dataset = {}) {
+  switch (action) {
+    case "open-pin":
+      if (Number.isFinite(Number(dataset.pinNum))) {
+        selectPin(Number(dataset.pinNum));
+      }
+      return;
+    case "reset-core":
+      if (dataset.peripheral && dataset.core) {
+        periphCoreStates[dataset.peripheral] = dataset.core;
+        toast(`Reset ${dataset.peripheral} to ${dataset.core}`);
+      }
+      break;
+    case "enable-peripheral":
+      if (dataset.peripheral in periphStates) {
+        periphStates[dataset.peripheral] = true;
+        toast(`Enabled ${dataset.peripheral}`);
+      }
+      break;
+    default:
+      return;
+  }
+
+  renderPeripherals();
+  renderChip();
+  renderConfigPanel();
+  interruptRefreshIfVisible();
+}
+
+function renderConfiguratorHealth(snapshot = collectConfigurationHealth()) {
+  const panel = $("#configHealthPanel");
+  if (!panel) return;
+
+  if (!boardData) {
+    panel.innerHTML = "";
+    return;
+  }
+
+  if (!snapshot.issues.length) {
+    panel.innerHTML = `
+      <div class="config-health-card ok">
+        <div class="config-health-head">
+          <div>
+            <div class="config-health-title">Configuration Health</div>
+            <div class="config-health-copy">No blocking issues are currently detected across pins, peripherals, and selected external devices.</div>
+          </div>
+          <span class="config-health-pill ok">Clean</span>
+        </div>
+      </div>`;
+    return;
+  }
+
+  const previewIssues = snapshot.issues.slice(0, 6);
+  panel.innerHTML = `
+    <div class="config-health-card alert">
+      <div class="config-health-head">
+        <div>
+          <div class="config-health-title">Configuration Health</div>
+          <div class="config-health-copy">${snapshot.blockerCount} blocking issue${snapshot.blockerCount === 1 ? "" : "s"} detected. Generate is blocked until you resolve them or explicitly continue.</div>
+        </div>
+        <span class="config-health-pill alert">Blocked</span>
+      </div>
+      <div class="config-health-stats">
+        <div class="config-health-stat"><strong>${snapshot.pinIssueCount}</strong><span>Pin issues</span></div>
+        <div class="config-health-stat"><strong>${snapshot.deviceIssueCount}</strong><span>Device issues</span></div>
+        <div class="config-health-stat"><strong>${snapshot.peripheralIssueCount}</strong><span>Peripheral issues</span></div>
+      </div>
+      <div class="config-health-list">
+        ${previewIssues.map((issue) => `
+          <div class="config-health-item">
+            <div class="config-health-item-title">${escapeHtml(issue.title || "Configuration issue")}</div>
+            <div class="config-health-item-copy">${escapeHtml(issue.summary || "")}</div>
+            <div class="config-health-item-meta">${(issue.affected || []).map((item) => `<div>${escapeHtml(item)}</div>`).join("")}</div>
+            <div class="config-health-actions">${renderHealthIssueActions(issue)}</div>
+              </div>`).join("")}
+      </div>
+      <div class="config-health-footer">
+        <button class="btn" id="btnGenerateAnyway">Generate Anyway</button>
+      </div>
+    </div>`;
+
+  panel.querySelectorAll("[data-health-action]").forEach((button) => {
+    button.addEventListener("click", () => applyHealthAction(button.dataset.healthAction, button.dataset));
+  });
+  panel.querySelector("#btnGenerateAnyway")?.addEventListener("click", () => {
+    requestGenerateOutput(true);
+  });
 }
 
 // ── Chip SVG renderer ────────────────────────────────────────────────
@@ -1922,6 +4217,7 @@ function renderChip() {
 
 function renderChipQfp() {
   const pinCount = boardData.pin_count;
+  const conflictMap = collectPinConflicts();
 
   // Gather pins per side from board data
   const sides = { left: [], bottom: [], right: [], top: [] };
@@ -1997,12 +4293,18 @@ function renderChipQfp() {
   function renderQfpPin(svg_, pin, x, y, w, h, side) {
     const state = pinStates[pin.number];
     const isSelected = selectedPin === pin.number;
+    const hasConflict = pinConflictsFor(pin.number, conflictMap).length > 0;
+    const isPeripheralMatch = highlightedPeripheralSignal
+      ? pinSupportsPeripheralSignal(pin, highlightedPeripheral, highlightedPeripheralSignal)
+      : pinSupportsPeripheral(pin, highlightedPeripheral);
 
     let cls = "pin-pad";
     if (pin.kind === "power")  cls += " power";
     else if (pin.kind === "ground") cls += " ground";
     else if (pin.kind === "special") cls += " special";
     else if (state && state.af) cls += " assigned " + periphColor(state.af.peripheral);
+    if (isPeripheralMatch) cls += " peripheral-match " + periphColor(highlightedPeripheral);
+    if (hasConflict) cls += " conflicted";
     if (isSelected) cls += " selected";
 
     svg += `<rect class="${cls}" x="${x}" y="${y}" width="${w}" height="${h}" rx="3"
@@ -2048,6 +4350,7 @@ function renderChipQfp() {
 function renderChipBga() {
   const pins = boardData.pins;
   const pinCount = boardData.pin_count;
+  const conflictMap = collectPinConflicts();
 
   // Try to determine grid dimensions from pin names or pin numbers
   // BGA naming: letter(s) + number  e.g. "A1", "AB12"
@@ -2177,12 +4480,18 @@ function renderChipBga() {
       const x = gridX + ci * CELL;
       const state = pinStates[pin.number];
       const isSelected = selectedPin === pin.number;
+      const hasConflict = pinConflictsFor(pin.number, conflictMap).length > 0;
+      const isPeripheralMatch = highlightedPeripheralSignal
+        ? pinSupportsPeripheralSignal(pin, highlightedPeripheral, highlightedPeripheralSignal)
+        : pinSupportsPeripheral(pin, highlightedPeripheral);
 
       let cls = "pin-pad bga-ball";
       if (pin.kind === "power")  cls += " power";
       else if (pin.kind === "ground") cls += " ground";
       else if (pin.kind === "special") cls += " special";
       else if (state && state.af) cls += " assigned " + periphColor(state.af.peripheral);
+      if (isPeripheralMatch) cls += " peripheral-match " + periphColor(highlightedPeripheral);
+      if (hasConflict) cls += " conflicted";
       if (isSelected) cls += " selected";
 
       // Ball (circle inside cell)
@@ -2222,6 +4531,8 @@ function selectPin(pinNum) {
 function renderConfigPanel() {
   const panel = configPanel;
   const deviceSection = buildExternalDeviceSection();
+  const healthSnapshot = collectConfigurationHealth();
+  renderConfiguratorHealth(healthSnapshot);
 
   if (!selectedPin || !boardData) {
     panel.innerHTML = `<div class="empty-state"><div>Click a pin to configure</div>
@@ -2253,6 +4564,8 @@ function renderConfigPanel() {
   }
 
   const state = pinStates[pin.number] || {};
+  const conflictMap = healthSnapshot.byPin;
+  const conflicts = pinConflictsFor(pin.number, conflictMap);
 
   let html = `<h3><span class="pin-badge">${pin.name}</span> ${pinLabel}</h3>`;
 
@@ -2285,6 +4598,7 @@ function renderConfigPanel() {
   });
 
   html += `</ul></div>`;
+  html += renderPinConflictSection(pin.number, conflicts);
 
   // Pin properties
   const props = state.props || {};
@@ -2328,6 +4642,12 @@ function renderConfigPanel() {
     });
   });
 
+  panel.querySelectorAll("[data-pin-fix]").forEach((button) => {
+    button.addEventListener("click", () => {
+      applyPinConflictFix(button.dataset.pinFix, Number(button.dataset.pinNum || pin.number), button.dataset);
+    });
+  });
+
   // Property checkboxes
   ["propPullUp", "propPullDown", "propOpenDrain", "propInputEn"].forEach(id => {
     const el = panel.querySelector(`#${id}`);
@@ -2344,6 +4664,7 @@ function renderConfigPanel() {
         }[id];
         if (!pinStates[pin.number].props) pinStates[pin.number].props = {};
         pinStates[pin.number].props[propKey] = el.checked;
+        renderConfigPanel();
       });
     }
   });
@@ -2359,6 +4680,17 @@ function renderConfigPanel() {
   }
 
   wireExternalDeviceControls(panel);
+}
+
+async function requestGenerateOutput(force = false) {
+  const health = collectConfigurationHealth();
+  renderConfiguratorHealth(health);
+  if (health.blockerCount && !force) {
+    toast(`Resolve ${health.blockerCount} configuration issue${health.blockerCount === 1 ? "" : "s"} before generating, or use Generate Anyway.`);
+    return false;
+  }
+  await generateOutput();
+  return true;
 }
 
 // ── Generate overlay ─────────────────────────────────────────────────
@@ -2409,11 +4741,12 @@ async function generateOutput() {
   });
 
   const result = await res.json();
-  generatedOverlay = result.overlay;
-  generatedConf    = result.prj_conf;
+  generatedFragments.pin.overlay = result.overlay || "";
+  generatedFragments.pin.prj_conf = result.prj_conf || "";
   generatedTargets = result.targets || {};
 
-  renderOutputTabs();
+  refreshGeneratedOutputs();
+
   showOutput(activeTab);
   outputBar.classList.remove("collapsed");
   toast("Generated Zephyr, Arduino, and bare-metal outputs");
@@ -2433,7 +4766,8 @@ function showOutput(tab) {
 
 async function saveToProject(projectPath) {
   if (!generatedOverlay) {
-    await generateOutput();
+    const generated = await requestGenerateOutput();
+    if (!generated) return;
   }
   const res = await fetch("/api/save-project", {
     method: "POST",
@@ -2543,8 +4877,11 @@ async function saveProjectFile(filePath) {
       periph_states: { ...periphStates },
       periph_core_states: { ...periphCoreStates },
       external_device_states: { ...externalDeviceStates },
+      protocol_editor: protocolSerializeState(),
+      lvgl_layout: lvglSerializeState(),
       generated_overlay: generatedOverlay,
       generated_conf: generatedConf,
+      generated_fragments: generatedFragments,
       sensor_jobs: snsJobsData,
       sensor_selected: snsSelectedJob || "",
       mcu_jobs: pkgJobsData,
@@ -2633,19 +4970,39 @@ async function loadProjectFile(filePath) {
   }
 
   // Restore generated output
+  generatedFragments = {
+    pin: { overlay: "", prj_conf: "" },
+    modules: { overlay: "", prj_conf: "" },
+    peripherals: { overlay: "", prj_conf: "" },
+    clock: { overlay: "", prj_conf: "" },
+    protocols: { overlay: "", prj_conf: "", code: "", header: "", integration: "" },
+    lvgl: { overlay: "", prj_conf: "", code: "", header: "", hooksHeader: "", hooks: "", integration: "" },
+    ...(project.generated_fragments || {}),
+  };
   generatedOverlay = project.generated_overlay || "";
   generatedConf = project.generated_conf || "";
   generatedTargets = {};
-  renderOutputTabs();
+  refreshGeneratedOutputs();
   if (generatedOverlay || generatedConf) {
     showOutput(activeTab);
     outputBar.classList.remove("collapsed");
+  }
+
+  if (project.lvgl_layout) {
+    lvglRestoreState(project.lvgl_layout);
+  }
+  if (project.protocol_editor) {
+    protocolRestoreState(project.protocol_editor);
+  } else {
+    protocolSyncGeneratedOutputs();
+    protocolRender();
   }
 
   // Re-render everything
   renderPeripherals();
   renderChip();
   renderConfigPanel();
+  interruptRender();
 
   // Restore sensor job history from project file
   if (project.sensor_jobs && Array.isArray(project.sensor_jobs) && project.sensor_jobs.length) {
@@ -2673,10 +5030,21 @@ async function loadProjectFile(filePath) {
 document.addEventListener("DOMContentLoaded", () => {
   loadBoardList();
   initBoardEditor();
+  lvglInit();
+  protocolInit();
+  zephyrCatalogInit();
+  const appTabStrip = document.querySelector(".app-tabs");
+  const appTabSelect = document.getElementById("appTabSelect");
+  appTabStrip?.addEventListener("scroll", updateAppTabOverflowState, { passive: true });
+  window.addEventListener("resize", updateAppTabOverflowState);
+  updateAppTabOverflowState();
+  appTabSelect?.addEventListener("change", async () => {
+    await openAppTab(appTabSelect.value);
+  });
 
   boardSelect.addEventListener("change", () => loadBoard(boardSelect.value));
 
-  $("#btnGenerate").addEventListener("click", generateOutput);
+  $("#btnGenerate").addEventListener("click", () => requestGenerateOutput());
 
   renderOutputTabs();
 
@@ -2742,6 +5110,144 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  // ── LVGL import / save modal ───────────────────────────────────
+  $("#lvglBtnImportGui")?.addEventListener("click", () => {
+    lvglResetImportModal();
+    $("#lvglImportModal")?.classList.add("show");
+  });
+  $("#lvglBtnCancelImport")?.addEventListener("click", () => {
+    $("#lvglImportModal")?.classList.remove("show");
+  });
+  $("#lvglImportModal")?.addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) {
+      $("#lvglImportModal").classList.remove("show");
+    }
+  });
+  $("#lvglBtnPreviewSource")?.addEventListener("click", async () => {
+    const source = $("#lvglImportSource")?.value.trim();
+    if (!source) {
+      toast("Enter a file path or URL first");
+      return;
+    }
+    try {
+      await lvglPreviewImport(lvglImportSourcePayload(source));
+    } catch (err) {
+      lvglClearImportPreview();
+      toast(err.message || "Failed to preview GUI import");
+    }
+  });
+  $("#lvglBtnPreviewJson")?.addEventListener("click", async () => {
+    const text = $("#lvglImportJson")?.value.trim();
+    if (!text) {
+      toast("Paste Zephyr or LVGL content first");
+      return;
+    }
+    try {
+      await lvglPreviewImport({ text, source_kind: lvglImportModeConfig().sourceKind });
+    } catch (err) {
+      lvglClearImportPreview();
+      toast(err.message || "Failed to preview GUI import");
+    }
+  });
+  $("#lvglImportFile")?.addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    $("#lvglImportFileName").textContent = file.name;
+    try {
+      const mode = lvglCurrentImportMode();
+      const result = await lvglReadSelectedFile(file, mode);
+      if (typeof result === "string") {
+        $("#lvglImportJson").value = result;
+        await lvglPreviewImport({ text: result, source_kind: lvglImportModeConfig(mode).sourceKind });
+      } else {
+        await lvglPreviewImport(result);
+      }
+    } catch (err) {
+      lvglClearImportPreview();
+      toast(err.message || "Failed to read GUI file");
+    }
+  });
+  $("#lvglImportMode")?.addEventListener("change", (event) => {
+    lvglUpdateImportModeUi(event.target.value);
+  });
+  $("#lvglBtnApplyImport")?.addEventListener("click", lvglImportFromPending);
+
+  bindPathBrowseButton("#btnBrowseZephyrCatalogRoot", "#zephyrCatalogRoot", {
+    dialogKind: "directory",
+    title: "Select Zephyr root directory",
+  }, async () => {
+    await zephyrCatalogLoad({ refresh: true });
+  });
+  bindPathBrowseButton("#btnBrowseProjectPath", "#projectPath", {
+    dialogKind: "directory",
+    title: "Select Zephyr project directory",
+  });
+  bindPathBrowseButton("#btnBrowseProjectFilePath", "#projectFilePath", {
+    dialogKind: "save-file",
+    title: "Save project file",
+    defaultExtension: ".zpinproj",
+    fileTypes: [
+      { name: "Pin Config Project", patterns: ["*.zpinproj"] },
+      { name: "All files", patterns: ["*.*"] },
+    ],
+  });
+  bindPathBrowseButton("#btnBrowseLoadProjectFilePath", "#loadProjectFilePath", {
+    dialogKind: "open-file",
+    title: "Open project file",
+    fileTypes: [
+      { name: "Pin Config Project", patterns: ["*.zpinproj"] },
+      { name: "All files", patterns: ["*.*"] },
+    ],
+  });
+  bindPathBrowseButton("#impBtnBrowseProjectPath", "#impProjectPath", {
+    dialogKind: "directory",
+    title: "Select Zephyr project directory",
+  }, async () => {
+    await impScanProject();
+  });
+  bindPathBrowseButton("#lvglBtnBrowseImportSource", "#lvglImportSource", () => lvglImportBrowseDialogOptions(), async (input) => {
+    const source = input.value.trim();
+    if (!source) return;
+    try {
+      await lvglPreviewImport(lvglImportSourcePayload(source));
+    } catch (err) {
+      lvglClearImportPreview();
+      toast(err.message || "Failed to preview GUI import");
+    }
+  });
+  bindPathBrowseButton("#lvglBtnBrowseSaveFilePath", "#lvglSaveFilePath", {
+    dialogKind: "save-file",
+    title: "Save LVGL layout",
+    defaultExtension: ".json",
+    fileTypes: [
+      { name: "JSON files", patterns: ["*.json"] },
+      { name: "LVGL layout files", patterns: ["*.lvgl.json", "*.lvgl"] },
+      { name: "All files", patterns: ["*.*"] },
+    ],
+  });
+
+  $("#lvglBtnSaveGui")?.addEventListener("click", () => {
+    $("#lvglSaveFilePath").value = $("#lvglSaveFilePath").value || "ui_layout.lvgl.json";
+    $("#lvglSaveModal")?.classList.add("show");
+  });
+  $("#lvglBtnCancelSaveGui")?.addEventListener("click", () => {
+    $("#lvglSaveModal")?.classList.remove("show");
+  });
+  $("#lvglSaveModal")?.addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) {
+      $("#lvglSaveModal").classList.remove("show");
+    }
+  });
+  $("#lvglBtnConfirmSaveGui")?.addEventListener("click", async () => {
+    const path = $("#lvglSaveFilePath")?.value.trim();
+    if (!path) {
+      toast("Enter a destination path for the GUI file");
+      return;
+    }
+    await lvglSaveLayoutFile(path);
+    $("#lvglSaveModal")?.classList.remove("show");
+  });
+
   // ── Zoom controls ─────────────────────────────────────────────────
   $("#zoomIn").addEventListener("click", zoomIn);
   $("#zoomOut").addEventListener("click", zoomOut);
@@ -2769,7 +5275,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     if ((e.ctrlKey || e.metaKey) && e.key === "g") {
       e.preventDefault();
-      generateOutput();
+      requestGenerateOutput();
     }
     // Ctrl+S = save project file
     if ((e.ctrlKey || e.metaKey) && e.key === "s") {
@@ -2784,29 +5290,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // ── App-level tab switching ────────────────────────────────────────
   $$(".app-tab").forEach(tab => {
-    tab.addEventListener("click", () => {
-      const target = tab.dataset.appTab;
-      $$(".app-tab").forEach(t => t.classList.toggle("active", t.dataset.appTab === target));
-      $$(".tab-content").forEach(c => c.classList.toggle("active", c.dataset.appContent === target));
-
-      // Load existing packages when switching to the tab
-      if (target === "packages") {
-        pkgLoadExisting();
-      }
-      if (target === "board-editor") {
-        updateBoardEditorMeta();
-        loadBoardEditorDrafts();
-        loadBoardEditorDeviceLibrary();
-      }
-      if (target === "peripherals") {
-        pcfgLoadBoards();
-      }
-      if (target === "clock") {
-        clkLoadTrees();
-      }
-      if (target === "sensors") {
-        snsLoadJobs();
-      }
+    tab.addEventListener("click", async () => {
+      await openAppTab(tab.dataset.appTab);
     });
   });
 
@@ -2891,6 +5376,7 @@ function pkgRemoveJob(jobId) {
 function pkgInit() {
   const uploadArea = $("#pdfUploadArea");
   const fileInput  = $("#pdfFileInput");
+  const jobSearch = $("#pkgJobSearch");
 
   // Click to browse
   uploadArea.addEventListener("click", () => fileInput.click());
@@ -2934,6 +5420,10 @@ function pkgInit() {
       pkgSelectJob(pkgSelectedJob);
     }
   }
+
+  jobSearch?.addEventListener("input", () => {
+    pkgRenderJobList();
+  });
 }
 
 
@@ -2987,6 +5477,7 @@ async function pkgUploadPdf(file) {
 
 function pkgRenderJobList() {
   const list = $("#pkgJobList");
+  const filter = resolveThresholdSearch("pkgJobSearch", pkgJobs.length);
 
   if (pkgJobs.length === 0) {
     list.innerHTML = `<div class="empty-state" style="padding:20px;">
@@ -2996,7 +5487,24 @@ function pkgRenderJobList() {
     return;
   }
 
-  list.innerHTML = pkgJobs.map(job => {
+  const filteredJobs = pkgJobs.filter((job) => {
+    if (!filter) return true;
+    const result = job.result || {};
+    const device = result.device || {};
+    const packageNames = Array.isArray(result.packages) ? result.packages.map((pkg) => pkg.name).join(" ") : "";
+    const haystack = `${job.filename} ${device.soc || ""} ${packageNames}`.toLowerCase();
+    return haystack.includes(filter);
+  });
+
+  if (!filteredJobs.length) {
+    list.innerHTML = `<div class="empty-state" style="padding:20px;">
+      <div>No parsed datasheets match the current search</div>
+      <div class="hint">Try another filename, SoC, or package name</div>
+    </div>`;
+    return;
+  }
+
+  list.innerHTML = filteredJobs.map(job => {
     const r = job.result;
     const isSelected = pkgSelectedJob === job.job_id;
     const pkgNames = r.packages.map(p => p.name).join(", ") || "No packages";
@@ -3320,8 +5828,7 @@ async function pkgLoadExisting() {
           boardSelect.value = match.value;
           loadBoard(match.value);
           // Switch to Pin Configurator tab
-          $$(".app-tab").forEach(t => t.classList.toggle("active", t.dataset.appTab === "configurator"));
-          $$(".tab-content").forEach(c => c.classList.toggle("active", c.dataset.appContent === "configurator"));
+          activateAppTab("configurator");
           toast(`Loaded ${mod} in Pin Configurator`);
         } else {
           toast(`Board "${mod}" not found in selector`);
@@ -3372,8 +5879,9 @@ async function modInit() {
     // Search filter
     const search = document.getElementById("modSearch");
     if (search) {
-      search.addEventListener("input", () => modRenderSidebar(search.value.trim().toLowerCase()));
+      search.addEventListener("input", () => modRenderSidebar());
     }
+    interruptRefreshIfVisible();
   } catch (err) {
     console.error("Failed to load modules", err);
   }
@@ -3382,6 +5890,7 @@ async function modInit() {
 function modRenderSidebar(filter = "") {
   const list = document.getElementById("modModuleList");
   if (!list) return;
+  filter = resolveThresholdSearch("modSearch", modModules.length, filter);
 
   const filtered = modModules.filter(m =>
     !filter || m.name.toLowerCase().includes(filter) || m.id.toLowerCase().includes(filter)
@@ -3425,6 +5934,7 @@ function modRenderSidebar(filter = "") {
       modEnabled[cb.dataset.modEnable] = cb.checked;
       cb.closest(".modcfg-module-item").classList.toggle("enabled", cb.checked);
       modUpdateGenerateAllBtn();
+      interruptRefreshIfVisible();
     });
   });
 }
@@ -3565,6 +6075,7 @@ function modRenderBody(mod) {
       // Re-highlight active
       document.querySelectorAll(".modcfg-module-item").forEach(e =>
         e.classList.toggle("active", e.dataset.modId === modActiveId));
+      interruptRefreshIfVisible();
     });
   });
 }
@@ -3643,10 +6154,12 @@ async function modGenerateAll() {
       throw new Error(data.error || "Generation failed");
     }
 
+    generatedFragments.modules.prj_conf = data.prj_conf || "";
     const text = fullOverlay ? data.overlay_conf : data.prj_conf;
     preEl.textContent = text;
     outEl.style.display = "";
     copyBtn.style.display = "";
+    refreshGeneratedOutputs();
   } catch (err) {
     preEl.textContent = `ERROR: ${err.message}`;
     outEl.style.display = "";
@@ -3672,9 +6185,12 @@ let pcfgOutputTab   = "overlay";   // "overlay" | "prjconf"
 function pcfgInit() {
   const search = document.getElementById("pcfgSearch");
   if (search) {
-    search.addEventListener("input", () =>
-      pcfgRenderSidebar(search.value.trim().toLowerCase())
-    );
+    search.addEventListener("input", () => pcfgRenderSidebar());
+  }
+
+  const clkSearch = document.getElementById("clkSearch");
+  if (clkSearch) {
+    clkSearch.addEventListener("input", () => clkRenderSidebar());
   }
 
   const boardSel = document.getElementById("pcfgBoardSelect");
@@ -3745,6 +6261,7 @@ async function pcfgLoadInstances(boardName) {
       <div class="hint">Select a peripheral from the sidebar to configure it.<br>
         ${pcfgInstances.length} peripheral instance(s) found for ${data.soc || boardName}.</div>
     </div>`;
+    interruptRefreshIfVisible();
   } catch (err) {
     console.error("Failed to load peripheral instances", err);
   }
@@ -3753,6 +6270,7 @@ async function pcfgLoadInstances(boardName) {
 function pcfgRenderSidebar(filter = "") {
   const list = document.getElementById("pcfgInstanceList");
   if (!list) return;
+  filter = resolveThresholdSearch("pcfgSearch", pcfgInstances.length, filter);
 
   const filtered = pcfgInstances.filter(inst =>
     !filter ||
@@ -3952,6 +6470,7 @@ function pcfgRenderBody(inst) {
       pcfgRenderSidebar(document.getElementById("pcfgSearch")?.value?.trim().toLowerCase() || "");
       document.querySelectorAll(".pcfg-instance-item").forEach(e =>
         e.classList.toggle("active", e.dataset.inst === pcfgActiveInst));
+      interruptRefreshIfVisible();
     });
   });
 }
@@ -4048,9 +6567,12 @@ async function pcfgGenerate() {
     // Store both texts on the element for tab switching
     preEl._overlayText = data.overlay;
     preEl._prjconfText = data.prj_conf;
+    generatedFragments.peripherals.overlay = data.overlay || "";
+    generatedFragments.peripherals.prj_conf = data.prj_conf || "";
     preEl.textContent = pcfgOutputTab === "overlay" ? data.overlay : data.prj_conf;
     outEl.style.display = "";
     copyBtn.style.display = "";
+    refreshGeneratedOutputs();
     toast("Peripheral config generated");
   } catch (err) {
     preEl.textContent = `ERROR: ${err.message}`;
@@ -4071,8 +6593,71 @@ let clkCurrentTree = null;  // full tree object
 let clkSelectedNode = null; // currently selected node id
 let clkValues = {};         // { "prop-key": value, ... }
 let clkFreqs = {};          // { "node_id": hz, ... }
+let clkWarnings = [];       // validation / clamp warnings for current values
 let clkOutputTab = "overlay";
 let clkTreesLoaded = false;
+let clkViewMode = "all";
+
+function clkNormalizeToken(value) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function clkScoreTreeForBoard(tree, board) {
+  if (!tree || !board) return 0;
+  const soc = clkNormalizeToken(board.soc);
+  if (!soc) return 0;
+  const keys = [tree.id, tree.soc, tree.name].map(clkNormalizeToken).filter(Boolean);
+  if (keys.includes(soc)) return 100;
+  if (keys.some(key => key.includes(soc) || soc.includes(key))) return 80;
+  if (soc.includes("stm32") && tree.id === "stm32_generic") return 60;
+  if ((soc.includes("nrf52") || soc.includes("nrf528")) && tree.id === "nrf52") return 60;
+  if (soc.includes("mspm0") && tree.id === "mspm0g3507") return 60;
+  return 0;
+}
+
+function clkBestTreeForBoard(board) {
+  if (!Array.isArray(clkTrees) || !clkTrees.length || !board) return null;
+  let best = null;
+  let bestScore = 0;
+  clkTrees.forEach(tree => {
+    const score = clkScoreTreeForBoard(tree, board);
+    if (score > bestScore) {
+      best = tree;
+      bestScore = score;
+    }
+  });
+  return best;
+}
+
+function clkBoardContext() {
+  if (boardData) return boardData;
+  if (!boardSelect || !boardSelect.value) return null;
+  const selected = boardSelect.selectedOptions && boardSelect.selectedOptions[0];
+  return {
+    soc: boardSelect.value,
+    board: boardSelect.value,
+    name: selected ? selected.textContent : boardSelect.value,
+    package: selected ? selected.textContent : "",
+  };
+}
+
+async function clkAutoSelectTreeForBoard() {
+  const board = clkBoardContext();
+  if (!board) return;
+  if (!clkTreesLoaded) {
+    await clkLoadTrees();
+  }
+  const best = clkBestTreeForBoard(board);
+  if (!best) return;
+
+  const sel = $("#clkTreeSelect");
+  if (sel && sel.value !== best.id) {
+    sel.value = best.id;
+  }
+  if (!clkCurrentTree || clkCurrentTree.id !== best.id) {
+    await clkLoadTree(best.id);
+  }
+}
 
 function clkInit() {
   const sel = $("#clkTreeSelect");
@@ -4082,10 +6667,54 @@ function clkInit() {
       if (id) clkLoadTree(id);
     });
   }
+
+  const allBtn = $("#clkAllSettingsBtn");
+  if (allBtn) {
+    allBtn.addEventListener("click", () => clkShowAllSettings());
+  }
+
+  setTimeout(() => {
+    clkLoadTrees().catch(err => {
+      console.error("Failed to initialize clock trees:", err);
+    });
+  }, 0);
+}
+
+function clkSortedNodes() {
+  if (!clkCurrentTree) return [];
+  const typeOrder = ["source", "pll", "mux", "divider", "output"];
+  return [...clkCurrentTree.nodes].sort((a, b) => {
+    const left = typeOrder.indexOf(a.type);
+    const right = typeOrder.indexOf(b.type);
+    if (left !== right) return left - right;
+    return a.name.localeCompare(b.name);
+  });
+}
+
+function clkSyncModeButton() {
+  const allBtn = $("#clkAllSettingsBtn");
+  if (!allBtn) return;
+  allBtn.classList.toggle("active", clkViewMode === "all");
+}
+
+function clkShowAllSettings() {
+  if (!clkCurrentTree) return;
+  clkViewMode = "all";
+  clkSelectedNode = null;
+  clkRenderSidebar();
+  clkRenderBody();
 }
 
 async function clkLoadTrees() {
-  if (clkTreesLoaded) return;
+  if (clkTreesLoaded) {
+    await clkAutoSelectTreeForBoard();
+    const sel = $("#clkTreeSelect");
+    const fallbackId = sel && sel.value ? sel.value : "";
+    if ((!clkCurrentTree || !clkCurrentTree.id) && fallbackId) {
+      await clkLoadTree(fallbackId);
+    }
+    return;
+  }
   try {
     const res = await fetch("/api/clock-trees");
     clkTrees = await res.json();
@@ -4098,6 +6727,14 @@ async function clkLoadTrees() {
       sel.appendChild(opt);
     });
     clkTreesLoaded = true;
+    await clkAutoSelectTreeForBoard();
+    const fallbackId = sel.value || (clkTrees[0] && clkTrees[0].id) || "";
+    if ((!clkCurrentTree || !clkCurrentTree.id) && fallbackId) {
+      if (sel.value !== fallbackId) {
+        sel.value = fallbackId;
+      }
+      await clkLoadTree(fallbackId);
+    }
   } catch (err) {
     console.error("Failed to load clock trees:", err);
   }
@@ -4109,6 +6746,7 @@ async function clkLoadTree(treeId) {
     if (!res.ok) throw new Error("Not found");
     clkCurrentTree = await res.json();
     clkSelectedNode = null;
+    clkViewMode = "all";
     clkValues = {};
 
     // Set defaults
@@ -4121,7 +6759,7 @@ async function clkLoadTree(treeId) {
     // Compute initial frequencies
     await clkComputeFreqs();
     clkRenderSidebar();
-    clkRenderEmpty();
+    clkRenderBody();
   } catch (err) {
     console.error("Failed to load clock tree:", err);
   }
@@ -4137,8 +6775,10 @@ async function clkComputeFreqs() {
     });
     const data = await res.json();
     clkFreqs = data.frequencies || {};
+    clkWarnings = Array.isArray(data.warnings) ? data.warnings : [];
   } catch (err) {
     console.error("Failed to compute frequencies:", err);
+    clkWarnings = [];
   }
 }
 
@@ -4153,16 +6793,19 @@ function clkRenderSidebar() {
   const list = $("#clkNodeList");
   if (!list || !clkCurrentTree) return;
 
-  // Group by type for nice ordering
-  const typeOrder = ["source", "pll", "mux", "divider", "output"];
-  const sorted = [...clkCurrentTree.nodes].sort((a, b) => {
-    return typeOrder.indexOf(a.type) - typeOrder.indexOf(b.type);
+  const sorted = clkSortedNodes();
+  const filter = resolveThresholdSearch("clkSearch", sorted.length);
+  const filtered = sorted.filter((node) => {
+    if (!filter) return true;
+    const haystack = `${node.id} ${node.name} ${node.type}`.toLowerCase();
+    return haystack.includes(filter);
   });
+  clkSyncModeButton();
 
   list.innerHTML = "";
-  for (const node of sorted) {
+  for (const node of filtered) {
     const item = document.createElement("div");
-    item.className = "clkcfg-node-item" + (node.id === clkSelectedNode ? " active" : "");
+    item.className = "clkcfg-node-item" + (clkViewMode === "node" && node.id === clkSelectedNode ? " active" : "");
     const freq = clkFreqs[node.id] || 0;
     item.innerHTML = `
       <span class="node-icon">${node.icon}</span>
@@ -4173,10 +6816,15 @@ function clkRenderSidebar() {
     item.addEventListener("click", () => clkSelectNode(node.id));
     list.appendChild(item);
   }
+
+  if (!filtered.length) {
+    list.innerHTML = '<div class="empty-state" style="padding:20px;font-size:12px;color:var(--fg-dim)">No clock nodes match the current search.</div>';
+  }
 }
 
 function clkSelectNode(nodeId) {
   clkSelectedNode = nodeId;
+  clkViewMode = "node";
   clkRenderSidebar();
   clkRenderBody();
 }
@@ -4195,12 +6843,366 @@ function clkRenderEmpty() {
   `;
 }
 
+function clkBuildPropertyRows(props) {
+  let html = "";
+  for (const prop of props) {
+    const val = clkValues[prop.key] ?? prop.default;
+    html += `<div class="cfg-row">`;
+    html += `<div class="cfg-label">
+      <span class="cfg-name">${prop.label}</span>
+      <span class="cfg-help">${prop.help || ""}</span>
+      <span class="cfg-default">Default: ${prop.default}</span>
+    </div>`;
+    html += `<div class="cfg-value">`;
+
+    if (prop.type === "bool") {
+      html += `<label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+        <input type="checkbox" data-clk-key="${prop.key}" ${val ? "checked" : ""} style="accent-color:var(--accent);width:16px;height:16px;">
+        <span style="font-size:13px;">${val ? "Enabled" : "Disabled"}</span>
+      </label>`;
+    } else if (prop.type === "choice") {
+      html += `<select data-clk-key="${prop.key}" style="padding:5px 8px;font-size:13px;background:var(--bg);color:var(--fg);border:1px solid var(--border);border-radius:6px;">`;
+      for (const ch of prop.choices) {
+        const sel = (String(ch) === String(val)) ? " selected" : "";
+        let label = ch;
+        if (typeof ch === "number" && ch >= 1_000_000) label = `${(ch / 1_000_000).toFixed(1)} MHz`;
+        else if (typeof ch === "number" && ch >= 1_000) label = `${(ch / 1_000).toFixed(1)} kHz`;
+        html += `<option value="${ch}"${sel}>${label}</option>`;
+      }
+      html += `</select>`;
+    } else if (prop.type === "int") {
+      html += `<input type="number" data-clk-key="${prop.key}" value="${val}" style="width:120px;padding:5px 8px;font-size:13px;background:var(--bg);color:var(--fg);border:1px solid var(--border);border-radius:6px;">`;
+    }
+
+    html += `</div></div>`;
+  }
+  return html;
+}
+
+function clkBuildWarningsGroup() {
+  if (!clkWarnings.length) return "";
+  let html = `<div class="cfg-group"><div class="cfg-group-header" style="cursor:default;">
+    <span class="toggle">⚠</span> Warnings
+  </div><div class="cfg-group-body" style="display:block;">`;
+  html += `<div style="padding:8px 0 2px 0;">`;
+  clkWarnings.forEach(warning => {
+    html += `<div style="font-size:12px;color:var(--yellow);margin-bottom:6px;">• ${escapeHtml(warning)}</div>`;
+  });
+  html += `</div></div></div>`;
+  return html;
+}
+
+function clkBuildActions() {
+  return `
+    <div class="clkcfg-actions">
+      <button class="btn btn-accent" id="clkGenerateBtn" onclick="clkGenerate()">⚡ Generate Config</button>
+      <button class="btn" id="clkCopyBtn" style="display:none;" onclick="clkCopyOutput()">📋 Copy</button>
+      <span class="spacer"></span>
+      <span style="font-size:12px;color:var(--fg-dim);">
+        Max SoC freq: ${clkFormatFreq(clkCurrentTree.max_freq)}
+      </span>
+    </div>
+    <div class="clkcfg-output" id="clkOutput" style="display:none;">
+      <div class="clkcfg-output-tabs">
+        <div class="clkcfg-output-tab ${clkOutputTab === "overlay" ? "active" : ""}" data-clk-out="overlay">.overlay</div>
+        <div class="clkcfg-output-tab ${clkOutputTab === "prj_conf" ? "active" : ""}" data-clk-out="prj_conf">prj.conf</div>
+        <div class="clkcfg-output-tab ${clkOutputTab === "freq" ? "active" : ""}" data-clk-out="freq">Frequencies</div>
+      </div>
+      <pre id="clkOutputPre"></pre>
+    </div>
+  `;
+}
+
+function clkBindConfigInputs(main) {
+  main.querySelectorAll("[data-clk-key]").forEach(el => {
+    const key = el.dataset.clkKey;
+    const evName = (el.type === "checkbox") ? "change" : "input";
+    el.addEventListener(evName, async () => {
+      if (el.type === "checkbox") {
+        clkValues[key] = el.checked;
+        const span = el.closest("label")?.querySelector("span:last-child");
+        if (span) span.textContent = el.checked ? "Enabled" : "Disabled";
+      } else if (el.type === "number") {
+        clkValues[key] = parseInt(el.value) || 0;
+      } else {
+        const num = Number(el.value);
+        clkValues[key] = isNaN(num) ? el.value : num;
+      }
+      await clkComputeFreqs();
+      clkRenderSidebar();
+      clkRenderBody();
+    });
+  });
+}
+
+function clkBindOutputTabs(main) {
+  main.querySelectorAll("[data-clk-out]").forEach(tab => {
+    tab.addEventListener("click", () => {
+      clkOutputTab = tab.dataset.clkOut;
+      main.querySelectorAll("[data-clk-out]").forEach(t => t.classList.toggle("active", t.dataset.clkOut === clkOutputTab));
+      const preEl = $("#clkOutputPre");
+      if (preEl && preEl._data) {
+        if (clkOutputTab === "overlay") preEl.textContent = preEl._data.overlay;
+        else if (clkOutputTab === "prj_conf") preEl.textContent = preEl._data.prj_conf;
+        else if (clkOutputTab === "freq") preEl.textContent = clkFormatFreqTable(preEl._data.frequencies);
+      }
+    });
+  });
+}
+
+function clkBindFocusButtons(main) {
+  main.querySelectorAll("[data-clk-focus-node]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const nodeId = btn.dataset.clkFocusNode;
+      if (nodeId) clkSelectNode(nodeId);
+    });
+  });
+  main.querySelectorAll("[data-clk-node-card]").forEach(card => {
+    card.addEventListener("click", () => {
+      const nodeId = card.dataset.clkNodeCard;
+      if (nodeId) clkSelectNode(nodeId);
+    });
+  });
+}
+
+function clkOverviewGraph() {
+  const nodes = clkSortedNodes();
+  const nodeMap = {};
+  const incoming = {};
+  const outgoing = {};
+  nodes.forEach(node => {
+    nodeMap[node.id] = node;
+    incoming[node.id] = [];
+    outgoing[node.id] = [];
+  });
+
+  (clkCurrentTree.connections || []).forEach(conn => {
+    if (!nodeMap[conn.from] || !nodeMap[conn.to]) return;
+    outgoing[conn.from].push(conn.to);
+    incoming[conn.to].push(conn.from);
+  });
+
+  const indegree = {};
+  nodes.forEach(node => {
+    indegree[node.id] = incoming[node.id].length;
+  });
+
+  const queue = nodes.filter(node => indegree[node.id] === 0).map(node => node.id);
+  const levels = {};
+  queue.forEach(id => { levels[id] = 0; });
+
+  while (queue.length) {
+    const current = queue.shift();
+    const currentLevel = levels[current] || 0;
+    (outgoing[current] || []).forEach(nextId => {
+      levels[nextId] = Math.max(levels[nextId] || 0, currentLevel + 1);
+      indegree[nextId] -= 1;
+      if (indegree[nextId] === 0) {
+        queue.push(nextId);
+      }
+    });
+  }
+
+  nodes.forEach(node => {
+    if (levels[node.id] === undefined) levels[node.id] = 0;
+  });
+
+  const columns = [];
+  nodes.forEach(node => {
+    const level = levels[node.id] || 0;
+    if (!columns[level]) columns[level] = [];
+    columns[level].push(node);
+  });
+
+  columns.forEach(column => {
+    column.sort((left, right) => {
+      const typeOrder = ["source", "pll", "mux", "divider", "output"];
+      const l = typeOrder.indexOf(left.type);
+      const r = typeOrder.indexOf(right.type);
+      if (l !== r) return l - r;
+      return left.name.localeCompare(right.name);
+    });
+  });
+
+  return { columns, nodeMap, incoming, outgoing };
+}
+
+function clkBuildOverviewDiagram() {
+  const { columns, nodeMap, incoming, outgoing } = clkOverviewGraph();
+  const activeCount = clkSortedNodes().filter(node => (clkFreqs[node.id] || 0) > 0).length;
+  let html = `<div class="cfg-group"><div class="cfg-group-header" style="cursor:default;">
+    <span class="toggle">🕸</span> Clock Overview
+  </div><div class="cfg-group-body" style="display:block;">`;
+
+  html += `<div class="clkcfg-overview-shell" style="--clkcfg-overview-column-count:${Math.max(1, columns.length)}; --clkcfg-overview-gap:18px;">
+    <div class="clkcfg-overview-canvas" id="clkOverviewCanvas">
+      <svg class="clkcfg-overview-wires" aria-hidden="true"></svg>
+      <div class="clkcfg-overview-columns">`;
+
+  columns.forEach((column, index) => {
+    html += `<div class="clkcfg-overview-column">
+      <div class="clkcfg-overview-column-label">Stage ${index + 1}</div>`;
+    column.forEach(node => {
+      const freq = clkFreqs[node.id] || 0;
+      const upstream = (incoming[node.id] || []).map(id => nodeMap[id]?.name).filter(Boolean).slice(0, 2);
+      const downstream = (outgoing[node.id] || []).map(id => nodeMap[id]?.name).filter(Boolean).slice(0, 2);
+      const propCount = (node.props || []).length;
+      html += `
+        <div class="clkcfg-overview-node" data-clk-diagram-node="${node.id}" data-clk-node-card="${node.id}">
+          <div class="clkcfg-overview-top">
+            <span class="clkcfg-overview-icon">${node.icon || "•"}</span>
+            <span class="clkcfg-overview-name">${node.name}</span>
+            <span class="clkcfg-overview-type t-${node.type}">${node.type}</span>
+          </div>
+          <div class="clkcfg-overview-freq">${clkFormatFreq(freq)}</div>
+          <div class="clkcfg-overview-copy">${escapeHtml(node.desc || "Clock node")}</div>
+          <div class="clkcfg-overview-meta">
+            <span>${propCount ? `${propCount} setting${propCount === 1 ? "" : "s"}` : "derived"}</span>
+            ${upstream.length ? `<span>in: ${escapeHtml(upstream.join(", "))}</span>` : "<span>source</span>"}
+            ${downstream.length ? `<span>out: ${escapeHtml(downstream.join(", "))}</span>` : "<span>sink</span>"}
+          </div>
+          <button class="clkcfg-overview-link" data-clk-focus-node="${node.id}">Edit Node</button>
+        </div>
+      `;
+    });
+    html += `</div>`;
+  });
+
+  html += `</div></div>
+    <div class="clkcfg-overview-stats">
+      <div class="clkcfg-overview-stat"><span>Active clocks</span><strong>${activeCount}</strong></div>
+      <div class="clkcfg-overview-stat"><span>Total nodes</span><strong>${clkCurrentTree.nodes.length}</strong></div>
+      <div class="clkcfg-overview-stat"><span>Configurable</span><strong>${clkCurrentTree.nodes.filter(node => (node.props || []).length).length}</strong></div>
+      <div class="clkcfg-overview-stat"><span>Max SoC freq</span><strong>${clkFormatFreq(clkCurrentTree.max_freq)}</strong></div>
+    </div>
+  </div>`;
+
+  html += `</div></div>`;
+  return html;
+}
+
+function clkRenderOverviewWires(main) {
+  const canvas = main.querySelector("#clkOverviewCanvas");
+  const svg = canvas?.querySelector(".clkcfg-overview-wires");
+  if (!canvas || !svg || !clkCurrentTree) return;
+
+  const canvasRect = canvas.getBoundingClientRect();
+  const width = Math.max(canvas.scrollWidth, canvasRect.width);
+  const height = Math.max(canvas.scrollHeight, canvasRect.height);
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  svg.setAttribute("width", String(width));
+  svg.setAttribute("height", String(height));
+
+  let markup = `
+    <defs>
+      <marker id="clkArrowHead" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="rgba(121, 162, 255, 0.9)"></path>
+      </marker>
+    </defs>
+  `;
+
+  (clkCurrentTree.connections || []).forEach(conn => {
+    const fromEl = canvas.querySelector(`[data-clk-diagram-node="${conn.from}"]`);
+    const toEl = canvas.querySelector(`[data-clk-diagram-node="${conn.to}"]`);
+    if (!fromEl || !toEl) return;
+    const fromRect = fromEl.getBoundingClientRect();
+    const toRect = toEl.getBoundingClientRect();
+    const x1 = fromRect.right - canvasRect.left;
+    const y1 = fromRect.top - canvasRect.top + (fromRect.height / 2);
+    const x2 = toRect.left - canvasRect.left;
+    const y2 = toRect.top - canvasRect.top + (toRect.height / 2);
+    const dx = Math.max(32, (x2 - x1) / 2);
+    const path = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+    markup += `<path d="${path}" class="clkcfg-overview-wire"></path>`;
+    markup += `<circle cx="${x1}" cy="${y1}" r="3" class="clkcfg-overview-junction"></circle>`;
+  });
+
+  svg.innerHTML = markup;
+}
+
+function clkBindOverviewResize(main) {
+  const shell = main.querySelector(".clkcfg-overview-shell");
+  if (!shell || typeof ResizeObserver !== "function") return;
+  if (!clkOverviewResizeObserver) {
+    clkOverviewResizeObserver = new ResizeObserver(() => {
+      requestAnimationFrame(() => clkRenderOverviewWires(main));
+    });
+  }
+  clkOverviewResizeObserver.disconnect();
+  clkOverviewResizeObserver.observe(shell);
+}
+
+function clkRenderAllSettings(main) {
+  const sorted = clkSortedNodes();
+  const configurableNodes = sorted.filter(node => (node.props || []).length);
+  let html = `
+    <div class="clkcfg-header">
+      <div class="clkcfg-title">
+        <span>⏱</span>
+        <span>${clkCurrentTree.name}</span>
+        <span class="node-type t-mux" style="font-size:11px;padding:2px 8px;border-radius:6px;font-weight:600;text-transform:uppercase;">all settings</span>
+      </div>
+      <div class="clkcfg-desc">${clkCurrentTree.desc || "Configure all clock sources, PLLs, multiplexers, and outputs from one consolidated surface."}</div>
+      <div class="clkcfg-freq-badge">${sorted.filter(node => (clkFreqs[node.id] || 0) > 0).length} active clocks</div>
+    </div>
+    <div class="clkcfg-body">
+  `;
+
+  html += clkBuildOverviewDiagram();
+
+  html += clkBuildWarningsGroup();
+
+  configurableNodes.forEach(node => {
+    html += `<div class="cfg-group"><div class="cfg-group-header" style="cursor:default;">
+      <span class="toggle">${node.icon}</span> ${node.name}
+      <span class="group-count">${clkFormatFreq(clkFreqs[node.id] || 0)}</span>
+    </div><div class="cfg-group-body" style="display:block;">`;
+    html += `
+      <div class="clkcfg-all-node-head">
+        <div class="clkcfg-all-node-copy">
+          <div class="clkcfg-all-node-title">
+            <span>${node.icon}</span>
+            <span>${node.name}</span>
+            <span class="node-type t-${node.type}" style="font-size:10px;padding:2px 6px;border-radius:4px;font-weight:600;text-transform:uppercase;">${node.type}</span>
+          </div>
+          <div class="clkcfg-all-node-meta">${escapeHtml(node.desc || "Clock node configuration")}</div>
+        </div>
+        <button class="clkcfg-link-btn" data-clk-focus-node="${node.id}">Node Detail</button>
+      </div>
+    `;
+    html += clkBuildPropertyRows(node.props || []);
+    html += `</div></div>`;
+  });
+
+  if (!configurableNodes.length) {
+    html += `<div class="cfg-group"><div class="cfg-group-header" style="cursor:default;">
+      <span class="toggle">ℹ</span> Info
+    </div><div class="cfg-group-body" style="display:block;">
+      <div style="padding:12px;color:var(--fg-dim);font-size:13px;">This clock tree has no editable properties.</div>
+    </div></div>`;
+  }
+
+  html += `</div>`;
+  html += clkBuildActions();
+  main.innerHTML = html;
+  clkBindConfigInputs(main);
+  clkBindFocusButtons(main);
+  clkBindOutputTabs(main);
+  clkBindOverviewResize(main);
+  requestAnimationFrame(() => clkRenderOverviewWires(main));
+}
+
 function clkRenderBody() {
   const main = $("#clkMain");
-  if (!main || !clkCurrentTree || !clkSelectedNode) { clkRenderEmpty(); return; }
+  if (!main) return;
+  if (!clkCurrentTree) { clkRenderEmpty(); return; }
+  if (clkViewMode === "all" || !clkSelectedNode) {
+    clkRenderAllSettings(main);
+    return;
+  }
 
   const node = clkCurrentTree.nodes.find(n => n.id === clkSelectedNode);
-  if (!node) { clkRenderEmpty(); return; }
+  if (!node) { clkShowAllSettings(); return; }
 
   const freq = clkFreqs[node.id] || 0;
   const props = node.props || [];
@@ -4279,43 +7281,13 @@ function clkRenderBody() {
     html += `</div></div></div>`;
   }
 
-  // ── Properties group ──
+  html += clkBuildWarningsGroup();
+
   if (props.length) {
     html += `<div class="cfg-group"><div class="cfg-group-header" style="cursor:default;">
       <span class="toggle">⚙</span> Configuration
     </div><div class="cfg-group-body" style="display:block;">`;
-
-    for (const prop of props) {
-      const val = clkValues[prop.key] ?? prop.default;
-      html += `<div class="cfg-row">`;
-      html += `<div class="cfg-label">
-        <span class="cfg-name">${prop.label}</span>
-        <span class="cfg-help">${prop.help || ""}</span>
-        <span class="cfg-default">Default: ${prop.default}</span>
-      </div>`;
-      html += `<div class="cfg-value">`;
-
-      if (prop.type === "bool") {
-        html += `<label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
-          <input type="checkbox" data-clk-key="${prop.key}" ${val ? "checked" : ""} style="accent-color:var(--accent);width:16px;height:16px;">
-          <span style="font-size:13px;">${val ? "Enabled" : "Disabled"}</span>
-        </label>`;
-      } else if (prop.type === "choice") {
-        html += `<select data-clk-key="${prop.key}" style="padding:5px 8px;font-size:13px;background:var(--bg);color:var(--fg);border:1px solid var(--border);border-radius:6px;">`;
-        for (const ch of prop.choices) {
-          const sel = (String(ch) === String(val)) ? " selected" : "";
-          let label = ch;
-          if (typeof ch === "number" && ch >= 1_000_000) label = `${(ch / 1_000_000).toFixed(1)} MHz`;
-          else if (typeof ch === "number" && ch >= 1_000) label = `${(ch / 1_000).toFixed(1)} kHz`;
-          html += `<option value="${ch}"${sel}>${label}</option>`;
-        }
-        html += `</select>`;
-      } else if (prop.type === "int") {
-        html += `<input type="number" data-clk-key="${prop.key}" value="${val}" style="width:120px;padding:5px 8px;font-size:13px;background:var(--bg);color:var(--fg);border:1px solid var(--border);border-radius:6px;">`;
-      }
-
-      html += `</div></div>`;
-    }
+    html += clkBuildPropertyRows(props);
 
     html += `</div></div>`;
   } else {
@@ -4346,77 +7318,12 @@ function clkRenderBody() {
 
   html += `</div>`; // close clkcfg-body
 
-  // ── Actions ──
-  html += `
-    <div class="clkcfg-actions">
-      <button class="btn btn-accent" id="clkGenerateBtn" onclick="clkGenerate()">⚡ Generate Config</button>
-      <button class="btn" id="clkCopyBtn" style="display:none;" onclick="clkCopyOutput()">📋 Copy</button>
-      <span class="spacer"></span>
-      <span style="font-size:12px;color:var(--fg-dim);">
-        Max SoC freq: ${clkFormatFreq(clkCurrentTree.max_freq)}
-      </span>
-    </div>
-    <div class="clkcfg-output" id="clkOutput" style="display:none;">
-      <div class="clkcfg-output-tabs">
-        <div class="clkcfg-output-tab ${clkOutputTab === "overlay" ? "active" : ""}" data-clk-out="overlay">.overlay</div>
-        <div class="clkcfg-output-tab ${clkOutputTab === "prj_conf" ? "active" : ""}" data-clk-out="prj_conf">prj.conf</div>
-        <div class="clkcfg-output-tab ${clkOutputTab === "freq" ? "active" : ""}" data-clk-out="freq">Frequencies</div>
-      </div>
-      <pre id="clkOutputPre"></pre>
-    </div>
-  `;
+  html += clkBuildActions();
 
   main.innerHTML = html;
 
-  // ── Wire up change events ──
-  main.querySelectorAll("[data-clk-key]").forEach(el => {
-    const key = el.dataset.clkKey;
-    const evName = (el.type === "checkbox") ? "change" : "input";
-    el.addEventListener(evName, async () => {
-      if (el.type === "checkbox") {
-        clkValues[key] = el.checked;
-        const span = el.closest("label").querySelector("span:last-child");
-        if (span) span.textContent = el.checked ? "Enabled" : "Disabled";
-      } else if (el.type === "number") {
-        clkValues[key] = parseInt(el.value) || 0;
-      } else {
-        // select: try numeric parse
-        const num = Number(el.value);
-        clkValues[key] = isNaN(num) ? el.value : num;
-      }
-      await clkComputeFreqs();
-      clkRenderSidebar();
-      // Update freq badge inline
-      const badge = main.querySelector(".clkcfg-freq-badge");
-      if (badge) badge.textContent = clkFormatFreq(clkFreqs[clkSelectedNode] || 0);
-      // Update tree diagram freqs
-      main.querySelectorAll(".clkcfg-tree-node .tn-freq").forEach(tnf => {
-        // find node id from onclick
-        const parent = tnf.closest(".clkcfg-tree-node");
-        if (!parent) return;
-        const onclick = parent.getAttribute("onclick") || "";
-        const m = onclick.match(/clkSelectNode\('(.+?)'\)/);
-        if (m) tnf.textContent = clkFormatFreq(clkFreqs[m[1]] || 0);
-      });
-      // Update current node in diagram
-      const activeNode = main.querySelector(".clkcfg-tree-node.active .tn-freq");
-      if (activeNode) activeNode.textContent = clkFormatFreq(clkFreqs[clkSelectedNode] || 0);
-    });
-  });
-
-  // ── Wire up output tab switching ──
-  main.querySelectorAll("[data-clk-out]").forEach(tab => {
-    tab.addEventListener("click", () => {
-      clkOutputTab = tab.dataset.clkOut;
-      main.querySelectorAll("[data-clk-out]").forEach(t => t.classList.toggle("active", t.dataset.clkOut === clkOutputTab));
-      const preEl = $("#clkOutputPre");
-      if (preEl && preEl._data) {
-        if (clkOutputTab === "overlay") preEl.textContent = preEl._data.overlay;
-        else if (clkOutputTab === "prj_conf") preEl.textContent = preEl._data.prj_conf;
-        else if (clkOutputTab === "freq") preEl.textContent = clkFormatFreqTable(preEl._data.frequencies);
-      }
-    });
-  });
+  clkBindConfigInputs(main);
+  clkBindOutputTabs(main);
 }
 
 function clkFormatFreqTable(freqs) {
@@ -4465,6 +7372,9 @@ async function clkGenerate() {
 
     preEl._data = data;
     clkFreqs = data.frequencies || clkFreqs;
+    clkWarnings = Array.isArray(data.warnings) ? data.warnings : clkWarnings;
+    generatedFragments.clock.overlay = data.overlay || "";
+    generatedFragments.clock.prj_conf = data.prj_conf || "";
 
     if (clkOutputTab === "overlay") preEl.textContent = data.overlay;
     else if (clkOutputTab === "prj_conf") preEl.textContent = data.prj_conf;
@@ -4472,7 +7382,9 @@ async function clkGenerate() {
 
     outEl.style.display = "";
     copyBtn.style.display = "";
+    refreshGeneratedOutputs();
     clkRenderSidebar();
+    clkRenderBody();
     toast("Clock config generated");
   } catch (err) {
     preEl.textContent = `ERROR: ${err.message}`;
@@ -4862,6 +7774,23 @@ function mcuInit() {
   });
 }
 
+function mcuRenderSearchCandidates(candidates) {
+  if (!Array.isArray(candidates) || !candidates.length) {
+    return "";
+  }
+
+  let html = `<div style="padding:4px;">• Search results:</div>`;
+  candidates.forEach((candidate, index) => {
+    const label = candidate.kind || "result";
+    html += `<div style="padding:4px 4px 6px 16px;border-left:1px solid var(--border);margin:4px 0;">
+      <div style="font-size:10px;color:var(--fg-dim);text-transform:capitalize;">${label}</div>
+      <a href="${candidate.url}" target="_blank" style="color:var(--accent);font-size:10px;word-break:break-all;display:block;">${candidate.url}</a>
+      <button class="btn" data-search-candidate-index="${index}" style="font-size:10px;padding:3px 8px;margin-top:4px;">Use this URL</button>
+    </div>`;
+  });
+  return html;
+}
+
 async function mcuLookup() {
   const input = $("#mcuPartInput");
   const resultEl = $("#mcuLookupResult");
@@ -4907,6 +7836,8 @@ async function mcuLookup() {
         });
       }
 
+      html += mcuRenderSearchCandidates(idData.search_candidates);
+
       if (!idData.existing_board) {
         html += `<div style="margin-top:8px;">
           <button class="btn btn-accent" id="mcuBtnFetch" style="font-size:11px;padding:4px 12px;">
@@ -4921,6 +7852,7 @@ async function mcuLookup() {
       }
     } else {
       html += `<div style="padding:4px;color:var(--yellow);">\u26A0 Unknown vendor for "${pn}"</div>`;
+      html += mcuRenderSearchCandidates(idData.search_candidates);
       html += `<div style="margin-top:8px;">
         <label style="font-size:10px;color:var(--fg-dim);">Provide a direct datasheet PDF URL:</label>
         <input type="text" id="mcuCustomUrl" style="width:100%;padding:4px 6px;margin-top:2px;font-size:10px;background:var(--bg);color:var(--fg);border:1px solid var(--border);border-radius:var(--radius);"
@@ -4938,6 +7870,17 @@ async function mcuLookup() {
     if (fetchBtn) {
       fetchBtn.addEventListener("click", () => mcuFetchDatasheet(pn));
     }
+
+    resultEl.querySelectorAll("[data-search-candidate-index]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const index = Number(button.getAttribute("data-search-candidate-index"));
+        const candidate = idData.search_candidates?.[index];
+        const inputEl = $("#mcuCustomUrl");
+        if (candidate && inputEl) {
+          inputEl.value = candidate.url;
+        }
+      });
+    });
 
   } catch (err) {
     resultEl.innerHTML = `<div style="color:var(--red);">Error: ${err.message}</div>`;
@@ -5058,6 +8001,7 @@ function snsRemoveJob(jobId) {
 function snsInit() {
   const uploadArea = $("#snsUploadArea");
   const fileInput  = $("#snsFileInput");
+  const jobSearch = $("#snsJobSearch");
 
   // Click to browse
   uploadArea.addEventListener("click", () => fileInput.click());
@@ -5106,6 +8050,10 @@ function snsInit() {
       snsSelectJob(snsSelectedJob);
     }
   }
+
+  jobSearch?.addEventListener("input", () => {
+    snsRenderJobList();
+  });
 }
 
 
@@ -5204,6 +8152,7 @@ async function snsLoadJobs() {
 
 function snsRenderJobList() {
   const list = $("#snsJobList");
+  const filter = resolveThresholdSearch("snsJobSearch", snsJobs.length);
   if (!snsJobs.length) {
     list.innerHTML = `<div class="empty-state" style="padding:20px;">
       <div>No sensors parsed yet</div>
@@ -5212,7 +8161,25 @@ function snsRenderJobList() {
     return;
   }
 
-  list.innerHTML = snsJobs.map(j => {
+  const filteredJobs = snsJobs.filter((j) => {
+    if (!filter) return true;
+    const s = j.result ? j.result.summary : j.summary;
+    const pn = s ? (s.part_number || j.filename) : j.filename;
+    const vendor = s ? (s.vendor_name || s.vendor || "") : "";
+    const type = s ? (s.sensor_type || "") : "";
+    const haystack = `${pn} ${vendor} ${type} ${j.filename}`.toLowerCase();
+    return haystack.includes(filter);
+  });
+
+  if (!filteredJobs.length) {
+    list.innerHTML = `<div class="empty-state" style="padding:20px;">
+      <div>No parsed sensors match the current search</div>
+      <div class="hint">Try another part number, vendor, or sensor type</div>
+    </div>`;
+    return;
+  }
+
+  list.innerHTML = filteredJobs.map(j => {
     const s = j.result ? j.result.summary : j.summary;
     const pn = s ? (s.part_number || j.filename) : j.filename;
     const vendor = s ? (s.vendor_name || s.vendor || "") : "";

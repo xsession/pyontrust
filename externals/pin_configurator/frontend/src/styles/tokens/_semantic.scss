@@ -1,0 +1,49 @@
+:root {
+  --color-success: var(--color-mint);
+  --color-warning: var(--color-sun);
+  --color-error: var(--color-danger);
+  --color-info: var(--color-signal);
+  --color-focus: #2563eb;
+  --color-disabled: #97897d;
+  --color-hardware: #b8742d;
+  --color-simulation: #2b6cb0;
+  --color-codegen-risk: #d97706;
+
+  --surface-workspace-chrome: linear-gradient(180deg, rgba(20, 28, 38, 0.96), rgba(12, 18, 27, 0.92));
+  --surface-workspace-status: linear-gradient(180deg, rgba(15, 23, 33, 0.94), rgba(10, 16, 24, 0.92));
+  --surface-workspace-muted: rgba(255, 255, 255, 0.04);
+  --surface-workspace-elevated: rgba(255, 255, 255, 0.72);
+  --surface-info-subtle: rgba(47, 128, 237, 0.08);
+  --surface-success-subtle: rgba(27, 167, 132, 0.1);
+  --surface-warning-subtle: rgba(255, 159, 67, 0.12);
+  --surface-error-subtle: rgba(207, 77, 111, 0.08);
+  --surface-selection: rgba(232, 241, 255, 0.95);
+  --surface-selection-success: rgba(230, 248, 243, 0.95);
+  --surface-selection-warning: rgba(255, 245, 232, 0.98);
+  --surface-command-surface: rgba(255, 250, 242, 0.96);
+  --surface-command-hover: rgba(244, 248, 252, 0.98);
+  --surface-list-hover: rgba(232, 241, 255, 0.64);
+  --surface-list-selected: rgba(232, 241, 255, 0.92);
+  --surface-generated-field: rgba(27, 167, 132, 0.08);
+
+  --border-workspace-chrome: rgba(185, 201, 218, 0.18);
+  --border-workspace-panel: rgba(185, 201, 218, 0.16);
+  --border-control: rgba(95, 116, 139, 0.16);
+  --border-control-strong: rgba(95, 116, 139, 0.14);
+  --border-success: rgba(27, 167, 132, 0.28);
+  --border-warning: rgba(255, 159, 67, 0.28);
+  --border-error: rgba(207, 77, 111, 0.22);
+  --border-info: rgba(47, 128, 237, 0.28);
+
+  --text-workspace-strong: #f4f8ff;
+  --text-workspace-muted: rgba(220, 232, 247, 0.72);
+  --text-workspace-label: rgba(194, 207, 224, 0.72);
+  --text-success-strong: #165d4d;
+  --text-error-strong: #8a2341;
+  --text-info-strong: #1b4d8d;
+  --text-on-accent: #f4fffc;
+
+  --shadow-workspace-chrome: 0 22px 48px rgba(4, 10, 19, 0.28);
+  --shadow-workspace-status: 0 18px 36px rgba(4, 10, 19, 0.18);
+  --shadow-card: 0 18px 40px rgba(34, 24, 13, 0.12);
+}
