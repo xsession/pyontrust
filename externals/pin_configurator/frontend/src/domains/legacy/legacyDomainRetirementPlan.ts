@@ -19,6 +19,18 @@ export interface LegacyDomainRetirementEntry {
   retirementGoal: string;
 }
 
+export interface LegacyCutoverSummary {
+  canonicalShellLabel: string;
+  canonicalShellDetail: string;
+  legacySupportLabel: string;
+  legacySupportDetail: string;
+  remainingLegacyWorkflows: LegacyDomainRetirementEntry[];
+  portingRule: string;
+  cutoverThresholdLabel: string;
+  cutoverThresholdDetail: string;
+  cutoverThresholdMet: boolean;
+}
+
 export const legacyDomainRetirementPlan: readonly LegacyDomainRetirementEntry[] = [
   {
     id: "pin-configurator",
@@ -115,4 +127,29 @@ export const legacyDomainRetirementPlan: readonly LegacyDomainRetirementEntry[] 
 
 export function listRemainingLegacyDomains() {
   return legacyDomainRetirementPlan.filter((entry) => entry.status === "legacy-global");
+}
+
+export function buildLegacyCutoverSummary(
+  entries: readonly LegacyDomainRetirementEntry[] = legacyDomainRetirementPlan,
+): LegacyCutoverSummary {
+  const remainingLegacyWorkflows = entries.filter((entry) => entry.status === "legacy-global");
+  const cutoverThresholdMet = remainingLegacyWorkflows.length === 0;
+
+  return {
+    canonicalShellLabel: "React shell is canonical",
+    canonicalShellDetail: "New workstation behavior is defined in the React shell first. The legacy web/index.html path stays aligned to that model instead of introducing competing shell patterns.",
+    legacySupportLabel: remainingLegacyWorkflows.length
+      ? `${remainingLegacyWorkflows.length} workflow${remainingLegacyWorkflows.length === 1 ? " still requires" : "s still require"} legacy-only support`
+      : "No workflows still require legacy-only support",
+    legacySupportDetail: remainingLegacyWorkflows.length
+      ? `Legacy-only support remains limited to ${remainingLegacyWorkflows.map((entry) => entry.label).join(", ")} until those flows are replaced in React.`
+      : "Legacy support is now maintenance-only. New feature work should stay in React unless a cutover blocker is discovered.",
+    remainingLegacyWorkflows,
+    portingRule: "Port shell-critical patterns only after they are stable in React, then backfill legacy only when compatibility is still required.",
+    cutoverThresholdLabel: cutoverThresholdMet ? "Legacy feature freeze is active" : "Legacy feature freeze is blocked",
+    cutoverThresholdDetail: cutoverThresholdMet
+      ? "The legacy shell stops receiving feature work once all tracked workflows are owned by React presenters and no legacy-global flows remain."
+      : "The legacy shell can stop receiving feature work only after every tracked workflow moves out of legacy-global ownership.",
+    cutoverThresholdMet,
+  };
 }

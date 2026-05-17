@@ -38,6 +38,13 @@ export default defineConfig(function (_a) {
                 },
             },
         },
+        css: {
+            preprocessorOptions: {
+                scss: {
+                    api: "modern-compiler",
+                },
+            },
+        },
         server: {
             port: 4173,
             proxy: {

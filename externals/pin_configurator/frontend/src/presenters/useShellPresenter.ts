@@ -21,6 +21,7 @@ import { pinConfiguratorApi } from "../services/pinConfiguratorApi";
 import { useProjectShellController } from "../project/useProjectShellController";
 import type { ProjectStatus } from "../project/workspaceState";
 import type { PinAssignmentAltFunctionOptionViewModel, PinAssignmentsViewModel } from "../shared/viewModels/pinAssignments";
+import { buildWorkspaceStatusBarItems } from "../workspace/shell/buildWorkspaceStatusBarItems";
 
 export interface ShellMetric {
   label: string;
@@ -256,77 +257,14 @@ export function useShellPresenter(): ShellViewModel {
   }, [boards, error, loading, projectController.projectDocument]);
 
   const statusBarItems = useMemo<ShellStatusItemViewModel[]>(() => {
-    const artifacts = selectProjectArtifactStatus(projectController.projectDocument);
-    const integrity = selectProjectIntegrityStatus(projectController.projectDocument);
-    const readinessLabel = selectProjectReadinessLabel(projectController.projectDocument);
-    const boardLabel = projectController.activeBoard
-      ? `${projectController.activeBoard.name} (${projectController.activeBoard.package})`
-      : "Board pending";
-    const workspaceProfile = projectController.projectFilePath.trim()
-      ? "Project-backed"
-      : "Scratch session";
-    const dirtyState = projectController.canUndoProjectDocument ? "Unsaved changes" : "Clean";
-    const generatorState =
-      artifacts.authorityState === "authoritative"
-        ? "Authoritative"
-        : artifacts.authorityState === "stale"
-          ? "Stale"
-          : "Missing";
-    const simulatorState = !projectController.projectDocument.renode.enabled
-      ? "Disabled"
-      : projectController.projectDocument.renode.platform.trim()
-        ? "Ready"
-        : "Target pending";
-    const activityState = projectController.projectBusy
-      ? "Busy"
-      : projectController.projectStatus.tone === "error"
-        ? "Blocked"
-        : "Idle";
-
-    return [
-      {
-        id: "board",
-        label: "Board",
-        value: boardLabel,
-        detail: projectController.projectDocument.board_id || "Select a board.",
-        tone: projectController.activeBoard ? "success" : "warning",
-      },
-      {
-        id: "profile",
-        label: "Workspace Profile",
-        value: workspaceProfile,
-        detail: projectController.projectFilePath || "Project path pending.",
-        tone: projectController.projectFilePath.trim() ? "neutral" : "warning",
-      },
-      {
-        id: "dirty",
-        label: "Dirty State",
-        value: dirtyState,
-        detail: projectController.canUndoProjectDocument ? "Undo stack pending." : "Session clean.",
-        tone: projectController.canUndoProjectDocument ? "warning" : "success",
-      },
-      {
-        id: "generator",
-        label: "Generator",
-        value: generatorState,
-        detail: `${readinessLabel}. ${artifacts.authorityReason}`,
-        tone: artifacts.authorityState === "authoritative" ? "success" : artifacts.authorityState === "stale" ? "warning" : "neutral",
-      },
-      {
-        id: "simulator",
-        label: "Simulator",
-        value: simulatorState,
-        detail: projectController.projectDocument.renode.platform.trim() || projectController.projectDocument.renode.appbench_target || "Target pending.",
-        tone: simulatorState === "Ready" ? "success" : simulatorState === "Target pending" ? "warning" : "neutral",
-      },
-      {
-        id: "activity",
-        label: "Activity",
-        value: activityState,
-        detail: integrity.warningCount ? `${projectController.projectStatus.message} ${integrity.warningCount} warnings.` : projectController.projectStatus.message,
-        tone: projectController.projectBusy ? "warning" : projectController.projectStatus.tone === "error" ? "warning" : "neutral",
-      },
-    ];
+    return buildWorkspaceStatusBarItems({
+      activeBoard: projectController.activeBoard,
+      projectDocument: projectController.projectDocument,
+      projectFilePath: projectController.projectFilePath,
+      canUndoProjectDocument: projectController.canUndoProjectDocument,
+      projectBusy: projectController.projectBusy,
+      projectStatus: projectController.projectStatus,
+    });
   }, [
     projectController.activeBoard,
     projectController.canUndoProjectDocument,
@@ -378,7 +316,7 @@ export function useShellPresenter(): ShellViewModel {
       {
         id: "export.artifacts",
         label: "Export Artifacts",
-        description: "Download generated overlay, config, and fragment outputs.",
+        description: "Download the generated overlay, generated config, and fragments metadata bundle from the canonical project document.",
         shortcut: "Ctrl+E",
         group: "Export",
         disabled: projectController.projectBusy,
@@ -387,7 +325,7 @@ export function useShellPresenter(): ShellViewModel {
       {
         id: "export.renode",
         label: "Export Renode Bundle",
-        description: "Download the Renode simulation bundle from the project document.",
+        description: "Download the Renode RESC script, Robot suite, and simulation handoff bundle from the canonical project document.",
         shortcut: "Ctrl+Shift+E",
         group: "Export",
         disabled: projectController.projectBusy,
@@ -435,8 +373,9 @@ export function useShellPresenter(): ShellViewModel {
       projectBusy: projectController.projectBusy,
       projectStatus: projectController.projectStatus,
       pinAssignments,
+      clockWarnings: clockConfigurator.warnings,
     }),
-    [pinAssignments, projectController.activeBoard, projectController.projectBusy, projectController.projectDocument, projectController.projectStatus],
+    [clockConfigurator.warnings, pinAssignments, projectController.activeBoard, projectController.projectBusy, projectController.projectDocument, projectController.projectStatus],
   );
 
   const outputChannels = useMemo<ShellOutputChannelViewModel[]>(() => buildSimTest.outputChannels, [buildSimTest.outputChannels]);

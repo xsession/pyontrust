@@ -28,12 +28,40 @@ describe("workspaceShellPreferences", () => {
   it("persists density and layout preset selections", () => {
     const storage = createStorage();
 
-    saveWorkspaceShellPreferences({ density: "compact", layoutPresetId: "renode-validation" }, storage);
+    saveWorkspaceShellPreferences({
+      density: "compact",
+      layoutPresetId: "renode-validation",
+      focusedPanelId: "workspace-renode-profile",
+      activeOutputChannelId: "simulation",
+    }, storage);
 
     expect(loadWorkspaceShellPreferences(storage)).toMatchObject({
       density: "compact",
       layoutPresetId: "renode-validation",
+      focusedPanelId: "workspace-renode-profile",
+      activeOutputChannelId: "simulation",
       version: 1,
+    });
+  });
+
+  it("falls back safely when persisted focused panel or output channel are invalid", () => {
+    const storage = createStorage();
+
+    storage.setItem(
+      "pin-configurator.workspace-shell-preferences.v1",
+      JSON.stringify({
+        version: 1,
+        savedAt: "2026-05-17T00:00:00.000Z",
+        density: "regular",
+        layoutPresetId: "bring-up",
+        focusedPanelId: "workspace-missing-panel",
+        activeOutputChannelId: "missing-output",
+      }),
+    );
+
+    expect(loadWorkspaceShellPreferences(storage)).toMatchObject({
+      focusedPanelId: "workspace-overview",
+      activeOutputChannelId: "build",
     });
   });
 

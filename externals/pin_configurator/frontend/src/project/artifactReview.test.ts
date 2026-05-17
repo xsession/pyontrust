@@ -13,6 +13,7 @@ describe("artifactReview", () => {
   it("builds the Phase 8 artifact surface set with navigation-ready diagnostics", () => {
     const projectDocument = createEmptyProjectDocument();
     projectDocument.board_id = board.board;
+    projectDocument.generated_overlay = "/custom-overlay { zephyr,console = &uart0; };";
     projectDocument.protocol_editor.entries = [
       {
         id: "proto_uart_shell_bridge_1",
@@ -45,6 +46,15 @@ describe("artifactReview", () => {
       "workspace-renode-robot",
     ]);
     expect(documents.find((document) => document.id === "header")?.content).toContain("uart_shell_1_init");
+    expect(documents.find((document) => document.id === "overlay")).toMatchObject({
+      sourceKind: "editable-project-asset",
+      freshnessState: "stale",
+    });
+    expect(documents.find((document) => document.id === "fragments")).toMatchObject({
+      sourceKind: "derived-output",
+      exportSummary: expect.stringContaining("workspace Export Artifacts"),
+    });
+    expect(documents.find((document) => document.id === "header")?.freshnessLabel).toBe("Derived");
     expect(diagnostics.some((entry) => entry.navigation.panelId === "workspace-generated-overlay")).toBe(true);
   });
 });

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { editor as MonacoEditor } from "monaco-editor";
 import type * as Monaco from "monaco-editor";
 import type { ArtifactReviewDocument } from "../../project/artifactReview";
+import { StatusChip } from "../../shared/ui/StatusChip";
 
 interface ArtifactReviewPanelProps {
   document: ArtifactReviewDocument;
@@ -117,6 +118,29 @@ export function ArtifactReviewPanel({ document, focusRequest, onSave }: Artifact
             </button>
           ) : null}
         </div>
+      </div>
+
+      <div className="dock-artifact-panel__meta">
+        <div className="dock-artifact-panel__chips">
+          <StatusChip label={document.editable ? "Editable project asset" : "Derived output"} tone={document.editable ? "info" : "neutral"} />
+          <StatusChip
+            label={document.freshnessLabel}
+            tone={document.freshnessState === "stale" ? "warning" : document.freshnessState === "pending" ? "neutral" : "success"}
+          />
+          <StatusChip label={`${document.markers.length} markers`} tone={document.markers.length ? "warning" : "success"} />
+        </div>
+        <p>{document.description}</p>
+        <p>{document.freshnessDetail}</p>
+        <dl className="dock-artifact-panel__facts">
+          <div>
+            <dt>Change summary</dt>
+            <dd>{document.changeSummary}</dd>
+          </div>
+          <div>
+            <dt>Export route</dt>
+            <dd>{document.exportSummary}</dd>
+          </div>
+        </dl>
       </div>
 
       {diffOpen && hasDiff ? (

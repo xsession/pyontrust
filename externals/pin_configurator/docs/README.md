@@ -13,6 +13,18 @@ Enterprise-grade technical documentation written in [Typst](https://typst.app/).
 | `developer-guide.typ` | Developer guide — setup, adding features, testing, contributing |
 | `template.typ` | Shared Typst template with enterprise page layout, helpers, and callout macros |
 
+## Frontend planning docs
+
+These Markdown documents track the frontend transition and product direction alongside the Typst reference manuals.
+
+| File | Purpose |
+|------|---------|
+| `frontend_platform_research.md` | External platform review and local baseline research for frontend direction |
+| `frontend_product_design_spec.md` | Product-facing target for shell layout, workflow model, inspector behavior, and visual direction |
+| `frontend_implementation_checklist.md` | Delivery checklist that turns the design spec into concrete frontend work |
+| `frontend_mvp_refactor_plan.md` | Migration plan for the React, TypeScript, and Vite-based shell |
+| `frontend_cutover_strategy.md` | React-to-legacy cutover strategy and runtime transition notes |
+
 ## Building
 
 ### Using Typst CLI

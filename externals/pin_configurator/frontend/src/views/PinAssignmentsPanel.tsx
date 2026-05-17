@@ -113,12 +113,30 @@ export function PinAssignmentsPanel({ pinAssignments, onClearPinAssignment, onAs
   const hoveredRow = rows.find((row) => row.pinNumber === hoveredPinNumber) ?? null;
   const selectedProps = selectedRow ? propertyValuesByPinNumber[selectedRow.pinNumber] ?? {} : {};
   const selectedAltFunctionOptions = selectedRow ? pinAssignments.altFunctionOptionsByPinNumber[selectedRow.pinNumber] ?? [] : [];
+  const selectedAltFunction = useMemo(
+    () => selectedAltFunctionOptions.find((option) => option.value === selectedRow?.selectedAltFunctionValue) ?? selectedAltFunctionOptions[0] ?? null,
+    [selectedAltFunctionOptions, selectedRow?.selectedAltFunctionValue],
+  );
   const packageLayout = useMemo(() => buildPackageLayout(rows.map((row) => row.pinNumber)), [rows]);
   const filteredPinSet = useMemo(() => new Set(filteredRows.map((row) => row.pinNumber)), [filteredRows]);
   const selectedIssues = useMemo(
     () => (selectedRow ? pinAssignments.issuesByPinNumber[selectedRow.pinNumber] ?? [] : []),
     [pinAssignments.issuesByPinNumber, selectedRow],
   );
+  const totalIssueCount = useMemo(
+    () => Object.values(pinAssignments.issuesByPinNumber).reduce((count, issues) => count + issues.length, 0),
+    [pinAssignments.issuesByPinNumber],
+  );
+  const readinessIssuePreview = useMemo(
+    () => Object.entries(pinAssignments.issuesByPinNumber).flatMap(([pinNumber, issues]) => issues.map((issue) => ({ pinNumber, issue }))).slice(0, 3),
+    [pinAssignments.issuesByPinNumber],
+  );
+  const selectedRowIssueCount = selectedRow ? pinAssignments.issuesByPinNumber[selectedRow.pinNumber]?.length ?? 0 : 0;
+
+  const selectPin = (pinNumber: string) => {
+    setSelectedPinNumber(pinNumber);
+    setHoveredPinNumber(pinNumber);
+  };
 
   useEffect(() => {
     if (!filteredRows.length) {
@@ -135,20 +153,61 @@ export function PinAssignmentsPanel({ pinAssignments, onClearPinAssignment, onAs
 
   return (
     <div className="pin-assignments-panel">
-      <div className="pin-assignments-panel__summary">
-        <div>
-          <strong>{summary.resolvedCount}</strong>
-          <span>resolved selections</span>
+      <InspectorSection
+        title="Pin readiness"
+        summary="Review unresolved selections and active pin issues here before changing assignment values or treating generated artifacts as ready."
+        actions={<DiagnosticBadge label={`${summary.unresolvedCount} unresolved`} tone={summary.unresolvedCount ? "warning" : "success"} />}
+      >
+        <div className="pin-assignments-panel__summary">
+          <div>
+            <strong>{summary.resolvedCount}</strong>
+            <span>resolved selections</span>
+          </div>
+          <div>
+            <strong>{summary.savedCount}</strong>
+            <span>saved pin entries</span>
+          </div>
+          <div>
+            <strong>{summary.unresolvedCount}</strong>
+            <span>unresolved after board match</span>
+          </div>
+          <div>
+            <strong>{totalIssueCount}</strong>
+            <span>active issues</span>
+          </div>
         </div>
-        <div>
-          <strong>{summary.savedCount}</strong>
-          <span>saved pin entries</span>
-        </div>
-        <div>
-          <strong>{summary.unresolvedCount}</strong>
-          <span>unresolved after board match</span>
-        </div>
-      </div>
+        {(summary.unresolvedCount || totalIssueCount) ? (
+          <InspectorNotice
+            title="Pin blockers stay at the top of the workflow"
+            detail={`${summary.unresolvedCount} unresolved selection${summary.unresolvedCount === 1 ? " remains" : "s remain"} and ${totalIssueCount} active issue${totalIssueCount === 1 ? " is" : "s are"} currently affecting board handoff.`}
+            tone="warning"
+          />
+        ) : (
+          <InspectorNotice
+            title="Pin workflow is aligned"
+            detail="Use the package surface and detail editor below to adjust assignments while keeping the resolved route and issue state in view."
+            tone="info"
+          />
+        )}
+        {totalIssueCount ? (
+          <div className="pin-assignments-panel__issues" aria-label="Pin readiness issues">
+            {readinessIssuePreview.map(({ pinNumber, issue }) => (
+              <button
+                key={issue.id}
+                type="button"
+                className={selectedRow?.pinNumber === pinNumber ? "pin-assignments-panel__issue pin-assignments-panel__issue--compact pin-assignments-panel__issue--selected" : "pin-assignments-panel__issue pin-assignments-panel__issue--compact"}
+                onClick={() => selectPin(pinNumber)}
+              >
+                <div className="pin-assignments-panel__issue-title-row">
+                  <strong>{issue.title}</strong>
+                  <span className="pin-assignments-panel__issue-pin">{`Pin ${pinNumber}`}</span>
+                </div>
+                <span>{issue.summary}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </InspectorSection>
 
       <div className="pin-assignments-panel__filters" role="group" aria-label="Pin assignment filters">
         <button
@@ -208,8 +267,11 @@ export function PinAssignmentsPanel({ pinAssignments, onClearPinAssignment, onAs
                   const isHovered = hoveredPinNumber === pin.pinNumber;
                   const visible = filteredPinSet.has(pin.pinNumber);
                   const unresolved = row?.resolution === "unresolved";
+                    const hasIssues = (pinAssignments.issuesByPinNumber[pin.pinNumber]?.length ?? 0) > 0;
                   const toneClass = unresolved
                     ? "pin-assignments-panel__scene-pin--warning"
+                      : hasIssues
+                        ? "pin-assignments-panel__scene-pin--conflict"
                     : row
                       ? "pin-assignments-panel__scene-pin--resolved"
                       : "pin-assignments-panel__scene-pin--empty";
@@ -225,7 +287,7 @@ export function PinAssignmentsPanel({ pinAssignments, onClearPinAssignment, onAs
                         isHovered ? "pin-assignments-panel__scene-pin--hovered" : "",
                       ].filter(Boolean).join(" ")}
                       onMouseEnter={() => setHoveredPinNumber(pin.pinNumber)}
-                      onClick={() => setSelectedPinNumber(pin.pinNumber)}
+                      onClick={() => selectPin(pin.pinNumber)}
                     >
                       <rect x={pin.x} y={pin.y} width={pin.width} height={pin.height} rx="8" />
                       <text x={pin.x + pin.width / 2} y={pin.y + pin.height / 2 + 4} textAnchor="middle">{pin.pinNumber}</text>
@@ -243,6 +305,12 @@ export function PinAssignmentsPanel({ pinAssignments, onClearPinAssignment, onAs
                     ? `${selectedRow.savedLabel} • ${selectedRow.resolvedRoute}`
                     : "Hover or select a pin to inspect it inside the package surface."}
               </span>
+              {selectedRow ? (
+                <div className="pin-assignments-panel__status-row" aria-label="Selected pin status">
+                  <DiagnosticBadge label={selectedRow.resolution === "resolved" ? "Matched route" : "Incomplete route"} tone={selectedRow.resolution === "resolved" ? "success" : "warning"} />
+                  <DiagnosticBadge label={selectedRowIssueCount ? `${selectedRowIssueCount} conflict${selectedRowIssueCount === 1 ? "" : "s"}` : "No conflicts"} tone={selectedRowIssueCount ? "error" : "info"} />
+                </div>
+              ) : null}
               {selectedRow && selectedAltFunctionOptions.length ? (
                 <label className="project-flow__field">
                   <span>Quick assign</span>
@@ -257,7 +325,7 @@ export function PinAssignmentsPanel({ pinAssignments, onClearPinAssignment, onAs
                     }}
                   >
                     {selectedAltFunctionOptions.map((option) => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
+                      <option key={option.value} value={option.value}>{`${option.label} (${option.detail})`}</option>
                     ))}
                   </select>
                 </label>
@@ -283,27 +351,37 @@ export function PinAssignmentsPanel({ pinAssignments, onClearPinAssignment, onAs
       {rows.length ? (
         <ul className="pin-assignments-panel__list">
           {filteredRows.map((row) => {
+            const issueCount = pinAssignments.issuesByPinNumber[row.pinNumber]?.length ?? 0;
             return (
               <li
                 key={row.pinNumber}
-                className={selectedRow?.pinNumber === row.pinNumber ? "pin-assignments-panel__item pin-assignments-panel__item--selected" : "pin-assignments-panel__item"}
+                className={[
+                  "pin-assignments-panel__item",
+                  selectedRow?.pinNumber === row.pinNumber ? "pin-assignments-panel__item--selected" : "",
+                  row.resolution === "unresolved" ? "pin-assignments-panel__item--unresolved" : "",
+                  issueCount ? "pin-assignments-panel__item--conflict" : "",
+                ].filter(Boolean).join(" ")}
               >
                 <div className="pin-assignments-panel__item-header">
                   <button
                     type="button"
                     className="pin-assignments-panel__select"
-                    onClick={() => setSelectedPinNumber(row.pinNumber)}
+                    onClick={() => selectPin(row.pinNumber)}
                   >
                     <strong>{`Pin ${row.pinNumber}`}</strong>
                     <span>{row.savedLabel}</span>
                   </button>
+                  <div className="pin-assignments-panel__item-badges">
+                    <DiagnosticBadge label={row.resolution === "resolved" ? "Matched" : "Unresolved"} tone={row.resolution === "resolved" ? "success" : "warning"} />
+                    {issueCount ? <DiagnosticBadge label={`${issueCount} conflict${issueCount === 1 ? "" : "s"}`} tone="error" /> : <DiagnosticBadge label="Saved" tone="info" />}
+                  </div>
                   <ContextMenu
                     triggerLabel={`Pin ${row.pinNumber} actions`}
                     items={[
                       {
                         id: `pin.${row.pinNumber}.select`,
                         label: "Select pin detail",
-                        onSelect: () => setSelectedPinNumber(row.pinNumber),
+                        onSelect: () => selectPin(row.pinNumber),
                       },
                       {
                         id: `pin.${row.pinNumber}.clear`,
@@ -331,8 +409,8 @@ export function PinAssignmentsPanel({ pinAssignments, onClearPinAssignment, onAs
 
       {selectedRow ? (
         <InspectorSection
-          title="Pin detail"
-          summary="Review the saved selection, matched route, and any board-specific issues before editing derived properties."
+          title="Pin selection detail"
+          summary="Review the saved selection, matched route, and any board-specific issues before editing pin-owned values."
           actions={
             <DiagnosticBadge
               label={selectedRow.resolution === "resolved" ? "Matched" : "Unresolved"}
@@ -340,10 +418,15 @@ export function PinAssignmentsPanel({ pinAssignments, onClearPinAssignment, onAs
             />
           }
         >
+          <InspectorNotice
+            title="Editable values stay below derived route data"
+            detail="Saved selection, resolved match, and route stay read-only here. Use the alt-function and property controls below to change the canonical pin entry."
+            tone="info"
+          />
           {selectedIssues.length ? (
             <InspectorNotice
-              title="Dependency warnings stay in the detail section"
-              detail="Conflicts, unresolved routes, and property mismatches surface here so selection and warning placement stay stable across editors."
+              title="Pin conflicts stay attached to the current selection"
+              detail="Conflicts, unresolved routes, and property mismatches remain in this detail section so the selected pin and its blockers never drift apart."
               tone="warning"
             />
           ) : null}
@@ -356,29 +439,59 @@ export function PinAssignmentsPanel({ pinAssignments, onClearPinAssignment, onAs
               label="Status"
               value={selectedRow.resolution === "resolved" ? "Matched against board definition" : "Saved only, unresolved"}
             />
+            <PropertyRow label="Conflict count" value={selectedIssues.length ? String(selectedIssues.length) : "0"} />
             <PropertyRow label="Properties" value={selectedRow.propertyKeys.length ? selectedRow.propertyKeys.join(", ") : "None"} />
           </PropertyGrid>
           <div className="pin-assignments-panel__detail-actions">
             {selectedAltFunctionOptions.length ? (
-              <label className="project-flow__field">
-                <span>Alt function</span>
-                <select
-                  aria-label="Alt function"
-                  value={selectedRow.selectedAltFunctionValue}
-                  onChange={(event) => {
-                    const nextOption = selectedAltFunctionOptions.find((option) => option.value === event.target.value);
-                    if (nextOption) {
-                      onAssignPinAltFunction(selectedRow.pinNumber, nextOption);
-                    }
-                  }}
-                >
+              <div className="pin-assignments-panel__alt-functions" aria-label="Alt function choices">
+                <label className="project-flow__field">
+                  <span>Alt function</span>
+                  <select
+                    aria-label="Alt function"
+                    value={selectedRow.selectedAltFunctionValue}
+                    onChange={(event) => {
+                      const nextOption = selectedAltFunctionOptions.find((option) => option.value === event.target.value);
+                      if (nextOption) {
+                        onAssignPinAltFunction(selectedRow.pinNumber, nextOption);
+                      }
+                    }}
+                  >
+                    {selectedAltFunctionOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {`${option.label} (${option.detail})`}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {selectedAltFunction ? (
+                  <div className="pin-assignments-panel__alt-function-current">
+                    <strong>{selectedAltFunction.label}</strong>
+                    <span>{selectedAltFunction.detail}</span>
+                    <div className="pin-assignments-panel__status-row">
+                      <DiagnosticBadge label={`PINCM ${selectedAltFunction.pincm}`} tone="info" />
+                      <DiagnosticBadge label={selectedAltFunction.direction || "io"} tone="info" />
+                    </div>
+                  </div>
+                ) : null}
+                <ul className="pin-assignments-panel__alt-function-list">
                   {selectedAltFunctionOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {`${option.label} (${option.detail})`}
-                    </option>
+                    <li
+                      key={option.value}
+                      className={option.value === selectedRow.selectedAltFunctionValue ? "pin-assignments-panel__alt-function-item pin-assignments-panel__alt-function-item--selected" : "pin-assignments-panel__alt-function-item"}
+                    >
+                      <button
+                        type="button"
+                        className="pin-assignments-panel__alt-function-button"
+                        onClick={() => onAssignPinAltFunction(selectedRow.pinNumber, option)}
+                      >
+                        <strong>{option.label}</strong>
+                        <span>{option.detail}</span>
+                      </button>
+                    </li>
                   ))}
-                </select>
-              </label>
+                </ul>
+              </div>
             ) : null}
             {pinBooleanProperties.map((property) => (
               <label key={property.key} className="pin-assignments-panel__checkbox">

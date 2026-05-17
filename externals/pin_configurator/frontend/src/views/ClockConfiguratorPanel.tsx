@@ -2,7 +2,9 @@ import { useMemo } from "react";
 import Editor from "@monaco-editor/react";
 import { DiagnosticBadge } from "../shared/ui/feedback/DiagnosticBadge";
 import { EmptyState } from "../shared/ui/feedback/EmptyState";
+import { InspectorNotice } from "../shared/ui/inspectors/InspectorNotice";
 import { InspectorSection } from "../shared/ui/inspectors/InspectorSection";
+import { PropertyGrid, PropertyRow } from "../shared/ui/inspectors/PropertyGrid";
 import { SceneViewportToolbar } from "../shared/ui/scene/SceneViewportToolbar";
 import { useSceneViewport } from "../shared/ui/scene/useSceneViewport";
 import type { ClockConfiguratorPresenter } from "../domains/clock/clockConfiguratorPresenter";
@@ -106,12 +108,83 @@ export function ClockConfiguratorPanel({ presenter }: ClockConfiguratorPanelProp
     });
     return links;
   }, [sceneLanes]);
+  const generatedArtifactCount = [presenter.generatedOverlay, presenter.generatedConf].filter((value) => value.trim().length > 0).length;
+  const activeNodeCount = sceneNodes.filter((node) => node.frequencyHz > 0).length;
+  const selectedNodeWarnings = useMemo(() => {
+    if (!selectedNode) {
+      return [] as string[];
+    }
+
+    return presenter.warnings.filter((warning) => warningMatchesNode(selectedNode.id, warning) || warningMatchesNode(selectedNode.name, warning));
+  }, [presenter.warnings, selectedNode]);
+  const derivedFrequencyPreview = useMemo(
+    () => Object.entries(presenter.frequencies).slice(0, 4).map(([key, value]) => `${key}: ${formatFrequency(value)}`),
+    [presenter.frequencies],
+  );
 
   return (
     <div className="domain-panel domain-panel--split">
       <InspectorSection
-        title="Clock tree"
-        summary="Clock trees, frequency computation, and generated outputs now flow through typed presenter state and backend service methods."
+        title="Clock readiness"
+        summary="Review active-node coverage, warnings, and generated artifact status here before editing node properties or exporting clock outputs."
+        actions={<DiagnosticBadge label={`${presenter.warnings.length} warnings`} tone={presenter.warnings.length ? "warning" : "success"} />}
+      >
+        <PropertyGrid>
+          <PropertyRow label="Trees" value={presenter.availableTrees.length} />
+          <PropertyRow label="Active nodes" value={activeNodeCount} />
+          <PropertyRow label="Warnings" value={presenter.warnings.length} />
+          <PropertyRow label="Generated outputs" value={generatedArtifactCount} />
+        </PropertyGrid>
+        <InspectorNotice
+          title={presenter.warnings.length ? "Clock blockers stay above editing" : "Clock workflow is ready for editing"}
+          detail={presenter.warnings.length
+            ? "Resolve clock warnings before treating generated overlay and config output as final."
+            : "Edit node properties below while keeping the generated overlay and config outputs in a separate derived section."}
+          tone={presenter.warnings.length ? "warning" : "info"}
+        />
+        {presenter.warnings.length ? (
+          <div className="pin-assignments-panel__issues" aria-label="Clock readiness warnings">
+            {presenter.warnings.slice(0, 3).map((warning) => (
+              <div key={warning} className="pin-assignments-panel__issue pin-assignments-panel__issue--compact">
+                <strong>Clock warning</strong>
+                <span>{warning}</span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </InspectorSection>
+
+      <InspectorSection
+        title="Clock editing loop"
+        summary="Keep tree context, derived frequencies, and current warnings visible while you edit the selected node."
+        actions={<DiagnosticBadge label={selectedNode ? formatFrequency(selectedNode.frequencyHz) : "No node"} tone={selectedNode ? "info" : "warning"} />}
+      >
+        <PropertyGrid>
+          <PropertyRow label="Current tree" value={presenter.currentTree?.name ?? "None"} />
+          <PropertyRow label="Selected node" value={selectedNode ? `${selectedNode.icon} ${selectedNode.name}` : "None"} />
+          <PropertyRow label="Derived frequency" value={selectedNode ? formatFrequency(selectedNode.frequencyHz) : "Pending selection"} />
+          <PropertyRow label="Node warnings" value={selectedNodeWarnings.length} />
+        </PropertyGrid>
+        <InspectorNotice
+          title={selectedNodeWarnings.length ? "Selected node still has warning context" : "Tree context stays visible while editing"}
+          detail={selectedNodeWarnings.length
+            ? selectedNodeWarnings.join(" ")
+            : "The current tree, selected node frequency, and generated artifact counts stay visible here so you do not have to switch back to the scene while editing properties."}
+          tone={selectedNodeWarnings.length ? "warning" : "info"}
+        />
+        <div className="pin-assignments-panel__issues" aria-label="Clock derived frequencies">
+          {derivedFrequencyPreview.map((entry) => (
+            <div key={entry} className="domain-list__item">
+              <strong>Derived frequency</strong>
+              <span>{entry}</span>
+            </div>
+          ))}
+        </div>
+      </InspectorSection>
+
+      <InspectorSection
+        title="Clock scene"
+        summary="Inspect the lane-grouped tree here, then move to the detail editor and generated outputs below for the selected node." 
         actions={<DiagnosticBadge label={`${presenter.availableTrees.length} trees`} tone="info" />}
       >
         <div className="catalog-toolbar">
@@ -186,12 +259,17 @@ export function ClockConfiguratorPanel({ presenter }: ClockConfiguratorPanelProp
 
       <InspectorSection
         title={selectedNode ? `${selectedNode.icon} ${selectedNode.name}` : "Clock detail"}
-        summary={selectedNode ? `${selectedNode.type} node detail` : "Select a node to edit its typed properties and inspect generated outputs."}
+        summary={selectedNode ? `${selectedNode.type} node detail` : "Select a node to edit its typed properties while keeping generated clock outputs separate."}
         actions={selectedNode ? <DiagnosticBadge label={formatFrequency(selectedNode.frequencyHz)} tone="info" /> : undefined}
       >
         {!selectedNode ? <EmptyState title="No node selected" detail="Select a clock node to edit its configuration properties." compact /> : null}
         {selectedNode ? (
           <div className="domain-panel">
+            <InspectorNotice
+              title="Editable node values stay here"
+              detail="Computed frequency and generated overlay/config outputs are derived from this node. Change only the typed properties in this detail section."
+              tone="info"
+            />
             <div className="protocol-editor-panel__fields">
               {(selectedNode.props ?? []).map((property) => {
                 const value = presenter.values[property.key] ?? property.default;
@@ -223,9 +301,9 @@ export function ClockConfiguratorPanel({ presenter }: ClockConfiguratorPanelProp
                 );
               })}
             </div>
-            {presenter.warnings.length ? (
+            {selectedNodeWarnings.length ? (
               <div className="pin-assignments-panel__issues">
-                {presenter.warnings.map((warning) => (
+                {selectedNodeWarnings.map((warning) => (
                   <div key={warning} className="pin-assignments-panel__issue">
                     <strong>Clock warning</strong>
                     <span>{warning}</span>
@@ -233,16 +311,23 @@ export function ClockConfiguratorPanel({ presenter }: ClockConfiguratorPanelProp
                 ))}
               </div>
             ) : null}
-            <div className="domain-panel domain-panel--split">
-              <div className="domain-editor">
-                <Editor height="100%" defaultLanguage="dts" theme="light" value={presenter.generatedOverlay} options={{ minimap: { enabled: false }, readOnly: true, fontSize: 13, scrollBeyondLastLine: false }} />
-              </div>
-              <div className="domain-editor">
-                <Editor height="100%" defaultLanguage="ini" theme="light" value={presenter.generatedConf} options={{ minimap: { enabled: false }, readOnly: true, fontSize: 13, scrollBeyondLastLine: false }} />
-              </div>
-            </div>
           </div>
         ) : null}
+      </InspectorSection>
+
+      <InspectorSection
+        title="Generated clock artifacts"
+        summary="Overlay and config outputs remain read-only here so generated clock artifacts stay visually separate from editable node values."
+        actions={<DiagnosticBadge label={`${generatedArtifactCount} outputs`} tone={generatedArtifactCount ? "info" : "warning"} />}
+      >
+        <div className="domain-panel domain-panel--split">
+          <div className="domain-editor">
+            <Editor height="100%" defaultLanguage="dts" theme="light" value={presenter.generatedOverlay} options={{ minimap: { enabled: false }, readOnly: true, fontSize: 13, scrollBeyondLastLine: false }} />
+          </div>
+          <div className="domain-editor">
+            <Editor height="100%" defaultLanguage="ini" theme="light" value={presenter.generatedConf} options={{ minimap: { enabled: false }, readOnly: true, fontSize: 13, scrollBeyondLastLine: false }} />
+          </div>
+        </div>
       </InspectorSection>
     </div>
   );

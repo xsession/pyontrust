@@ -1,0 +1,5 @@
+&display0 {
+    compatible = "sitronix,st7701s";
+    width = <800>;
+    height = <480>;
+};

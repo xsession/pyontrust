@@ -135,7 +135,7 @@ describe("PinAssignmentsPanel", () => {
       />,
     );
 
-    expect(screen.getByText("Pin detail")).toBeInTheDocument();
+    expect(screen.getByText("Pin selection detail")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Pin 7 Manual properties only" })).toBeInTheDocument();
     expect(screen.getByText("Saved only, unresolved")).toBeInTheDocument();
 
@@ -234,8 +234,61 @@ describe("PinAssignmentsPanel", () => {
       />,
     );
 
-    expect(screen.getByText("Pull-up and pull-down are both enabled")).toBeInTheDocument();
-    expect(screen.getByText("The current bias properties request opposite electrical defaults on the same pad.")).toBeInTheDocument();
+    expect(screen.getAllByText("Pull-up and pull-down are both enabled").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("The current bias properties request opposite electrical defaults on the same pad.").length).toBeGreaterThan(0);
+    expect(screen.getByLabelText("Pin readiness issues")).toBeInTheDocument();
+  });
+
+  it("keeps readiness issue selection synchronized with the selected pin detail", () => {
+    render(
+      <PinAssignmentsPanel
+        pinAssignments={createPinAssignmentsViewModel({
+          summary: {
+            resolvedCount: 1,
+            savedCount: 2,
+            unresolvedCount: 1,
+          },
+          rows: [
+            {
+              pinNumber: "7",
+              savedLabel: "Manual properties only",
+              resolvedLabel: "No live board match",
+              resolvedRoute: "Unresolved",
+              propertyKeys: ["bias"],
+              resolution: "unresolved",
+              selectedAltFunctionValue: "",
+            },
+            {
+              pinNumber: "12",
+              savedLabel: "UART0_TX",
+              resolvedLabel: "UART0_TX live",
+              resolvedRoute: "uart0.tx",
+              propertyKeys: [],
+              resolution: "resolved",
+              selectedAltFunctionValue: "3:45:UART0_TX",
+            },
+          ],
+          issuesByPinNumber: {
+            "12": [
+              {
+                id: "pin:12:drive-clash",
+                title: "UART0_TX electrical defaults conflict",
+                summary: "Pull-up and pull-down are both enabled on the same route.",
+              },
+            ],
+          },
+        })}
+        onClearPinAssignment={() => undefined}
+        onAssignPinAltFunction={() => undefined}
+        onUpdatePinBooleanProperty={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /UART0_TX electrical defaults conflict/i }));
+
+    expect(screen.getAllByText("Pin 12").length).toBeGreaterThan(0);
+    expect(screen.getByText("UART0_TX live")).toBeInTheDocument();
+    expect(screen.getAllByText("1 conflict").length).toBeGreaterThan(0);
   });
 
   it("emits alt-function reassignment for the selected pin", () => {
@@ -301,6 +354,10 @@ describe("PinAssignmentsPanel", () => {
       "12",
       expect.objectContaining({ functionId: 4, name: "I2C0_SCL", peripheral: "i2c0" }),
     );
+
+    expect(screen.getByLabelText("Alt function choices")).toBeInTheDocument();
+    expect(screen.getAllByText("uart0.tx • PINCM 45").length).toBeGreaterThan(0);
+    expect(screen.getByText("i2c0.scl • PINCM 46")).toBeInTheDocument();
   });
 
   it("renders the package surface controls for the selected pin workflow", () => {

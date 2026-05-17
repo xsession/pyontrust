@@ -88,10 +88,10 @@ export function WorkspaceCommandBar({
     <>
       <section className="workspace-command-bar">
         <div className="workspace-command-bar__identity">
-          <StatusChip label="Professional Workspace Shell" tone="success" />
+          <StatusChip label="Workspace command bar" tone="success" />
           <h1>Pin Configurator workspace</h1>
           <p>
-            Project actions, workflow presets, outputs, and simulation review now share one dense command surface.
+            Save or load the project, switch the layout preset, and route build, simulation, or test review from one control bar.
           </p>
           <div className="workspace-command-bar__chips">
             <StatusChip label={activeLayoutPresetLabel} tone="neutral" />
@@ -297,7 +297,7 @@ export function WorkspaceCommandBar({
         open={actionsDialogOpen}
         onOpenChange={setActionsDialogOpen}
         title="Workspace actions"
-        description="Save, load, export, and upcoming execution flows use one dialog pattern so toolbar buttons, menus, and shortcuts stay aligned."
+        description="Use the same action list for toolbar buttons, shortcuts, and output routing so project control stays consistent across the shell."
       >
         <div className="workspace-actions-dialog">
           {actionGroups.map((group) => (
@@ -344,8 +344,8 @@ export function WorkspaceCommandBar({
                 ))}
             </div>
             <EmptyState
-              title="Execution launchers remain shell-owned"
-              detail="Build, simulation, and test readiness now have dedicated shell actions even while backend execution still flows through the presenter status channels."
+              title="Execution routes are ready"
+              detail="Choose Build, Simulation, or Test here to jump into the matching output channel, then inspect readiness blockers in the bottom strip before exporting or validating."
               tone="info"
               compact
             />

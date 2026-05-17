@@ -36,6 +36,9 @@ describe("ClockConfiguratorPanel", () => {
     expect(screen.getByLabelText("Scene viewport controls")).toBeInTheDocument();
     expect(screen.getByLabelText("Clock tree scene")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Generate Clock Config" })).toBeInTheDocument();
-    expect(screen.getByText("Clock warning")).toBeInTheDocument();
+    expect(screen.getAllByText("Clock warning").length).toBeGreaterThan(0);
+    expect(screen.getByLabelText("Clock readiness warnings")).toBeInTheDocument();
+    expect(screen.getByText("Clock editing loop")).toBeInTheDocument();
+    expect(screen.getByLabelText("Clock derived frequencies")).toBeInTheDocument();
   });
 });

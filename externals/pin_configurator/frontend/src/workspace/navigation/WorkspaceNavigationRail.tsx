@@ -1,5 +1,6 @@
 import { useRef } from "react";
 import type { ShellOutputChannelViewModel } from "../../presenters/useShellPresenter";
+import { StatusChip } from "../../shared/ui/StatusChip";
 import { workspaceLayoutPresets, type WorkspaceLayoutPresetId } from "../layout/workspaceShellPreferences";
 import { workspaceDockPanelDefinitions } from "../panels/dockPanelDefinitions";
 
@@ -14,6 +15,13 @@ interface WorkspaceNavigationRailProps {
 }
 
 const navigationSections = ["Boards", "Artifacts", "Interfaces", "Simulation", "Diagnostics"] as const;
+const presetAnchors = new Set(workspaceLayoutPresets.map((preset) => preset.panelId));
+const outputChannelLabels = {
+  build: "Build Output",
+  simulation: "Simulation Output",
+  diagnostics: "Diagnostics",
+  tests: "Test Output",
+} as const;
 
 function assignButtonRef(map: Map<string, HTMLButtonElement>, id: string, node: HTMLButtonElement | null) {
   if (node) {
@@ -50,6 +58,30 @@ function getRovingIndex(key: string, currentIndex: number, count: number): numbe
 
 function toAriaKeyShortcuts(shortcut: string) {
   return shortcut === "Palette" ? undefined : shortcut.replace(/\+/g, "+");
+}
+
+function getPanelTitle(panelId: string) {
+  return workspaceDockPanelDefinitions.find((panel) => panel.id === panelId)?.title ?? panelId;
+}
+
+function getPanelsForSection(section: (typeof navigationSections)[number]) {
+  return workspaceDockPanelDefinitions
+    .filter((panel) => panel.section === section)
+    .sort((left, right) => {
+      const leftPresetAnchor = presetAnchors.has(left.id) ? 0 : 1;
+      const rightPresetAnchor = presetAnchors.has(right.id) ? 0 : 1;
+      if (leftPresetAnchor !== rightPresetAnchor) {
+        return leftPresetAnchor - rightPresetAnchor;
+      }
+
+      const leftShortcut = left.shortcut === "Palette" ? 1 : 0;
+      const rightShortcut = right.shortcut === "Palette" ? 1 : 0;
+      if (leftShortcut !== rightShortcut) {
+        return leftShortcut - rightShortcut;
+      }
+
+      return left.title.localeCompare(right.title);
+    });
 }
 
 export function WorkspaceNavigationRail({
@@ -98,13 +130,16 @@ export function WorkspaceNavigationRail({
             >
               <strong>{preset.label}</strong>
               <span>{preset.description}</span>
+              <span>
+                Focus {getPanelTitle(preset.panelId)} · Route {outputChannelLabels[preset.outputChannelId]}
+              </span>
             </button>
           ))}
         </div>
       </section>
 
       {navigationSections.map((section) => {
-        const panels = workspaceDockPanelDefinitions.filter((panel) => panel.section === section);
+        const panels = getPanelsForSection(section);
         if (!panels.length) {
           return null;
         }
@@ -141,7 +176,11 @@ export function WorkspaceNavigationRail({
                   }}
                 >
                   <strong>{panel.title}</strong>
-                  <span>{panel.shortcut || panel.description}</span>
+                  <span>{panel.description}</span>
+                  <div className="workspace-navigation-rail__meta">
+                    <span>{presetAnchors.has(panel.id) ? "Preset anchor" : "Dock destination"}</span>
+                    {panel.shortcut !== "Palette" ? <StatusChip label={panel.shortcut} tone="neutral" /> : <span>Palette</span>}
+                  </div>
                 </button>
               ))}
             </div>
@@ -180,6 +219,13 @@ export function WorkspaceNavigationRail({
             >
               <strong>{channel.label}</strong>
               <span>{channel.entries[0]?.summary ?? "No shell output yet."}</span>
+                  <div className="workspace-navigation-rail__meta">
+                    <span>{channel.id === activeOutputChannelId ? "Active channel" : "Route to bottom strip"}</span>
+                    <StatusChip
+                      label={channel.badge}
+                      tone={channel.tone === "success" ? "success" : channel.tone === "warning" ? "warning" : "neutral"}
+                    />
+                  </div>
             </button>
           ))}
         </div>

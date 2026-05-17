@@ -44,7 +44,9 @@ describe("LvglLayoutPanel", () => {
 
     expect(screen.getByLabelText("Scene viewport controls")).toBeInTheDocument();
     expect(screen.getByLabelText("LVGL stage")).toBeInTheDocument();
+    expect(screen.getByText("LVGL editing loop")).toBeInTheDocument();
     expect(screen.getByText("Hierarchy")).toBeInTheDocument();
     expect(screen.getByText("Simulation log")).toBeInTheDocument();
+    expect(screen.getByText("Latest simulation event")).toBeInTheDocument();
   });
 });

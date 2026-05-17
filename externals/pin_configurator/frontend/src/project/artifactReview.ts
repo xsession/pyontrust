@@ -30,8 +30,14 @@ export interface ArtifactReviewDocument {
   content: string;
   baselineContent: string;
   editable: boolean;
+  sourceKind: "editable-project-asset" | "derived-output";
   ownerLabel: string;
   description: string;
+  freshnessState: "current" | "stale" | "pending";
+  freshnessLabel: string;
+  freshnessDetail: string;
+  changeSummary: string;
+  exportSummary: string;
   markers: ArtifactMarker[];
 }
 
@@ -52,6 +58,105 @@ export interface ArtifactDiagnosticEntry {
 
 function countLines(value: string): number {
   return Math.max(value.split("\n").length, 1);
+}
+
+function countComparableLines(value: string): number {
+  if (!value.trim()) {
+    return 0;
+  }
+
+  return value.split("\n").length;
+}
+
+function buildLineChangeSummary(currentContent: string, baselineContent: string): string {
+  const currentLineCount = countComparableLines(currentContent);
+  const baselineLineCount = countComparableLines(baselineContent);
+
+  if (!baselineContent.trim()) {
+    return currentLineCount ? `${currentLineCount} current lines are staged in the review panel.` : "No lines are staged in the review panel yet.";
+  }
+
+  const currentLines = currentContent.split("\n");
+  const baselineLines = baselineContent.split("\n");
+  const comparableLineCount = Math.max(currentLines.length, baselineLines.length);
+  let changedPositions = 0;
+
+  for (let index = 0; index < comparableLineCount; index += 1) {
+    if ((currentLines[index] ?? "") !== (baselineLines[index] ?? "")) {
+      changedPositions += 1;
+    }
+  }
+
+  if (!changedPositions) {
+    return `${currentLineCount} current lines match the generated baseline.`;
+  }
+
+  return `${changedPositions} line position${changedPositions === 1 ? "" : "s"} differ across ${currentLineCount} current and ${baselineLineCount} baseline lines.`;
+}
+
+function buildArtifactExportSummary(documentId: string, fileName: string): string {
+  switch (documentId) {
+    case "overlay":
+    case "config":
+    case "fragments":
+      return `Panel export downloads ${fileName}, and workspace Export Artifacts includes this file in the generated artifact bundle.`;
+    case "resc":
+    case "robot":
+      return `Panel export downloads ${fileName}, and Export Renode Bundle includes this file in the simulation handoff bundle.`;
+    default:
+      return `Panel export downloads ${fileName} as a review snapshot from the current workspace state.`;
+  }
+}
+
+function buildArtifactFreshness(input: {
+  content: string;
+  baselineContent: string;
+  editable: boolean;
+  sourceKind: ArtifactReviewDocument["sourceKind"];
+}): Pick<ArtifactReviewDocument, "freshnessState" | "freshnessLabel" | "freshnessDetail" | "changeSummary"> {
+  const { content, baselineContent, editable, sourceKind } = input;
+
+  if (!content.trim()) {
+    return {
+      freshnessState: "pending",
+      freshnessLabel: "Pending",
+      freshnessDetail: editable
+        ? "No saved artifact content is staged yet. Seed or edit this file before treating it as ready."
+        : "No derived preview content is available yet for the current workspace state.",
+      changeSummary: buildLineChangeSummary(content, baselineContent),
+    };
+  }
+
+  if (!baselineContent.trim()) {
+    return {
+      freshnessState: "current",
+      freshnessLabel: sourceKind === "derived-output" ? "Derived" : "Current",
+      freshnessDetail: sourceKind === "derived-output"
+        ? "This preview is derived directly from the current project state, so the dock is already showing the active generated output."
+        : "This saved project asset has no generated comparison snapshot, so the current content is treated as the review source of truth.",
+      changeSummary: buildLineChangeSummary(content, baselineContent),
+    };
+  }
+
+  if (content === baselineContent) {
+    return {
+      freshnessState: "current",
+      freshnessLabel: "Current",
+      freshnessDetail: editable
+        ? "This saved artifact matches the current generated suggestion for the active project state."
+        : "This derived output matches the current generated baseline.",
+      changeSummary: buildLineChangeSummary(content, baselineContent),
+    };
+  }
+
+  return {
+    freshnessState: "stale",
+    freshnessLabel: editable ? "Customized" : "Stale",
+    freshnessDetail: editable
+      ? "This saved artifact now differs from the current generated suggestion. Review the quick diff before export or save handoff."
+      : "This generated output differs from the current baseline and should be reviewed before export handoff.",
+    changeSummary: buildLineChangeSummary(content, baselineContent),
+  };
 }
 
 function findLineContaining(value: string, token: string): number {
@@ -280,6 +385,49 @@ export function buildArtifactReviewDocuments(input: {
   const outputConfig = outputs && typeof outputs === "object" && !Array.isArray(outputs) ? outputs as Record<string, unknown> : {};
   const overlayFileName = typeof outputConfig.overlay === "string" && outputConfig.overlay.trim() ? outputConfig.overlay.trim() : `${boardId}.overlay`;
   const configFileName = typeof outputConfig.config === "string" && outputConfig.config.trim() ? outputConfig.config.trim() : `${boardId}.conf`;
+  const overlayFreshness = buildArtifactFreshness({
+    content: projectDocument.generated_overlay,
+    baselineContent: seededOverlay,
+    editable: true,
+    sourceKind: "editable-project-asset",
+  });
+  const configFreshness = buildArtifactFreshness({
+    content: projectDocument.generated_conf,
+    baselineContent: seededConfig,
+    editable: true,
+    sourceKind: "editable-project-asset",
+  });
+  const fragmentsContent = formatGeneratedFragments(projectDocument.generated_fragments);
+  const fragmentsFreshness = buildArtifactFreshness({
+    content: fragmentsContent,
+    baselineContent: seededFragments,
+    editable: false,
+    sourceKind: "derived-output",
+  });
+  const headerFreshness = buildArtifactFreshness({
+    content: generatedHeader,
+    baselineContent: "",
+    editable: false,
+    sourceKind: "derived-output",
+  });
+  const sourceFreshness = buildArtifactFreshness({
+    content: generatedSource,
+    baselineContent: "",
+    editable: false,
+    sourceKind: "derived-output",
+  });
+  const rescFreshness = buildArtifactFreshness({
+    content: projectDocument.renode.resc,
+    baselineContent: suggestedResc,
+    editable: true,
+    sourceKind: "editable-project-asset",
+  });
+  const robotFreshness = buildArtifactFreshness({
+    content: projectDocument.renode.robot,
+    baselineContent: suggestedRobot,
+    editable: true,
+    sourceKind: "editable-project-asset",
+  });
 
   return [
     {
@@ -291,8 +439,11 @@ export function buildArtifactReviewDocuments(input: {
       content: projectDocument.generated_overlay,
       baselineContent: seededOverlay,
       editable: true,
+      sourceKind: "editable-project-asset",
       ownerLabel: "Saved project artifact",
       description: "Editable overlay text stored in the canonical project document.",
+      ...overlayFreshness,
+      exportSummary: buildArtifactExportSummary("overlay", overlayFileName),
       markers: buildOverlayMarkers(projectDocument.generated_overlay, unresolvedPinCount),
     },
     {
@@ -304,8 +455,11 @@ export function buildArtifactReviewDocuments(input: {
       content: projectDocument.generated_conf,
       baselineContent: seededConfig,
       editable: true,
+      sourceKind: "editable-project-asset",
       ownerLabel: "Saved project artifact",
       description: "Editable prj.conf output stored in the canonical project document.",
+      ...configFreshness,
+      exportSummary: buildArtifactExportSummary("config", configFileName),
       markers: buildConfigMarkers(projectDocument.generated_conf, projectDocument.protocol_editor.entries.filter((entry) => entry.enabled !== false).length),
     },
     {
@@ -314,12 +468,15 @@ export function buildArtifactReviewDocuments(input: {
       title: "Generated Fragments",
       fileName: `${boardId}.fragments.json`,
       language: "json",
-      content: formatGeneratedFragments(projectDocument.generated_fragments),
+      content: fragmentsContent,
       baselineContent: seededFragments,
       editable: false,
+      sourceKind: "derived-output",
       ownerLabel: "Structured generated metadata",
       description: "Machine-readable generation metadata stays read-only and authoritative.",
-      markers: buildFragmentMarkers(formatGeneratedFragments(projectDocument.generated_fragments)),
+      ...fragmentsFreshness,
+      exportSummary: buildArtifactExportSummary("fragments", `${boardId}.fragments.json`),
+      markers: buildFragmentMarkers(fragmentsContent),
     },
     {
       id: "header",
@@ -330,8 +487,11 @@ export function buildArtifactReviewDocuments(input: {
       content: generatedHeader,
       baselineContent: "",
       editable: false,
+      sourceKind: "derived-output",
       ownerLabel: "Derived protocol preview",
       description: "Header preview derived from the enabled protocol entries.",
+      ...headerFreshness,
+      exportSummary: buildArtifactExportSummary("header", `${boardId}_protocols.generated.h`),
       markers: buildProtocolMarkers(generatedHeader, "Generated header"),
     },
     {
@@ -343,8 +503,11 @@ export function buildArtifactReviewDocuments(input: {
       content: generatedSource,
       baselineContent: "",
       editable: false,
+      sourceKind: "derived-output",
       ownerLabel: "Derived protocol preview",
       description: "Source preview derived from the enabled protocol entries.",
+      ...sourceFreshness,
+      exportSummary: buildArtifactExportSummary("source", `${boardId}_protocols.generated.c`),
       markers: buildProtocolMarkers(generatedSource, "Generated source"),
     },
     {
@@ -356,8 +519,11 @@ export function buildArtifactReviewDocuments(input: {
       content: projectDocument.renode.resc,
       baselineContent: suggestedResc,
       editable: true,
+      sourceKind: "editable-project-asset",
       ownerLabel: "Editable simulation source",
       description: "Editable RESC script stored on the Renode profile.",
+      ...rescFreshness,
+      exportSummary: buildArtifactExportSummary("resc", `${boardId}.resc`),
       markers: buildRescMarkers(projectDocument.renode.resc, projectDocument.renode.enabled),
     },
     {
@@ -369,8 +535,11 @@ export function buildArtifactReviewDocuments(input: {
       content: projectDocument.renode.robot,
       baselineContent: suggestedRobot,
       editable: true,
+      sourceKind: "editable-project-asset",
       ownerLabel: "Editable simulation source",
       description: "Editable Robot smoke-test script stored on the Renode profile.",
+      ...robotFreshness,
+      exportSummary: buildArtifactExportSummary("robot", `${boardId}.robot`),
       markers: buildRobotMarkers(projectDocument.renode.robot, projectDocument.renode.robot_target),
     },
   ];

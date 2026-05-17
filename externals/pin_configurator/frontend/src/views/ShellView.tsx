@@ -5,6 +5,7 @@ import { ShortcutHint } from "../shared/ui/commands/ShortcutHint";
 import { EmptyState } from "../shared/ui/feedback/EmptyState";
 import { GeneratedSymbolPreview } from "../shared/ui/inspectors/GeneratedSymbolPreview";
 import { InspectorNotice } from "../shared/ui/inspectors/InspectorNotice";
+import { InspectorSection } from "../shared/ui/inspectors/InspectorSection";
 import {
   ShellBottomStrip,
   ShellContentRegion,
@@ -22,6 +23,8 @@ import { getWorkspaceShortcutAction } from "../workspace/commands/shortcutBindin
 import { buildBoardQuickOpenItems, buildLayoutPresetQuickOpenItems, buildOutputQuickOpenItems, buildPanelQuickOpenItems } from "../workspace/navigation/quickOpenItems";
 import { WorkspaceNavigationRail } from "../workspace/navigation/WorkspaceNavigationRail";
 import { WorkspaceOutputZone } from "../workspace/output/WorkspaceOutputZone";
+import { buildArtifactReviewDocuments } from "../project/artifactReview";
+import { buildLegacyCutoverSummary } from "../domains/legacy/legacyDomainRetirementPlan";
 import {
   applyWorkspaceDensityMode,
   getWorkspaceLayoutPreset,
@@ -33,6 +36,7 @@ import {
 import { workspaceDockPanelDefinitions } from "../workspace/panels/dockPanelDefinitions";
 import { WorkspaceCommandBar } from "../workspace/shell/WorkspaceCommandBar";
 import { WorkspaceStatusBar } from "../workspace/shell/WorkspaceStatusBar";
+import { StatusChip } from "../shared/ui/StatusChip";
 import { PinAssignmentsPanel } from "./PinAssignmentsPanel";
 import { ProtocolEditorPanel } from "./ProtocolEditorPanel";
 import { RenodeProfileEditor } from "./RenodeProfileEditor";
@@ -83,12 +87,20 @@ export function ShellView({
   const [shellPreferences, setShellPreferences] = useState(() => loadWorkspaceShellPreferences());
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [commandQuery, setCommandQuery] = useState("");
-  const [activeOutputChannelId, setActiveOutputChannelId] = useState<string>(getWorkspaceLayoutPreset(loadWorkspaceShellPreferences().layoutPresetId).outputChannelId);
+  const [activeOutputChannelId, setActiveOutputChannelId] = useState<string>(() => loadWorkspaceShellPreferences().activeOutputChannelId);
   const [outputSeverityFilter, setOutputSeverityFilter] = useState<"all" | "info" | "success" | "warning" | "error">("all");
   const [followOutput, setFollowOutput] = useState(true);
   const [recentPaletteItemIds, setRecentPaletteItemIds] = useState<string[]>([]);
-  const [dockFocusRequest, setDockFocusRequest] = useState<WorkspaceDockFocusRequest | null>(null);
-  const [focusedPanelId, setFocusedPanelId] = useState<string | null>(getWorkspaceLayoutPreset(loadWorkspaceShellPreferences().layoutPresetId).panelId);
+  const [dockFocusRequest, setDockFocusRequest] = useState<WorkspaceDockFocusRequest | null>(() => {
+    const preferences = loadWorkspaceShellPreferences();
+    return preferences.focusedPanelId
+      ? {
+          panelId: preferences.focusedPanelId,
+          nonce: 1,
+        }
+      : null;
+  });
+  const [focusedPanelId, setFocusedPanelId] = useState<string | null>(() => loadWorkspaceShellPreferences().focusedPanelId);
   const [actionsDialogRequestKey, setActionsDialogRequestKey] = useState(0);
   const activeBoardLabel = activeBoard ? `${activeBoard.name} (${activeBoard.package})` : "Not selected";
   const activeLayoutPreset = useMemo(() => getWorkspaceLayoutPreset(shellPreferences.layoutPresetId), [shellPreferences.layoutPresetId]);
@@ -97,6 +109,21 @@ export function ShellView({
     () => outputChannels.find((channel) => channel.id === activeOutputChannelId) ?? outputChannels[0] ?? null,
     [activeOutputChannelId, outputChannels],
   );
+  const artifactDocuments = useMemo(
+    () => buildArtifactReviewDocuments({
+      activeBoard,
+      projectDocument,
+      unresolvedPinCount: pinAssignments.summary.unresolvedCount,
+    }),
+    [activeBoard, pinAssignments.summary.unresolvedCount, projectDocument],
+  );
+  const editableArtifactDocuments = useMemo(() => artifactDocuments.filter((document) => document.editable), [artifactDocuments]);
+  const derivedArtifactDocuments = useMemo(() => artifactDocuments.filter((document) => !document.editable), [artifactDocuments]);
+  const staleArtifactDocuments = useMemo(
+    () => artifactDocuments.filter((document) => document.freshnessState === "stale"),
+    [artifactDocuments],
+  );
+  const legacyCutover = useMemo(() => buildLegacyCutoverSummary(), []);
   const commandPaletteItems = useMemo<ShellPaletteItem[]>(() => {
     return buildCommandPaletteItems(commands);
   }, [commands]);
@@ -165,7 +192,7 @@ export function ShellView({
       }
 
       if (shortcutAction.kind === "panel.focus") {
-        const panelDefinition = workspaceDockPanelDefinitions[shortcutAction.panelIndex];
+        const panelDefinition = workspaceDockPanelDefinitions.find((panel) => panel.id === shortcutAction.panelId);
         if (!panelDefinition) {
           return;
         }
@@ -211,8 +238,13 @@ export function ShellView({
 
   useEffect(() => {
     applyWorkspaceDensityMode(shellPreferences.density);
-    saveWorkspaceShellPreferences({ density: shellPreferences.density, layoutPresetId: shellPreferences.layoutPresetId });
-  }, [shellPreferences.density, shellPreferences.layoutPresetId]);
+    saveWorkspaceShellPreferences({
+      density: shellPreferences.density,
+      layoutPresetId: shellPreferences.layoutPresetId,
+      focusedPanelId: focusedPanelId ?? getWorkspaceLayoutPreset(shellPreferences.layoutPresetId).panelId,
+      activeOutputChannelId: (activeOutputChannelId as "build" | "simulation" | "diagnostics" | "tests") ?? getWorkspaceLayoutPreset(shellPreferences.layoutPresetId).outputChannelId,
+    });
+  }, [activeOutputChannelId, focusedPanelId, shellPreferences.density, shellPreferences.layoutPresetId]);
 
   useEffect(() => {
     if (!outputChannels.some((channel) => channel.id === activeOutputChannelId)) {
@@ -227,6 +259,64 @@ export function ShellView({
     }));
   }, []);
 
+  const workflowStages = useMemo(
+    () => [
+      {
+        id: "navigate",
+        label: "Navigate",
+        summary: `${boards.length} boards · ${activeLayoutPreset.label}`,
+        detail: activeBoard ? `Board focus is ${activeBoard.name}.` : "Select a board and layout preset from the rail.",
+      },
+      {
+        id: "configure",
+        label: "Configure",
+        summary: focusedPanelId ? workspaceDockPanelDefinitions.find((panel) => panel.id === focusedPanelId)?.title ?? "Dock panel active" : "Workspace dock idle",
+        detail: focusedPanelId
+          ? `Primary dock focus is ${workspaceDockPanelDefinitions.find((panel) => panel.id === focusedPanelId)?.title ?? focusedPanelId}.`
+          : "Focus a workspace dock panel to edit artifacts, pins, or simulation state.",
+        actionLabel: "Focus workspace",
+        action: () => {
+          focusPanel(focusedPanelId ?? activeLayoutPreset.panelId);
+        },
+      },
+      {
+        id: "inspect",
+        label: "Inspect",
+        summary: projectStatus.message,
+        detail: `${projectDocument.protocol_editor.entries.length} protocol entries · ${Object.keys(projectDocument.generated_fragments).length} fragment groups.`,
+        actionLabel: "Open overlay",
+        action: () => {
+          focusPanel("workspace-generated-overlay");
+        },
+      },
+      {
+        id: "verify",
+        label: "Verify",
+        summary: activeOutputChannel ? activeOutputChannel.label : "No output channel",
+        detail: activeOutputChannel
+          ? `${activeOutputChannel.entries.length} entries · ${activeOutputChannel.badge || "0"} highlighted.`
+          : "Route build, simulation, or diagnostics output into the bottom strip.",
+        actionLabel: "Open outputs",
+        action: () => {
+          setActiveOutputChannelId(activeOutputChannel?.id ?? activeLayoutPreset.outputChannelId);
+        },
+      },
+    ],
+    [
+      activeBoard,
+      activeLayoutPreset.label,
+      activeLayoutPreset.outputChannelId,
+      activeLayoutPreset.panelId,
+      activeOutputChannel,
+      boards.length,
+      focusPanel,
+      focusedPanelId,
+      projectDocument.generated_fragments,
+      projectDocument.protocol_editor.entries.length,
+      projectStatus.message,
+    ],
+  );
+
   const copyVisibleOutputEntries = useCallback(() => {
     if (typeof navigator === "undefined" || !navigator.clipboard || !activeOutputChannel) {
       return;
@@ -238,6 +328,23 @@ export function ShellView({
     const payload = visibleEntries.map((entry) => `${entry.timestamp} ${entry.summary}\n${entry.detail}`).join("\n\n");
     void navigator.clipboard.writeText(payload);
   }, [activeOutputChannel, outputSeverityFilter]);
+
+  const artifactFocusActions = [
+    { label: "Open Generated Overlay", action: () => focusPanel("workspace-generated-overlay") },
+    { label: "Open Generated Config", action: () => focusPanel("workspace-generated-config") },
+    { label: "Open Generated Fragments", action: () => focusPanel("workspace-generated-fragments") },
+    { label: "Open Generated Header", action: () => focusPanel("workspace-generated-header") },
+    { label: "Open Generated Source", action: () => focusPanel("workspace-generated-source") },
+    { label: "Open Renode RESC", action: () => focusPanel("workspace-renode-resc") },
+    { label: "Open Robot Tests", action: () => focusPanel("workspace-renode-robot") },
+  ];
+
+  const reviewRouteActions = [
+    { label: "Review Build Output", action: () => setActiveOutputChannelId("build") },
+    { label: "Review Diagnostics", action: () => setActiveOutputChannelId("diagnostics") },
+    { label: "Review Test Output", action: () => setActiveOutputChannelId("tests") },
+    { label: "Focus Renode Profile", action: () => focusPanel("workspace-renode-profile") },
+  ];
 
   return (
     <ShellFrame>
@@ -269,7 +376,7 @@ export function ShellView({
             <WorkspacePanel
               eyebrow="Navigator"
               title="Workspace navigator"
-              detail="Domain navigation, preset switching, and output routing now live in the left rail instead of relying on implementation knowledge."
+              detail="Use the left rail to switch workflow presets, jump between panels, and route the active output channel without leaving the shell."
             >
               <WorkspaceNavigationRail
                 activeLayoutPresetId={shellPreferences.layoutPresetId}
@@ -285,10 +392,10 @@ export function ShellView({
             <WorkspacePanel
               eyebrow="Navigator"
               title="Board inventory"
-              detail="Typed board discovery stays in the left rail so package and family switching remains one click away while the center dock stays focused on the active workspace."
+              detail="Pick the active board here, then keep the dock focused on configuration, artifact review, and validation work."
             >
-              {loading ? <EmptyState title="Loading board inventory" detail="Discovering board families and package variants for the active workspace." compact /> : null}
-              {!loading && error ? <EmptyState title="Board inventory failed" detail={error} tone="error" compact /> : null}
+              {loading ? <EmptyState title="Loading board inventory" detail="Wait for board metadata to load, then choose the target board from this list to unlock pin, artifact, and simulation workflows." compact /> : null}
+              {!loading && error ? <EmptyState title="Board inventory failed" detail={`${error} Check the backend board route, then use Load Project or refresh the workspace once board metadata is available.`} tone="error" compact /> : null}
               {!loading && !error ? (
                 <VirtualBoardList
                   boards={boards}
@@ -301,7 +408,7 @@ export function ShellView({
             <WorkspacePanel
               eyebrow="Session"
               title="Workspace signals"
-              detail="Compact status readouts replace the old marketing copy so the shell always exposes the current project context."
+              detail="Use these status readouts to confirm the active board, saved pin coverage, protocol count, and whether the workspace is blocked or idle."
             >
               <dl className="shell-key-values">
                 <div>
@@ -327,17 +434,30 @@ export function ShellView({
 
         <ShellContentRegion>
           <div className="workspace-center-stack">
-            <section className="workspace-context-strip" aria-label="Active workspace context">
-              <span>{activeBoard ? activeBoard.name : "Choose a board to begin"}</span>
-              <span>{projectDocument.renode.platform || "Renode platform pending"}</span>
-              <span>{projectStatus.message}</span>
-              <span>React workspace only</span>
+            <section className="workspace-workflow-map" aria-label="Workspace workflow map">
+              {workflowStages.map((stage, index) => (
+                <div key={stage.id} className="workspace-workflow-map__stage">
+                  <div className="workspace-workflow-map__header">
+                    <span className="workspace-workflow-map__index">0{index + 1}</span>
+                    <div>
+                      <strong>{stage.label}</strong>
+                      <p>{stage.summary}</p>
+                    </div>
+                  </div>
+                  <span className="workspace-workflow-map__detail">{stage.detail}</span>
+                  {stage.actionLabel && stage.action ? (
+                    <button type="button" className="shell-button shell-button--ghost workspace-workflow-map__action" onClick={stage.action}>
+                      {stage.actionLabel}
+                    </button>
+                  ) : null}
+                </div>
+              ))}
             </section>
 
             <WorkspacePanel
               eyebrow="Workspace"
               title="Engineering workspace"
-              detail="Docked editors, generated artifacts, and board diagnostics now sit inside a denser application frame instead of a hero-led scaffold."
+              detail="Keep the active editor, generated outputs, and diagnostics in the dock while the left rail and inspector handle navigation and review."
             >
               <WorkspaceDock
                 key={shellPreferences.layoutPresetId}
@@ -383,136 +503,173 @@ export function ShellView({
               detail="Persistence and export stay visible at the top of the inspector while the shell keeps one canonical project path and status channel."
             >
               <div className="project-flow">
-                <label className="project-flow__field">
-                  <span>Project file path</span>
-                  <input
-                    type="text"
-                    value={projectFilePath}
-                    onChange={(event) => setProjectFilePath(event.target.value)}
-                    placeholder="C:/tmp/pin-configurator-shell.zpinproj"
-                  />
-                </label>
-                <div className={`project-flow__status project-flow__status--${projectStatus.tone}`} role="status" aria-live="polite" aria-atomic="true">
-                  {projectStatus.message}
-                </div>
-                <dl className="shell-key-values shell-key-values--compact">
-                  <div>
-                    <dt>Active board</dt>
-                    <dd>{activeBoardLabel}</dd>
+                <InspectorSection title="Project state" summary="Persistence, target identity, and artifact mutation controls stay at the top of the inspector stack.">
+                  <label className="project-flow__field">
+                    <span>Project file path</span>
+                    <input
+                      type="text"
+                      value={projectFilePath}
+                      onChange={(event) => setProjectFilePath(event.target.value)}
+                      placeholder="C:/tmp/pin-configurator-shell.zpinproj"
+                    />
+                  </label>
+                  <div className={`project-flow__status project-flow__status--${projectStatus.tone}`} role="status" aria-live="polite" aria-atomic="true">
+                    {projectStatus.message}
                   </div>
-                  <div>
-                    <dt>Renode platform</dt>
-                    <dd>{projectDocument.renode.platform || "Pending board-specific defaults"}</dd>
+                  <dl className="shell-key-values shell-key-values--compact">
+                    <div>
+                      <dt>Active board</dt>
+                      <dd>{activeBoardLabel}</dd>
+                    </div>
+                    <div>
+                      <dt>Renode platform</dt>
+                      <dd>{projectDocument.renode.platform || "Pending board-specific defaults"}</dd>
+                    </div>
+                    <div>
+                      <dt>Busy</dt>
+                      <dd>{projectBusy ? "Yes" : "No"}</dd>
+                    </div>
+                  </dl>
+                  <div className="project-flow__actions">
+                    <button
+                      type="button"
+                      className="shell-button"
+                      onClick={() => runCommandById("artifacts.seed", { closePalette: false })}
+                      disabled={projectBusy}
+                    >
+                      Seed Overlay
+                    </button>
+                    <button
+                      type="button"
+                      className="shell-button shell-button--danger"
+                      onClick={() => runCommandById("artifacts.clear", { closePalette: false })}
+                      disabled={projectBusy}
+                    >
+                      Clear Artifacts
+                    </button>
                   </div>
-                  <div>
-                    <dt>Busy</dt>
-                    <dd>{projectBusy ? "Yes" : "No"}</dd>
-                  </div>
-                </dl>
-                <div className="project-flow__actions">
-                  <button
-                    type="button"
-                    className="shell-button"
-                    onClick={() => runCommandById("artifacts.seed", { closePalette: false })}
-                    disabled={projectBusy}
-                  >
-                    Seed Overlay
-                  </button>
-                  <button
-                    type="button"
-                    className="shell-button shell-button--danger"
-                    onClick={() => runCommandById("artifacts.clear", { closePalette: false })}
-                    disabled={projectBusy}
-                  >
-                    Clear Artifacts
-                  </button>
-                </div>
-              </div>
-            </WorkspacePanel>
+                </InspectorSection>
 
-            <WorkspacePanel
-              eyebrow="Artifacts"
-              title="Artifact review surfaces"
-              detail="Monaco-backed overlay, config, code, header, RESC, and Robot review now lives in the dock so diagnostics and diffs can focus the real artifact panels."
-            >
-              <div className="project-flow">
-                <InspectorNotice
-                  title="Generated vs editable ownership"
-                  detail="Overlay, config, RESC, and Robot scripts are saved artifacts. Fragments, generated headers, and generated source stay derived and read-only in their dedicated Monaco panels."
-                  actions={
-                    <>
+                <InspectorSection title="Artifact review" summary="Generated and saved artifacts stay grouped under one review grammar so users can jump directly to the right dock panel.">
+                  <InspectorNotice
+                    title="Generated vs editable ownership"
+                    detail="Overlay, config, RESC, and Robot scripts are saved artifacts. Fragments, generated headers, and generated source stay derived and read-only in their dedicated Monaco panels."
+                    actions={
+                      <>
+                        <button
+                          type="button"
+                          className="shell-button"
+                          onClick={() => runCommandById("artifacts.seed", { closePalette: false })}
+                          disabled={projectBusy}
+                        >
+                          <span className="shell-button__label">Seed Overlay</span>
+                          <ShortcutHint shortcut="Alt+Shift+S" />
+                        </button>
+                        <button
+                          type="button"
+                          className="shell-button shell-button--danger"
+                          onClick={() => runCommandById("artifacts.clear", { closePalette: false })}
+                          disabled={projectBusy}
+                        >
+                          <span className="shell-button__label">Clear Artifacts</span>
+                          <ShortcutHint shortcut="Alt+Shift+X" />
+                        </button>
+                      </>
+                    }
+                  />
+                  <GeneratedSymbolPreview
+                    title="Generated symbols"
+                    symbols={[
+                      `${projectDocument.board_id || "project"}.generated_overlay`,
+                      `${projectDocument.board_id || "project"}.generated_conf`,
+                      `${projectDocument.board_id || "project"}.generated_fragments`,
+                      `${projectDocument.board_id || "project"}_protocols.generated.h`,
+                      `${projectDocument.board_id || "project"}_protocols.generated.c`,
+                    ]}
+                  />
+                  {staleArtifactDocuments.length ? (
+                    <InspectorNotice
+                      title="Review customized or stale artifacts before export"
+                      detail={staleArtifactDocuments.map((document) => `${document.title}: ${document.changeSummary}`).join(" ")}
+                      tone="warning"
+                    />
+                  ) : null}
+                  <div className="artifact-review-groups">
+                    <section className="artifact-review-group" aria-label="Editable project assets">
+                      <div className="artifact-review-group__header">
+                        <strong>Editable project assets</strong>
+                        <StatusChip label={`${editableArtifactDocuments.length} tracked`} tone="info" />
+                      </div>
+                      <ul className="artifact-review-group__list">
+                        {editableArtifactDocuments.map((document) => (
+                          <li key={document.id}>
+                            <strong>{document.title}</strong>
+                            <span>{document.freshnessDetail}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+                    <section className="artifact-review-group" aria-label="Derived outputs">
+                      <div className="artifact-review-group__header">
+                        <strong>Derived outputs</strong>
+                        <StatusChip label={`${derivedArtifactDocuments.length} tracked`} tone="neutral" />
+                      </div>
+                      <ul className="artifact-review-group__list">
+                        {derivedArtifactDocuments.map((document) => (
+                          <li key={document.id}>
+                            <strong>{document.title}</strong>
+                            <span>{document.freshnessDetail}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+                  </div>
+                  <div className="artifact-review-links">
+                    {artifactFocusActions.map((item) => (
                       <button
+                        key={item.label}
                         type="button"
-                        className="shell-button"
-                        onClick={() => runCommandById("artifacts.seed", { closePalette: false })}
-                        disabled={projectBusy}
+                        className={`shell-button${item.label.includes("Header") || item.label.includes("Source") || item.label.includes("RESC") || item.label.includes("Robot") ? " shell-button--ghost" : ""}`}
+                        onClick={item.action}
                       >
-                        <span className="shell-button__label">Seed Overlay</span>
-                        <ShortcutHint shortcut="Alt+Shift+S" />
+                        {item.label}
                       </button>
-                      <button
-                        type="button"
-                        className="shell-button shell-button--danger"
-                        onClick={() => runCommandById("artifacts.clear", { closePalette: false })}
-                        disabled={projectBusy}
-                      >
-                        <span className="shell-button__label">Clear Artifacts</span>
-                        <ShortcutHint shortcut="Alt+Shift+X" />
+                    ))}
+                  </div>
+                  <InspectorNotice
+                    title="Export routes stay explicit"
+                    detail="Export Artifacts packages the generated overlay, generated config, and fragments metadata. Export Renode Bundle packages the RESC script, Robot suite, and the simulation handoff files derived from the current project document."
+                    tone="info"
+                  />
+                  <dl className="shell-key-values shell-key-values--compact">
+                    <div>
+                      <dt>Overlay lines</dt>
+                      <dd>{projectDocument.generated_overlay.split("\n").filter(Boolean).length || 0}</dd>
+                    </div>
+                    <div>
+                      <dt>Config lines</dt>
+                      <dd>{projectDocument.generated_conf.split("\n").filter(Boolean).length || 0}</dd>
+                    </div>
+                    <div>
+                      <dt>Fragment groups</dt>
+                      <dd>{Object.keys(projectDocument.generated_fragments).length}</dd>
+                    </div>
+                    <div>
+                      <dt>Robot target</dt>
+                      <dd>{projectDocument.renode.robot_target || "Pending"}</dd>
+                    </div>
+                  </dl>
+                </InspectorSection>
+
+                <InspectorSection title="Review routes" summary="The inspector can now send users directly into output review or simulation follow-up without leaving the current shell context.">
+                  <div className="project-flow__actions">
+                    {reviewRouteActions.map((item) => (
+                      <button key={item.label} type="button" className="shell-button shell-button--ghost" onClick={item.action}>
+                        {item.label}
                       </button>
-                    </>
-                  }
-                />
-                <GeneratedSymbolPreview
-                  title="Generated symbols"
-                  symbols={[
-                    `${projectDocument.board_id || "project"}.generated_overlay`,
-                    `${projectDocument.board_id || "project"}.generated_conf`,
-                    `${projectDocument.board_id || "project"}.generated_fragments`,
-                    `${projectDocument.board_id || "project"}_protocols.generated.h`,
-                    `${projectDocument.board_id || "project"}_protocols.generated.c`,
-                  ]}
-                />
-                <div className="artifact-review-links">
-                  <button type="button" className="shell-button" onClick={() => focusPanel("workspace-generated-overlay")}>
-                    Open Generated Overlay
-                  </button>
-                  <button type="button" className="shell-button" onClick={() => focusPanel("workspace-generated-config")}>
-                    Open Generated Config
-                  </button>
-                  <button type="button" className="shell-button" onClick={() => focusPanel("workspace-generated-fragments")}>
-                    Open Generated Fragments
-                  </button>
-                  <button type="button" className="shell-button shell-button--ghost" onClick={() => focusPanel("workspace-generated-header")}>
-                    Open Generated Header
-                  </button>
-                  <button type="button" className="shell-button shell-button--ghost" onClick={() => focusPanel("workspace-generated-source")}>
-                    Open Generated Source
-                  </button>
-                  <button type="button" className="shell-button shell-button--ghost" onClick={() => focusPanel("workspace-renode-resc")}>
-                    Open Renode RESC
-                  </button>
-                  <button type="button" className="shell-button shell-button--ghost" onClick={() => focusPanel("workspace-renode-robot")}>
-                    Open Robot Tests
-                  </button>
-                </div>
-                <dl className="shell-key-values shell-key-values--compact">
-                  <div>
-                    <dt>Overlay lines</dt>
-                    <dd>{projectDocument.generated_overlay.split("\n").filter(Boolean).length || 0}</dd>
+                    ))}
                   </div>
-                  <div>
-                    <dt>Config lines</dt>
-                    <dd>{projectDocument.generated_conf.split("\n").filter(Boolean).length || 0}</dd>
-                  </div>
-                  <div>
-                    <dt>Fragment groups</dt>
-                    <dd>{Object.keys(projectDocument.generated_fragments).length}</dd>
-                  </div>
-                  <div>
-                    <dt>Robot target</dt>
-                    <dd>{projectDocument.renode.robot_target || "Pending"}</dd>
-                  </div>
-                </dl>
+                </InspectorSection>
               </div>
             </WorkspacePanel>
 
@@ -522,25 +679,22 @@ export function ShellView({
               detail="Inspector modules stay stacked and dense so users can move from pin issues to Renode and protocol data without losing workspace context."
             >
               <div className="project-flow">
-                <div className="project-flow__section">
-                  <div className="project-flow__section-title">Pin assignments</div>
+                <InspectorSection title="Pin assignments" summary="Conflict handling, alternate-function ownership, and pin property edits stay visible as one inspector section.">
                   <PinAssignmentsPanel
                     pinAssignments={pinAssignments}
                     onClearPinAssignment={clearPinAssignment}
                     onAssignPinAltFunction={assignPinAltFunction}
                     onUpdatePinBooleanProperty={updatePinBooleanProperty}
                   />
-                </div>
-                <div className="project-flow__section">
-                  <div className="project-flow__section-title">Renode profile</div>
+                </InspectorSection>
+                <InspectorSection title="Renode profile" summary="Simulation platform, RESC, and Robot targets stay editable in the same right-rail grammar as other inspector domains.">
                   <RenodeProfileEditor
                     renode={projectDocument.renode}
                     disabled={projectBusy}
                     onFieldChange={updateRenodeField}
                   />
-                </div>
-                <div className="project-flow__section">
-                  <div className="project-flow__section-title">Protocol editor</div>
+                </InspectorSection>
+                <InspectorSection title="Protocol editor" summary="Protocol composition stays paired with generated review so interface work does not fragment across separate shells.">
                   <ProtocolEditorPanel
                     document={projectDocument.protocol_editor}
                     disabled={projectBusy}
@@ -550,7 +704,7 @@ export function ShellView({
                     onToggleEntry={toggleProtocolEntry}
                     onUpdateEntryValue={updateProtocolEntryValue}
                   />
-                </div>
+                </InspectorSection>
               </div>
             </WorkspacePanel>
           </div>
@@ -603,8 +757,13 @@ export function ShellView({
         <WorkspacePanel
           eyebrow="Architecture"
           title="Frontend boundaries"
-          detail="These ownership lines stay visible because the shell is now dense enough that layering mistakes become expensive quickly."
+          detail="These ownership and cutover lines stay visible because the React shell is now the canonical workstation surface and legacy drift would be expensive."
         >
+          <InspectorNotice
+            title={legacyCutover.canonicalShellLabel}
+            detail={`${legacyCutover.canonicalShellDetail} ${legacyCutover.legacySupportDetail}`}
+            tone={legacyCutover.cutoverThresholdMet ? "success" : "warning"}
+          />
           <dl className="boundary-list">
             <div>
               <dt>Contracts</dt>
@@ -622,7 +781,54 @@ export function ShellView({
               <dt>Views</dt>
               <dd>src/views stays presentational and layout-focused.</dd>
             </div>
+            <div>
+              <dt>Legacy support</dt>
+              <dd>{legacyCutover.legacySupportLabel}</dd>
+            </div>
+            <div>
+              <dt>Cutover threshold</dt>
+              <dd>{legacyCutover.cutoverThresholdLabel}</dd>
+            </div>
           </dl>
+          <div className="artifact-review-groups" aria-label="Legacy cutover alignment">
+            <section className="artifact-review-group" aria-label="Legacy-only workflow support">
+              <div className="artifact-review-group__header">
+                <strong>Legacy-only workflow support</strong>
+                <StatusChip
+                  label={legacyCutover.remainingLegacyWorkflows.length ? `${legacyCutover.remainingLegacyWorkflows.length} tracked` : "0 tracked"}
+                  tone={legacyCutover.remainingLegacyWorkflows.length ? "warning" : "success"}
+                />
+              </div>
+              {legacyCutover.remainingLegacyWorkflows.length ? (
+                <ul className="artifact-review-group__list">
+                  {legacyCutover.remainingLegacyWorkflows.map((entry) => (
+                    <li key={entry.id}>
+                      <strong>{entry.label}</strong>
+                      <span>{entry.retirementGoal}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="workspace-empty">Every tracked workstation workflow is now owned by typed React presenters.</p>
+              )}
+            </section>
+            <section className="artifact-review-group" aria-label="Legacy cutover rules">
+              <div className="artifact-review-group__header">
+                <strong>Legacy cutover rules</strong>
+                <StatusChip label={legacyCutover.cutoverThresholdMet ? "Threshold met" : "Threshold pending"} tone={legacyCutover.cutoverThresholdMet ? "success" : "warning"} />
+              </div>
+              <ul className="artifact-review-group__list">
+                <li>
+                  <strong>Porting rule</strong>
+                  <span>{legacyCutover.portingRule}</span>
+                </li>
+                <li>
+                  <strong>{legacyCutover.cutoverThresholdLabel}</strong>
+                  <span>{legacyCutover.cutoverThresholdDetail}</span>
+                </li>
+              </ul>
+            </section>
+          </div>
         </WorkspacePanel>
       </ShellBottomStrip>
 
@@ -634,7 +840,7 @@ export function ShellView({
         open={commandPaletteOpen}
         onOpenChange={setCommandPaletteOpen}
         title="Command palette"
-        description="Commands, boards, panels, generated files, diagnostics, and recent actions share one quick-open surface."
+        description="Search commands, boards, panels, generated files, and output routes from one quick-open surface."
         className="command-palette"
       >
           <div className="command-palette__search">
@@ -657,7 +863,7 @@ export function ShellView({
             emptyState={visiblePaletteItems.length ? null : (
               <EmptyState
                 title="No quick-open items match"
-                detail="Try a board name, command, panel title, output channel, or recent action keyword."
+                detail="Change the query or try a board name, command, panel title, generated artifact, or output channel to move to the next workspace action."
                 compact
               />
             )}

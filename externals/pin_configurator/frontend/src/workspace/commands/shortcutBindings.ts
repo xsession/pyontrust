@@ -1,4 +1,5 @@
 import { isEditableTarget } from "./shellPalette";
+import { workspaceDockPanelDefinitions } from "../panels/dockPanelDefinitions";
 
 export interface WorkspaceShortcutReference {
   id: string;
@@ -11,7 +12,7 @@ export type WorkspaceShortcutAction =
   | { kind: "palette.open" }
   | { kind: "actions.open" }
   | { kind: "command.run"; commandId: string }
-  | { kind: "panel.focus"; panelIndex: number };
+  | { kind: "panel.focus"; panelId: string };
 
 export const workspaceShortcutReferences: WorkspaceShortcutReference[] = [
   { id: "palette.open", label: "Open command palette", shortcut: "Ctrl+K / Ctrl+P / Ctrl+F", scope: "global" },
@@ -20,8 +21,37 @@ export const workspaceShortcutReferences: WorkspaceShortcutReference[] = [
   { id: "project.load", label: "Load project", shortcut: "Ctrl+O", scope: "global" },
   { id: "export.artifacts", label: "Export artifacts", shortcut: "Ctrl+E", scope: "global" },
   { id: "export.renode", label: "Export Renode bundle", shortcut: "Ctrl+Shift+E", scope: "global" },
-  { id: "dock.focus", label: "Focus dock panels 1-8", shortcut: "Alt+1..8", scope: "panel" },
+  ...workspaceDockPanelDefinitions
+    .filter((panel) => panel.shortcut !== "Palette")
+    .map((panel) => ({
+      id: `panel.${panel.id}`,
+      label: `Focus ${panel.title}`,
+      shortcut: panel.shortcut,
+      scope: "panel" as const,
+    })),
 ];
+
+function matchesPanelShortcut(shortcut: string, event: KeyboardEvent): boolean {
+  if (shortcut === "Palette") {
+    return false;
+  }
+
+  const parts = shortcut.toLowerCase().split("+");
+  const key = parts[parts.length - 1];
+  const requiresAlt = parts.includes("alt");
+  const requiresShift = parts.includes("shift");
+  const requiresCtrl = parts.includes("ctrl") || parts.includes("control");
+  const requiresMeta = parts.includes("meta") || parts.includes("cmd");
+  const normalizedKey = event.key.toLowerCase();
+
+  return (
+    normalizedKey === key &&
+    event.altKey === requiresAlt &&
+    event.shiftKey === requiresShift &&
+    event.ctrlKey === requiresCtrl &&
+    event.metaKey === requiresMeta
+  );
+}
 
 export function getWorkspaceShortcutAction(event: KeyboardEvent): WorkspaceShortcutAction | null {
   const normalizedKey = event.key.toLowerCase();
@@ -31,8 +61,9 @@ export function getWorkspaceShortcutAction(event: KeyboardEvent): WorkspaceShort
     return { kind: "actions.open" };
   }
 
-  if (event.altKey && /^\d$/.test(normalizedKey)) {
-    return { kind: "panel.focus", panelIndex: Number.parseInt(normalizedKey, 10) - 1 };
+  const panelShortcut = workspaceDockPanelDefinitions.find((panel) => matchesPanelShortcut(panel.shortcut, event));
+  if (panelShortcut) {
+    return { kind: "panel.focus", panelId: panelShortcut.id };
   }
 
   if (!primaryModifier) {

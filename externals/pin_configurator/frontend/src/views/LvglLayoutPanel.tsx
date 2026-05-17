@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import Editor from "@monaco-editor/react";
 import { DiagnosticBadge } from "../shared/ui/feedback/DiagnosticBadge";
 import { EmptyState } from "../shared/ui/feedback/EmptyState";
+import { InspectorNotice } from "../shared/ui/inspectors/InspectorNotice";
 import { InspectorSection } from "../shared/ui/inspectors/InspectorSection";
+import { PropertyGrid, PropertyRow } from "../shared/ui/inspectors/PropertyGrid";
 import { SceneViewportToolbar } from "../shared/ui/scene/SceneViewportToolbar";
 import { useSceneViewport } from "../shared/ui/scene/useSceneViewport";
 import { VirtualizedTreeList } from "../shared/ui/virtualized/VirtualizedTreeList";
@@ -166,6 +168,7 @@ export function LvglLayoutPanel({ presenter }: LvglLayoutPanelProps) {
 
   const selectedNode = selectedScreen?.nodes.find((node) => node.id === selectedNodeId) ?? null;
   const selectedStyle = styles.find((style) => selectedNode?.styleRefs.includes(style.id)) ?? null;
+  const latestSimulationEntry = simulationLog[simulationLog.length - 1] ?? "No simulation activity recorded.";
   const hierarchyRows = useMemo<HierarchyRow[]>(() => {
     return screens.flatMap((screen) => {
       const screenRow: HierarchyRow = {
@@ -198,28 +201,25 @@ export function LvglLayoutPanel({ presenter }: LvglLayoutPanelProps) {
   return (
     <div className="domain-panel">
       <InspectorSection
-        title="LVGL layout summary"
-        summary="LVGL layout import/export and canonical document mutation are now presenter-owned instead of legacy globals."
-        actions={<DiagnosticBadge label={`${presenter.summary.screenCount} screens`} tone="info" />}
+        title="LVGL readiness"
+        summary="Review screen coverage, shared styles, validation issues, and startup routing here before editing JSON or treating the stage as final."
+        actions={<DiagnosticBadge label={`${validationIssues.filter((issue) => issue !== "No validation issues detected.").length} issues`} tone={validationIssues[0] === "No validation issues detected." ? "success" : "warning"} />}
       >
-        <dl className="shell-key-values shell-key-values--compact">
-          <div>
-            <dt>Preset</dt>
-            <dd>{presenter.summary.preset}</dd>
-          </div>
-          <div>
-            <dt>Screens</dt>
-            <dd>{presenter.summary.screenCount}</dd>
-          </div>
-          <div>
-            <dt>Widgets</dt>
-            <dd>{presenter.summary.widgetCount}</dd>
-          </div>
-          <div>
-            <dt>Startup screen</dt>
-            <dd>{presenter.summary.startupScreenId}</dd>
-          </div>
-        </dl>
+        <PropertyGrid>
+          <PropertyRow label="Preset" value={presenter.summary.preset} />
+          <PropertyRow label="Screens" value={presenter.summary.screenCount} />
+          <PropertyRow label="Widgets" value={presenter.summary.widgetCount} />
+          <PropertyRow label="Shared styles" value={styles.length} />
+          <PropertyRow label="Validation issues" value={validationIssues.filter((issue) => issue !== "No validation issues detected.").length} />
+          <PropertyRow label="Startup screen" value={presenter.summary.startupScreenId} />
+        </PropertyGrid>
+        <InspectorNotice
+          title={validationIssues[0] === "No validation issues detected." ? "Layout workflow is ready for editing" : "Layout blockers stay above editing"}
+          detail={validationIssues[0] === "No validation issues detected."
+            ? "Import/export fields and editable JSON stay below, while stage, hierarchy, style, and validation views remain derived from the canonical layout."
+            : "Resolve layout validation issues before treating the stage, hierarchy, and exported JSON as ready for handoff."}
+          tone={validationIssues[0] === "No validation issues detected." ? "info" : "warning"}
+        />
         <div className="catalog-toolbar">
           <label className="project-flow__field">
             <span>Import source</span>
@@ -248,6 +248,24 @@ export function LvglLayoutPanel({ presenter }: LvglLayoutPanelProps) {
         </div>
         <p className="domain-summary-text">{presenter.status}</p>
         {presenter.error ? <EmptyState title="LVGL workflow error" detail={presenter.error} tone="error" compact /> : null}
+      </InspectorSection>
+
+      <InspectorSection
+        title="LVGL editing loop"
+        summary="Keep stage, hierarchy, props, style library, and the latest simulation signal synchronized around the active selection."
+        actions={<DiagnosticBadge label={selectedNode ? selectedNode.name : selectedScreen?.name ?? "No selection"} tone="info" />}
+      >
+        <PropertyGrid>
+          <PropertyRow label="Selected screen" value={selectedScreen?.name ?? "None"} />
+          <PropertyRow label="Selected widget" value={selectedNode?.name ?? "None"} />
+          <PropertyRow label="Selected style" value={selectedStyle?.name ?? "None"} />
+          <PropertyRow label="Latest simulation event" value={latestSimulationEntry} />
+        </PropertyGrid>
+        <InspectorNotice
+          title="Derived companions stay in the same editing loop"
+          detail="Stage, hierarchy, selection summary, style library, and simulation feedback all stay keyed to the current selection so you can inspect the same widget from multiple angles without leaving the layout workflow."
+          tone="info"
+        />
       </InspectorSection>
 
       <div className="lvgl-workspace">
@@ -303,7 +321,6 @@ export function LvglLayoutPanel({ presenter }: LvglLayoutPanelProps) {
             </div>
           ) : null}
         </InspectorSection>
-                role="img"
 
         <InspectorSection title="Hierarchy" summary="Screens and widgets are now browseable as a coordinated hierarchy rather than only raw JSON.">
           {!screens.length ? <EmptyState title="No hierarchy" detail="Screens appear here once the layout contains scene nodes." compact /> : null}
@@ -355,16 +372,24 @@ export function LvglLayoutPanel({ presenter }: LvglLayoutPanelProps) {
           ) : null}
         </InspectorSection>
 
-        <InspectorSection title="Props" summary="Selection-aware properties and style references are available next to the stage.">
+        <InspectorSection title="Selection summary" summary="Selection-aware properties, style references, and simulation context stay here as a derived view of the current stage or hierarchy selection.">
           {!selectedNode ? <EmptyState title="No widget selected" detail="Select a widget from the stage or hierarchy to inspect its bounds and styles." compact /> : null}
           {selectedNode ? (
-            <dl className="shell-key-values shell-key-values--compact">
-              <div><dt>Name</dt><dd>{selectedNode.name}</dd></div>
-              <div><dt>Type</dt><dd>{selectedNode.type}</dd></div>
-              <div><dt>Bounds</dt><dd>{`${selectedNode.x}, ${selectedNode.y}, ${selectedNode.w}x${selectedNode.h}`}</dd></div>
-              <div><dt>Styles</dt><dd>{selectedNode.styleRefs.length ? selectedNode.styleRefs.join(", ") : "None"}</dd></div>
-              <div><dt>Selected Style</dt><dd>{selectedStyle?.name ?? "None"}</dd></div>
-            </dl>
+            <>
+              <InspectorNotice
+                title="Stage selection is derived"
+                detail="Change import sources or editable JSON to update the canonical layout. The selected widget properties here are read-only summaries of the current stage state."
+                tone="info"
+              />
+              <PropertyGrid>
+                <PropertyRow label="Name" value={selectedNode.name} />
+                <PropertyRow label="Type" value={selectedNode.type} />
+                <PropertyRow label="Bounds" value={`${selectedNode.x}, ${selectedNode.y}, ${selectedNode.w}x${selectedNode.h}`} />
+                <PropertyRow label="Styles" value={selectedNode.styleRefs.length ? selectedNode.styleRefs.join(", ") : "None"} />
+                <PropertyRow label="Selected style" value={selectedStyle?.name ?? "None"} />
+                <PropertyRow label="Simulation signal" value={latestSimulationEntry} />
+              </PropertyGrid>
+            </>
           ) : null}
         </InspectorSection>
 
@@ -408,9 +433,14 @@ export function LvglLayoutPanel({ presenter }: LvglLayoutPanelProps) {
       </div>
 
       <InspectorSection
-        title="LVGL layout JSON"
-        summary="The current layout stays editable as structured JSON so the canonical project document can be updated without legacy scene globals."
+        title="Editable layout JSON"
+        summary="Edit the canonical layout source here. Stage, hierarchy, styles, and validation stay derived from this JSON payload."
       >
+        <InspectorNotice
+          title="Editable JSON is the source of truth"
+          detail="Use Apply JSON to update the canonical project document after reviewing the derived stage, hierarchy, and validation views above."
+          tone="info"
+        />
         <div className="domain-editor">
           <Editor height="100%" defaultLanguage="json" theme="light" value={presenter.draftText} onChange={(value) => presenter.setDraftText(value ?? "")} options={{ minimap: { enabled: false }, fontSize: 13, scrollBeyondLastLine: false }} />
         </div>

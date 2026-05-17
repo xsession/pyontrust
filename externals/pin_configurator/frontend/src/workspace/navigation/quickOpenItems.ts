@@ -4,6 +4,13 @@ import type { ShellPaletteItem } from "../commands/shellPalette";
 import { workspaceLayoutPresets, type WorkspaceLayoutPresetId } from "../layout/workspaceShellPreferences";
 import { workspaceDockPanelDefinitions } from "../panels/dockPanelDefinitions";
 
+const outputChannelLabels = {
+  build: "Build Output",
+  simulation: "Simulation Output",
+  diagnostics: "Diagnostics",
+  tests: "Test Output",
+} as const;
+
 export function buildBoardQuickOpenItems(
   boards: BoardSummary[],
   loading: boolean,
@@ -57,7 +64,7 @@ export function buildLayoutPresetQuickOpenItems(
   return workspaceLayoutPresets.map((preset) => ({
     id: `preset.${preset.id}`,
     label: `Apply ${preset.label}`,
-    description: preset.description,
+    description: `${preset.description} Focus ${workspaceDockPanelDefinitions.find((panel) => panel.id === preset.panelId)?.title ?? preset.panelId} and route ${outputChannelLabels[preset.outputChannelId]}.`,
     shortcut: "",
     group: "Presets",
     disabled: preset.id === activePresetId,

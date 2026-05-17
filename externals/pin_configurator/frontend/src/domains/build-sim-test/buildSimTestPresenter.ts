@@ -40,16 +40,20 @@ export interface ExecutionMachineOptionViewModel {
 
 type BuildSimTestPresenterInput = Pick<ProjectShellController, "projectDocument" | "projectBusy" | "projectStatus"> & {
   activeBoard: BoardSummary | null;
-  pinAssignments: Pick<PinAssignmentsViewModel, "summary">;
+  pinAssignments: Pick<PinAssignmentsViewModel, "summary" | "issuesByPinNumber">;
+  clockWarnings: string[];
 };
 
-export function createBuildSimTestPresenter({ activeBoard, projectDocument, projectBusy, projectStatus, pinAssignments }: BuildSimTestPresenterInput): BuildSimTestPresenter {
+export function createBuildSimTestPresenter({ activeBoard, projectDocument, projectBusy, projectStatus, pinAssignments, clockWarnings }: BuildSimTestPresenterInput): BuildSimTestPresenter {
   const artifacts = selectProjectArtifactStatus(projectDocument);
   const readinessLabel = selectProjectReadinessLabel(projectDocument);
   const integrity = selectProjectIntegrityStatus(projectDocument);
   const integrityLabel = selectProjectIntegrityLabel(projectDocument);
   const enabledProtocols = projectDocument.protocol_editor.entries.filter((entry) => entry.enabled !== false);
   const unresolvedPins = Math.max(pinAssignments.summary.unresolvedCount, 0);
+  const pinIssues = Object.values(pinAssignments.issuesByPinNumber).flat();
+  const pinIssueCount = pinIssues.length;
+  const clockWarningCount = clockWarnings.length;
   const recommendedRenodeProfile = defaultRenodeProfile(activeBoard?.board ?? activeBoard?.id ?? "");
   const recommendedMachine = recommendedRenodeProfile.platform.trim();
   const currentMachine = projectDocument.renode.platform.trim();
@@ -61,13 +65,14 @@ export function createBuildSimTestPresenter({ activeBoard, projectDocument, proj
 
     return protocolTemplateById(entry.templateId).label;
   });
-  const artifactDiagnostics = buildArtifactDiagnosticEntries(
-    buildArtifactReviewDocuments({
-      activeBoard,
-      projectDocument,
-      unresolvedPinCount: pinAssignments.summary.unresolvedCount,
-    }),
-  );
+  const artifactReviewDocuments = buildArtifactReviewDocuments({
+    activeBoard,
+    projectDocument,
+    unresolvedPinCount: pinAssignments.summary.unresolvedCount,
+  });
+  const artifactDiagnostics = buildArtifactDiagnosticEntries(artifactReviewDocuments);
+  const pinIssuePreview = pinIssues.slice(0, 2).map((issue) => issue.title).join("; ");
+  const clockWarningPreview = clockWarnings.slice(0, 2).join("; ");
 
   const buildEntries: ShellOutputEntryViewModel[] = [
     {
@@ -116,13 +121,29 @@ export function createBuildSimTestPresenter({ activeBoard, projectDocument, proj
     {
       id: "diag-pins",
       timestamp: "pins",
-      summary: unresolvedPins ? `${unresolvedPins} unresolved pin assignments remain.` : "Pin assignment set is fully resolved for the saved state.",
-      detail: unresolvedPins
-        ? "Resolve pin mismatches before treating generated artifacts as final."
-        : `${pinAssignments.summary.resolvedCount} resolved selections are currently reflected in the shell.`,
-      severity: unresolvedPins ? "warning" : "success",
+      summary:
+        unresolvedPins || pinIssueCount
+          ? `${unresolvedPins} unresolved selection${unresolvedPins === 1 ? "" : "s"} and ${pinIssueCount} pin conflict${pinIssueCount === 1 ? "" : "s"} require review.`
+          : "Pin assignment set is fully resolved for the saved state.",
+      detail:
+        unresolvedPins || pinIssueCount
+          ? [
+              unresolvedPins ? "Resolve pin mismatches before treating generated artifacts as final." : "",
+              pinIssuePreview,
+            ]
+              .filter(Boolean)
+              .join(" ")
+          : `${pinAssignments.summary.resolvedCount} resolved selections are currently reflected in the shell.`,
+      severity: unresolvedPins || pinIssueCount ? "warning" : "success",
     },
-    ...artifactDiagnostics.slice(0, 6).map((entry) => ({
+    {
+      id: "diag-clocks",
+      timestamp: "clocks",
+      summary: clockWarningCount ? `${clockWarningCount} clock validation warning${clockWarningCount === 1 ? " remains" : "s remain"}.` : "Clock validation checks are passing.",
+      detail: clockWarningCount ? clockWarningPreview : "Clock nodes and generated outputs are aligned for the current selection.",
+      severity: clockWarningCount ? "warning" : "success",
+    },
+    ...artifactDiagnostics.map((entry) => ({
       id: `artifact-${entry.id}`,
       timestamp: "codegen",
       summary: entry.summary,
@@ -167,7 +188,7 @@ export function createBuildSimTestPresenter({ activeBoard, projectDocument, proj
       label: "Build Console",
       status: projectBusy
         ? "running"
-        : integrity.warningCount > 0 || unresolvedPins > 0
+        : integrity.warningCount > 0 || unresolvedPins > 0 || pinIssueCount > 0 || clockWarningCount > 0
           ? "blocked"
           : artifacts.enabledProtocolEntryCount > 0 || artifacts.authorityState === "authoritative"
             ? "ready"
@@ -176,9 +197,11 @@ export function createBuildSimTestPresenter({ activeBoard, projectDocument, proj
         ? "The workspace controller is currently running a save, load, or export action."
         : integrity.warningCount > 0
           ? `Resolve ${integrity.warningCount} project integrity warning${integrity.warningCount === 1 ? "" : "s"} before treating build outputs as final.`
-          : unresolvedPins > 0
-            ? `Resolve ${unresolvedPins} pin assignment issue${unresolvedPins === 1 ? "" : "s"} before build handoff.`
-            : `${artifacts.enabledProtocolEntryCount} enabled protocol entr${artifacts.enabledProtocolEntryCount === 1 ? "y is" : "ies are"} staged for code generation and export.`,
+          : unresolvedPins > 0 || pinIssueCount > 0
+            ? `Resolve ${unresolvedPins} unresolved selection${unresolvedPins === 1 ? "" : "s"} and ${pinIssueCount} pin conflict${pinIssueCount === 1 ? "" : "s"} before build handoff.`
+            : clockWarningCount > 0
+              ? `Resolve ${clockWarningCount} clock validation warning${clockWarningCount === 1 ? "" : "s"} before build handoff.`
+              : `${artifacts.enabledProtocolEntryCount} enabled protocol entr${artifacts.enabledProtocolEntryCount === 1 ? "y is" : "ies are"} staged for code generation and export.`,
       latestLog: buildEntries[0]?.summary ?? "Build console is awaiting the next action.",
     },
     {
@@ -210,6 +233,37 @@ export function createBuildSimTestPresenter({ activeBoard, projectDocument, proj
       latestLog: testEntries[0]?.summary ?? "Test console is awaiting validation setup.",
     },
   ];
+  const buildTask = tasks.find((task) => task.id === "build");
+  const simulationTask = tasks.find((task) => task.id === "simulation");
+  const testTask = tasks.find((task) => task.id === "tests");
+  const buildBadge =
+    buildTask?.status === "running"
+      ? "Running"
+      : buildTask?.status === "blocked"
+        ? "Blocked"
+        : buildTask?.status === "ready"
+          ? "Ready"
+          : artifacts.authorityState === "stale"
+            ? "Stale"
+            : "Idle";
+  const simulationBadge =
+    simulationTask?.status === "running"
+      ? "Running"
+      : simulationTask?.status === "ready"
+        ? "Ready"
+        : simulationTask?.status === "blocked"
+          ? "Target"
+          : "Idle";
+  const diagnosticsIssueCount = diagnosticsEntries.filter((entry) => entry.severity === "warning" || entry.severity === "error").length;
+  const diagnosticsBadge = diagnosticsIssueCount ? `${diagnosticsIssueCount} issue${diagnosticsIssueCount === 1 ? "" : "s"}` : "Passing";
+  const testBadge =
+    testTask?.status === "running"
+      ? "Running"
+      : testTask?.status === "ready"
+        ? "Ready"
+        : testTask?.status === "blocked"
+          ? "Target"
+          : "Idle";
 
   return {
     executionWorkbench: {
@@ -222,29 +276,29 @@ export function createBuildSimTestPresenter({ activeBoard, projectDocument, proj
       {
         id: "build",
         label: "Build Output",
-        badge: String(buildEntries.length),
-        tone: artifacts.authorityState === "authoritative" ? "success" : "warning",
+        badge: buildBadge,
+        tone: buildTask?.status === "ready" ? "success" : buildTask?.status === "blocked" || artifacts.authorityState === "stale" ? "warning" : "neutral",
         entries: buildEntries,
       },
       {
         id: "simulation",
         label: "Simulation Output",
-        badge: String(simulationEntries.length),
-        tone: projectDocument.renode.enabled && projectDocument.renode.platform.trim() ? "success" : "warning",
+        badge: simulationBadge,
+        tone: simulationTask?.status === "ready" ? "success" : simulationTask?.status === "blocked" ? "warning" : "neutral",
         entries: simulationEntries,
       },
       {
         id: "diagnostics",
         label: "Diagnostics",
-        badge: String(diagnosticsEntries.length),
-        tone: integrity.warningCount ? "warning" : "success",
+        badge: diagnosticsBadge,
+        tone: diagnosticsIssueCount ? "warning" : "success",
         entries: diagnosticsEntries,
       },
       {
         id: "tests",
         label: "Test Readiness",
-        badge: String(testEntries.length),
-        tone: enabledProtocols.length ? "neutral" : "warning",
+        badge: testBadge,
+        tone: testTask?.status === "ready" ? "success" : testTask?.status === "blocked" || !enabledProtocols.length ? "warning" : "neutral",
         entries: testEntries,
       },
     ],

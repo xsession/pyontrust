@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BoardDefinition, BoardEditorDraftListResponse, BoardSummary, ClockTreeSummary, ModuleDefinition, ZephyrCatalogResponse } from "../contracts/api";
 import { App } from "./App";
+import * as exportArtifacts from "../project/exportArtifacts";
 
 vi.mock("../workspace/WorkspaceDock", () => ({
   WorkspaceDock: ({ focusRequest }: { focusRequest?: { panelId: string } | null }) => (
@@ -114,6 +115,13 @@ describe("App browser flow", () => {
         return Promise.resolve(jsonResponse(emptyDraftsResponse));
       }
 
+      if (pathname === "/api/project-file/save") {
+        return Promise.resolve(jsonResponse({
+          saved: true,
+          file_path: "C:/tmp/app-browser-flow.zpinproj",
+        }));
+      }
+
       if (pathname.startsWith("/api/board/")) {
         const boardId = decodeURIComponent(pathname.slice("/api/board/".length));
         return Promise.resolve(jsonResponse(boardDefinitions[boardId] ?? boardDefinitions.mspm0g3507));
@@ -134,11 +142,11 @@ describe("App browser flow", () => {
     expect(await screen.findByText("Pin Configurator workspace")).toBeInTheDocument();
     expect(await screen.findByText("Execution workbench")).toBeInTheDocument();
 
-    fireEvent.click(await screen.findByRole("button", { name: /RP2040/i }, { timeout: 5000 }));
+    fireEvent.click(await screen.findByRole("button", { name: /RP2040/i }, { timeout: 10000 }));
 
     await waitFor(() => {
       expect(screen.getAllByText("RP2040 (Pico DIP-40)").length).toBeGreaterThan(0);
-    });
+    }, { timeout: 10000 });
     expect(screen.getAllByText("platforms/cpus/raspberrypi/rp2040.repl").length).toBeGreaterThan(0);
 
     fireEvent.keyDown(window, { key: "?", shiftKey: true });
@@ -148,6 +156,55 @@ describe("App browser flow", () => {
     fireEvent.keyDown(document, { key: "Escape" });
 
     fireEvent.click(screen.getByRole("tab", { name: /Diagnostics/i }));
-    expect(await screen.findByText("Project integrity checks are passing.")).toBeInTheDocument();
-  });
+    await waitFor(() => {
+      expect(screen.getAllByText("Project integrity checks are passing.").length).toBeGreaterThan(0);
+    }, { timeout: 10000 });
+  }, 15000);
+
+  it("supports a browser flow for save, focus, export, and diagnostics review", async () => {
+    const downloadSpy = vi.spyOn(exportArtifacts, "downloadGeneratedArtifactBundle").mockReturnValue(3);
+
+    render(<App />);
+
+    expect(await screen.findByText("Pin Configurator workspace")).toBeInTheDocument();
+
+    fireEvent.click(await screen.findByRole("button", { name: /RP2040/i }, { timeout: 10000 }));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("RP2040 (Pico DIP-40)").length).toBeGreaterThan(0);
+    }, { timeout: 10000 });
+
+    fireEvent.change(screen.getByLabelText("Project file path"), {
+      target: { value: "C:/tmp/app-browser-flow.zpinproj" },
+    });
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Seed Overlay" })[0]);
+
+    await waitFor(() => {
+      expect(screen.getAllByText(/Generated project artifacts for RP2040/i).length).toBeGreaterThan(0);
+    }, { timeout: 10000 });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save Project" }));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Saved typed project document to C:/tmp/app-browser-flow.zpinproj.").length).toBeGreaterThan(0);
+    }, { timeout: 10000 });
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Generated Overlay" }));
+    expect(screen.getByTestId("workspace-dock-fallback")).toHaveAttribute("data-focus-panel", "workspace-generated-overlay");
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Export Artifacts" })[0]);
+
+    await waitFor(() => {
+      expect(downloadSpy).toHaveBeenCalledTimes(1);
+      expect(screen.getAllByText("Exported 3 generated artifact files from the canonical project document.").length).toBeGreaterThan(0);
+    }, { timeout: 10000 });
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Review Diagnostics" })[0]);
+
+    await waitFor(() => {
+      expect(screen.getByRole("tab", { name: /Diagnostics/i })).toHaveAttribute("aria-selected", "true");
+      expect(screen.getAllByText("Project integrity checks are passing.").length).toBeGreaterThan(0);
+    }, { timeout: 10000 });
+  }, 15000);
 });

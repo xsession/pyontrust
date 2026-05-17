@@ -11,6 +11,7 @@ import { DiagnosticBadge } from "../shared/ui/feedback/DiagnosticBadge";
 import { EmptyState } from "../shared/ui/feedback/EmptyState";
 import { InspectorNotice } from "../shared/ui/inspectors/InspectorNotice";
 import { InspectorSection } from "../shared/ui/inspectors/InspectorSection";
+import { PropertyGrid, PropertyRow } from "../shared/ui/inspectors/PropertyGrid";
 
 interface ProtocolEditorPanelProps {
   document: ProtocolEditorDocument;
@@ -33,9 +34,71 @@ export function ProtocolEditorPanel({
 }: ProtocolEditorPanelProps) {
   const activeEntry = selectedProtocolEntry(document);
   const activeTemplate = protocolTemplateById(activeEntry?.templateId);
+  const enabledEntryCount = document.entries.filter((entry) => entry.enabled).length;
+  const disabledEntryCount = document.entries.length - enabledEntryCount;
+  const activeEntryTitle = activeEntry && activeTemplate ? String(activeEntry.values.instanceName || activeTemplate.label) : "No active entry";
+  const enabledEntries = document.entries.filter((entry) => entry.enabled);
+  const generatedReviewItems = enabledEntries.map((entry) => {
+    const template = protocolTemplateById(entry.templateId);
+    const instanceName = String(entry.values.instanceName || template.label);
+
+    return {
+      id: entry.id,
+      title: instanceName,
+      header: `${instanceName}_init(void)`,
+      source: `${instanceName}_attach(void)`,
+      transport: template.transport,
+    };
+  });
+  const exportReadiness = enabledEntryCount ? "Ready for generated C/header review" : "Enable a protocol entry before export review";
 
   return (
     <div className="protocol-editor-panel">
+      <InspectorSection
+        title="Protocol readiness"
+        summary="Check enabled-entry coverage and the active transport here before editing protocol values or expecting generated interface artifacts to be ready."
+        actions={<DiagnosticBadge label={`${enabledEntryCount} enabled`} tone={enabledEntryCount ? "success" : "warning"} />}
+      >
+        <PropertyGrid>
+          <PropertyRow label="Entries" value={document.entries.length} />
+          <PropertyRow label="Enabled" value={enabledEntryCount} />
+          <PropertyRow label="Disabled" value={disabledEntryCount} />
+          <PropertyRow label="Active entry" value={activeEntryTitle} />
+          <PropertyRow label="Export readiness" value={exportReadiness} />
+        </PropertyGrid>
+        <InspectorNotice
+          title={enabledEntryCount ? "Protocol blockers stay visible above editing" : "Protocol enablement is required before handoff"}
+          detail={enabledEntryCount
+            ? "Template family and transport remain derived values. Change only the selected entry fields in the editable section below."
+            : "Enable at least one protocol entry before treating generated code, diagnostics, and tests as launch-ready."}
+          tone={enabledEntryCount ? "info" : "warning"}
+        />
+      </InspectorSection>
+
+      <InspectorSection
+        title="Generated interface review"
+        summary="Protocol edits now map directly to generated header and source review targets before export handoff."
+        actions={<DiagnosticBadge label={`${generatedReviewItems.length} code paths`} tone={generatedReviewItems.length ? "info" : "warning"} />}
+      >
+        <InspectorNotice
+          title={generatedReviewItems.length ? "Generated C and header review stays attached to protocol edits" : "Generated interface review is waiting for an enabled entry"}
+          detail={generatedReviewItems.length
+            ? "Use these projected header and source symbols as the immediate handoff between protocol editing and the generated artifact panels."
+            : "Enable a protocol entry so generated header and source previews have concrete interface symbols to review."}
+          tone={generatedReviewItems.length ? "info" : "warning"}
+        />
+        {generatedReviewItems.length ? (
+          <ul className="domain-list">
+            {generatedReviewItems.map((item) => (
+              <li key={item.id} className="domain-list__item">
+                <strong>{item.title}</strong>
+                <span>{`${item.transport} • header ${item.header} • source ${item.source}`}</span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </InspectorSection>
+
       <div className="protocol-editor-panel__catalog">
         {PROTOCOL_EDITOR_TEMPLATES.map((template) => (
           <button
@@ -105,14 +168,20 @@ export function ProtocolEditorPanel({
 
         {activeEntry && activeTemplate ? (
           <InspectorSection
-            title={activeTemplate.label}
+            title="Editable protocol values"
             summary={activeTemplate.summary}
             actions={<DiagnosticBadge label={activeTemplate.transport} tone="info" />}
           >
             <InspectorNotice
-              title="Editable protocol fields"
-              detail="The selected entry is the only mutable target. Template family and transport stay derived so later generators can rely on stable protocol metadata."
+              title="Editable entry values stay below derived metadata"
+              detail="The selected entry is the only mutable target. Template family, transport, and enablement state stay summarized above as derived metadata."
             />
+            <PropertyGrid>
+              <PropertyRow label="Active entry" value={activeEntryTitle} />
+              <PropertyRow label="Template family" value={activeTemplate.family} />
+              <PropertyRow label="Transport" value={activeTemplate.transport} />
+              <PropertyRow label="Entry status" value={activeEntry.enabled ? "Enabled" : "Disabled"} />
+            </PropertyGrid>
             <div className="protocol-editor-panel__fields">
             {activeTemplate.fields.map((field) => {
               const value = activeEntry.values[field.key];

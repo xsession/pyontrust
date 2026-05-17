@@ -5,6 +5,7 @@ import type { ShellCommandViewModel } from "../presenters/useShellPresenter";
 import { ShellView } from "./ShellView";
 import type { PinAssignmentsViewModel } from "../shared/viewModels/pinAssignments";
 import type { ExecutionWorkbenchViewModel } from "../domains/build-sim-test/buildSimTestPresenter";
+import { saveWorkspaceShellPreferences } from "../workspace/layout/workspaceShellPreferences";
 
 vi.mock("../workspace/WorkspaceDock", () => ({
   WorkspaceDock: ({ focusRequest }: { focusRequest?: { panelId: string } | null }) => (
@@ -27,8 +28,20 @@ const emptyPinAssignments: PinAssignmentsViewModel = {
 };
 
 describe("ShellView", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
   it("renders the professional workspace shell", () => {
     const projectDocument = createEmptyProjectDocument();
+    projectDocument.board_id = "lp_mspm0g3507";
+    projectDocument.renode.enabled = true;
+    projectDocument.renode.platform = "platforms/boards/ti/lp_mspm0g3507.repl";
+    projectDocument.generated_overlay = "/ { chosen { zephyr,console = &uart0; }; };";
+    projectDocument.generated_fragments = {
+      board: { id: "lp_mspm0g3107" },
+      outputs: { overlay: "/ { chosen { zephyr,console = &uart0; }; };" },
+    };
     const commandRun = vi.fn();
     const selectBoard = vi.fn();
     const updateRenodeField = vi.fn();
@@ -175,10 +188,31 @@ describe("ShellView", () => {
             tone: "success",
           },
           {
+            id: "readiness",
+            label: "Readiness",
+            value: "3/4 Ready",
+            detail: "Board assigned · Artifacts present · Renode target ready · 1 enabled protocol",
+            tone: "neutral",
+          },
+          {
+            id: "artifacts",
+            label: "Artifacts",
+            value: "Stale",
+            detail: "Generated fragments target a different board than the current project selection.",
+            tone: "warning",
+          },
+          {
             id: "dirty",
             label: "Dirty State",
             value: "Unsaved changes",
             detail: "Undo history contains persistent project edits.",
+            tone: "warning",
+          },
+          {
+            id: "integrity",
+            label: "Integrity",
+            value: "3 warnings",
+            detail: "Renode enabled without a platform target · Generated artifacts appear stale: Generated fragments target a different board than the current project selection.",
             tone: "warning",
           },
         ]}
@@ -186,7 +220,7 @@ describe("ShellView", () => {
           {
             id: "build",
             label: "Build Output",
-            badge: "2",
+            badge: "Blocked",
             tone: "warning",
             entries: [
               {
@@ -201,15 +235,22 @@ describe("ShellView", () => {
           {
             id: "diagnostics",
             label: "Diagnostics",
-            badge: "2",
-            tone: "success",
+            badge: "2 issues",
+            tone: "warning",
             entries: [
               {
-                id: "diag-1",
-                timestamp: "integrity",
-                summary: "Project integrity checks are passing.",
-                detail: "Integrity checks passing",
-                severity: "success",
+                id: "diag-pins",
+                timestamp: "pins",
+                summary: "0 unresolved selections and 1 pin conflict require review.",
+                detail: "UART0_TX electrical defaults conflict",
+                severity: "warning",
+              },
+              {
+                id: "diag-clocks",
+                timestamp: "clocks",
+                summary: "1 clock validation warning remains.",
+                detail: "pll0 configuration requires board review",
+                severity: "warning",
               },
             ],
           },
@@ -258,7 +299,7 @@ describe("ShellView", () => {
           selectedNode: null,
           values: {},
           frequencies: {},
-          warnings: [],
+          warnings: ["pll0 configuration requires board review"],
           generatedOverlay: "",
           generatedConf: "",
           selectTree: () => undefined,
@@ -388,6 +429,12 @@ describe("ShellView", () => {
     expect(screen.getByText("Board Surface")).toBeInTheDocument();
     expect(screen.getByText("Engineering workspace")).toBeInTheDocument();
     expect(screen.getByText("Project controls")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Workspace workflow map" })).toBeInTheDocument();
+    expect(screen.getByText("Navigate")).toBeInTheDocument();
+    expect(screen.getByText("Configure")).toBeInTheDocument();
+    expect(screen.getByText("Inspect")).toBeInTheDocument();
+    expect(screen.getByText("Verify")).toBeInTheDocument();
+    expect(screen.getByText("Focus Board Inventory · Route Build Output")).toBeInTheDocument();
     expect(screen.getByDisplayValue("C:/tmp/demo.zpinproj")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Undo Change" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Redo Change" })).toBeDisabled();
@@ -402,13 +449,26 @@ describe("ShellView", () => {
     expect(screen.getByRole("button", { name: "Test" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Keyboard Map" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Command Palette" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Workspace status bar" })).toBeInTheDocument();
+    const workspaceStatusBar = screen.getByRole("region", { name: "Workspace status bar" });
+    expect(workspaceStatusBar).toBeInTheDocument();
+    expect(within(workspaceStatusBar).getAllByText("Readiness").length).toBeGreaterThan(0);
+    expect(within(workspaceStatusBar).getByText("3/4 Ready")).toBeInTheDocument();
+    expect(within(workspaceStatusBar).getAllByText("Artifacts").length).toBeGreaterThan(0);
+    expect(within(workspaceStatusBar).getByText("Stale")).toBeInTheDocument();
+    expect(within(workspaceStatusBar).getAllByText("Integrity").length).toBeGreaterThan(0);
+    expect(within(workspaceStatusBar).getByText("3 warnings")).toBeInTheDocument();
     expect(screen.getByText("Dirty State")).toBeInTheDocument();
     expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
     expect(screen.getByDisplayValue("sysbus.uart0")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Open Generated Overlay" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Open Generated Source" })).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "Open Robot Tests" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: "Review Diagnostics" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: "Focus Renode Profile" }).length).toBeGreaterThan(0);
+    expect(screen.getByText("Editable project assets")).toBeInTheDocument();
+    expect(screen.getByText("Derived outputs")).toBeInTheDocument();
+    expect(screen.getByText("Export routes stay explicit")).toBeInTheDocument();
+    expect(screen.getByText("Export Artifacts packages the generated overlay, generated config, and fragments metadata. Export Renode Bundle packages the RESC script, Robot suite, and the simulation handoff files derived from the current project document.")).toBeInTheDocument();
     expect(screen.getByText("Execution output and diagnostics")).toBeInTheDocument();
     expect(screen.getByText("Execution workbench")).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Execution Renode machine" })).toHaveValue("platforms/boards/ti/lp_mspm0g3507.repl");
@@ -416,15 +476,31 @@ describe("ShellView", () => {
     expect(screen.getByRole("button", { name: "Open Test Log" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Build Output/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Diagnostics/i })).toBeInTheDocument();
+    const readinessSummary = screen.getByRole("region", { name: "Execution readiness summary" });
+    expect(within(readinessSummary).getByText("Active channel")).toBeInTheDocument();
+    expect(within(readinessSummary).getByText("Artifact authority")).toBeInTheDocument();
+    expect(within(readinessSummary).getByText("Readiness")).toBeInTheDocument();
+    expect(within(readinessSummary).getByText("Validation")).toBeInTheDocument();
+    expect(within(readinessSummary).getByText("Integrity")).toBeInTheDocument();
+    expect(within(readinessSummary).getByText("Artifact readiness")).toBeInTheDocument();
+    expect(within(readinessSummary).getByText("Generated Overlay")).toBeInTheDocument();
+    expect(within(readinessSummary).getByText("Generated Source")).toBeInTheDocument();
+    expect(within(readinessSummary).getByText("Pin conflicts, clock warnings, and generated-artifact checks are routed through Diagnostics for review.")).toBeInTheDocument();
+    expect(within(readinessSummary).getByText("Generated artifacts appear stale: Generated fragments target a different board than the current project selection.")).toBeInTheDocument();
     expect(screen.getByLabelText("Workspace density mode")).toHaveValue("regular");
     expect(screen.getByLabelText("Workspace layout preset")).toHaveValue("bring-up");
     expect(screen.getByRole("log", { name: "Build Output entries" })).toBeInTheDocument();
     expect(screen.getAllByText("Build pipeline shell channel is idle.").length).toBeGreaterThan(0);
     expect(screen.getByText("Frontend boundaries")).toBeInTheDocument();
+    expect(screen.getByText("React shell is canonical")).toBeInTheDocument();
+    expect(screen.getByText("No workflows still require legacy-only support")).toBeInTheDocument();
+    expect(screen.getAllByText("Legacy feature freeze is active").length).toBeGreaterThan(0);
+    expect(screen.getByText("Legacy cutover rules")).toBeInTheDocument();
+    expect(screen.getByText("Every tracked workstation workflow is now owned by typed React presenters.")).toBeInTheDocument();
     expect(screen.getByTestId("workspace-dock-fallback")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("tab", { name: /Diagnostics/i }));
-    expect(screen.getAllByText("Project integrity checks are passing.").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("1 clock validation warning remains.").length).toBeGreaterThan(0);
 
     const diagnosticsTab = screen.getByRole("tab", { name: /Diagnostics/i });
     diagnosticsTab.focus();
@@ -447,6 +523,14 @@ describe("ShellView", () => {
     fireEvent.click(screen.getByRole("button", { name: /Open Board MSPM0G3507/i }));
     expect(selectBoard).toHaveBeenCalledWith("mspm0g3507");
 
+    fireEvent.click(screen.getByRole("button", { name: "Command Palette" }));
+    fireEvent.change(screen.getByPlaceholderText(/Search commands, boards, panels/i), {
+      target: { value: "zz-no-match" },
+    });
+    expect(screen.getByText("No quick-open items match")).toBeInTheDocument();
+    expect(screen.getByText("Change the query or try a board name, command, panel title, generated artifact, or output channel to move to the next workspace action.")).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
+
     fireEvent.keyDown(window, { key: "s", ctrlKey: true });
     expect(commandRun).toHaveBeenCalledTimes(2);
 
@@ -464,7 +548,18 @@ describe("ShellView", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open Generated Source" }));
     expect(screen.getByTestId("workspace-dock-fallback")).toHaveAttribute("data-focus-panel", "workspace-generated-source");
 
-    const generatedOverlayNav = screen.getByRole("button", { name: /Generated Overlay Alt\+2/i });
+    fireEvent.click(screen.getByRole("button", { name: "Open overlay" }));
+    expect(screen.getByTestId("workspace-dock-fallback")).toHaveAttribute("data-focus-panel", "workspace-generated-overlay");
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Review Diagnostics" })[0]);
+    expect(screen.getByRole("tab", { name: /Diagnostics/i })).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Focus Renode Profile" })[0]);
+    expect(screen.getByTestId("workspace-dock-fallback")).toHaveAttribute("data-focus-panel", "workspace-renode-profile");
+
+    expect(screen.getAllByText("Preset anchor").length).toBeGreaterThan(0);
+    const artifactsNavigation = screen.getByRole("region", { name: "Artifacts navigation" });
+    const generatedOverlayNav = within(artifactsNavigation).getByRole("button", { name: /Generated Overlay/i });
     generatedOverlayNav.focus();
     fireEvent.keyDown(generatedOverlayNav, { key: "ArrowDown" });
     expect(screen.getByTestId("workspace-dock-fallback")).toHaveAttribute("data-focus-panel", "workspace-generated-config");
@@ -483,5 +578,176 @@ describe("ShellView", () => {
 
     fireEvent.keyDown(window, { key: "2", altKey: true });
     expect(screen.getByTestId("workspace-dock-fallback")).toHaveAttribute("data-focus-panel", "workspace-generated-overlay");
+  });
+
+  it("rehydrates persisted dock focus and output channel selections", () => {
+    saveWorkspaceShellPreferences({
+      density: "compact",
+      layoutPresetId: "renode-validation",
+      focusedPanelId: "workspace-generated-source",
+      activeOutputChannelId: "diagnostics",
+    });
+
+    const projectDocument = createEmptyProjectDocument();
+
+    render(
+      <ShellView
+        boards={[]}
+        activeBoard={null}
+        loading={false}
+        error=""
+        metrics={[]}
+        commands={[]}
+        statusBarItems={[]}
+        outputChannels={[
+          {
+            id: "build",
+            label: "Build Output",
+            badge: "0",
+            tone: "neutral",
+            entries: [],
+          },
+          {
+            id: "diagnostics",
+            label: "Diagnostics",
+            badge: "1",
+            tone: "success",
+            entries: [
+              {
+                id: "diag-1",
+                timestamp: "boot",
+                summary: "Diagnostics restored.",
+                detail: "Persisted output channel selection was restored.",
+                severity: "success",
+              },
+            ],
+          },
+        ]}
+        executionWorkbench={{
+          selectedMachine: "",
+          machineOptions: [{ value: "", label: "No machine selected", detail: "", recommended: false }],
+          support: { tone: "info", title: "Idle", detail: "No active execution context." },
+          tasks: [],
+        }}
+        projectDocument={projectDocument}
+        generatedFragments="{}"
+        pinAssignments={emptyPinAssignments}
+        peripheralConfigurator={{
+          peripherals: [],
+          externalDevices: [],
+          enabledPeripheralCount: 0,
+          selectedExternalDeviceCount: 0,
+          setPeripheralEnabled: () => undefined,
+          setPeripheralCore: () => undefined,
+          setExternalDeviceSelected: () => undefined,
+          setExternalDeviceBus: () => undefined,
+          importCatalogSensor: () => undefined,
+        }}
+        moduleConfigurator={{
+          loading: false,
+          error: "",
+          status: "",
+          generatedPrjConf: "",
+          generatedOverlayConf: "",
+          modules: [],
+          activeModuleId: "",
+          activeModule: null,
+          definitions: [],
+          enabledById: {},
+          valuesById: {},
+          selectModule: () => undefined,
+          setModuleEnabled: () => undefined,
+          updateModuleOption: () => undefined,
+          resetModule: () => undefined,
+          generateEnabledModules: () => undefined,
+        }}
+        clockConfigurator={{
+          loading: false,
+          error: "",
+          status: "",
+          availableTrees: [],
+          currentTree: null,
+          nodes: [],
+          selectedNodeId: "",
+          selectedNode: null,
+          values: {},
+          frequencies: {},
+          warnings: [],
+          generatedOverlay: "",
+          generatedConf: "",
+          selectTree: () => undefined,
+          selectNode: () => undefined,
+          updateNodeProperty: () => undefined,
+          generateConfig: () => undefined,
+        }}
+        lvglLayout={{
+          layout: {},
+          summary: { preset: "custom", screenCount: 0, widgetCount: 0, startupScreenId: "screen_root" },
+          draftText: "{}",
+          importSourceKind: "json",
+          importSourceValue: "",
+          exportFilePath: "",
+          status: "",
+          error: "",
+          setDraftText: () => undefined,
+          applyDraftText: () => undefined,
+          setImportSourceKind: () => undefined,
+          setImportSourceValue: () => undefined,
+          importLayout: () => undefined,
+          setExportFilePath: () => undefined,
+          exportLayout: () => undefined,
+        }}
+        boardEditor={{
+          drafts: [],
+          draftFilename: "",
+          draftText: "",
+          status: "",
+          error: "",
+          setDraftFilename: () => undefined,
+          setDraftText: () => undefined,
+          refreshDrafts: () => undefined,
+          loadDraft: () => undefined,
+          saveDraft: () => undefined,
+          deleteDraft: () => undefined,
+          seedFromActiveBoard: () => undefined,
+        }}
+        interruptConfigurator={{ items: [], summary: "" }}
+        sensorParser={{ jobs: [], selectedJobId: "", selectedJob: null, selectJob: () => undefined, removeJob: () => undefined, importCatalogSensor: () => undefined }}
+        packageManager={{ jobs: [], selectedJobId: "", selectedJob: null, selectJob: () => undefined, removeJob: () => undefined, importCatalogMcu: () => undefined }}
+        zephyrCatalog={{ root: "", filter: "all", search: "", loading: false, error: "", summaryText: "", items: [], visibleItems: [], selectedKey: "", selectedItem: null, setRoot: () => undefined, refresh: () => undefined, setFilter: () => undefined, setSearch: () => undefined, selectItem: () => undefined, useInPinConfigurator: () => undefined, useInPackageManager: () => undefined, useInSensorParser: () => undefined }}
+        hydratedPinStates={{}}
+        canUndoProjectDocument={false}
+        canRedoProjectDocument={false}
+        projectFilePath=""
+        projectStatus={{ tone: "neutral", message: "Restored from preferences." }}
+        projectBusy={false}
+        setProjectFilePath={() => undefined}
+        selectBoard={() => undefined}
+        updateRenodeField={() => undefined}
+        addProtocolEntry={() => undefined}
+        selectProtocolEntry={() => undefined}
+        removeProtocolEntry={() => undefined}
+        toggleProtocolEntry={() => undefined}
+        updateProtocolEntryValue={() => undefined}
+        updateGeneratedOverlay={() => undefined}
+        updateGeneratedConf={() => undefined}
+        clearPinAssignment={() => undefined}
+        assignPinAltFunction={() => undefined}
+        updatePinBooleanProperty={() => undefined}
+        undoProjectDocument={() => undefined}
+        redoProjectDocument={() => undefined}
+        exportGeneratedArtifacts={() => undefined}
+        exportRenodeSimulation={() => undefined}
+        seedGeneratedArtifacts={() => undefined}
+        clearGeneratedArtifacts={() => undefined}
+        saveProjectFile={() => undefined}
+        loadProjectFile={() => undefined}
+      />,
+    );
+
+    expect(screen.getByLabelText("Workspace density mode")).toHaveValue("compact");
+    expect(screen.getByLabelText("Workspace layout preset")).toHaveValue("renode-validation");
+    expect(screen.getByRole("tab", { name: /Diagnostics/i })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByTestId("workspace-dock-fallback")).toHaveAttribute("data-focus-panel", "workspace-generated-source");
   });
 });

@@ -2,6 +2,7 @@ import type { RenodeProfile } from "../contracts/api";
 import { DiagnosticBadge } from "../shared/ui/feedback/DiagnosticBadge";
 import { InspectorNotice } from "../shared/ui/inspectors/InspectorNotice";
 import { InspectorSection } from "../shared/ui/inspectors/InspectorSection";
+import { PropertyGrid, PropertyRow } from "../shared/ui/inspectors/PropertyGrid";
 
 export type RenodeFieldUpdater = <K extends keyof RenodeProfile>(field: K, value: RenodeProfile[K]) => void;
 
@@ -12,10 +13,56 @@ interface RenodeProfileEditorProps {
 }
 
 export function RenodeProfileEditor({ renode, disabled = false, onFieldChange }: RenodeProfileEditorProps) {
+  const missingTargets = [!renode.platform.trim(), !renode.appbench_target.trim(), !renode.robot_target.trim()].filter(Boolean).length;
+  const sourceFieldCount = [renode.resc, renode.robot].filter((value) => value.trim().length > 0).length;
+  const automationTargetCount = Number(Boolean(renode.appbench_target.trim())) + Number(Boolean(renode.robot_target.trim()));
+  const bundleReady = renode.enabled && missingTargets === 0 && sourceFieldCount === 2;
+
   return (
     <div className="renode-profile">
       <InspectorSection
-        title="Simulation transport"
+        title="Renode readiness"
+        summary="Review runtime targets, automation coverage, and source script presence here before editing Renode fields or exporting simulation bundles."
+        actions={<DiagnosticBadge label={`${missingTargets} missing targets`} tone={missingTargets ? "warning" : "success"} />}
+      >
+        <PropertyGrid>
+          <PropertyRow label="Mode" value={renode.enabled ? "Enabled" : "Disabled"} />
+          <PropertyRow label="Platform" value={renode.platform.trim() ? "Ready" : "Pending"} />
+          <PropertyRow label="Automation targets" value={`${automationTargetCount}/2`} />
+          <PropertyRow label="Source scripts" value={sourceFieldCount} />
+        </PropertyGrid>
+        <InspectorNotice
+          title={missingTargets ? "Simulation blockers stay above editing" : "Simulation routing is ready for editing"}
+          detail={missingTargets
+            ? "Populate platform, AppBench, and Robot targets before treating RESC and Robot exports as ready for handoff."
+            : "Edit runtime and automation source fields below while generated simulation bundles remain derived outputs."}
+          tone={missingTargets ? "warning" : "info"}
+        />
+      </InspectorSection>
+
+      <InspectorSection
+        title="Simulation bundle loop"
+        summary="Keep machine selection, automation targets, RESC review, and Robot review in one explicit handoff loop before export."
+        actions={<DiagnosticBadge label={bundleReady ? "Bundle ready" : "Bundle review"} tone={bundleReady ? "success" : "warning"} />}
+      >
+        <PropertyGrid>
+          <PropertyRow label="Machine target" value={renode.platform.trim() || "Pending"} />
+          <PropertyRow label="AppBench" value={renode.appbench_target.trim() || "Pending"} />
+          <PropertyRow label="Robot" value={renode.robot_target.trim() || "Pending"} />
+          <PropertyRow label="Source scripts" value={`${sourceFieldCount}/2`} />
+          <PropertyRow label="Bundle readiness" value={bundleReady ? "Ready for export" : "Needs review"} />
+        </PropertyGrid>
+        <InspectorNotice
+          title={bundleReady ? "Machine, RESC, and Robot review are aligned" : "The simulation bundle loop still has gaps"}
+          detail={bundleReady
+            ? "Platform target, automation targets, RESC, and Robot sources are all populated, so the simulation handoff bundle is coherent from one panel."
+            : "Review machine selection, AppBench/Robot targets, RESC, and Robot content together before treating the simulation bundle as export-ready."}
+          tone={bundleReady ? "info" : "warning"}
+        />
+      </InspectorSection>
+
+      <InspectorSection
+        title="Editable runtime fields"
         summary="Configure runtime enablement, UART handoff, and platform entrypoints for the active project."
       >
         {renode.enabled && !renode.platform.trim() ? (
@@ -75,12 +122,12 @@ export function RenodeProfileEditor({ renode, disabled = false, onFieldChange }:
       </InspectorSection>
 
       <InspectorSection
-        title="Automation targets"
+        title="Editable automation source fields"
         summary="Keep AppBench and Robot routing aligned with the current Renode profile before exporting simulation bundles."
       >
         <InspectorNotice
-          title="Generated scripts stay derived from this profile"
-          detail="RESC and Robot fields are editable source inputs, while downstream export artifacts should be treated as generated outputs that inherit these values."
+          title="Generated simulation bundles stay derived from these source fields"
+          detail="RESC and Robot text areas are editable inputs, while downstream export artifacts inherit these values and remain generated outputs."
           tone="info"
         />
         <div className="renode-profile__grid">

@@ -4,6 +4,13 @@ import type { PinAssignmentsViewModel } from "../../shared/viewModels/pinAssignm
 import type { ShellOutputChannelViewModel } from "../../presenters/useShellPresenter";
 import type { ProjectStatus } from "../../project/workspaceState";
 import { useRef } from "react";
+import { buildArtifactReviewDocuments } from "../../project/artifactReview";
+import {
+  selectProjectArtifactStatus,
+  selectProjectIntegrityLabel,
+  selectProjectIntegrityStatus,
+  selectProjectReadinessLabel,
+} from "../../project/selectors";
 import { StatusChip } from "../../shared/ui/StatusChip";
 import { VirtualizedTreeList, type VirtualizedTreeListSection } from "../../shared/ui/virtualized/VirtualizedTreeList";
 
@@ -61,6 +68,55 @@ export function WorkspaceOutputZone({
   const tabRefs = useRef(new Map<string, HTMLButtonElement>());
   const visibleEntries = activeOutputChannel?.entries.filter((entry) => severityFilter === "all" || entry.severity === severityFilter) ?? [];
   const activeTabIndex = Math.max(outputChannels.findIndex((channel) => channel.id === activeOutputChannel?.id), 0);
+  const artifactStatus = selectProjectArtifactStatus(projectDocument);
+  const integrityStatus = selectProjectIntegrityStatus(projectDocument);
+  const readinessLabel = selectProjectReadinessLabel(projectDocument);
+  const integrityLabel = selectProjectIntegrityLabel(projectDocument);
+  const diagnosticsChannel = outputChannels.find((channel) => channel.id === "diagnostics") ?? null;
+  const validationHighlights = (diagnosticsChannel?.entries ?? []).filter((entry) => entry.severity === "warning" || entry.severity === "error");
+  const artifactReadiness = buildArtifactReviewDocuments({
+    activeBoard: null,
+    projectDocument,
+    unresolvedPinCount: pinAssignments.summary.unresolvedCount,
+  }).map((document) => {
+    const blockingMarker = document.markers.find((marker) => marker.severity >= 4);
+    const advisoryMarker = document.markers.find((marker) => marker.severity === 2);
+    const label = blockingMarker
+      ? "Blocked"
+      : document.freshnessState === "stale"
+        ? "Stale"
+        : advisoryMarker
+          ? "Review"
+          : document.content.trim()
+            ? document.freshnessLabel
+            : "Pending";
+    const tone = blockingMarker
+      ? "warning"
+      : document.freshnessState === "stale"
+        ? "warning"
+        : advisoryMarker
+          ? "info"
+          : document.content.trim()
+            ? "success"
+            : "neutral";
+    const detail = blockingMarker?.message ?? advisoryMarker?.message ?? document.freshnessDetail;
+
+    return {
+      id: document.id,
+      title: document.title,
+      label,
+      tone: tone as "neutral" | "info" | "success" | "warning",
+      detail,
+    };
+  });
+  const activeChannelTone =
+    activeOutputChannel?.tone === "success" ? "success" : activeOutputChannel?.tone === "warning" ? "warning" : "neutral";
+  const artifactTone =
+    artifactStatus.authorityState === "authoritative"
+      ? "success"
+      : artifactStatus.authorityState === "stale"
+        ? "warning"
+        : "neutral";
   const entrySections: VirtualizedTreeListSection<(typeof visibleEntries)[number]>[] = ["error", "warning", "success", "info"].map((severity) => ({
     id: severity,
     label: severity[0].toUpperCase() + severity.slice(1),
@@ -256,10 +312,91 @@ export function WorkspaceOutputZone({
               <strong>{activeOutputChannel.label}</strong>
               <span>{followOutput ? "Follow-tail enabled for the active channel." : "Follow-tail paused for review."}</span>
             </div>
-            <div className={`project-flow__status project-flow__status--${projectStatus.tone}`} role="status" aria-live="polite" aria-atomic="true">
-              {projectStatus.message}
+            <div className="workspace-output-zone__header-status">
+              <StatusChip label={`Active route ${activeOutputChannel.badge}`} tone={activeChannelTone} />
+              <div className={`project-flow__status project-flow__status--${projectStatus.tone}`} role="status" aria-live="polite" aria-atomic="true">
+                {projectStatus.message}
+              </div>
             </div>
           </div>
+
+          <section className="workspace-output-zone__signal-grid" aria-label="Execution readiness summary">
+            <article className="workspace-output-zone__signal-card">
+              <div className="workspace-output-zone__signal-card-header">
+                <strong>Active channel</strong>
+                <StatusChip label={activeOutputChannel.badge} tone={activeChannelTone} />
+              </div>
+              <p>{activeOutputChannel.entries[0]?.summary ?? "No shell output has been recorded for this route yet."}</p>
+            </article>
+
+            <article className="workspace-output-zone__signal-card">
+              <div className="workspace-output-zone__signal-card-header">
+                <strong>Artifact authority</strong>
+                <StatusChip label={artifactStatus.authorityState} tone={artifactTone} />
+              </div>
+              <p>{artifactStatus.authorityReason}</p>
+            </article>
+
+            <article className="workspace-output-zone__signal-card">
+              <div className="workspace-output-zone__signal-card-header">
+                <strong>Readiness</strong>
+                <StatusChip label={`${artifactStatus.fragmentGroupCount} fragments`} tone={artifactStatus.fragmentGroupCount > 0 ? "success" : "neutral"} />
+              </div>
+              <p>{readinessLabel}</p>
+            </article>
+
+            <article className="workspace-output-zone__signal-card">
+              <div className="workspace-output-zone__signal-card-header">
+                <strong>Validation</strong>
+                <StatusChip label={`${validationHighlights.length} findings`} tone={validationHighlights.length ? "warning" : "success"} />
+              </div>
+              <p>
+                {validationHighlights.length
+                  ? "Pin conflicts, clock warnings, and generated-artifact checks are routed through Diagnostics for review."
+                  : "No blocking validation findings are currently reported in Diagnostics."}
+              </p>
+              {validationHighlights.length ? (
+                <ul className="workspace-output-zone__signal-list">
+                  {validationHighlights.slice(0, 3).map((entry) => (
+                    <li key={entry.id}>{entry.summary}</li>
+                  ))}
+                </ul>
+              ) : null}
+            </article>
+
+            <article className="workspace-output-zone__signal-card">
+              <div className="workspace-output-zone__signal-card-header">
+                <strong>Integrity</strong>
+                <StatusChip label={`${integrityStatus.warningCount} warnings`} tone={integrityStatus.warningCount ? "warning" : "success"} />
+              </div>
+              <p>{integrityLabel}</p>
+              {integrityStatus.issues.length ? (
+                <ul className="workspace-output-zone__signal-list">
+                  {integrityStatus.issues.slice(0, 3).map((issue) => (
+                    <li key={issue}>{issue}</li>
+                  ))}
+                </ul>
+              ) : null}
+            </article>
+
+            <article className="workspace-output-zone__signal-card workspace-output-zone__signal-card--wide">
+              <div className="workspace-output-zone__signal-card-header">
+                <strong>Artifact readiness</strong>
+                <StatusChip label={`${artifactReadiness.length} tracked`} tone="info" />
+              </div>
+              <div className="workspace-output-zone__artifact-grid">
+                {artifactReadiness.map((artifact) => (
+                  <div key={artifact.id} className="workspace-output-zone__artifact-item">
+                    <div className="workspace-output-zone__artifact-item-header">
+                      <strong>{artifact.title}</strong>
+                      <StatusChip label={artifact.label} tone={artifact.tone} />
+                    </div>
+                    <p>{artifact.detail}</p>
+                  </div>
+                ))}
+              </div>
+            </article>
+          </section>
 
           <VirtualizedTreeList
             ariaLabel={`${activeOutputChannel.label} entries`}

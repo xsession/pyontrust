@@ -1,4 +1,7 @@
+import { workspaceDockPanelDefinitions } from "../panels/dockPanelDefinitions";
+
 export type WorkspaceDensityMode = "compact" | "regular" | "spacious";
+export type WorkspaceOutputChannelId = "build" | "simulation" | "diagnostics" | "tests";
 
 export type WorkspaceLayoutPresetId =
   | "bring-up"
@@ -11,7 +14,7 @@ export interface WorkspaceLayoutPresetDefinition {
   label: string;
   description: string;
   panelId: string;
-  outputChannelId: "build" | "simulation" | "diagnostics" | "tests";
+  outputChannelId: WorkspaceOutputChannelId;
   keywords: string[];
 }
 
@@ -20,6 +23,8 @@ export interface WorkspaceShellPreferencesDocument {
   savedAt: string;
   density: WorkspaceDensityMode;
   layoutPresetId: WorkspaceLayoutPresetId;
+  focusedPanelId: string;
+  activeOutputChannelId: WorkspaceOutputChannelId;
 }
 
 export const WORKSPACE_SHELL_PREFERENCES_STORAGE_KEY = "pin-configurator.workspace-shell-preferences.v1";
@@ -64,6 +69,8 @@ const defaultWorkspaceShellPreferences: WorkspaceShellPreferencesDocument = {
   savedAt: "",
   density: "regular",
   layoutPresetId: "bring-up",
+  focusedPanelId: "workspace-overview",
+  activeOutputChannelId: "build",
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -88,6 +95,14 @@ function isWorkspaceDensityMode(value: unknown): value is WorkspaceDensityMode {
 
 function isWorkspaceLayoutPresetId(value: unknown): value is WorkspaceLayoutPresetId {
   return workspaceLayoutPresets.some((preset) => preset.id === value);
+}
+
+function isWorkspaceOutputChannelId(value: unknown): value is WorkspaceOutputChannelId {
+  return value === "build" || value === "simulation" || value === "diagnostics" || value === "tests";
+}
+
+function isWorkspaceDockPanelId(value: unknown): value is string {
+  return typeof value === "string" && workspaceDockPanelDefinitions.some((panel) => panel.id === value);
 }
 
 export function createDefaultWorkspaceShellPreferences(): WorkspaceShellPreferencesDocument {
@@ -119,6 +134,10 @@ export function loadWorkspaceShellPreferences(
       savedAt: typeof parsed.savedAt === "string" ? parsed.savedAt : "",
       density: isWorkspaceDensityMode(parsed.density) ? parsed.density : defaultWorkspaceShellPreferences.density,
       layoutPresetId: isWorkspaceLayoutPresetId(parsed.layoutPresetId) ? parsed.layoutPresetId : defaultWorkspaceShellPreferences.layoutPresetId,
+      focusedPanelId: isWorkspaceDockPanelId(parsed.focusedPanelId) ? parsed.focusedPanelId : defaultWorkspaceShellPreferences.focusedPanelId,
+      activeOutputChannelId: isWorkspaceOutputChannelId(parsed.activeOutputChannelId)
+        ? parsed.activeOutputChannelId
+        : defaultWorkspaceShellPreferences.activeOutputChannelId,
     };
   } catch {
     resolvedStorage.removeItem(WORKSPACE_SHELL_PREFERENCES_STORAGE_KEY);
@@ -127,7 +146,7 @@ export function loadWorkspaceShellPreferences(
 }
 
 export function saveWorkspaceShellPreferences(
-  preferences: Pick<WorkspaceShellPreferencesDocument, "density" | "layoutPresetId">,
+  preferences: Pick<WorkspaceShellPreferencesDocument, "density" | "layoutPresetId" | "focusedPanelId" | "activeOutputChannelId">,
   storage?: Pick<Storage, "getItem" | "setItem" | "removeItem"> | null,
 ) {
   const resolvedStorage = resolveStorage(storage);
@@ -140,6 +159,8 @@ export function saveWorkspaceShellPreferences(
     savedAt: new Date().toISOString(),
     density: preferences.density,
     layoutPresetId: preferences.layoutPresetId,
+    focusedPanelId: preferences.focusedPanelId,
+    activeOutputChannelId: preferences.activeOutputChannelId,
   };
 
   resolvedStorage.setItem(WORKSPACE_SHELL_PREFERENCES_STORAGE_KEY, JSON.stringify(payload));
