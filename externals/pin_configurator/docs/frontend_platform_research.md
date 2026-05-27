@@ -63,6 +63,48 @@ What stands out:
 
 Frontend lessons:
 
+## Penpot-editable frontend boundary
+
+To keep the GUI post-editable from Penpot without letting generated files overwrite application behavior, the frontend should be split into two layers:
+
+- Protected hand-coded container layer:
+	- presenters
+	- project controllers
+	- command routing
+	- persistence
+	- side effects
+	- domain state wiring
+- Generated/token-driven presentation layer:
+	- shell frame
+	- top strip
+	- layout wrappers
+	- design tokens exported as CSS variables
+	- static slot markup that Penpot exports can safely replace
+
+Implemented seam in this workspace:
+
+- Generated presentation files:
+	- `frontend/src/generated/penpot/PenpotEditableShell.tsx`
+	- `frontend/src/generated/penpot/PenpotHealthBanner.tsx`
+	- `frontend/src/generated/penpot/PenpotLegacyTopStrip.tsx`
+	- `frontend/src/generated/penpot/PenpotWorkspacePanel.tsx`
+	- `frontend/src/generated/penpot/penpotShellTokens.ts`
+	- `frontend/src/generated/penpot/index.ts`
+	- `frontend/src/generated/penpot/README.md`
+	- `frontend/scripts/export-penpot-surface.mjs`
+- Protected container files:
+	- `frontend/src/views/ShellView.tsx`
+	- `frontend/src/workspace/shell/WorkspaceCommandBar.tsx`
+
+Practical rule:
+
+- Penpot-owned edits should modify only the generated `src/generated/penpot/*` files and token values.
+- Logic-owned edits should stay in `views/`, `workspace/`, `presenters/`, and `project/`.
+- Hand-coded shell containers should import generated chrome from the `src/generated/penpot/index.ts` barrel instead of reaching into individual generated files ad hoc.
+- `npm run export:penpot` should be the only supported handoff path for designer-owned shell assets.
+
+This keeps exported shell presentation replaceable after design iteration while protecting command handling, board selection, persistence, and domain behavior from being clobbered by design-tool output.
+
 - The center canvas should be the primary truth surface.
 - Validation must be inline and immediate.
 - Generated output is a consequence of configuration, not a separate detached workflow.

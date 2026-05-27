@@ -1,4 +1,4 @@
-import type { BoardSummary, ProtocolFieldValue } from "../../contracts/api";
+import type { BoardDefinition, BoardSummary, ProtocolFieldValue } from "../../contracts/api";
 import { buildArtifactDiagnosticEntries, buildArtifactReviewDocuments, type ArtifactDiagnosticEntry, type ArtifactReviewDocument } from "../../project/artifactReview";
 import { formatGeneratedFragments } from "../../project/generatedArtifacts";
 import type { RehydratedPinStateMap } from "../../project/legacyHardwareState";
@@ -18,6 +18,7 @@ import type { RenodeFieldUpdater } from "../../views/RenodeProfileEditor";
 export interface WorkspaceDockPanelParams {
   boards: BoardSummary[];
   activeBoard: BoardSummary | null;
+  activeBoardDefinition?: BoardDefinition | null;
   loading: boolean;
   error: string;
   projectDocument: ProjectDocument;
@@ -54,6 +55,7 @@ export interface WorkspaceDockPanelParams {
 export interface WorkspaceDockPanelParamsInput {
   boards: BoardSummary[];
   activeBoard: BoardSummary | null;
+  activeBoardDefinition?: BoardDefinition | null;
   loading: boolean;
   error: string;
   projectDocument: ProjectDocument;
@@ -85,6 +87,7 @@ export interface WorkspaceDockPanelParamsInput {
 export function buildWorkspaceDockPanelParams({
   boards,
   activeBoard,
+  activeBoardDefinition = null,
   loading,
   error,
   projectDocument,
@@ -121,6 +124,7 @@ export function buildWorkspaceDockPanelParams({
   return {
     boards,
     activeBoard,
+    activeBoardDefinition,
     loading,
     error,
     projectDocument,

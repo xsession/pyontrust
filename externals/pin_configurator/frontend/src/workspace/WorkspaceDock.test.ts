@@ -197,11 +197,11 @@ describe("WorkspaceDock", () => {
 
     populateDefaultWorkspaceDock({ addPanel } as never, createDockPanelParams());
 
-    expect(addPanel).toHaveBeenCalledTimes(21);
+    expect(addPanel).toHaveBeenCalledTimes(1);
     expect(addPanel.mock.calls[0]?.[0]).toMatchObject({
-      id: "workspace-overview",
-      title: "Board Inventory",
-      component: "overview",
+      id: "workspace-pin-assignments",
+      title: "Pin Assignments",
+      component: "pins",
     });
   });
 
@@ -210,6 +210,7 @@ describe("WorkspaceDock", () => {
       id: "workspace-renode-profile",
       title: "Renode Profile",
     });
+    expect(getDefaultWorkspaceDockPanels("bring-up").map((panel) => panel.id)).toEqual(["workspace-pin-assignments"]);
   });
 
   it("restores a persisted dock layout instead of re-adding default panels", () => {
@@ -220,11 +221,29 @@ describe("WorkspaceDock", () => {
       { addPanel, fromJSON } as never,
       createDockPanelParams(),
       { grid: { views: [] } },
+      "renode-validation",
     );
 
     expect(restored).toBe(true);
     expect(fromJSON).toHaveBeenCalledWith({ grid: { views: [] } });
     expect(addPanel).not.toHaveBeenCalled();
+  });
+
+  it("ignores persisted bring-up layouts and repopulates the canonical default panel", () => {
+    const addPanel = vi.fn();
+    const fromJSON = vi.fn();
+
+    const restored = restoreOrPopulateWorkspaceDock(
+      { addPanel, fromJSON } as never,
+      createDockPanelParams(),
+      { grid: { views: ["workspace-peripheral-configurator"] } },
+      "bring-up",
+    );
+
+    expect(restored).toBe(false);
+    expect(fromJSON).not.toHaveBeenCalled();
+    expect(addPanel).toHaveBeenCalledTimes(1);
+    expect(addPanel.mock.calls[0]?.[0]).toMatchObject({ id: "workspace-pin-assignments" });
   });
 
   it("falls back to the default dock layout when persisted data cannot be restored", () => {
@@ -237,10 +256,11 @@ describe("WorkspaceDock", () => {
       { addPanel, fromJSON } as never,
       createDockPanelParams(),
       { invalid: true },
+      "renode-validation",
     );
 
     expect(restored).toBe(false);
     expect(fromJSON).toHaveBeenCalledWith({ invalid: true });
-    expect(addPanel).toHaveBeenCalledTimes(21);
+    expect(addPanel).toHaveBeenCalledTimes(4);
   });
 });

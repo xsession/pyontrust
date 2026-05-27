@@ -19,7 +19,7 @@ export interface WorkspaceLayoutPresetDefinition {
 }
 
 export interface WorkspaceShellPreferencesDocument {
-  version: 1;
+  version: 2;
   savedAt: string;
   density: WorkspaceDensityMode;
   layoutPresetId: WorkspaceLayoutPresetId;
@@ -27,16 +27,16 @@ export interface WorkspaceShellPreferencesDocument {
   activeOutputChannelId: WorkspaceOutputChannelId;
 }
 
-export const WORKSPACE_SHELL_PREFERENCES_STORAGE_KEY = "pin-configurator.workspace-shell-preferences.v1";
+export const WORKSPACE_SHELL_PREFERENCES_STORAGE_KEY = "pin-configurator.workspace-shell-preferences.v2";
 
 export const workspaceLayoutPresets: readonly WorkspaceLayoutPresetDefinition[] = [
   {
     id: "bring-up",
     label: "Board Bring-up",
-    description: "Start with board inventory, generated outputs, and build readiness in view.",
-    panelId: "workspace-overview",
+    description: "Start with the pin workspace, peripheral context, and build readiness in view.",
+    panelId: "workspace-pin-assignments",
     outputChannelId: "build",
-    keywords: ["board", "bring-up", "overview", "build"],
+    keywords: ["board", "bring-up", "pins", "build"],
   },
   {
     id: "protocol-integration",
@@ -65,11 +65,11 @@ export const workspaceLayoutPresets: readonly WorkspaceLayoutPresetDefinition[] 
 ] as const;
 
 const defaultWorkspaceShellPreferences: WorkspaceShellPreferencesDocument = {
-  version: 1,
+  version: 2,
   savedAt: "",
   density: "regular",
   layoutPresetId: "bring-up",
-  focusedPanelId: "workspace-overview",
+  focusedPanelId: "workspace-pin-assignments",
   activeOutputChannelId: "build",
 };
 
@@ -105,6 +105,14 @@ function isWorkspaceDockPanelId(value: unknown): value is string {
   return typeof value === "string" && workspaceDockPanelDefinitions.some((panel) => panel.id === value);
 }
 
+function normalizeFocusedPanelId(layoutPresetId: WorkspaceLayoutPresetId, focusedPanelId: unknown): string {
+  if (layoutPresetId === "bring-up") {
+    return defaultWorkspaceShellPreferences.focusedPanelId;
+  }
+
+  return isWorkspaceDockPanelId(focusedPanelId) ? focusedPanelId : defaultWorkspaceShellPreferences.focusedPanelId;
+}
+
 export function createDefaultWorkspaceShellPreferences(): WorkspaceShellPreferencesDocument {
   return { ...defaultWorkspaceShellPreferences };
 }
@@ -124,17 +132,20 @@ export function loadWorkspaceShellPreferences(
 
   try {
     const parsed = JSON.parse(rawValue) as unknown;
-    if (!isRecord(parsed) || parsed.version !== 1) {
+    if (!isRecord(parsed) || parsed.version !== 2) {
       resolvedStorage.removeItem(WORKSPACE_SHELL_PREFERENCES_STORAGE_KEY);
       return createDefaultWorkspaceShellPreferences();
     }
 
     return {
-      version: 1,
+      version: 2,
       savedAt: typeof parsed.savedAt === "string" ? parsed.savedAt : "",
       density: isWorkspaceDensityMode(parsed.density) ? parsed.density : defaultWorkspaceShellPreferences.density,
       layoutPresetId: isWorkspaceLayoutPresetId(parsed.layoutPresetId) ? parsed.layoutPresetId : defaultWorkspaceShellPreferences.layoutPresetId,
-      focusedPanelId: isWorkspaceDockPanelId(parsed.focusedPanelId) ? parsed.focusedPanelId : defaultWorkspaceShellPreferences.focusedPanelId,
+      focusedPanelId: normalizeFocusedPanelId(
+        isWorkspaceLayoutPresetId(parsed.layoutPresetId) ? parsed.layoutPresetId : defaultWorkspaceShellPreferences.layoutPresetId,
+        parsed.focusedPanelId,
+      ),
       activeOutputChannelId: isWorkspaceOutputChannelId(parsed.activeOutputChannelId)
         ? parsed.activeOutputChannelId
         : defaultWorkspaceShellPreferences.activeOutputChannelId,
@@ -155,11 +166,11 @@ export function saveWorkspaceShellPreferences(
   }
 
   const payload: WorkspaceShellPreferencesDocument = {
-    version: 1,
+    version: 2,
     savedAt: new Date().toISOString(),
     density: preferences.density,
     layoutPresetId: preferences.layoutPresetId,
-    focusedPanelId: preferences.focusedPanelId,
+    focusedPanelId: normalizeFocusedPanelId(preferences.layoutPresetId, preferences.focusedPanelId),
     activeOutputChannelId: preferences.activeOutputChannelId,
   };
 

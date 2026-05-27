@@ -14,6 +14,7 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:browser-flow": "vitest run src/app/App.browser-flow.test.tsx",
+    "export:penpot": "node ./scripts/export-penpot-surface.mjs",
     "check:budgets": "node ./scripts/check-performance-budgets.mjs",
     "quality:check": "npm run typecheck && npm run lint && npm run test:run && npm run build && npm run check:budgets"
   },

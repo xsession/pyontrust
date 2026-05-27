@@ -1,5 +1,5 @@
 import { startTransition, useEffect, useMemo, useState } from "react";
-import type { BoardSummary } from "../contracts/api";
+import type { BoardDefinition, BoardSummary } from "../contracts/api";
 import { createBuildSimTestPresenter, type ExecutionWorkbenchViewModel } from "../domains/build-sim-test/buildSimTestPresenter";
 import { useZephyrCatalogPresenter, type ZephyrCatalogPresenter } from "../domains/catalog/zephyrCatalogPresenter";
 import { useClockConfiguratorPresenter, type ClockConfiguratorPresenter } from "../domains/clock/clockConfiguratorPresenter";
@@ -73,6 +73,7 @@ export interface ShellCommandViewModel {
 export interface ShellViewModel {
   boards: BoardSummary[];
   activeBoard: BoardSummary | null;
+  activeBoardDefinition?: BoardDefinition | null;
   loading: boolean;
   error: string;
   metrics: ShellMetric[];
@@ -383,6 +384,7 @@ export function useShellPresenter(): ShellViewModel {
   return {
     boards,
     activeBoard: projectController.activeBoard,
+    activeBoardDefinition: projectController.activeBoardDefinition,
     loading,
     error,
     metrics,

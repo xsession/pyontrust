@@ -1,16 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
-import type { ShellMetric } from "../../presenters/useShellPresenter";
+import type { BoardDefinition, BoardSummary } from "../../contracts/api";
 import { CommandSurfaceDialog } from "../../shared/ui/commands/CommandSurfaceDialog";
 import { ShortcutHint } from "../../shared/ui/commands/ShortcutHint";
 import { SplitButton } from "../../shared/ui/components/SplitButton";
 import { ToolbarGroup } from "../../shared/ui/components/ToolbarGroup";
 import { EmptyState } from "../../shared/ui/feedback/EmptyState";
-import { MetricCard } from "../../shared/ui/MetricCard";
 import { StatusChip } from "../../shared/ui/StatusChip";
+import { PenpotLegacyTopStrip, type PenpotLegacyAction, type PenpotSelectOption } from "../../generated/penpot/PenpotLegacyTopStrip";
 import { workspaceLayoutPresets, type WorkspaceDensityMode, type WorkspaceLayoutPresetId } from "../layout/workspaceShellPreferences";
 import { workspaceShortcutReferences } from "../commands/shortcutBindings";
 
 interface WorkspaceCommandBarProps {
+  boards: BoardSummary[];
+  activeBoardId?: string | null;
+  activeBoardDefinition?: BoardDefinition | null;
   activeBoardLabel: string;
   activeLayoutPresetId: WorkspaceLayoutPresetId;
   activeLayoutPresetLabel: string;
@@ -23,14 +26,17 @@ interface WorkspaceCommandBarProps {
   canRedoProjectDocument: boolean;
   commandPaletteOpen: boolean;
   actionsDialogRequestKey: number;
-  metrics: ShellMetric[];
   onOpenPalette: () => void;
   onRunCommandById: (commandId: string, options?: { closePalette?: boolean }) => void;
+  onSelectBoard: (boardId: string) => void;
   onSelectDensityMode: (densityMode: WorkspaceDensityMode) => void;
   onSelectLayoutPreset: (presetId: WorkspaceLayoutPresetId) => void;
 }
 
 export function WorkspaceCommandBar({
+  boards = [],
+  activeBoardId,
+  activeBoardDefinition,
   activeBoardLabel,
   activeLayoutPresetId,
   activeLayoutPresetLabel,
@@ -43,9 +49,9 @@ export function WorkspaceCommandBar({
   canRedoProjectDocument,
   commandPaletteOpen,
   actionsDialogRequestKey,
-  metrics,
   onOpenPalette,
   onRunCommandById,
+  onSelectBoard,
   onSelectDensityMode,
   onSelectLayoutPreset,
 }: WorkspaceCommandBarProps) {
@@ -66,6 +72,13 @@ export function WorkspaceCommandBar({
         ],
       },
       {
+        label: "History",
+        items: [
+          { id: "history.undo", label: "Undo Change", shortcut: "Ctrl+Z" },
+          { id: "history.redo", label: "Redo Change", shortcut: "Ctrl+Shift+Z" },
+        ],
+      },
+      {
         label: "Export",
         items: [
           { id: "export.artifacts", label: "Export Artifacts", shortcut: "Ctrl+E" },
@@ -83,214 +96,231 @@ export function WorkspaceCommandBar({
     ],
     [],
   );
+  const sectionOptions = useMemo(
+    () => [
+      { id: "bring-up" as const, label: "Pin Configurator" },
+      { id: "protocol-integration" as const, label: "Protocol Integration" },
+      { id: "codegen-review" as const, label: "Code Review" },
+      { id: "renode-validation" as const, label: "Renode Validation" },
+    ],
+    [],
+  );
+  const penpotSectionOptions = useMemo<readonly PenpotSelectOption<WorkspaceLayoutPresetId>[]>(
+    () => sectionOptions.map((option) => ({ value: option.id, label: option.label })),
+    [sectionOptions],
+  );
+  const selectedBoardId = activeBoardId ?? boards[0]?.id ?? "";
+  const selectedBoard = boards.find((board) => board.id === selectedBoardId) ?? boards[0] ?? null;
+  const penpotBoardOptions = useMemo<readonly PenpotSelectOption[]>(
+    () => boards.map((board) => ({ value: board.id, label: `${board.name} — ${board.package}` })),
+    [boards],
+  );
+  const boardRuntimeSummary = activeBoardDefinition
+    ? `Flash: ${activeBoardDefinition.flash_size_kb}KB | SRAM: ${activeBoardDefinition.sram_size_kb}KB | Clock: ${Math.round(activeBoardDefinition.clock_hz / 1_000_000)}MHz`
+    : selectedBoard
+      ? `Package: ${selectedBoard.package} | Pins: ${selectedBoard.pin_count} | Status: ${projectBusy ? "Busy" : "Ready"}`
+      : projectStatusMessage;
+  const penpotActions = useMemo<readonly PenpotLegacyAction[]>(
+    () => [
+      {
+        id: "project.load",
+        label: "Load Project",
+        disabled: projectBusy,
+        onPress: () => onRunCommandById("project.load", { closePalette: false }),
+      },
+      {
+        id: "workspace.import",
+        label: "Import",
+        disabled: projectBusy,
+        onPress: onOpenPalette,
+      },
+      {
+        id: "artifacts.seed",
+        label: "Generate",
+        disabled: projectBusy,
+        onPress: () => onRunCommandById("artifacts.seed", { closePalette: false }),
+      },
+      {
+        id: "project.save",
+        label: "Save Project",
+        disabled: projectBusy,
+        onPress: () => onRunCommandById("project.save", { closePalette: false }),
+      },
+      {
+        id: "project.save.primary",
+        label: "Save to Project",
+        disabled: projectBusy,
+        tone: "primary",
+        onPress: () => onRunCommandById("project.save", { closePalette: false }),
+      },
+    ],
+    [onOpenPalette, onRunCommandById, projectBusy],
+  );
 
   return (
     <>
       <section className="workspace-command-bar">
-        <div className="workspace-command-bar__identity">
-          <StatusChip label="Workspace command bar" tone="success" />
-          <h1>Pin Configurator workspace</h1>
-          <p>
-            Save or load the project, switch the layout preset, and route build, simulation, or test review from one control bar.
-          </p>
-          <div className="workspace-command-bar__chips">
-            <StatusChip label={activeLayoutPresetLabel} tone="neutral" />
-            <StatusChip label={`${densityMode} density`} tone="neutral" />
-            <StatusChip label={projectBusy ? "Busy" : "Idle"} tone={projectBusy ? "warning" : "success"} />
+        <div className="workspace-command-bar__accessibility-strip">
+          <div className="workspace-command-bar__identity">
+            <StatusChip label="Workspace command bar" tone="success" />
+            <h1>Pin Configurator workspace</h1>
+            <p>
+              Save or load the project, switch the layout preset, and route build, simulation, or test review from one control bar.
+            </p>
+            <div className="workspace-command-bar__chips">
+              <StatusChip label={activeLayoutPresetLabel} tone="neutral" />
+              <StatusChip label={`${densityMode} density`} tone="neutral" />
+              <StatusChip label={projectBusy ? "Busy" : "Idle"} tone={projectBusy ? "warning" : "success"} />
+            </div>
+          </div>
+
+          <dl className="workspace-command-bar__meta">
+            <div>
+              <dt>Active board</dt>
+              <dd>{activeBoardLabel}</dd>
+            </div>
+            <div>
+              <dt>Project file</dt>
+              <dd>{projectFilePath || "Pending"}</dd>
+            </div>
+            <div>
+              <dt>Pins resolved</dt>
+              <dd>{resolvedPinsLabel}</dd>
+            </div>
+            <div>
+              <dt>Status</dt>
+              <dd>{projectStatusMessage}</dd>
+            </div>
+            <div>
+              <dt>Layout preset</dt>
+              <dd>{activeLayoutPresetLabel}</dd>
+            </div>
+          </dl>
+
+          <div className="workspace-command-bar__controls">
+            <ToolbarGroup label="Commands" className="workspace-command-bar__action-group">
+              <SplitButton
+                primaryLabel="Command Palette"
+                primaryTone="command"
+                primaryAriaExpanded={commandPaletteOpen}
+                primaryHasPopup="dialog"
+                primaryAriaKeyShortcuts="Control+K Control+P Control+F"
+                menuLabel="More command palette actions"
+                onPrimaryClick={onOpenPalette}
+                menuItems={[
+                  {
+                    id: "workspace.actions",
+                    label: "Workspace Actions",
+                    onSelect: () => setActionsDialogOpen(true),
+                  },
+                  {
+                    id: "workspace.keyboard-map",
+                    label: "Keyboard Map",
+                    shortcut: <ShortcutHint shortcut="Shift+?" />,
+                    onSelect: () => setActionsDialogOpen(true),
+                  },
+                  {
+                    id: "project.save",
+                    label: "Save Project",
+                    shortcut: <ShortcutHint shortcut="Ctrl+S" />,
+                    disabled: projectBusy,
+                    onSelect: () => onRunCommandById("project.save", { closePalette: false }),
+                  },
+                  {
+                    id: "project.load",
+                    label: "Load Project",
+                    shortcut: <ShortcutHint shortcut="Ctrl+O" />,
+                    disabled: projectBusy,
+                    onSelect: () => onRunCommandById("project.load", { closePalette: false }),
+                  },
+                  {
+                    id: "history.undo",
+                    label: "Undo Change",
+                    shortcut: <ShortcutHint shortcut="Ctrl+Z" />,
+                    disabled: projectBusy || !canUndoProjectDocument,
+                    onSelect: () => onRunCommandById("history.undo", { closePalette: false }),
+                  },
+                  {
+                    id: "history.redo",
+                    label: "Redo Change",
+                    shortcut: <ShortcutHint shortcut="Ctrl+Shift+Z" />,
+                    disabled: projectBusy || !canRedoProjectDocument,
+                    onSelect: () => onRunCommandById("history.redo", { closePalette: false }),
+                  },
+                  {
+                    id: "export.artifacts",
+                    label: "Export Artifacts",
+                    shortcut: <ShortcutHint shortcut="Ctrl+E" />,
+                    disabled: projectBusy,
+                    onSelect: () => onRunCommandById("export.artifacts", { closePalette: false }),
+                  },
+                  {
+                    id: "export.renode",
+                    label: "Export Renode Bundle",
+                    shortcut: <ShortcutHint shortcut="Ctrl+Shift+E" />,
+                    disabled: projectBusy,
+                    onSelect: () => onRunCommandById("export.renode", { closePalette: false }),
+                  },
+                ]}
+              />
+            </ToolbarGroup>
+            <ToolbarGroup label="Project" className="workspace-command-bar__action-group">
+              <button
+                type="button"
+                className="shell-button shell-button--primary"
+                aria-keyshortcuts="Control+S"
+                onClick={() => onRunCommandById("project.save", { closePalette: false })}
+                disabled={projectBusy}
+              >
+                <span className="shell-button__label">Save Project</span>
+                <ShortcutHint shortcut="Ctrl+S" />
+              </button>
+            </ToolbarGroup>
+            <ToolbarGroup label="Export" className="workspace-command-bar__action-group">
+              <button
+                type="button"
+                className="shell-button"
+                onClick={() => setActionsDialogOpen(true)}
+              >
+                <span className="shell-button__label">Actions</span>
+              </button>
+            </ToolbarGroup>
+            <div className="workspace-command-bar__workspace-controls">
+              <label className="workspace-command-bar__field">
+                <span>Density</span>
+                <select aria-label="Workspace density mode" value={densityMode} onChange={(event) => onSelectDensityMode(event.target.value as WorkspaceDensityMode)}>
+                  <option value="compact">Compact</option>
+                  <option value="regular">Regular</option>
+                  <option value="spacious">Spacious</option>
+                </select>
+              </label>
+              <label className="workspace-command-bar__field">
+                <span>Layout preset</span>
+                <select aria-label="Workspace layout preset" value={activeLayoutPresetId} onChange={(event) => onSelectLayoutPreset(event.target.value as WorkspaceLayoutPresetId)}>
+                  {workspaceLayoutPresets.map((preset) => (
+                    <option key={preset.id} value={preset.id}>
+                      {preset.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
           </div>
         </div>
 
-        <dl className="workspace-command-bar__meta">
-          <div>
-            <dt>Active board</dt>
-            <dd>{activeBoardLabel}</dd>
-          </div>
-          <div>
-            <dt>Project file</dt>
-            <dd>{projectFilePath || "Pending"}</dd>
-          </div>
-          <div>
-            <dt>Pins resolved</dt>
-            <dd>{resolvedPinsLabel}</dd>
-          </div>
-          <div>
-            <dt>Status</dt>
-            <dd>{projectStatusMessage}</dd>
-          </div>
-          <div>
-            <dt>Layout preset</dt>
-            <dd>{activeLayoutPresetLabel}</dd>
-          </div>
-        </dl>
-
-        <div className="workspace-command-bar__controls">
-          <ToolbarGroup label="Commands" className="workspace-command-bar__action-group">
-            <SplitButton
-              primaryLabel="Command Palette"
-              primaryTone="command"
-              primaryAriaExpanded={commandPaletteOpen}
-              primaryHasPopup="dialog"
-              primaryAriaKeyShortcuts="Control+K Control+P Control+F"
-              menuLabel="More command palette actions"
-              onPrimaryClick={onOpenPalette}
-              menuItems={[
-                {
-                  id: "workspace.actions",
-                  label: "Workspace Actions",
-                  onSelect: () => setActionsDialogOpen(true),
-                },
-                {
-                  id: "project.save",
-                  label: "Save Project",
-                  shortcut: <ShortcutHint shortcut="Ctrl+S" />,
-                  disabled: projectBusy,
-                  onSelect: () => onRunCommandById("project.save", { closePalette: false }),
-                },
-                {
-                  id: "project.load",
-                  label: "Load Project",
-                  shortcut: <ShortcutHint shortcut="Ctrl+O" />,
-                  disabled: projectBusy,
-                  onSelect: () => onRunCommandById("project.load", { closePalette: false }),
-                },
-                {
-                  id: "export.artifacts",
-                  label: "Export Artifacts",
-                  shortcut: <ShortcutHint shortcut="Ctrl+E" />,
-                  disabled: projectBusy,
-                  onSelect: () => onRunCommandById("export.artifacts", { closePalette: false }),
-                },
-                {
-                  id: "export.renode",
-                  label: "Export Renode Bundle",
-                  shortcut: <ShortcutHint shortcut="Ctrl+Shift+E" />,
-                  disabled: projectBusy,
-                  onSelect: () => onRunCommandById("export.renode", { closePalette: false }),
-                },
-              ]}
-            />
-          </ToolbarGroup>
-          <ToolbarGroup label="Power" className="workspace-command-bar__action-group">
-            <button
-              type="button"
-              className="shell-button shell-button--ghost"
-              aria-keyshortcuts="Shift+?"
-              onClick={() => setActionsDialogOpen(true)}
-            >
-              <span className="shell-button__label">Keyboard Map</span>
-              <ShortcutHint shortcut="Shift+?" />
-            </button>
-          </ToolbarGroup>
-          <ToolbarGroup label="Project" className="workspace-command-bar__action-group">
-            <button
-              type="button"
-              className="shell-button shell-button--primary"
-              aria-keyshortcuts="Control+S"
-              onClick={() => onRunCommandById("project.save", { closePalette: false })}
-              disabled={projectBusy}
-            >
-              <span className="shell-button__label">Save Project</span>
-              <ShortcutHint shortcut="Ctrl+S" />
-            </button>
-            <button
-              type="button"
-              className="shell-button"
-              aria-keyshortcuts="Control+O"
-              onClick={() => onRunCommandById("project.load", { closePalette: false })}
-              disabled={projectBusy}
-            >
-              <span className="shell-button__label">Load Project</span>
-              <ShortcutHint shortcut="Ctrl+O" />
-            </button>
-          </ToolbarGroup>
-          <ToolbarGroup label="History" className="workspace-command-bar__action-group">
-            <button
-              type="button"
-              className="shell-button"
-              aria-keyshortcuts="Control+Z"
-              onClick={() => onRunCommandById("history.undo", { closePalette: false })}
-              disabled={projectBusy || !canUndoProjectDocument}
-            >
-              <span className="shell-button__label">Undo Change</span>
-              <ShortcutHint shortcut="Ctrl+Z" />
-            </button>
-            <button
-              type="button"
-              className="shell-button"
-              aria-keyshortcuts="Control+Shift+Z"
-              onClick={() => onRunCommandById("history.redo", { closePalette: false })}
-              disabled={projectBusy || !canRedoProjectDocument}
-            >
-              <span className="shell-button__label">Redo Change</span>
-              <ShortcutHint shortcut="Ctrl+Shift+Z" />
-            </button>
-          </ToolbarGroup>
-          <ToolbarGroup label="Execution" className="workspace-command-bar__action-group">
-            <button
-              type="button"
-              className="shell-button"
-              onClick={() => onRunCommandById("output.build", { closePalette: false })}
-            >
-              <span className="shell-button__label">Build</span>
-            </button>
-            <button
-              type="button"
-              className="shell-button"
-              onClick={() => onRunCommandById("output.simulation", { closePalette: false })}
-            >
-              <span className="shell-button__label">Simulate</span>
-            </button>
-            <button
-              type="button"
-              className="shell-button"
-              onClick={() => onRunCommandById("output.tests", { closePalette: false })}
-            >
-              <span className="shell-button__label">Test</span>
-            </button>
-          </ToolbarGroup>
-          <ToolbarGroup label="Export" className="workspace-command-bar__action-group">
-            <button
-              type="button"
-              className="shell-button"
-              aria-keyshortcuts="Control+E"
-              onClick={() => onRunCommandById("export.artifacts", { closePalette: false })}
-              disabled={projectBusy}
-            >
-              <span className="shell-button__label">Export Artifacts</span>
-              <ShortcutHint shortcut="Ctrl+E" />
-            </button>
-            <button
-              type="button"
-              className="shell-button"
-              aria-keyshortcuts="Control+Shift+E"
-              onClick={() => onRunCommandById("export.renode", { closePalette: false })}
-              disabled={projectBusy}
-            >
-              <span className="shell-button__label">Export Renode Bundle</span>
-              <ShortcutHint shortcut="Ctrl+Shift+E" />
-            </button>
-          </ToolbarGroup>
-          <div className="workspace-command-bar__workspace-controls">
-            <label className="workspace-command-bar__field">
-              <span>Density</span>
-              <select aria-label="Workspace density mode" value={densityMode} onChange={(event) => onSelectDensityMode(event.target.value as WorkspaceDensityMode)}>
-                <option value="compact">Compact</option>
-                <option value="regular">Regular</option>
-                <option value="spacious">Spacious</option>
-              </select>
-            </label>
-            <label className="workspace-command-bar__field">
-              <span>Layout preset</span>
-              <select aria-label="Workspace layout preset" value={activeLayoutPresetId} onChange={(event) => onSelectLayoutPreset(event.target.value as WorkspaceLayoutPresetId)}>
-                {workspaceLayoutPresets.map((preset) => (
-                  <option key={preset.id} value={preset.id}>
-                    {preset.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-        </div>
+        <PenpotLegacyTopStrip
+          brand="Zephyr Pin Configurator"
+          sectionLabel="Section"
+          sectionValue={activeLayoutPresetId}
+          sectionOptions={penpotSectionOptions}
+          onSelectSection={onSelectLayoutPreset}
+          boardValue={selectedBoardId}
+          boardOptions={penpotBoardOptions}
+          onSelectBoard={onSelectBoard}
+          boardChipLabel={selectedBoard?.name ?? "No board selected"}
+          runtimeSummary={boardRuntimeSummary}
+          actions={penpotActions}
+        />
       </section>
 
       <CommandSurfaceDialog
@@ -364,19 +394,6 @@ export function WorkspaceCommandBar({
           </section>
         </div>
       </CommandSurfaceDialog>
-
-      <section className="workspace-shell__metrics" aria-label="Workspace metrics">
-        {metrics.map((metric) => (
-          <MetricCard
-            key={metric.label}
-            label={metric.label}
-            value={metric.value}
-            detail={metric.detail}
-            accent={metric.accent}
-            icon={metric.label === "Board Surface" ? "◌" : metric.label === "Package Coverage" ? "▦" : "◍"}
-          />
-        ))}
-      </section>
     </>
   );
 }

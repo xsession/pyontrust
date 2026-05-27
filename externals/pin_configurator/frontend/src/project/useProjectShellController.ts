@@ -157,10 +157,12 @@ export function useProjectShellController(boards: BoardSummary[]): ProjectShellC
       return;
     }
 
+    const boardDefinitionId = activeBoard?.id ?? projectDocument.board_id;
+
     let active = true;
 
     void pinConfiguratorApi
-      .getBoard(projectDocument.board_id)
+      .getBoard(boardDefinitionId)
       .then((boardDefinition) => {
         if (!active) {
           return;
@@ -179,7 +181,7 @@ export function useProjectShellController(boards: BoardSummary[]): ProjectShellC
     return () => {
       active = false;
     };
-  }, [projectDocument.board_id, setWorkspaceBoardDefinition]);
+  }, [activeBoard?.id, projectDocument.board_id, setWorkspaceBoardDefinition]);
 
   useEffect(() => {
     if (!boards.length || projectDocument.board_id) {

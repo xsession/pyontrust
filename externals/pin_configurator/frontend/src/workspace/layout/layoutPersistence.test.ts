@@ -27,7 +27,7 @@ describe("layoutPersistence", () => {
 
     expect(loadWorkspaceDockLayout("bring-up", storage)).toBeNull();
     expect(loadWorkspaceDockLayout("codegen-review", storage)).toMatchObject({
-      version: 1,
+      version: 5,
       layout: { grid: { views: [] } },
     });
     expect(getWorkspaceDockLayoutStorageKey("codegen-review")).toContain("codegen-review");
@@ -45,5 +45,17 @@ describe("layoutPersistence", () => {
     expect(loadWorkspaceDockLayout("renode-validation", storage)).toMatchObject({
       layout: { grid: { views: [2] } },
     });
+  });
+
+  it("ignores storage quota failures when saving dock layouts", () => {
+    const storage = {
+      getItem: () => null,
+      setItem: () => {
+        throw new Error("quota exceeded");
+      },
+      removeItem: () => undefined,
+    };
+
+    expect(() => saveWorkspaceDockLayout({ grid: { views: [] } }, "bring-up", storage)).not.toThrow();
   });
 });

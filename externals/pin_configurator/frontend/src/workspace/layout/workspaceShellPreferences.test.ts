@@ -40,7 +40,7 @@ describe("workspaceShellPreferences", () => {
       layoutPresetId: "renode-validation",
       focusedPanelId: "workspace-renode-profile",
       activeOutputChannelId: "simulation",
-      version: 1,
+      version: 2,
     });
   });
 
@@ -48,9 +48,9 @@ describe("workspaceShellPreferences", () => {
     const storage = createStorage();
 
     storage.setItem(
-      "pin-configurator.workspace-shell-preferences.v1",
+      "pin-configurator.workspace-shell-preferences.v2",
       JSON.stringify({
-        version: 1,
+        version: 2,
         savedAt: "2026-05-17T00:00:00.000Z",
         density: "regular",
         layoutPresetId: "bring-up",
@@ -60,8 +60,29 @@ describe("workspaceShellPreferences", () => {
     );
 
     expect(loadWorkspaceShellPreferences(storage)).toMatchObject({
-      focusedPanelId: "workspace-overview",
+      focusedPanelId: "workspace-pin-assignments",
       activeOutputChannelId: "build",
+    });
+  });
+
+  it("pins bring-up focus back to pin assignments even when another panel was persisted", () => {
+    const storage = createStorage();
+
+    storage.setItem(
+      "pin-configurator.workspace-shell-preferences.v2",
+      JSON.stringify({
+        version: 2,
+        savedAt: "2026-05-20T00:00:00.000Z",
+        density: "regular",
+        layoutPresetId: "bring-up",
+        focusedPanelId: "workspace-peripheral-configurator",
+        activeOutputChannelId: "build",
+      }),
+    );
+
+    expect(loadWorkspaceShellPreferences(storage)).toMatchObject({
+      layoutPresetId: "bring-up",
+      focusedPanelId: "workspace-pin-assignments",
     });
   });
 

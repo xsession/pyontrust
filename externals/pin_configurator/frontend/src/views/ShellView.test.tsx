@@ -171,6 +171,7 @@ describe("ShellView", () => {
           },
         ]}
         activeBoard={null}
+        activeBoardDefinition={null}
         loading={false}
         error=""
         metrics={[
@@ -426,28 +427,15 @@ describe("ShellView", () => {
     );
 
     expect(screen.getByText("Pin Configurator workspace")).toBeInTheDocument();
-    expect(screen.getByText("Board Surface")).toBeInTheDocument();
-    expect(screen.getByText("Engineering workspace")).toBeInTheDocument();
-    expect(screen.getByText("Project controls")).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Workspace workflow map" })).toBeInTheDocument();
-    expect(screen.getByText("Navigate")).toBeInTheDocument();
-    expect(screen.getByText("Configure")).toBeInTheDocument();
-    expect(screen.getByText("Inspect")).toBeInTheDocument();
-    expect(screen.getByText("Verify")).toBeInTheDocument();
-    expect(screen.getByText("Focus Board Inventory · Route Build Output")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("C:/tmp/demo.zpinproj")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Undo Change" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Redo Change" })).toBeDisabled();
-    expect(screen.getByText("Pin assignments")).toBeInTheDocument();
-    expect(screen.getByText("resolved selections")).toBeInTheDocument();
-    expect(screen.getByText("Renode profile")).toBeInTheDocument();
-    expect(screen.getByText("Protocol editor")).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "Export Artifacts" }).length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: "Export Renode Bundle" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Build" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Simulate" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Test" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Keyboard Map" })).toBeInTheDocument();
+    expect(screen.getByText("Configuration Health")).toBeInTheDocument();
+    expect(screen.getByText("Peripheral enablement")).toBeInTheDocument();
+    expect(screen.getByText("Pin workspace")).toBeInTheDocument();
+    expect(screen.getByText("Bus and device routing")).toBeInTheDocument();
+    expect(screen.getByText("Execution output and diagnostics")).toBeInTheDocument();
+    expect(screen.getAllByText("C:/tmp/demo.zpinproj").length).toBeGreaterThan(0);
+    expect(screen.getByTestId("workspace-dock-fallback")).toHaveAttribute("data-focus-panel", "workspace-pin-assignments");
+    expect(screen.getByText("No external devices")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Actions" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Command Palette" })).toBeInTheDocument();
     const workspaceStatusBar = screen.getByRole("region", { name: "Workspace status bar" });
     expect(workspaceStatusBar).toBeInTheDocument();
@@ -459,59 +447,25 @@ describe("ShellView", () => {
     expect(within(workspaceStatusBar).getByText("3 warnings")).toBeInTheDocument();
     expect(screen.getByText("Dirty State")).toBeInTheDocument();
     expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("sysbus.uart0")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Open Generated Overlay" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Open Generated Source" })).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "Open Robot Tests" }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole("button", { name: "Review Diagnostics" }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole("button", { name: "Focus Renode Profile" }).length).toBeGreaterThan(0);
-    expect(screen.getByText("Editable project assets")).toBeInTheDocument();
-    expect(screen.getByText("Derived outputs")).toBeInTheDocument();
-    expect(screen.getByText("Export routes stay explicit")).toBeInTheDocument();
-    expect(screen.getByText("Export Artifacts packages the generated overlay, generated config, and fragments metadata. Export Renode Bundle packages the RESC script, Robot suite, and the simulation handoff files derived from the current project document.")).toBeInTheDocument();
     expect(screen.getByText("Execution output and diagnostics")).toBeInTheDocument();
-    expect(screen.getByText("Execution workbench")).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "Execution Renode machine" })).toHaveValue("platforms/boards/ti/lp_mspm0g3507.repl");
-    expect(screen.getByRole("button", { name: "Export Demo Bundle" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Open Test Log" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /Build Output/i })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /Diagnostics/i })).toBeInTheDocument();
-    const readinessSummary = screen.getByRole("region", { name: "Execution readiness summary" });
-    expect(within(readinessSummary).getByText("Active channel")).toBeInTheDocument();
-    expect(within(readinessSummary).getByText("Artifact authority")).toBeInTheDocument();
-    expect(within(readinessSummary).getByText("Readiness")).toBeInTheDocument();
-    expect(within(readinessSummary).getByText("Validation")).toBeInTheDocument();
-    expect(within(readinessSummary).getByText("Integrity")).toBeInTheDocument();
-    expect(within(readinessSummary).getByText("Artifact readiness")).toBeInTheDocument();
-    expect(within(readinessSummary).getByText("Generated Overlay")).toBeInTheDocument();
-    expect(within(readinessSummary).getByText("Generated Source")).toBeInTheDocument();
-    expect(within(readinessSummary).getByText("Pin conflicts, clock warnings, and generated-artifact checks are routed through Diagnostics for review.")).toBeInTheDocument();
-    expect(within(readinessSummary).getByText("Generated artifacts appear stale: Generated fragments target a different board than the current project selection.")).toBeInTheDocument();
+    expect(screen.queryByText("Execution workbench")).not.toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Execution output channel" })).toHaveValue("build");
     expect(screen.getByLabelText("Workspace density mode")).toHaveValue("regular");
     expect(screen.getByLabelText("Workspace layout preset")).toHaveValue("bring-up");
     expect(screen.getByRole("log", { name: "Build Output entries" })).toBeInTheDocument();
     expect(screen.getAllByText("Build pipeline shell channel is idle.").length).toBeGreaterThan(0);
-    expect(screen.getByText("Frontend boundaries")).toBeInTheDocument();
-    expect(screen.getByText("React shell is canonical")).toBeInTheDocument();
-    expect(screen.getByText("No workflows still require legacy-only support")).toBeInTheDocument();
-    expect(screen.getAllByText("Legacy feature freeze is active").length).toBeGreaterThan(0);
-    expect(screen.getByText("Legacy cutover rules")).toBeInTheDocument();
-    expect(screen.getByText("Every tracked workstation workflow is now owned by typed React presenters.")).toBeInTheDocument();
     expect(screen.getByTestId("workspace-dock-fallback")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("tab", { name: /Diagnostics/i }));
-    expect(screen.getAllByText("1 clock validation warning remains.").length).toBeGreaterThan(0);
-
-    const diagnosticsTab = screen.getByRole("tab", { name: /Diagnostics/i });
-    diagnosticsTab.focus();
-    fireEvent.keyDown(diagnosticsTab, { key: "ArrowLeft" });
-    expect(screen.getByRole("tab", { name: /Build Output/i })).toHaveAttribute("aria-selected", "true");
 
     fireEvent.click(screen.getByRole("button", { name: "Command Palette" }));
 
     const dialog = screen.getByRole("dialog");
     expect(dialog).toBeInTheDocument();
     expect(screen.getByText("Command palette")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: /Undo Change/i })).toBeEnabled();
+    expect(within(dialog).getByRole("button", { name: /Redo Change/i })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: /Export Renode Bundle/i })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: /Load Project/i })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: /Export Artifacts/i })).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: /Save Project/i }));
     expect(commandRun).toHaveBeenCalledTimes(1);
 
@@ -537,6 +491,9 @@ describe("ShellView", () => {
     fireEvent.keyDown(window, { key: "?", shiftKey: true });
     expect(screen.getByText("Workspace actions")).toBeInTheDocument();
     expect(screen.getByText("Keyboard map")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /Build Readiness/i }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: /Simulation Output/i }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: /Test Readiness/i }).length).toBeGreaterThan(0);
     fireEvent.keyDown(document, { key: "Escape" });
 
     fireEvent.change(screen.getByLabelText("Workspace density mode"), { target: { value: "compact" } });
@@ -545,24 +502,14 @@ describe("ShellView", () => {
     fireEvent.change(screen.getByLabelText("Workspace layout preset"), { target: { value: "renode-validation" } });
     expect(screen.getByTestId("workspace-dock-fallback")).toHaveAttribute("data-focus-panel", "workspace-renode-profile");
 
-    fireEvent.click(screen.getByRole("button", { name: "Open Generated Source" }));
-    expect(screen.getByTestId("workspace-dock-fallback")).toHaveAttribute("data-focus-panel", "workspace-generated-source");
-
-    fireEvent.click(screen.getByRole("button", { name: "Open overlay" }));
-    expect(screen.getByTestId("workspace-dock-fallback")).toHaveAttribute("data-focus-panel", "workspace-generated-overlay");
-
-    fireEvent.click(screen.getAllByRole("button", { name: "Review Diagnostics" })[0]);
-    expect(screen.getByRole("tab", { name: /Diagnostics/i })).toHaveAttribute("aria-selected", "true");
-
-    fireEvent.click(screen.getAllByRole("button", { name: "Focus Renode Profile" })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: "Open Renode Profile" })[0]);
     expect(screen.getByTestId("workspace-dock-fallback")).toHaveAttribute("data-focus-panel", "workspace-renode-profile");
 
-    expect(screen.getAllByText("Preset anchor").length).toBeGreaterThan(0);
-    const artifactsNavigation = screen.getByRole("region", { name: "Artifacts navigation" });
-    const generatedOverlayNav = within(artifactsNavigation).getByRole("button", { name: /Generated Overlay/i });
-    generatedOverlayNav.focus();
-    fireEvent.keyDown(generatedOverlayNav, { key: "ArrowDown" });
-    expect(screen.getByTestId("workspace-dock-fallback")).toHaveAttribute("data-focus-panel", "workspace-generated-config");
+    fireEvent.click(screen.getByRole("button", { name: "Open RESC Script" }));
+    expect(screen.getByTestId("workspace-dock-fallback")).toHaveAttribute("data-focus-panel", "workspace-renode-resc");
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Open Renode Profile" })[0]);
+    expect(screen.getByTestId("workspace-dock-fallback")).toHaveAttribute("data-focus-panel", "workspace-renode-profile");
 
     fireEvent.click(screen.getByRole("button", { name: "Seed Artifacts" }));
     expect(seedGeneratedArtifacts).toHaveBeenCalledTimes(1);
@@ -573,7 +520,7 @@ describe("ShellView", () => {
     fireEvent.change(screen.getByRole("combobox", { name: "Execution Renode machine" }), { target: { value: "" } });
     expect(updateRenodeField).toHaveBeenCalledWith("platform", "");
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Open Robot Tests" })[1]);
+    fireEvent.click(screen.getAllByRole("button", { name: "Open Robot Tests" })[0]);
     expect(screen.getByTestId("workspace-dock-fallback")).toHaveAttribute("data-focus-panel", "workspace-renode-robot");
 
     fireEvent.keyDown(window, { key: "2", altKey: true });
@@ -594,6 +541,7 @@ describe("ShellView", () => {
       <ShellView
         boards={[]}
         activeBoard={null}
+        activeBoardDefinition={null}
         loading={false}
         error=""
         metrics={[]}

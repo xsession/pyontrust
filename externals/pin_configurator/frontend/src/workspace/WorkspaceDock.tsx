@@ -1,7 +1,7 @@
 import { DockviewReact, type DockviewApi, type DockviewReadyEvent, type IDockviewPanelProps } from "dockview";
 import "dockview/dist/styles/dockview.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { BoardSummary, ProtocolFieldValue } from "../contracts/api";
+import type { BoardDefinition, BoardSummary, ProtocolFieldValue } from "../contracts/api";
 import type { ClockConfiguratorPresenter } from "../domains/clock/clockConfiguratorPresenter";
 import type { BoardEditorPresenter } from "../domains/board-editor/boardEditorPresenter";
 import type { InterruptConfiguratorPresenter } from "../domains/interrupts/interruptConfiguratorPresenter";
@@ -43,6 +43,7 @@ export interface WorkspaceDockFocusRequest {
 interface WorkspaceDockProps {
   boards: BoardSummary[];
   activeBoard: BoardSummary | null;
+  activeBoardDefinition?: BoardDefinition | null;
   projectDocument: ProjectDocument;
   hydratedPinStates: RehydratedPinStateMap;
   pinAssignments: PinAssignmentsViewModel;
@@ -397,11 +398,9 @@ function ZephyrCatalogDockPanel({ params }: IDockviewPanelProps<WorkspaceDockPan
 function PinAssignmentsDockPanel({ params }: IDockviewPanelProps<WorkspaceDockPanelParams>) {
   return (
     <div className="dock-panel dock-panel--stack">
-      <div className="dock-callout">
-        <strong>Pin Assignments</strong>
-        <span>The first migrated pin surface now shows canonical saved state rehydrated against the live board definition.</span>
-      </div>
       <PinAssignmentsPanel
+        activeBoard={params.activeBoard}
+        activeBoardDefinition={params.activeBoardDefinition}
         pinAssignments={params.pinAssignments}
         onClearPinAssignment={params.clearPinAssignment}
         onAssignPinAltFunction={params.assignPinAltFunction}
@@ -435,15 +434,17 @@ const dockComponents: Record<string, React.FunctionComponent<IDockviewPanelProps
   "zephyr-catalog": ZephyrCatalogDockPanel,
 };
 
-export function WorkspaceDock({ boards, activeBoard, projectDocument, hydratedPinStates, pinAssignments, peripheralConfigurator, moduleConfigurator, clockConfigurator, lvglLayout, boardEditor, interruptConfigurator, sensorParser, packageManager, zephyrCatalog, clearPinAssignment, assignPinAltFunction, updatePinBooleanProperty, updateRenodeField, updateGeneratedOverlay, updateGeneratedConf, addProtocolEntry, selectProtocolEntry, removeProtocolEntry, toggleProtocolEntry, updateProtocolEntryValue, loading, error, layoutPresetId = "bring-up", focusRequest = null }: WorkspaceDockProps) {
+export function WorkspaceDock({ boards, activeBoard, activeBoardDefinition, projectDocument, hydratedPinStates, pinAssignments, peripheralConfigurator, moduleConfigurator, clockConfigurator, lvglLayout, boardEditor, interruptConfigurator, sensorParser, packageManager, zephyrCatalog, clearPinAssignment, assignPinAltFunction, updatePinBooleanProperty, updateRenodeField, updateGeneratedOverlay, updateGeneratedConf, addProtocolEntry, selectProtocolEntry, removeProtocolEntry, toggleProtocolEntry, updateProtocolEntryValue, loading, error, layoutPresetId = "bring-up", focusRequest = null }: WorkspaceDockProps) {
   const [dockApi, setDockApi] = useState<DockviewApi | null>(null);
   const initializedRef = useRef(false);
+  const skipNextLayoutSaveRef = useRef(true);
   const layoutPreset = useMemo(() => getWorkspaceLayoutPreset(layoutPresetId), [layoutPresetId]);
 
   const panelParams = useMemo<WorkspaceDockPanelParams>(
     () => buildWorkspaceDockPanelParams({
       boards,
       activeBoard,
+      activeBoardDefinition,
       loading,
       error,
       projectDocument,
@@ -471,7 +472,7 @@ export function WorkspaceDock({ boards, activeBoard, projectDocument, hydratedPi
       toggleProtocolEntry,
       updateProtocolEntryValue,
     }),
-    [activeBoard, assignPinAltFunction, boardEditor, boards, clearPinAssignment, clockConfigurator, error, focusRequest, hydratedPinStates, interruptConfigurator, loading, lvglLayout, moduleConfigurator, packageManager, peripheralConfigurator, pinAssignments, projectDocument, sensorParser, updateGeneratedConf, updateGeneratedOverlay, updatePinBooleanProperty, updateRenodeField, zephyrCatalog, addProtocolEntry, selectProtocolEntry, removeProtocolEntry, toggleProtocolEntry, updateProtocolEntryValue],
+    [activeBoard, activeBoardDefinition, assignPinAltFunction, boardEditor, boards, clearPinAssignment, clockConfigurator, error, focusRequest, hydratedPinStates, interruptConfigurator, loading, lvglLayout, moduleConfigurator, packageManager, peripheralConfigurator, pinAssignments, projectDocument, sensorParser, updateGeneratedConf, updateGeneratedOverlay, updatePinBooleanProperty, updateRenodeField, zephyrCatalog, addProtocolEntry, selectProtocolEntry, removeProtocolEntry, toggleProtocolEntry, updateProtocolEntryValue],
   );
 
   const handleReady = useCallback((event: DockviewReadyEvent) => {
@@ -484,6 +485,7 @@ export function WorkspaceDock({ boards, activeBoard, projectDocument, hydratedPi
     }
 
     initializedRef.current = true;
+    skipNextLayoutSaveRef.current = true;
     const persistedLayout = loadWorkspaceDockLayout(layoutPresetId);
     const restoredPersistedLayout = restoreOrPopulateWorkspaceDock(
       dockApi,
@@ -507,6 +509,11 @@ export function WorkspaceDock({ boards, activeBoard, projectDocument, hydratedPi
     }
 
     const disposable = dockApi.onDidLayoutChange(() => {
+      if (skipNextLayoutSaveRef.current) {
+        skipNextLayoutSaveRef.current = false;
+        return;
+      }
+
       saveWorkspaceDockLayout(dockApi.toJSON(), layoutPresetId);
     });
 
@@ -530,14 +537,26 @@ export function WorkspaceDock({ boards, activeBoard, projectDocument, hydratedPi
       return;
     }
 
-    const panel = dockApi.getPanel(focusRequest.panelId);
+    let panel = dockApi.getPanel(focusRequest.panelId);
+    if (!panel) {
+      const panelDefinition = workspaceDockPanelDefinitions.find(({ id }) => id === focusRequest.panelId);
+      if (panelDefinition) {
+        panel = dockApi.addPanel({
+          id: panelDefinition.id,
+          title: panelDefinition.title,
+          component: panelDefinition.component,
+          params: panelParams,
+        });
+      }
+    }
+
     if (!panel) {
       return;
     }
 
     panel.api.setActive();
     dockApi.focus();
-  }, [dockApi, focusRequest]);
+  }, [dockApi, focusRequest, panelParams]);
 
   if (typeof ResizeObserver === "undefined") {
     return (

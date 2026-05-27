@@ -3,12 +3,38 @@ import { workspaceDockPanelDefinitions } from "../panels/dockPanelDefinitions";
 import type { WorkspaceDockPanelParams } from "../panels/dockPanelParams";
 import { getWorkspaceLayoutPreset, type WorkspaceLayoutPresetId } from "./workspaceShellPreferences";
 
+const defaultWorkspaceDockPanelIdsByPreset: Record<WorkspaceLayoutPresetId, readonly string[]> = {
+  "bring-up": ["workspace-pin-assignments"],
+  "protocol-integration": [
+    "workspace-protocol-editor",
+    "workspace-pin-assignments",
+    "workspace-generated-header",
+    "workspace-generated-source",
+  ],
+  "codegen-review": [
+    "workspace-generated-overlay",
+    "workspace-generated-config",
+    "workspace-generated-fragments",
+    "workspace-generated-header",
+    "workspace-generated-source",
+  ],
+  "renode-validation": [
+    "workspace-renode-profile",
+    "workspace-renode-resc",
+    "workspace-renode-robot",
+    "workspace-overview",
+  ],
+};
+
 export function getDefaultWorkspaceDockPanels(layoutPresetId: WorkspaceLayoutPresetId = "bring-up") {
   const anchorPanelId = getWorkspaceLayoutPreset(layoutPresetId).panelId;
-  const anchorPanel = workspaceDockPanelDefinitions.find((panel) => panel.id === anchorPanelId);
-  const remainingPanels = workspaceDockPanelDefinitions.filter((panel) => panel.id !== anchorPanelId);
+  const presetPanelIds = defaultWorkspaceDockPanelIdsByPreset[layoutPresetId] ?? defaultWorkspaceDockPanelIdsByPreset["bring-up"];
+  const orderedPanelIds = [anchorPanelId, ...presetPanelIds.filter((panelId) => panelId !== anchorPanelId)];
+  const panels = orderedPanelIds
+    .map((panelId) => workspaceDockPanelDefinitions.find((panel) => panel.id === panelId))
+    .filter((panel): panel is (typeof workspaceDockPanelDefinitions)[number] => Boolean(panel));
 
-  return anchorPanel ? [anchorPanel, ...remainingPanels] : [...workspaceDockPanelDefinitions];
+  return panels.length ? panels : [...workspaceDockPanelDefinitions];
 }
 
 export function populateDefaultWorkspaceDock(
@@ -32,7 +58,7 @@ export function restoreOrPopulateWorkspaceDock(
   persistedLayout?: object | null,
   layoutPresetId: WorkspaceLayoutPresetId = "bring-up",
 ) {
-  if (persistedLayout) {
+  if (persistedLayout && layoutPresetId !== "bring-up") {
     try {
       dockApi.fromJSON(persistedLayout as never);
       return true;

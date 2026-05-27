@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import type { BoardDefinition, BoardSummary } from "../contracts/api";
 import { ContextMenu } from "../shared/ui/commands/ContextMenu";
 import { ShortcutHint } from "../shared/ui/commands/ShortcutHint";
 import { DiagnosticBadge } from "../shared/ui/feedback/DiagnosticBadge";
@@ -11,6 +12,8 @@ import { useSceneViewport } from "../shared/ui/scene/useSceneViewport";
 import type { PinAssignmentAltFunctionOptionViewModel, PinAssignmentsViewModel } from "../shared/viewModels/pinAssignments";
 
 interface PinAssignmentsPanelProps {
+  activeBoard?: BoardSummary | null;
+  activeBoardDefinition?: BoardDefinition | null;
   pinAssignments: PinAssignmentsViewModel;
   onClearPinAssignment: (pinNumber: string) => void;
   onAssignPinAltFunction: (pinNumber: string, option: PinAssignmentAltFunctionOptionViewModel) => void;
@@ -102,23 +105,41 @@ function buildPackageLayout(pinNumbers: string[]): PackagePinLayout[] {
   });
 }
 
-export function PinAssignmentsPanel({ pinAssignments, onClearPinAssignment, onAssignPinAltFunction, onUpdatePinBooleanProperty }: PinAssignmentsPanelProps) {
+export function PinAssignmentsPanel({ activeBoard, activeBoardDefinition, pinAssignments, onClearPinAssignment, onAssignPinAltFunction, onUpdatePinBooleanProperty }: PinAssignmentsPanelProps) {
   const [filter, setFilter] = useState<PinAssignmentFilter>("all");
   const [selectedPinNumber, setSelectedPinNumber] = useState<string | null>(null);
   const [hoveredPinNumber, setHoveredPinNumber] = useState<string | null>(null);
   const { propertyValuesByPinNumber, rows, summary } = pinAssignments;
+  const boardPins = activeBoardDefinition?.pins ?? [];
+  const fallbackBoardPinNumbers = useMemo(
+    () => Array.from({ length: activeBoard?.pin_count ?? 0 }, (_, index) => String(index + 1)),
+    [activeBoard?.pin_count],
+  );
+  const boardPinsByNumber = useMemo(
+    () => new Map(boardPins.map((pin) => [String(pin.number), pin])),
+    [boardPins],
+  );
   const viewport = useSceneViewport({ fitZoom: 0.88 });
   const filteredRows = rows.filter((row) => filter === "all" || row.resolution === filter);
   const selectedRow = filteredRows.find((row) => row.pinNumber === selectedPinNumber) ?? filteredRows[0] ?? null;
   const hoveredRow = rows.find((row) => row.pinNumber === hoveredPinNumber) ?? null;
+  const packagePinNumbers = useMemo(
+    () => (rows.length ? rows.map((row) => row.pinNumber) : boardPins.length ? boardPins.map((pin) => String(pin.number)) : fallbackBoardPinNumbers),
+    [boardPins, fallbackBoardPinNumbers, rows],
+  );
+  const selectedBoardPin = selectedPinNumber ? boardPinsByNumber.get(selectedPinNumber) ?? null : null;
+  const hoveredBoardPin = hoveredPinNumber ? boardPinsByNumber.get(hoveredPinNumber) ?? null : null;
   const selectedProps = selectedRow ? propertyValuesByPinNumber[selectedRow.pinNumber] ?? {} : {};
   const selectedAltFunctionOptions = selectedRow ? pinAssignments.altFunctionOptionsByPinNumber[selectedRow.pinNumber] ?? [] : [];
   const selectedAltFunction = useMemo(
     () => selectedAltFunctionOptions.find((option) => option.value === selectedRow?.selectedAltFunctionValue) ?? selectedAltFunctionOptions[0] ?? null,
     [selectedAltFunctionOptions, selectedRow?.selectedAltFunctionValue],
   );
-  const packageLayout = useMemo(() => buildPackageLayout(rows.map((row) => row.pinNumber)), [rows]);
-  const filteredPinSet = useMemo(() => new Set(filteredRows.map((row) => row.pinNumber)), [filteredRows]);
+  const packageLayout = useMemo(() => buildPackageLayout(packagePinNumbers), [packagePinNumbers]);
+  const filteredPinSet = useMemo(
+    () => new Set((filteredRows.length ? filteredRows.map((row) => row.pinNumber) : packagePinNumbers)),
+    [filteredRows, packagePinNumbers],
+  );
   const selectedIssues = useMemo(
     () => (selectedRow ? pinAssignments.issuesByPinNumber[selectedRow.pinNumber] ?? [] : []),
     [pinAssignments.issuesByPinNumber, selectedRow],
@@ -139,105 +160,24 @@ export function PinAssignmentsPanel({ pinAssignments, onClearPinAssignment, onAs
   };
 
   useEffect(() => {
-    if (!filteredRows.length) {
+    if (!packagePinNumbers.length) {
       if (selectedPinNumber !== null) {
         setSelectedPinNumber(null);
       }
       return;
     }
 
-    if (!selectedRow) {
-      setSelectedPinNumber(filteredRows[0]?.pinNumber ?? null);
+    if (!selectedPinNumber || !packagePinNumbers.includes(selectedPinNumber)) {
+      setSelectedPinNumber(filteredRows[0]?.pinNumber ?? packagePinNumbers[0] ?? null);
     }
-  }, [filteredRows, selectedPinNumber, selectedRow]);
+  }, [filteredRows, packagePinNumbers, selectedPinNumber]);
 
   return (
     <div className="pin-assignments-panel">
-      <InspectorSection
-        title="Pin readiness"
-        summary="Review unresolved selections and active pin issues here before changing assignment values or treating generated artifacts as ready."
-        actions={<DiagnosticBadge label={`${summary.unresolvedCount} unresolved`} tone={summary.unresolvedCount ? "warning" : "success"} />}
-      >
-        <div className="pin-assignments-panel__summary">
-          <div>
-            <strong>{summary.resolvedCount}</strong>
-            <span>resolved selections</span>
-          </div>
-          <div>
-            <strong>{summary.savedCount}</strong>
-            <span>saved pin entries</span>
-          </div>
-          <div>
-            <strong>{summary.unresolvedCount}</strong>
-            <span>unresolved after board match</span>
-          </div>
-          <div>
-            <strong>{totalIssueCount}</strong>
-            <span>active issues</span>
-          </div>
-        </div>
-        {(summary.unresolvedCount || totalIssueCount) ? (
-          <InspectorNotice
-            title="Pin blockers stay at the top of the workflow"
-            detail={`${summary.unresolvedCount} unresolved selection${summary.unresolvedCount === 1 ? " remains" : "s remain"} and ${totalIssueCount} active issue${totalIssueCount === 1 ? " is" : "s are"} currently affecting board handoff.`}
-            tone="warning"
-          />
-        ) : (
-          <InspectorNotice
-            title="Pin workflow is aligned"
-            detail="Use the package surface and detail editor below to adjust assignments while keeping the resolved route and issue state in view."
-            tone="info"
-          />
-        )}
-        {totalIssueCount ? (
-          <div className="pin-assignments-panel__issues" aria-label="Pin readiness issues">
-            {readinessIssuePreview.map(({ pinNumber, issue }) => (
-              <button
-                key={issue.id}
-                type="button"
-                className={selectedRow?.pinNumber === pinNumber ? "pin-assignments-panel__issue pin-assignments-panel__issue--compact pin-assignments-panel__issue--selected" : "pin-assignments-panel__issue pin-assignments-panel__issue--compact"}
-                onClick={() => selectPin(pinNumber)}
-              >
-                <div className="pin-assignments-panel__issue-title-row">
-                  <strong>{issue.title}</strong>
-                  <span className="pin-assignments-panel__issue-pin">{`Pin ${pinNumber}`}</span>
-                </div>
-                <span>{issue.summary}</span>
-              </button>
-            ))}
-          </div>
-        ) : null}
-      </InspectorSection>
-
-      <div className="pin-assignments-panel__filters" role="group" aria-label="Pin assignment filters">
-        <button
-          type="button"
-          className={filter === "all" ? "pin-assignments-panel__filter pin-assignments-panel__filter--active" : "pin-assignments-panel__filter"}
-          onClick={() => setFilter("all")}
-        >
-          {`All (${summary.savedCount})`}
-        </button>
-        <button
-          type="button"
-          className={filter === "resolved" ? "pin-assignments-panel__filter pin-assignments-panel__filter--active" : "pin-assignments-panel__filter"}
-          onClick={() => setFilter("resolved")}
-        >
-          {`Resolved (${summary.resolvedCount})`}
-        </button>
-        <button
-          type="button"
-          className={filter === "unresolved" ? "pin-assignments-panel__filter pin-assignments-panel__filter--active" : "pin-assignments-panel__filter"}
-          onClick={() => setFilter("unresolved")}
-        >
-          {`Unresolved (${summary.unresolvedCount})`}
-        </button>
-      </div>
-
-      {rows.length ? (
+      {packagePinNumbers.length ? (
         <InspectorSection
           title="Package surface"
-          summary="The pin workflow now includes an approximate package map with hover inspection, filtered highlight states, quick reassignment, and scene controls."
-          actions={<DiagnosticBadge label={`${filteredRows.length} visible pins`} tone="info" />}
+          actions={<DiagnosticBadge label={`${filteredPinSet.size} visible pins`} tone="info" />}
         >
           <SceneViewportToolbar zoom={viewport.zoom} onZoomOut={viewport.zoomOut} onZoomIn={viewport.zoomIn} onFit={viewport.fit} onReset={viewport.reset}>
             <span className="domain-summary-text">Drag the scene to pan, or use Fit to recenter the package.</span>
@@ -259,10 +199,11 @@ export function PinAssignmentsPanel({ pinAssignments, onClearPinAssignment, onAs
               <rect x="34" y="34" width="532" height="412" rx="28" className="pin-assignments-panel__scene-backdrop" />
               <g transform={viewport.transform}>
                 <rect x="130" y="120" width="340" height="240" rx="32" className="pin-assignments-panel__scene-chip" />
-                <text x="300" y="220" textAnchor="middle" className="pin-assignments-panel__scene-chip-title">MCU Package</text>
-                <text x="300" y="246" textAnchor="middle" className="pin-assignments-panel__scene-chip-subtitle">Filtered highlight tracks saved, resolved, and unresolved pin selections.</text>
+                <text x="300" y="220" textAnchor="middle" className="pin-assignments-panel__scene-chip-title">{activeBoardDefinition?.board ?? activeBoard?.name ?? "MCU Package"}</text>
+                <text x="300" y="246" textAnchor="middle" className="pin-assignments-panel__scene-chip-subtitle">{activeBoardDefinition?.package ? `${activeBoardDefinition.package} package` : activeBoard?.package ? `${activeBoard.package} package` : "Filtered highlight tracks saved, resolved, and unresolved pin selections."}</text>
                 {packageLayout.map((pin) => {
                   const row = rows.find((entry) => entry.pinNumber === pin.pinNumber);
+                  const boardPin = boardPinsByNumber.get(pin.pinNumber) ?? null;
                   const isSelected = selectedRow?.pinNumber === pin.pinNumber;
                   const isHovered = hoveredPinNumber === pin.pinNumber;
                   const visible = filteredPinSet.has(pin.pinNumber);
@@ -272,7 +213,7 @@ export function PinAssignmentsPanel({ pinAssignments, onClearPinAssignment, onAs
                     ? "pin-assignments-panel__scene-pin--warning"
                       : hasIssues
                         ? "pin-assignments-panel__scene-pin--conflict"
-                    : row
+                    : row || boardPin
                       ? "pin-assignments-panel__scene-pin--resolved"
                       : "pin-assignments-panel__scene-pin--empty";
 
@@ -297,13 +238,19 @@ export function PinAssignmentsPanel({ pinAssignments, onClearPinAssignment, onAs
               </g>
             </svg>
             <div className="pin-assignments-panel__scene-inspector">
-              <strong>{hoveredRow ? `Pin ${hoveredRow.pinNumber}` : selectedRow ? `Pin ${selectedRow.pinNumber}` : "Package overview"}</strong>
+              <strong>{hoveredRow ? `Pin ${hoveredRow.pinNumber}` : selectedRow ? `Pin ${selectedRow.pinNumber}` : "Click a pin to configure"}</strong>
               <span>
                 {hoveredRow
                   ? `${hoveredRow.savedLabel} • ${hoveredRow.resolvedRoute}`
+                  : hoveredBoardPin
+                    ? `${hoveredBoardPin.name} • ${hoveredBoardPin.default_function}`
                   : selectedRow
                     ? `${selectedRow.savedLabel} • ${selectedRow.resolvedRoute}`
-                    : "Hover or select a pin to inspect it inside the package surface."}
+                    : selectedBoardPin
+                      ? `${selectedBoardPin.name} • ${selectedBoardPin.default_function}`
+                      : selectedPinNumber
+                        ? `Pin ${selectedPinNumber} • board package position`
+                    : "or enable a peripheral on the left."}
               </span>
               {selectedRow ? (
                 <div className="pin-assignments-panel__status-row" aria-label="Selected pin status">
@@ -340,10 +287,94 @@ export function PinAssignmentsPanel({ pinAssignments, onClearPinAssignment, onAs
         </InspectorSection>
       ) : null}
 
-      {!rows.length ? (
+      {rows.length ? (
+        <div className="pin-assignments-panel__filters" role="group" aria-label="Pin assignment filters">
+          <button
+            type="button"
+            className={filter === "all" ? "pin-assignments-panel__filter pin-assignments-panel__filter--active" : "pin-assignments-panel__filter"}
+            onClick={() => setFilter("all")}
+          >
+            {`All (${summary.savedCount})`}
+          </button>
+          <button
+            type="button"
+            className={filter === "resolved" ? "pin-assignments-panel__filter pin-assignments-panel__filter--active" : "pin-assignments-panel__filter"}
+            onClick={() => setFilter("resolved")}
+          >
+            {`Resolved (${summary.resolvedCount})`}
+          </button>
+          <button
+            type="button"
+            className={filter === "unresolved" ? "pin-assignments-panel__filter pin-assignments-panel__filter--active" : "pin-assignments-panel__filter"}
+            onClick={() => setFilter("unresolved")}
+          >
+            {`Unresolved (${summary.unresolvedCount})`}
+          </button>
+        </div>
+      ) : null}
+
+      {(rows.length || summary.unresolvedCount || totalIssueCount) ? (
+        <InspectorSection
+          title="Pin readiness"
+          summary="Review unresolved selections and active pin issues here before changing assignment values or treating generated artifacts as ready."
+          actions={<DiagnosticBadge label={`${summary.unresolvedCount} unresolved`} tone={summary.unresolvedCount ? "warning" : "success"} />}
+        >
+          <div className="pin-assignments-panel__summary">
+            <div>
+              <strong>{summary.resolvedCount}</strong>
+              <span>resolved selections</span>
+            </div>
+            <div>
+              <strong>{summary.savedCount}</strong>
+              <span>saved pin entries</span>
+            </div>
+            <div>
+              <strong>{summary.unresolvedCount}</strong>
+              <span>unresolved after board match</span>
+            </div>
+            <div>
+              <strong>{totalIssueCount}</strong>
+              <span>active issues</span>
+            </div>
+          </div>
+          {(summary.unresolvedCount || totalIssueCount) ? (
+            <InspectorNotice
+              title="Pin blockers stay near the package view"
+              detail={`${summary.unresolvedCount} unresolved selection${summary.unresolvedCount === 1 ? " remains" : "s remain"} and ${totalIssueCount} active issue${totalIssueCount === 1 ? " is" : "s are"} currently affecting board handoff.`}
+              tone="warning"
+            />
+          ) : (
+            <InspectorNotice
+              title="Pin workflow is aligned"
+              detail="Use the package surface and detail editor below to adjust assignments while keeping the resolved route and issue state in view."
+              tone="info"
+            />
+          )}
+          {totalIssueCount ? (
+            <div className="pin-assignments-panel__issues" aria-label="Pin readiness issues">
+              {readinessIssuePreview.map(({ pinNumber, issue }) => (
+                <button
+                  key={issue.id}
+                  type="button"
+                  className={selectedRow?.pinNumber === pinNumber ? "pin-assignments-panel__issue pin-assignments-panel__issue--compact pin-assignments-panel__issue--selected" : "pin-assignments-panel__issue pin-assignments-panel__issue--compact"}
+                  onClick={() => selectPin(pinNumber)}
+                >
+                  <div className="pin-assignments-panel__issue-title-row">
+                    <strong>{issue.title}</strong>
+                    <span className="pin-assignments-panel__issue-pin">{`Pin ${pinNumber}`}</span>
+                  </div>
+                  <span>{issue.summary}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </InspectorSection>
+      ) : null}
+
+      {!rows.length && !packagePinNumbers.length ? (
         <EmptyState
           title="No saved pin assignments"
-          detail="Load a project file or migrate the pin editor next so the inspector can compare saved selections against board routes."
+          detail="Load a project file to restore saved pin selections for this board."
           compact
         />
       ) : null}

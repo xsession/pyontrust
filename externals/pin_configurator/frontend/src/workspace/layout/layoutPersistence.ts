@@ -1,15 +1,16 @@
 import type { WorkspaceLayoutPresetId } from "./workspaceShellPreferences";
 
 export const WORKSPACE_DOCK_LAYOUT_STORAGE_KEY_PREFIX = "pin-configurator.workspace-dock-layout";
+const WORKSPACE_DOCK_LAYOUT_STORAGE_VERSION = 5;
 
 export interface WorkspaceDockLayoutDocument {
-  version: 1;
+  version: 5;
   savedAt: string;
   layout: object;
 }
 
 export function getWorkspaceDockLayoutStorageKey(layoutPresetId: WorkspaceLayoutPresetId = "bring-up") {
-  return `${WORKSPACE_DOCK_LAYOUT_STORAGE_KEY_PREFIX}.${layoutPresetId}.v1`;
+  return `${WORKSPACE_DOCK_LAYOUT_STORAGE_KEY_PREFIX}.${layoutPresetId}.v${WORKSPACE_DOCK_LAYOUT_STORAGE_VERSION}`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -45,13 +46,13 @@ export function loadWorkspaceDockLayout(
 
   try {
     const parsed = JSON.parse(rawValue) as unknown;
-    if (!isRecord(parsed) || parsed.version !== 1 || !isRecord(parsed.layout)) {
+    if (!isRecord(parsed) || parsed.version !== WORKSPACE_DOCK_LAYOUT_STORAGE_VERSION || !isRecord(parsed.layout)) {
       resolvedStorage.removeItem(storageKey);
       return null;
     }
 
     return {
-      version: 1,
+      version: WORKSPACE_DOCK_LAYOUT_STORAGE_VERSION,
       savedAt: typeof parsed.savedAt === "string" ? parsed.savedAt : "",
       layout: parsed.layout,
     };
@@ -72,12 +73,22 @@ export function saveWorkspaceDockLayout(
   }
 
   const payload: WorkspaceDockLayoutDocument = {
-    version: 1,
+    version: WORKSPACE_DOCK_LAYOUT_STORAGE_VERSION,
     savedAt: new Date().toISOString(),
     layout,
   };
 
-  resolvedStorage.setItem(getWorkspaceDockLayoutStorageKey(layoutPresetId), JSON.stringify(payload));
+  const storageKey = getWorkspaceDockLayoutStorageKey(layoutPresetId);
+
+  try {
+    resolvedStorage.setItem(storageKey, JSON.stringify(payload));
+  } catch {
+    try {
+      resolvedStorage.removeItem(storageKey);
+    } catch {
+      // Ignore storage cleanup failures. The shell can continue without persisted dock layout.
+    }
+  }
 }
 
 export function clearWorkspaceDockLayout(

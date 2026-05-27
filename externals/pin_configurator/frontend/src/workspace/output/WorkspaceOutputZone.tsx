@@ -17,6 +17,7 @@ import { VirtualizedTreeList, type VirtualizedTreeListSection } from "../../shar
 interface WorkspaceOutputZoneProps {
   outputChannels: ShellOutputChannelViewModel[];
   activeOutputChannel: ShellOutputChannelViewModel | null;
+  compact?: boolean;
   executionWorkbench: ExecutionWorkbenchViewModel;
   followOutput: boolean;
   severityFilter: "all" | "info" | "success" | "warning" | "error";
@@ -43,6 +44,7 @@ interface WorkspaceOutputZoneProps {
 export function WorkspaceOutputZone({
   outputChannels,
   activeOutputChannel,
+  compact = false,
   executionWorkbench,
   followOutput,
   severityFilter,
@@ -127,7 +129,8 @@ export function WorkspaceOutputZone({
   }));
 
   return (
-    <div className="workspace-output-zone">
+    <div className={compact ? "workspace-output-zone workspace-output-zone--compact" : "workspace-output-zone"}>
+      {!compact ? (
       <section className="workspace-execution-workbench" aria-label="Execution workbench">
         <div className="workspace-execution-workbench__header">
           <div>
@@ -218,92 +221,108 @@ export function WorkspaceOutputZone({
           ))}
         </div>
       </section>
+      ) : null}
 
-      <div
-        className="workspace-output-zone__toolbar"
-        role="tablist"
-        aria-label="Execution output channels"
-        onKeyDown={(event) => {
-          if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
-            return;
-          }
-
-          event.preventDefault();
-          if (!outputChannels.length) {
-            return;
-          }
-
-          let nextIndex = activeTabIndex;
-          if (event.key === "ArrowRight") {
-            nextIndex = (activeTabIndex + 1) % outputChannels.length;
-          } else if (event.key === "ArrowLeft") {
-            nextIndex = (activeTabIndex - 1 + outputChannels.length) % outputChannels.length;
-          } else if (event.key === "Home") {
-            nextIndex = 0;
-          } else if (event.key === "End") {
-            nextIndex = outputChannels.length - 1;
-          }
-
-          const nextChannel = outputChannels[nextIndex];
-          if (!nextChannel) {
-            return;
-          }
-
-          onSelectChannel(nextChannel.id);
-          requestAnimationFrame(() => tabRefs.current.get(nextChannel.id)?.focus());
-        }}
-      >
-        <div className="workspace-output-zone__tabs">
-          {outputChannels.map((channel) => (
-            <button
-              key={channel.id}
-              ref={(node) => {
-                if (node) {
-                  tabRefs.current.set(channel.id, node);
-                  return;
-                }
-
-                tabRefs.current.delete(channel.id);
-              }}
-              id={`workspace-output-tab-${channel.id}`}
-              type="button"
-              role="tab"
-              aria-selected={channel.id === activeOutputChannel?.id}
-              aria-controls={`workspace-output-panel-${channel.id}`}
-              tabIndex={channel.id === activeOutputChannel?.id ? 0 : -1}
-              className={`workspace-output-zone__tab workspace-output-zone__tab--${channel.tone}`}
-              onClick={() => onSelectChannel(channel.id)}
-            >
-              <span>{channel.label}</span>
-              <StatusChip
-                label={channel.badge}
-                tone={channel.tone === "success" ? "success" : channel.tone === "warning" ? "warning" : "neutral"}
-              />
-            </button>
-          ))}
-        </div>
-        <div className="workspace-output-zone__actions">
+      {compact ? (
+        <div className="workspace-output-zone__compact-toolbar">
           <label className="workspace-output-zone__filter">
-            <span>Severity</span>
-            <select value={severityFilter} onChange={(event) => onSelectSeverityFilter(event.target.value as "all" | "info" | "success" | "warning" | "error")}>
-              <option value="all">All</option>
-              <option value="info">Info</option>
-              <option value="success">Success</option>
-              <option value="warning">Warning</option>
-              <option value="error">Error</option>
+            <span>Channel</span>
+            <select aria-label="Execution output channel" value={activeOutputChannel?.id ?? outputChannels[0]?.id ?? ""} onChange={(event) => onSelectChannel(event.target.value)}>
+              {outputChannels.map((channel) => (
+                <option key={channel.id} value={channel.id}>
+                  {channel.label}
+                </option>
+              ))}
             </select>
           </label>
-          <button type="button" className="shell-button" onClick={onToggleFollow}>
-            {followOutput ? "Follow Tail On" : "Follow Tail Off"}
-          </button>
-          <button type="button" className="shell-button" onClick={onCopyVisibleEntries}>
-            Copy Visible
-          </button>
-          <button type="button" className="shell-button" onClick={onResetView}>
-            Reset View
-          </button>
         </div>
-      </div>
+      ) : (
+        <div
+          className="workspace-output-zone__toolbar"
+          role="tablist"
+          aria-label="Execution output channels"
+          onKeyDown={(event) => {
+            if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
+              return;
+            }
+
+            event.preventDefault();
+            if (!outputChannels.length) {
+              return;
+            }
+
+            let nextIndex = activeTabIndex;
+            if (event.key === "ArrowRight") {
+              nextIndex = (activeTabIndex + 1) % outputChannels.length;
+            } else if (event.key === "ArrowLeft") {
+              nextIndex = (activeTabIndex - 1 + outputChannels.length) % outputChannels.length;
+            } else if (event.key === "Home") {
+              nextIndex = 0;
+            } else if (event.key === "End") {
+              nextIndex = outputChannels.length - 1;
+            }
+
+            const nextChannel = outputChannels[nextIndex];
+            if (!nextChannel) {
+              return;
+            }
+
+            onSelectChannel(nextChannel.id);
+            requestAnimationFrame(() => tabRefs.current.get(nextChannel.id)?.focus());
+          }}
+        >
+          <div className="workspace-output-zone__tabs">
+            {outputChannels.map((channel) => (
+              <button
+                key={channel.id}
+                ref={(node) => {
+                  if (node) {
+                    tabRefs.current.set(channel.id, node);
+                    return;
+                  }
+
+                  tabRefs.current.delete(channel.id);
+                }}
+                id={`workspace-output-tab-${channel.id}`}
+                type="button"
+                role="tab"
+                aria-selected={channel.id === activeOutputChannel?.id}
+                aria-controls={`workspace-output-panel-${channel.id}`}
+                tabIndex={channel.id === activeOutputChannel?.id ? 0 : -1}
+                className={`workspace-output-zone__tab workspace-output-zone__tab--${channel.tone}`}
+                onClick={() => onSelectChannel(channel.id)}
+              >
+                <span>{channel.label}</span>
+                <StatusChip
+                  label={channel.badge}
+                  tone={channel.tone === "success" ? "success" : channel.tone === "warning" ? "warning" : "neutral"}
+                />
+              </button>
+            ))}
+          </div>
+          <div className="workspace-output-zone__actions">
+            <label className="workspace-output-zone__filter">
+              <span>Severity</span>
+              <select value={severityFilter} onChange={(event) => onSelectSeverityFilter(event.target.value as "all" | "info" | "success" | "warning" | "error")}>
+                <option value="all">All</option>
+                <option value="info">Info</option>
+                <option value="success">Success</option>
+                <option value="warning">Warning</option>
+                <option value="error">Error</option>
+              </select>
+            </label>
+            <button type="button" className="shell-button" onClick={onToggleFollow}>
+              {followOutput ? "Follow Tail On" : "Follow Tail Off"}
+            </button>
+            <button type="button" className="shell-button" onClick={onCopyVisibleEntries}>
+              Copy Visible
+            </button>
+            <button type="button" className="shell-button" onClick={onResetView}>
+              Reset View
+            </button>
+          </div>
+        </div>
+      )}
 
       {activeOutputChannel ? (
         <div id={`workspace-output-panel-${activeOutputChannel.id}`} className="workspace-output-zone__content" role="tabpanel" aria-labelledby={`workspace-output-tab-${activeOutputChannel.id}`}>
