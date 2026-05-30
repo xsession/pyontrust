@@ -1,8 +1,62 @@
 const state = {
   appState: null,
   browser: null,
+  browserSelection: null,
+  patchInFlight: false,
+  patchStatusText: "",
+  signalFilter: "",
   roots: [],
   controlSync: false,
+  mtimePollHandle: null,
+  externalChangeDetected: false,
+};
+
+const MODE_CONTROL_PRESENTATION = {
+  "Time series": {
+    title: "Waveform workflow",
+    copy: "Inspect raw traces, align time windows, and compare selected signals directly on the active subplot.",
+    sections: [],
+  },
+  "AF-10047: Control vs Module": {
+    title: "Comparison workflow",
+    copy: "Compare control and module traces with shared timing controls and the active signal subset.",
+    sections: [],
+  },
+  Histogram: {
+    title: "Distribution workflow",
+    copy: "Tune histogram density and inspect peak bins, spread, and sample distribution across the active channels.",
+    sections: ["histogram-spectrum"],
+  },
+  Spectrum: {
+    title: "Frequency workflow",
+    copy: "Focus on dominant frequencies and magnitude peaks while shaping baseline treatment for the active signal.",
+    sections: ["histogram-spectrum"],
+  },
+  "Absolute check": {
+    title: "Absolute threshold workflow",
+    copy: "Validate signals against absolute barriers and tune guard bands for pass/fail investigations.",
+    sections: ["range-checks"],
+  },
+  "Relative change": {
+    title: "Relative delta workflow",
+    copy: "Track step-to-step change envelopes and tune differential barriers for drift or excursion analysis.",
+    sections: ["range-checks"],
+  },
+  "Custom code": {
+    title: "Derived signal workflow",
+    copy: "Author transforms over the current signal set and inspect the derived output without leaving the analyzer.",
+    sections: ["custom-code"],
+  },
+  "Detector map": {
+    title: "Spatial detector workflow",
+    copy: "Reduce channel energy into a detector grid and inspect hotspots, filled slots, and centroid movement.",
+    sections: ["detector-map"],
+  },
+  Statistics: {
+    title: "Statistics workflow",
+    copy: "Review descriptive metrics for the active signal set with minimal control noise on screen.",
+    sections: [],
+  },
 };
 
 const els = {
@@ -13,7 +67,19 @@ const els = {
   reloadBtn: document.getElementById("reload-btn"),
   saveLayoutBtn: document.getElementById("save-layout-btn"),
   loadLayoutBtn: document.getElementById("load-layout-btn"),
+  quickLoadFileBtn: document.getElementById("quick-load-file-btn"),
+  quickLoadFolderBtn: document.getElementById("quick-load-folder-btn"),
+  quickAddSubplotBtn: document.getElementById("quick-add-subplot-btn"),
+  quickExportBtn: document.getElementById("quick-export-btn"),
   datasetPill: document.getElementById("dataset-pill"),
+  healthCard: document.getElementById("health-card"),
+  healthCopy: document.getElementById("health-copy"),
+  healthPill: document.getElementById("health-pill"),
+  healthStats: document.getElementById("health-stats"),
+  summaryFile: document.getElementById("summary-file"),
+  summaryShape: document.getElementById("summary-shape"),
+  summarySelection: document.getElementById("summary-selection"),
+  summaryWindow: document.getElementById("summary-window"),
   rootsSelect: document.getElementById("roots-select"),
   openRootBtn: document.getElementById("open-root-btn"),
   browserPathInput: document.getElementById("browser-path-input"),
@@ -35,6 +101,18 @@ const els = {
   exportCombinedBtn: document.getElementById("export-combined-btn"),
   titleInput: document.getElementById("title-input"),
   modeSelect: document.getElementById("mode-select"),
+  controlStatus: document.getElementById("control-status"),
+  controlModeTitle: document.getElementById("control-mode-title"),
+  controlModeCopy: document.getElementById("control-mode-copy"),
+  controlModePill: document.getElementById("control-mode-pill"),
+  infoCurrentFile: document.getElementById("info-current-file"),
+  infoDataShape: document.getElementById("info-data-shape"),
+  infoCurrentFolder: document.getElementById("info-current-folder"),
+  autoRefreshSummary: document.getElementById("auto-refresh-summary"),
+  statusbarMessage: document.getElementById("statusbar-message"),
+  statusbarFile: document.getElementById("statusbar-file"),
+  statusbarShape: document.getElementById("statusbar-shape"),
+  statusbarFolder: document.getElementById("statusbar-folder"),
   signalsSelect: document.getElementById("signals-select"),
   xMinInput: document.getElementById("x-min-input"),
   xMaxInput: document.getElementById("x-max-input"),
@@ -62,14 +140,50 @@ const els = {
   detectorMappingInput: document.getElementById("detector-mapping-input"),
   detectorReducerInput: document.getElementById("detector-reducer-input"),
   detectorMapInput: document.getElementById("detector-map-input"),
+  signalPanelSummary: document.getElementById("signal-panel-summary"),
+  signalFilterInput: document.getElementById("signal-filter-input"),
+  signalSelectVisibleBtn: document.getElementById("signal-select-visible-btn"),
+  signalClearVisibleBtn: document.getElementById("signal-clear-visible-btn"),
+  signalList: document.getElementById("signal-list"),
   overlayPathInput: document.getElementById("overlay-path-input"),
   addOverlayBtn: document.getElementById("add-overlay-btn"),
   overlayList: document.getElementById("overlay-list"),
+  controlSections: Array.from(document.querySelectorAll("[data-control-group]")),
 };
 
-function setMessage(message, isError = false) {
-  els.messageBar.textContent = message || "";
-  els.messageBar.style.color = isError ? "#b42318" : "var(--accent-2)";
+function setMessage(message, tone = "info") {
+  if (typeof tone === "boolean") {
+    tone = tone ? "error" : "info";
+  }
+  const text = message || "";
+  const color = tone === "error"
+    ? "#b42318"
+    : tone === "warning"
+      ? "var(--yellow)"
+      : "var(--accent)";
+  els.messageBar.textContent = text;
+  els.messageBar.style.color = color;
+  els.statusbarMessage.textContent = text || "Ready";
+  els.statusbarMessage.style.color = color;
+}
+
+function pluralize(count, singular, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function setPatchBusy(isBusy, statusText = "") {
+  state.patchInFlight = isBusy;
+  state.patchStatusText = isBusy ? statusText || "Updating subplot" : "";
+  [
+    els.modeSelect,
+    els.signalsSelect,
+    els.signalSelectVisibleBtn,
+    els.signalClearVisibleBtn,
+  ].forEach((element) => {
+    element.disabled = isBusy;
+  });
+  els.signalList.classList.toggle("busy-surface", isBusy);
+  renderControlExperience(getActiveSubplot());
 }
 
 async function api(url, options = {}) {
@@ -147,12 +261,16 @@ function collectSubplotPatch() {
 async function refreshAppState() {
   state.appState = await api("/csv/api/app-state");
   renderAppState();
+  if (state.externalChangeDetected && state.appState?.mtime) {
+    state.externalChangeDetected = false;
+  }
   await refreshDetails();
 }
 
 function renderAppState() {
   const appState = state.appState;
   const active = getActiveSubplot();
+  const selectableColumns = appState?.selectable_columns || [];
 
   els.datasetPill.textContent = appState?.path ? `${appState.path} · ${appState.rows} rows` : "No file loaded";
   els.filePathInput.value = appState?.path || els.filePathInput.value;
@@ -160,11 +278,111 @@ function renderAppState() {
   els.activeTitle.textContent = active?.title || "Plot";
 
   renderModeOptions(appState?.modes || []);
-  renderSignalOptions(appState?.columns || [], active?.selected_columns || []);
+  renderSignalOptions(selectableColumns, active?.selected_columns || []);
   renderSubplots(appState?.subplots || [], appState?.active_subplot_id);
+  renderHealth(appState, active);
+  renderSummaryRibbon(appState, active);
+  renderConsoleInfo(appState, active);
+  renderControlExperience(active);
   renderControls(active);
+  renderSignalRoster(selectableColumns, active?.selected_columns || []);
   renderOverlays(active?.overlays || []);
   updateRenderImage(active);
+}
+
+function renderConsoleInfo(appState, active) {
+  const fileName = appState?.path
+    ? appState.path.split(/[/\\]/).pop()
+    : "(none)";
+  const folderName = appState?.folder || (appState?.path ? appState.path.split(/[/\\]/).slice(0, -1).join("\\") : "(none)");
+  const rows = formatCompactInteger(Number(appState?.rows || 0));
+  const cols = formatCompactInteger(Number(appState?.cols || 0));
+  const autoRefreshCopy = appState?.path
+    ? `Watching the loaded signal file for changes every 15 seconds. Active mode: ${active?.mode || "Time series"}.`
+    : "Watching the loaded signal file for changes every 15 seconds once a dataset is active.";
+
+  els.infoCurrentFile.textContent = `File: ${fileName}`;
+  els.infoDataShape.textContent = `Rows: ${rows}  Cols: ${cols}`;
+  els.infoCurrentFolder.textContent = `Folder: ${folderName}`;
+  els.autoRefreshSummary.textContent = autoRefreshCopy;
+
+  els.statusbarFile.textContent = `File: ${fileName}`;
+  els.statusbarShape.textContent = `Rows: ${rows}  Cols: ${cols}`;
+  els.statusbarFolder.textContent = `Folder: ${folderName}`;
+}
+
+function renderControlExperience(active) {
+  const mode = active?.mode || "Time series";
+  const presentation = MODE_CONTROL_PRESENTATION[mode] || MODE_CONTROL_PRESENTATION["Time series"];
+  const visibleSections = new Set(presentation.sections || []);
+
+  els.controlModeTitle.textContent = presentation.title;
+  if (state.patchInFlight) {
+    els.controlModeCopy.textContent = `${state.patchStatusText || "Updating subplot"}. Large files can take several seconds while metrics and render artifacts refresh.`;
+    els.controlModePill.textContent = "Syncing";
+    els.controlModePill.classList.add("busy");
+  } else {
+    els.controlModeCopy.textContent = presentation.copy;
+    els.controlModePill.textContent = active ? mode : "Idle";
+    els.controlModePill.classList.remove("busy");
+  }
+
+  els.controlSections.forEach((section) => {
+    const sectionKey = section.dataset.controlGroup;
+    section.classList.toggle("is-hidden", !visibleSections.has(sectionKey));
+  });
+}
+
+function renderSummaryRibbon(appState, active) {
+  const path = appState?.path || "No file loaded";
+  const fileName = path.includes("\\") || path.includes("/") ? path.split(/[/\\]/).pop() : path;
+  const rows = Number(appState?.rows || 0);
+  const cols = Number(appState?.cols || 0);
+  const selectedSignals = active?.selected_columns?.length || 0;
+  const overlays = active?.overlays?.length || 0;
+  const xWindow = Array.isArray(active?.x_window) && active.x_window.length === 2
+    ? `${formatMetricValue(active.x_window[0])} to ${formatMetricValue(active.x_window[1])}`
+    : "Full span";
+  els.summaryFile.textContent = fileName || "No file loaded";
+  els.summaryFile.title = path;
+  els.summaryShape.textContent = `${formatCompactInteger(rows)} rows · ${formatCompactInteger(cols)} cols`;
+  els.summarySelection.textContent = active
+    ? `${active.mode} · ${selectedSignals} signal${selectedSignals === 1 ? "" : "s"} · ${overlays} overlay${overlays === 1 ? "" : "s"}`
+    : "No subplot active";
+  els.summaryWindow.textContent = xWindow;
+}
+
+function renderHealth(appState, active) {
+  const rows = Number(appState?.rows || 0);
+  const columnCount = Array.isArray(appState?.selectable_columns) ? appState.selectable_columns.length : 0;
+  const selectedSignals = active?.selected_columns?.length || 0;
+  const overlayCount = active?.overlays?.length || 0;
+  const ready = Boolean(appState?.path) && selectedSignals > 0;
+  const copy = !appState?.path
+    ? "Load a signal file to activate subplot analysis, overlays, and export surfaces."
+    : ready
+      ? `Active mode ${active?.mode || "Time series"} is ready with ${selectedSignals} selected signal${selectedSignals === 1 ? "" : "s"}.`
+      : "The active subplot has no selected signals yet. Choose one or more signal columns to render and export.";
+
+  els.healthCard.className = `config-health-card ${ready ? "ok" : "alert"}`;
+  els.healthPill.className = `config-health-pill ${ready ? "ok" : "alert"}`;
+  els.healthPill.textContent = ready ? "Clean" : appState?.path ? "Needs input" : "Idle";
+  els.healthCopy.textContent = copy;
+  els.healthStats.innerHTML = [
+    { value: rows || "-", label: "Rows" },
+    { value: columnCount || "-", label: "Signals" },
+    { value: active?.mode || "-", label: "Mode" },
+    { value: overlayCount, label: "Overlays" },
+  ]
+    .map(
+      (item) => `
+        <div class="config-health-stat">
+          <strong>${item.value}</strong>
+          <span>${item.label}</span>
+        </div>
+      `
+    )
+    .join("");
 }
 
 function renderModeOptions(modes) {
@@ -174,9 +392,41 @@ function renderModeOptions(modes) {
   els.modeSelect.innerHTML = modes.map((mode) => `<option value="${mode}">${mode}</option>`).join("");
 }
 
+function renderSignalRoster(columns, selected) {
+  const signals = columns.filter((column) => column !== "Timestamp");
+  const selectedSet = new Set(selected || []);
+  const filterText = state.signalFilter.trim().toLowerCase();
+  const visibleSignals = filterText
+    ? signals.filter((signal) => signal.toLowerCase().includes(filterText))
+    : signals;
+  els.signalFilterInput.value = state.signalFilter;
+  els.signalPanelSummary.textContent = `${selectedSet.size}/${signals.length} selected · ${visibleSignals.length} visible`;
+  if (!signals.length) {
+    els.signalList.innerHTML = '<div class="overlay-item"><div class="overlay-meta">Load a dataset to inspect available numeric channels.</div></div>';
+    return;
+  }
+  if (!visibleSignals.length) {
+    els.signalList.innerHTML = '<div class="signal-empty">No signals match the current filter.</div>';
+    return;
+  }
+  els.signalList.innerHTML = visibleSignals
+    .map(
+      (signal) => `
+        <button class="signal-row ${selectedSet.has(signal) ? "active" : ""}" type="button" data-signal-name="${signal}">
+          <span class="signal-row-index">${String(signals.indexOf(signal) + 1).padStart(2, "0")}</span>
+          <span class="signal-row-copy">
+            <strong>${signal}</strong>
+            <span>${selectedSet.has(signal) ? "Included in active subplot" : "Available channel"}</span>
+          </span>
+          <span class="signal-row-state">${selectedSet.has(signal) ? "ON" : "OFF"}</span>
+        </button>
+      `
+    )
+    .join("");
+}
+
 function renderSignalOptions(columns, selected) {
   els.signalsSelect.innerHTML = columns
-    .filter((column) => column !== "Timestamp")
     .map((column) => `<option value="${column}">${column}</option>`)
     .join("");
   Array.from(els.signalsSelect.options).forEach((option) => {
@@ -184,13 +434,60 @@ function renderSignalOptions(columns, selected) {
   });
 }
 
+function visibleSignalNames() {
+  const signals = state.appState?.selectable_columns || [];
+  const filterText = state.signalFilter.trim().toLowerCase();
+  return filterText
+    ? signals.filter((signal) => signal.toLowerCase().includes(filterText))
+    : signals;
+}
+
+function formatWindowSummary(windowRange) {
+  if (!Array.isArray(windowRange) || windowRange.length !== 2) {
+    return "Window: full span";
+  }
+  return `Window: ${formatMetricValue(windowRange[0])} to ${formatMetricValue(windowRange[1])}`;
+}
+
+async function updateVisibleSignalSelection(selectVisible) {
+  const visible = new Set(visibleSignalNames());
+  if (!visible.size) {
+    setMessage("No visible signals matched the current filter", "warning");
+    return;
+  }
+  Array.from(els.signalsSelect.options).forEach((option) => {
+    if (!visible.has(option.value)) {
+      return;
+    }
+    option.selected = selectVisible;
+  });
+  await patchActiveSubplot(selectVisible ? "Including visible signals" : "Clearing visible signals");
+  setMessage(`${selectVisible ? "Included" : "Cleared"} ${pluralize(visible.size, "visible signal")} from the active subplot`);
+}
+
 function renderSubplots(subplots, activeId) {
   els.subplotTabs.innerHTML = subplots
     .map(
       (subplot) => `
         <button class="subplot-tab ${subplot.id === activeId ? "active" : ""}" type="button" data-subplot-id="${subplot.id}">
-          <strong>${subplot.title}</strong>
-          <div class="subplot-mode">${subplot.mode}</div>
+          <div class="subplot-tab-head">
+            <div>
+              <div class="subplot-title">${subplot.title}</div>
+              <div class="subplot-mode">${subplot.mode}</div>
+            </div>
+            ${subplot.id === activeId ? '<span class="subplot-active-pill">Active</span>' : ""}
+          </div>
+          <div class="subplot-summary-grid">
+            <div class="subplot-stat">
+              <span class="subplot-stat-label">Signals</span>
+              <span class="subplot-stat-value">${subplot.selected_columns?.length || 0}</span>
+            </div>
+            <div class="subplot-stat">
+              <span class="subplot-stat-label">Overlays</span>
+              <span class="subplot-stat-value">${subplot.overlays?.length || 0}</span>
+            </div>
+          </div>
+          <div class="subplot-window">${formatWindowSummary(subplot.x_window)}</div>
         </button>
       `
     )
@@ -246,7 +543,7 @@ function renderOverlays(overlays) {
         <div class="overlay-item" data-overlay-index="${overlay.index}">
           <header>
             <strong>${overlay.label}</strong>
-            <button type="button" data-action="remove-overlay">Remove</button>
+            <button class="btn" type="button" data-action="remove-overlay">Remove</button>
           </header>
           <div class="overlay-meta">${overlay.path}</div>
           <div class="form-grid compact">
@@ -349,20 +646,212 @@ function renderMetricsCards(metrics) {
   if (!entries.length) {
     return '<div class="empty-state">No metric data is available for the current selection.</div>';
   }
-  return `<div class="kv-grid">${entries
-    .map(
-      ([name, value]) => `
-        <div class="kv-card">
-          <strong>${name}</strong>
-          <div>min ${formatMetricValue(value.min)}</div>
-          <div>max ${formatMetricValue(value.max)}</div>
-          <div>avg ${formatMetricValue(value.avg)}</div>
-          <div>std ${formatMetricValue(value.std)}</div>
-          <div>freq ${formatMetricValue(value.freq)}</div>
-        </div>
-      `
-    )
-    .join("")}</div>`;
+  return `
+    <div class="detail-stack">
+      <div class="kv-grid">
+        <div class="kv-card"><strong>Signals</strong><div>${entries.length}</div></div>
+        <div class="kv-card"><strong>Rows</strong><div>${formatCompactInteger(Number(state.appState?.rows || 0))}</div></div>
+        <div class="kv-card"><strong>Timestamp Scale</strong><div>${formatMetricValue(state.appState?.timestamp_scale ?? 1)}</div></div>
+      </div>
+      <div class="table-wrap">
+        <table class="stats-table metrics-table">
+          <thead>
+            <tr><th>Signal</th><th>Min</th><th>Max</th><th>Avg</th><th>Std</th><th>RMS</th><th>Freq</th></tr>
+          </thead>
+          <tbody>
+            ${entries
+              .map(
+                ([name, value]) => `
+                  <tr>
+                    <td>${name}</td>
+                    <td>${formatMetricValue(value.min)}</td>
+                    <td>${formatMetricValue(value.max)}</td>
+                    <td>${formatMetricValue(value.avg)}</td>
+                    <td>${formatMetricValue(value.std)}</td>
+                    <td>${formatMetricValue(value.rms)}</td>
+                    <td>${formatMetricValue(value.freq)}</td>
+                  </tr>
+                `
+              )
+              .join("")}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function formatSummaryNumber(value, digits = 3) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return "-";
+  }
+  return Math.abs(numeric) >= 1000
+    ? formatCompactInteger(numeric)
+    : numeric.toFixed(digits).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1");
+}
+
+function maxSeriesSamples(seriesList) {
+  return (seriesList || []).reduce((maxValue, series) => {
+    const samples = Array.isArray(series?.x)
+      ? series.x.length
+      : Array.isArray(series?.centers)
+        ? series.centers.length
+        : Array.isArray(series?.y)
+          ? series.y.length
+          : 0;
+    return Math.max(maxValue, samples);
+  }, 0);
+}
+
+function renderSummaryCards(items) {
+  return `
+    <div class="kv-grid">
+      ${items
+        .map(
+          (item) => `
+            <div class="kv-card">
+              <strong>${item.label}</strong>
+              <div>${item.value}</div>
+            </div>
+          `
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function renderDetectorDetails(payload) {
+  const matrix = Array.isArray(payload.matrix) ? payload.matrix : [];
+  const flatCells = matrix.flatMap((row, rowIndex) =>
+    (Array.isArray(row) ? row : []).map((value, colIndex) => ({ rowIndex, colIndex, value: Number(value) }))
+  );
+  const filledCells = flatCells.filter((cell) => Number.isFinite(cell.value));
+  const hottestCell = filledCells.reduce((best, cell) => {
+    if (!best || cell.value > best.value) {
+      return cell;
+    }
+    return best;
+  }, null);
+  const latestCentroid = Array.isArray(payload.centroids) && payload.centroids.length
+    ? payload.centroids[payload.centroids.length - 1]
+    : null;
+  return `
+    <div class="detail-stack">
+      ${renderSummaryCards([
+        { label: "Grid", value: `${payload.rows} x ${payload.cols}` },
+        { label: "Filled Slots", value: `${filledCells.length}` },
+        { label: "Mapping", value: payload.mapping || "-" },
+        { label: "Reducer", value: payload.reducer || "-" },
+        {
+          label: "Hottest Cell",
+          value: hottestCell ? `R${hottestCell.rowIndex + 1} C${hottestCell.colIndex + 1} · ${formatSummaryNumber(hottestCell.value)}` : "-",
+        },
+        {
+          label: "Latest Centroid",
+          value: latestCentroid
+            ? `${formatSummaryNumber(latestCentroid.x, 2)}, ${formatSummaryNumber(latestCentroid.y, 2)} · E ${formatSummaryNumber(latestCentroid.energy, 2)}`
+            : "-",
+        },
+      ])}
+      <pre>${JSON.stringify(payload.matrix, null, 2)}</pre>
+    </div>
+  `;
+}
+
+function renderHistogramDetails(payload) {
+  const seriesList = Array.isArray(payload.series) ? payload.series : [];
+  const peakBin = seriesList.reduce((best, series) => {
+    const counts = Array.isArray(series.counts) ? series.counts : [];
+    const centers = Array.isArray(series.centers) ? series.centers : [];
+    counts.forEach((count, index) => {
+      const numericCount = Number(count);
+      if (!Number.isFinite(numericCount)) {
+        return;
+      }
+      if (!best || numericCount > best.count) {
+        best = {
+          label: series.label || "series",
+          count: numericCount,
+          center: Number(centers[index]),
+        };
+      }
+    });
+    return best;
+  }, null);
+  return renderSummaryCards([
+    { label: "Series", value: `${seriesList.length}` },
+    { label: "Max Samples", value: formatCompactInteger(maxSeriesSamples(seriesList)) },
+    {
+      label: "Peak Bin",
+      value: peakBin ? `${peakBin.label} @ ${formatSummaryNumber(peakBin.center, 2)}` : "-",
+    },
+    {
+      label: "Peak Count",
+      value: peakBin ? formatCompactInteger(peakBin.count) : "-",
+    },
+  ]);
+}
+
+function renderSpectrumDetails(payload) {
+  const seriesList = Array.isArray(payload.series) ? payload.series : [];
+  const peakPoint = seriesList.reduce((best, series) => {
+    const frequencies = Array.isArray(series.x) ? series.x : [];
+    const magnitudes = Array.isArray(series.y) ? series.y : [];
+    magnitudes.forEach((magnitude, index) => {
+      const numericMagnitude = Number(magnitude);
+      if (!Number.isFinite(numericMagnitude)) {
+        return;
+      }
+      if (!best || numericMagnitude > best.magnitude) {
+        best = {
+          label: series.label || "series",
+          magnitude: numericMagnitude,
+          frequency: Number(frequencies[index]),
+        };
+      }
+    });
+    return best;
+  }, null);
+  return renderSummaryCards([
+    { label: "Series", value: `${seriesList.length}` },
+    { label: "Max Samples", value: formatCompactInteger(maxSeriesSamples(seriesList)) },
+    {
+      label: "Peak Frequency",
+      value: peakPoint ? `${formatSummaryNumber(peakPoint.frequency, 2)} Hz` : "-",
+    },
+    {
+      label: "Peak Magnitude",
+      value: peakPoint ? `${peakPoint.label} · ${formatSummaryNumber(peakPoint.magnitude, 4)}` : "-",
+    },
+  ]);
+}
+
+function renderLineModeSummary(payload, seriesCount, barrierCount) {
+  const seriesList = Array.isArray(payload.series) ? payload.series : [];
+  const peakSeries = seriesList.reduce((best, series) => {
+    const yValues = Array.isArray(series.y) ? series.y : [];
+    yValues.forEach((value) => {
+      const numericValue = Number(value);
+      if (!Number.isFinite(numericValue)) {
+        return;
+      }
+      if (!best || Math.abs(numericValue) > Math.abs(best.value)) {
+        best = { label: series.label || "series", value: numericValue };
+      }
+    });
+    return best;
+  }, null);
+  return renderSummaryCards([
+    { label: "Kind", value: payload.kind || "plot" },
+    { label: "Series", value: `${seriesCount}` },
+    { label: "Barriers", value: `${barrierCount}` },
+    { label: "Max Samples", value: formatCompactInteger(maxSeriesSamples(seriesList)) },
+    {
+      label: "Peak Response",
+      value: peakSeries ? `${peakSeries.label} · ${formatSummaryNumber(peakSeries.value, 4)}` : "-",
+    },
+  ]);
 }
 
 function renderPayloadDetails(payload) {
@@ -370,39 +859,104 @@ function renderPayloadDetails(payload) {
     return `<div class="kv-card"><strong>Custom code error</strong><div>${payload.error}</div></div>`;
   }
   if (payload.kind === "detector") {
-    return `
-      <div class="kv-grid">
-        <div class="kv-card"><strong>Grid</strong><div>${payload.rows} x ${payload.cols}</div></div>
-        <div class="kv-card"><strong>Reducer</strong><div>${payload.reducer}</div></div>
-        <div class="kv-card"><strong>Centroids</strong><div>${(payload.centroids || []).length}</div></div>
-      </div>
-      <pre>${JSON.stringify(payload.matrix, null, 2)}</pre>
-    `;
+    return renderDetectorDetails(payload);
   }
   const seriesCount = Array.isArray(payload.series) ? payload.series.length : 0;
   const barrierCount = Array.isArray(payload.barriers) ? payload.barriers.length : 0;
+  const rows = Array.isArray(payload.series)
+    ? payload.series.map((series) => {
+        const samples = Array.isArray(series.x)
+          ? series.x.length
+          : Array.isArray(series.centers)
+            ? series.centers.length
+            : Array.isArray(series.y)
+              ? series.y.length
+              : 0;
+        return `
+          <tr>
+            <td>${series.label || "series"}</td>
+            <td>${samples}</td>
+            <td>${Array.isArray(series.counts) ? "hist" : payload.kind || "plot"}</td>
+          </tr>
+        `;
+      }).join("")
+    : "";
+  let summaryMarkup = renderSummaryCards([
+    { label: "Kind", value: payload.kind || "plot" },
+    { label: "Series", value: `${seriesCount}` },
+    { label: "Barriers", value: `${barrierCount}` },
+  ]);
+  if (payload.kind === "histogram") {
+    summaryMarkup = renderHistogramDetails(payload);
+  } else if (payload.kind === "spectrum") {
+    summaryMarkup = renderSpectrumDetails(payload);
+  } else if (["abs", "rel", "custom"].includes(payload.kind)) {
+    summaryMarkup = renderLineModeSummary(payload, seriesCount, barrierCount);
+  }
   return `
-    <div class="kv-grid">
-      <div class="kv-card"><strong>Kind</strong><div>${payload.kind || "plot"}</div></div>
-      <div class="kv-card"><strong>Series</strong><div>${seriesCount}</div></div>
-      <div class="kv-card"><strong>Barriers</strong><div>${barrierCount}</div></div>
+    <div class="detail-stack">
+      ${summaryMarkup}
+      <div class="table-wrap">
+        <table class="stats-table payload-table">
+          <thead><tr><th>Series</th><th>Samples</th><th>Type</th></tr></thead>
+          <tbody>${rows || '<tr><td colspan="3">No derived series available</td></tr>'}</tbody>
+        </table>
+      </div>
     </div>
   `;
 }
 
-async function patchActiveSubplot() {
-  if (state.controlSync) {
+function formatCompactInteger(value) {
+  const numeric = Number(value || 0);
+  if (!Number.isFinite(numeric)) {
+    return "-";
+  }
+  return new Intl.NumberFormat().format(numeric);
+}
+
+async function patchActiveSubplot(statusText = "Updating subplot") {
+  if (state.controlSync || state.patchInFlight) {
     return;
   }
   const active = getActiveSubplot();
   if (!active) {
     return;
   }
-  await api(`/csv/api/subplots/${active.id}`, {
-    method: "PATCH",
-    body: collectSubplotPatch(),
-  });
-  await refreshAppState();
+  setPatchBusy(true, statusText);
+  try {
+    await api(`/csv/api/subplots/${active.id}`, {
+      method: "PATCH",
+      body: collectSubplotPatch(),
+    });
+    await refreshAppState();
+  } finally {
+    setPatchBusy(false);
+  }
+}
+
+async function pollForExternalChanges() {
+  if (!state.appState?.path) {
+    state.externalChangeDetected = false;
+    return;
+  }
+  try {
+    const response = await api("/csv/api/csv/check-mtime");
+    if (response?.changed && !state.externalChangeDetected) {
+      state.externalChangeDetected = true;
+      setMessage("Source file changed on disk. Click Reload to refresh the analyzer.", "warning");
+    }
+  } catch (_unused) {
+    // Ignore transient polling failures; explicit user actions will surface errors.
+  }
+}
+
+function ensureMtimePolling() {
+  if (state.mtimePollHandle !== null) {
+    return;
+  }
+  state.mtimePollHandle = window.setInterval(() => {
+    void pollForExternalChanges();
+  }, 15000);
 }
 
 async function browsePath(path) {
@@ -417,11 +971,48 @@ async function browsePath(path) {
 function renderBrowser() {
   const browser = state.browser;
   els.foldersList.innerHTML = (browser?.folders || [])
-    .map((item) => `<button type="button" class="browser-item" data-folder-path="${item.path}">${item.name}</button>`)
+    .map(
+      (item) => `
+        <button type="button" class="browser-item ${state.browserSelection === item.path ? "active" : ""}" data-folder-path="${item.path}">
+          <span class="browser-item-name">${item.name}</span>
+          <span class="browser-item-meta">Folder</span>
+        </button>
+      `
+    )
     .join("");
   els.filesList.innerHTML = (browser?.files || [])
-    .map((item) => `<button type="button" class="browser-item" data-file-path="${item.path}">${item.name}</button>`)
+    .map(
+      (item) => `
+        <button type="button" class="browser-item ${state.browserSelection === item.path ? "active" : ""}" data-file-path="${item.path}">
+          <span class="browser-item-name">${item.name}</span>
+          <span class="browser-item-meta">${formatFileSize(item.size)} · ${formatDateTime(item.mtime)}</span>
+        </button>
+      `
+    )
     .join("");
+}
+
+function formatFileSize(bytes) {
+  const value = Number(bytes || 0);
+  if (!Number.isFinite(value) || value <= 0) {
+    return "0 B";
+  }
+  const units = ["B", "KB", "MB", "GB"];
+  let unitIndex = 0;
+  let size = value;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  return `${size.toFixed(size >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
+function formatDateTime(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return "unknown";
+  }
+  return new Date(numeric * 1000).toLocaleString();
 }
 
 async function loadRoots() {
@@ -440,6 +1031,12 @@ async function loadFolder(path) {
   await api("/csv/api/csv/load-folder", { method: "POST", body: { folder: path } });
   await refreshAppState();
   setMessage(`Loaded newest supported file from ${path}`);
+}
+
+async function createSubplot() {
+  const response = await api("/csv/api/subplots", { method: "POST" });
+  await refreshAppState();
+  setMessage(`Created ${response?.subplot?.title || "a new subplot"}`);
 }
 
 async function addOverlay() {
@@ -507,6 +1104,26 @@ async function downloadBlob(url, options, fallbackName) {
 }
 
 function bindEvents() {
+  els.quickLoadFileBtn.addEventListener("click", () => {
+    els.filePathInput.focus();
+    els.filePathInput.select();
+  });
+
+  els.quickLoadFolderBtn.addEventListener("click", () => {
+    els.folderPathInput.focus();
+    els.folderPathInput.select();
+  });
+
+  els.quickAddSubplotBtn.addEventListener("click", () => {
+    void createSubplot().catch((error) => {
+      setMessage(error.message, true);
+    });
+  });
+
+  els.quickExportBtn.addEventListener("click", () => {
+    els.exportCombinedBtn.click();
+  });
+
   els.loadFileBtn.addEventListener("click", async () => {
     try {
       await loadFile(els.filePathInput.value.trim());
@@ -566,6 +1183,7 @@ function bindEvents() {
       return;
     }
     try {
+      state.browserSelection = button.dataset.folderPath;
       await browsePath(button.dataset.folderPath);
     } catch (error) {
       setMessage(error.message, true);
@@ -578,8 +1196,50 @@ function bindEvents() {
       return;
     }
     const path = button.dataset.filePath;
+    state.browserSelection = path;
     els.filePathInput.value = path;
     els.overlayPathInput.value = path;
+    renderBrowser();
+  });
+
+  els.signalList.addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-signal-name]");
+    if (!button) {
+      return;
+    }
+    const signalName = button.dataset.signalName;
+    const option = Array.from(els.signalsSelect.options).find((candidate) => candidate.value === signalName);
+    if (!option) {
+      return;
+    }
+    option.selected = !option.selected;
+    try {
+      await patchActiveSubplot(`Updating signal ${signalName}`);
+      setMessage(`${option.selected ? "Enabled" : "Removed"} signal ${signalName} in the active subplot`);
+    } catch (error) {
+      setMessage(error.message, true);
+    }
+  });
+
+  els.signalFilterInput.addEventListener("input", () => {
+    state.signalFilter = els.signalFilterInput.value;
+    renderSignalRoster(state.appState?.selectable_columns || [], getActiveSubplot()?.selected_columns || []);
+  });
+
+  els.signalSelectVisibleBtn.addEventListener("click", async () => {
+    try {
+      await updateVisibleSignalSelection(true);
+    } catch (error) {
+      setMessage(error.message, true);
+    }
+  });
+
+  els.signalClearVisibleBtn.addEventListener("click", async () => {
+    try {
+      await updateVisibleSignalSelection(false);
+    } catch (error) {
+      setMessage(error.message, true);
+    }
   });
 
   els.subplotTabs.addEventListener("click", async (event) => {
@@ -592,6 +1252,7 @@ function bindEvents() {
       state.appState.active_subplot_id = button.dataset.subplotId;
       renderAppState();
       await refreshDetails();
+      setMessage(`Switched to ${button.querySelector(".subplot-title")?.textContent || button.dataset.subplotId}`);
     } catch (error) {
       setMessage(error.message, true);
     }
@@ -599,8 +1260,7 @@ function bindEvents() {
 
   els.addSubplotBtn.addEventListener("click", async () => {
     try {
-      await api("/csv/api/subplots", { method: "POST" });
-      await refreshAppState();
+      await createSubplot();
     } catch (error) {
       setMessage(error.message, true);
     }
@@ -612,8 +1272,28 @@ function bindEvents() {
       return;
     }
     try {
+      const deletedTitle = active.title;
       await api(`/csv/api/subplots/${active.id}`, { method: "DELETE" });
       await refreshAppState();
+      setMessage(`Deleted ${deletedTitle}`);
+    } catch (error) {
+      setMessage(error.message, true);
+    }
+  });
+
+  els.modeSelect.addEventListener("change", async () => {
+    try {
+      await patchActiveSubplot(`Switching to ${els.modeSelect.value}`);
+      setMessage(`Mode set to ${els.modeSelect.value}`);
+    } catch (error) {
+      setMessage(error.message, true);
+    }
+  });
+
+  els.signalsSelect.addEventListener("change", async () => {
+    try {
+      await patchActiveSubplot("Refreshing signal selection");
+      setMessage(`Active subplot now tracks ${pluralize(els.signalsSelect.selectedOptions.length, "signal")}`);
     } catch (error) {
       setMessage(error.message, true);
     }
@@ -621,8 +1301,6 @@ function bindEvents() {
 
   [
     els.titleInput,
-    els.modeSelect,
-    els.signalsSelect,
     els.xMinInput,
     els.xMaxInput,
     els.yMinInput,
@@ -653,7 +1331,7 @@ function bindEvents() {
     const eventName = element.tagName === "SELECT" || element.type === "checkbox" ? "change" : "input";
     element.addEventListener(eventName, async () => {
       try {
-        await patchActiveSubplot();
+        await patchActiveSubplot("Updating analysis parameters");
       } catch (error) {
         setMessage(error.message, true);
       }
@@ -663,6 +1341,7 @@ function bindEvents() {
   els.addOverlayBtn.addEventListener("click", async () => {
     try {
       await addOverlay();
+      setMessage(`Added overlay ${els.overlayPathInput.value.trim()}`);
     } catch (error) {
       setMessage(error.message, true);
     }
@@ -696,6 +1375,7 @@ function bindEvents() {
     const value = event.target.type === "checkbox" ? event.target.checked : Number(event.target.value || 0);
     try {
       await updateOverlay(Number(container.dataset.overlayIndex), field, value);
+      setMessage(`Updated overlay ${field}`);
     } catch (error) {
       setMessage(error.message, true);
     }
@@ -716,6 +1396,7 @@ function bindEvents() {
         },
         `export.${els.exportDataFormat.value}`
       );
+      setMessage(`Exported active selection as ${els.exportDataFormat.value.toUpperCase()}`);
     } catch (error) {
       setMessage(error.message, true);
     }
@@ -732,6 +1413,7 @@ function bindEvents() {
         },
         "csv_plotter_combined.png"
       );
+      setMessage("Exported combined workspace image");
     } catch (error) {
       setMessage(error.message, true);
     }
@@ -743,6 +1425,7 @@ function bindEvents() {
       return;
     }
     window.open(`/csv/api/subplots/${active.id}/render?fmt=png&width=1600&height=900&t=${Date.now()}`, "_blank", "noopener");
+    setMessage(`Opened render for ${active.title}`);
   });
 
   els.saveLayoutBtn.addEventListener("click", async () => {
@@ -755,7 +1438,7 @@ function bindEvents() {
           browser_path: state.browser?.path || els.browserPathInput.value.trim(),
         },
       });
-      setMessage("Layout saved");
+      setMessage(`Layout saved with ${pluralize((state.appState?.subplots || []).length, "subplot")}`);
     } catch (error) {
       setMessage(error.message, true);
     }
@@ -771,7 +1454,7 @@ function bindEvents() {
       if (layout?.browser_path) {
         await browsePath(layout.browser_path);
       }
-      setMessage("Layout loaded");
+      setMessage(`Layout loaded with ${pluralize((layout?.subplots || []).length, "subplot")}`);
     } catch (error) {
       setMessage(error.message, true);
     }
@@ -780,6 +1463,7 @@ function bindEvents() {
 
 async function init() {
   bindEvents();
+  ensureMtimePolling();
   try {
     await loadRoots();
     await refreshAppState();

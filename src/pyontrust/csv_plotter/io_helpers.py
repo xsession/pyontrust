@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import importlib
 import json
 import os
@@ -289,6 +290,50 @@ def write_dataframe_export(df: pd.DataFrame, out_path: str | Path, fmt: str) -> 
         save_tdms_export(out_path_str, build_export_payload(df))
         return
     raise ValueError(f"Unsupported export format: {fmt}")
+
+
+def export_dataframe_bytes(df: pd.DataFrame, fmt: str) -> bytes:
+    fmt_norm = str(fmt or "").strip().lower()
+
+    if fmt_norm == "csv":
+        return df.to_csv(index=False).encode("utf-8")
+    if fmt_norm == "txt":
+        return df.to_csv(index=False, sep="\t").encode("utf-8")
+    if fmt_norm == "json":
+        return df.to_json(orient="records", indent=2).encode("utf-8")
+    if fmt_norm in {"jsonl", "ndjson"}:
+        return df.to_json(orient="records", lines=True).encode("utf-8")
+    if fmt_norm == "parquet":
+        ensure_optional_dependency("pyarrow", "pyarrow", package_spec="pyarrow>=12.0", purpose="Parquet export")
+        buffer = io.BytesIO()
+        df.to_parquet(buffer, index=False)
+        return buffer.getvalue()
+    if fmt_norm == "feather":
+        ensure_optional_dependency("pyarrow", "pyarrow", package_spec="pyarrow>=12.0", purpose="Feather export")
+        buffer = io.BytesIO()
+        df.reset_index(drop=True).to_feather(buffer)
+        return buffer.getvalue()
+    if fmt_norm == "xlsx":
+        ensure_optional_dependency("openpyxl", "openpyxl", package_spec="openpyxl>=3.1", purpose="Excel export")
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+            df.to_excel(writer, index=False)
+        return buffer.getvalue()
+    if fmt_norm == "npz":
+        buffer = io.BytesIO()
+        np.savez(buffer, **build_export_payload(df))
+        return buffer.getvalue()
+    if fmt_norm == "mat":
+        scipy_io = ensure_optional_dependency(
+            "scipy.io",
+            "scipy",
+            package_spec="scipy>=1.10",
+            purpose="MATLAB MAT export",
+        )
+        buffer = io.BytesIO()
+        scipy_io.savemat(buffer, build_export_payload(df))
+        return buffer.getvalue()
+    raise NotImplementedError(f"Export format requires filesystem-backed export: {fmt}")
 
 
 def format_window_bound_for_filename(value: object) -> str:

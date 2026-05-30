@@ -3,6 +3,7 @@ from __future__ import annotations
 from .io_helpers import (
     cli_base_path,
     default_cli_output_stem,
+    export_dataframe_bytes,
     find_newest_signal_file,
     format_window_bound_for_filename,
     is_supported_signal_path,
@@ -64,6 +65,7 @@ __all__ = [
     "cli_base_path",
     "default_selected_columns",
     "default_cli_output_stem",
+    "export_dataframe_bytes",
     "find_newest_signal_file",
     "format_window_bound_for_filename",
     "is_supported_signal_path",

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CSV Plotter</title>
+  <title>CSV Data Analyzer</title>
   <link rel="stylesheet" href="/csv/static/app.css">
 </head>
 <body>
@@ -11,12 +11,12 @@
     <header class="topbar">
       <div>
         <p class="eyebrow">pyontrust</p>
-        <h1>CSV Plotter</h1>
+        <h1>CSV Data Analyzer</h1>
       </div>
       <div class="topbar-actions">
-        <button id="save-layout-btn" type="button">Save layout</button>
-        <button id="load-layout-btn" type="button">Load layout</button>
-        <button id="reload-btn" type="button">Reload</button>
+        <button id="save-layout-btn" class="btn" type="button">Save layout</button>
+        <button id="load-layout-btn" class="btn" type="button">Load layout</button>
+        <button id="reload-btn" class="btn btn-accent" type="button">Reload</button>
       </div>
     </header>
 
@@ -25,28 +25,60 @@
         <span>Signal file</span>
         <input id="file-path-input" type="text" placeholder="C:\\data\\capture.csv">
       </label>
-      <button id="load-file-btn" type="button">Load file</button>
+      <button id="load-file-btn" class="btn btn-accent" type="button">Load file</button>
       <label>
         <span>Folder</span>
         <input id="folder-path-input" type="text" placeholder="C:\\data\\runs">
       </label>
-      <button id="load-folder-btn" type="button">Load newest</button>
+      <button id="load-folder-btn" class="btn" type="button">Load newest</button>
       <div class="status-pill" id="dataset-pill">No file loaded</div>
+    </section>
+
+    <section class="health-panel">
+      <div id="health-card" class="config-health-card ok">
+        <div class="config-health-head">
+          <div>
+            <div class="config-health-title">Configuration Health</div>
+            <div id="health-copy" class="config-health-copy">Load a signal file to activate subplot analysis and exports.</div>
+          </div>
+          <div id="health-pill" class="config-health-pill ok">Idle</div>
+        </div>
+        <div id="health-stats" class="config-health-stats"></div>
+      </div>
+    </section>
+
+    <section class="analysis-ribbon">
+      <div class="summary-card">
+        <div class="summary-card-label">Dataset</div>
+        <div id="summary-file" class="summary-card-value">No file loaded</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-card-label">Shape</div>
+        <div id="summary-shape" class="summary-card-value">0 rows · 0 cols</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-card-label">Active Selection</div>
+        <div id="summary-selection" class="summary-card-value">No subplot active</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-card-label">Analysis Window</div>
+        <div id="summary-window" class="summary-card-value">Full span</div>
+      </div>
     </section>
 
     <main class="workspace-grid">
       <aside class="card browser-panel">
         <div class="section-head">
           <h2>Browser</h2>
-          <button id="browse-up-btn" type="button">Up</button>
+          <button id="browse-up-btn" class="btn" type="button">Up</button>
         </div>
         <div class="browser-path-row">
           <select id="roots-select"></select>
-          <button id="open-root-btn" type="button">Open</button>
+          <button id="open-root-btn" class="btn" type="button">Open</button>
         </div>
         <div class="browser-path-row">
           <input id="browser-path-input" type="text" placeholder="Browse path">
-          <button id="browse-path-btn" type="button">Go</button>
+          <button id="browse-path-btn" class="btn" type="button">Go</button>
         </div>
         <div class="browser-columns">
           <div>
@@ -63,10 +95,13 @@
       <section class="main-panel">
         <div class="card subplot-strip">
           <div class="section-head">
-            <h2>Subplots</h2>
+            <div>
+              <h2>Selectors</h2>
+              <div class="panel-summary">Per-plot selector stack for mode, signal, window, and overlay context</div>
+            </div>
             <div class="inline-actions">
-              <button id="add-subplot-btn" type="button">Add subplot</button>
-              <button id="delete-subplot-btn" type="button">Delete active</button>
+              <button id="add-subplot-btn" class="btn" type="button">Add subplot</button>
+              <button id="delete-subplot-btn" class="btn" type="button">Delete active</button>
             </div>
           </div>
           <div id="subplot-tabs" class="subplot-tabs"></div>
@@ -87,9 +122,9 @@
                 <option value="mat">mat</option>
                 <option value="tdms">tdms</option>
               </select>
-              <button id="export-data-btn" type="button">Export data</button>
-              <button id="export-current-btn" type="button">Open render</button>
-              <button id="export-combined-btn" type="button">Export combined</button>
+              <button id="export-data-btn" class="btn" type="button">Export data</button>
+              <button id="export-current-btn" class="btn" type="button">Open render</button>
+              <button id="export-combined-btn" class="btn btn-accent" type="button">Export combined</button>
             </div>
           </div>
           <div class="canvas-frame">
@@ -99,17 +134,72 @@
           <div id="message-bar" class="message-bar"></div>
         </div>
 
-        <div class="card details-panel">
-          <div class="section-head">
-            <h2>Details</h2>
+        <div class="analysis-lower-grid">
+          <div class="card details-panel">
+            <div class="section-head">
+              <h2>Analysis</h2>
+              <div class="panel-summary">Mode-specific payload and metrics</div>
+            </div>
+            <div id="details-content"></div>
           </div>
-          <div id="details-content"></div>
+
+          <div class="card signal-panel">
+            <div class="section-head">
+              <h2>Signal Roster</h2>
+              <div id="signal-panel-summary" class="panel-summary">0 selected</div>
+            </div>
+            <div class="signal-toolbar">
+              <input id="signal-filter-input" type="text" placeholder="Filter signals">
+              <div class="inline-actions signal-actions">
+                <button id="signal-select-visible-btn" class="btn" type="button">Include visible</button>
+                <button id="signal-clear-visible-btn" class="btn" type="button">Clear visible</button>
+              </div>
+            </div>
+            <div id="signal-list" class="signal-list"></div>
+          </div>
         </div>
       </section>
 
       <aside class="card controls-panel">
         <div class="section-head">
           <h2>Controls</h2>
+        </div>
+        <section class="console-block">
+          <div class="section-head small">
+            <h3>Quick Actions</h3>
+          </div>
+          <div class="quick-actions-grid">
+            <button id="quick-load-file-btn" class="btn" type="button">Choose Signal File</button>
+            <button id="quick-load-folder-btn" class="btn" type="button">Choose Folder</button>
+            <button id="quick-add-subplot-btn" class="btn" type="button">Add Subplot</button>
+            <button id="quick-export-btn" class="btn btn-accent" type="button">Export Combined</button>
+          </div>
+        </section>
+
+        <section class="console-block">
+          <div class="section-head small">
+            <h3>Session Info</h3>
+          </div>
+          <div class="info-stack">
+            <div id="info-current-file" class="info-pill">File: (none)</div>
+            <div id="info-data-shape" class="info-pill">Rows: 0  Cols: 0</div>
+            <div id="info-current-folder" class="info-pill muted">Folder: (none)</div>
+          </div>
+        </section>
+
+        <section class="console-block">
+          <div class="section-head small">
+            <h3>Auto Refresh</h3>
+          </div>
+          <div id="auto-refresh-summary" class="console-note">Watching the loaded signal file for changes every 15 seconds.</div>
+        </section>
+
+        <div id="control-status" class="control-status">
+          <div>
+            <div id="control-mode-title" class="control-status-title">Waveform workflow</div>
+            <div id="control-mode-copy" class="control-status-copy">Tune the active subplot, visible signals, and analysis window for the current investigation.</div>
+          </div>
+          <div id="control-mode-pill" class="control-mode-pill">Ready</div>
         </div>
         <div class="form-grid">
           <label>
@@ -153,7 +243,7 @@
           </label>
         </div>
 
-        <section class="config-block">
+        <section class="config-block" data-control-group="histogram-spectrum">
           <div class="section-head small">
             <h3>Histogram / Spectrum</h3>
           </div>
@@ -169,7 +259,7 @@
           </div>
         </section>
 
-        <section class="config-block">
+        <section class="config-block" data-control-group="range-checks">
           <div class="section-head small">
             <h3>Range checks</h3>
           </div>
@@ -199,7 +289,7 @@
           </div>
         </section>
 
-        <section class="config-block">
+        <section class="config-block" data-control-group="custom-code">
           <div class="section-head small">
             <h3>Custom code</h3>
           </div>
@@ -207,7 +297,7 @@
     return {name: series.diff().fillna(0) for name, series in signals.items()}"></textarea>
         </section>
 
-        <section class="config-block">
+        <section class="config-block" data-control-group="detector-map">
           <div class="section-head small">
             <h3>Detector map</h3>
           </div>
@@ -226,12 +316,21 @@
           </div>
           <div class="browser-path-row">
             <input id="overlay-path-input" type="text" placeholder="C:\\data\\overlay.csv">
-            <button id="add-overlay-btn" type="button">Add</button>
+            <button id="add-overlay-btn" class="btn" type="button">Add</button>
           </div>
           <div id="overlay-list" class="overlay-list"></div>
         </section>
       </aside>
     </main>
+
+    <footer class="statusbar">
+      <div id="statusbar-message" class="statusbar-message">Ready</div>
+      <div class="statusbar-meta">
+        <span id="statusbar-file">File: (none)</span>
+        <span id="statusbar-shape">Rows: 0  Cols: 0</span>
+        <span id="statusbar-folder">Folder: (none)</span>
+      </div>
+    </footer>
   </div>
 
   <script src="/csv/static/app.js"></script>

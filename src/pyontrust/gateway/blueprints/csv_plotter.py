@@ -37,6 +37,7 @@ from pyontrust.csv_plotter import (
     cli_base_path,
     default_cli_output_stem,
     default_selected_columns,
+    export_dataframe_bytes,
     find_newest_signal_file,
     format_window_bound_for_filename,
     numeric_signal_columns,
@@ -55,7 +56,7 @@ bp = Blueprint(
     "csv_plotter",
     __name__,
     static_folder=str(_WEB_DIR),
-    static_url_path="/csv/static",
+    static_url_path="/static",
 )
 
 logger = logging.getLogger("pyontrust.gateway.csv_plotter")
@@ -648,17 +649,21 @@ def _metrics_for_columns(columns: list[str], x_window: list[float] | None = None
 def _app_state() -> dict[str, Any]:
     file_size = None
     file_path = _state.get("file_path")
+    selectable_columns: list[str] = []
     if file_path:
         try:
             file_size = cli_base_path(file_path).stat().st_size
         except Exception:
             file_size = None
+    if isinstance(_state.get("df"), pd.DataFrame):
+        selectable_columns = [str(column) for column in numeric_signal_columns(_state["df"])]
     return {
         "path": file_path,
         "folder": _state.get("folder_path"),
         "rows": _state.get("rows"),
         "cols": len(_state.get("columns") or []),
         "columns": list(_state.get("columns") or []),
+        "selectable_columns": selectable_columns,
         "separator": _state.get("separator"),
         "timestamp_scale": _state.get("timestamp_scale"),
         "mtime": _state.get("mtime"),
@@ -947,16 +952,19 @@ def subplot_export_data(subplot_id: str) -> Response:
     try:
         export_df = _filtered_primary_frame(subplot)
         suffix = ".jsonl" if fmt == "ndjson" else f".{fmt}"
-        handle = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
-        handle.close()
         try:
-            write_dataframe_export(export_df, handle.name, fmt)
-            payload = pathlib.Path(handle.name).read_bytes()
-        finally:
+            payload = export_dataframe_bytes(export_df, fmt)
+        except NotImplementedError:
+            handle = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+            handle.close()
             try:
-                pathlib.Path(handle.name).unlink(missing_ok=True)
-            except Exception:
-                pass
+                write_dataframe_export(export_df, handle.name, fmt)
+                payload = pathlib.Path(handle.name).read_bytes()
+            finally:
+                try:
+                    pathlib.Path(handle.name).unlink(missing_ok=True)
+                except Exception:
+                    pass
         file_stem = default_cli_output_stem(str(_state.get("file_path") or "signal"), _state.get("df"))
         x_window = _window_tuple(subplot)
         if x_window:

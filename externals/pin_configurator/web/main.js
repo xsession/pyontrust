@@ -1,5 +1,5 @@
 /**
- * Zephyr Pin Configurator – Frontend
+ * Zephyr Pin Configurator Ă˘â‚¬â€ś Frontend
  *
  * Visual point-and-click pin mux tool inspired by STM32CubeIDE.
  *  - SVG chip diagram with clickable pins
@@ -10,7 +10,7 @@
 
 "use strict";
 
-// ── State ────────────────────────────────────────────────────────────
+// Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ State Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
 let boardData    = null;   // Current board definition from API
 let availableBoards = [];  // Board list metadata from API
 let pinStates    = {};     // { pin_number: { af, props } }
@@ -88,10 +88,23 @@ let zephyrCatalogFilter = "all";
 let zephyrCatalogSearch = "";
 let zephyrCatalogSummary = { mcu_count: 0, sensor_count: 0 };
 let arduinoWorkspaceState = createArduinoWorkspaceState();
+let generatedFilesOverviewSelection = '';
+let generatedFilesEditor = null;
+let generatedFilesEditorFailed = false;
+let generatedFilesFilter = '';
+const generatedFilesModels = new Map();
 const LARGE_LIST_SEARCH_THRESHOLD = 5;
 
 // Zoom state
 let chipZoom = 1.0;
+let pinSummaryOverlayState = {
+  left: 12,
+  top: 12,
+  width: null,
+  height: null,
+  initialized: false,
+};
+let pinSummaryOverlayPointerState = null;
 const ZOOM_MIN = 0.2;
 const ZOOM_MAX = 4.0;
 const ZOOM_STEP = 0.15;
@@ -145,7 +158,7 @@ const DEFAULT_EXTERNAL_DEVICE_CATALOG = [
   },
 ];
 
-// ── DOM refs ─────────────────────────────────────────────────────────
+// Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ DOM refs Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
 window.$ = $;
@@ -157,11 +170,19 @@ const chipArea     = $("#chipArea");
 const chipContainer= $("#chipContainer");
 const periphPanel  = $("#periphPanel");
 const configPanel  = $("#configPanel");
+const pinSummaryOverlay = $("#pinSummaryOverlay");
+const pinSummaryHeader = $("#pinSummaryHeader");
+const pinSummaryCount = $("#pinSummaryCount");
+const pinSummaryBody = $("#pinSummaryBody");
+const pinSummaryEmpty = $("#pinSummaryEmpty");
+const pinSummaryExportFormat = $("#pinSummaryExportFormat");
+const pinSummaryExportBtn = $("#pinSummaryExportBtn");
+const pinSummaryResizeHandle = $("#pinSummaryResizeHandle");
 const outputBar    = $("#outputBar");
 const outputTabs   = $("#outputBar .output-tabs");
 const outputPre    = $("#outputPre");
 
-// ── Helpers ──────────────────────────────────────────────────────────
+// Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ Helpers Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
 
 function toast(msg) {
   const el = $("#toast");
@@ -269,6 +290,27 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
+function escapeXml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function downloadTextFile(filename, content, mimeType = "text/plain;charset=utf-8") {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
 function createArduinoWorkspaceState() {
   return {
     projectPath: "",
@@ -363,7 +405,7 @@ function arduinoRenderScannedFiles() {
   list.innerHTML = arduinoWorkspaceState.scannedFiles.map((file, index) => `
     <button class="zcatalog-item${file.selected ? " active" : ""}" data-arduino-scan-index="${index}">
       <strong>${escapeHtml(file.relative || file.name || `file-${index + 1}`)}</strong>
-      <span class="zcatalog-item-meta">${escapeHtml(file.type || "file")} • ${Math.max(0, file.size / 1024).toFixed(1)} KB</span>
+      <span class="zcatalog-item-meta">${escapeHtml(file.type || "file")} Ă˘â‚¬Ë ${Math.max(0, file.size / 1024).toFixed(1)} KB</span>
     </button>
   `).join("");
   list.querySelectorAll("[data-arduino-scan-index]").forEach((button) => {
@@ -394,10 +436,10 @@ function arduinoRenderImportPreview() {
   const pins = data.pins || [];
   const peripherals = data.peripherals || [];
   const warnings = data.warnings || [];
-  summary.textContent = `${pins.length} pin assignment(s) • ${peripherals.length} peripheral(s) • ${warnings.length} warning(s)`;
+  summary.textContent = `${pins.length} pin assignment(s) Ă˘â‚¬Ë ${peripherals.length} peripheral(s) Ă˘â‚¬Ë ${warnings.length} warning(s)`;
   preview.className = "zcatalog-note";
   preview.innerHTML = `
-    <div><strong>Pins:</strong> ${pins.length ? pins.map((pin) => `${escapeHtml(pin.pin_name || pin.node_label || "pin")} → ${escapeHtml(`${pin.peripheral}.${pin.signal}`)}`).join("<br>") : "None detected"}</div>
+    <div><strong>Pins:</strong> ${pins.length ? pins.map((pin) => `${escapeHtml(pin.pin_name || pin.node_label || "pin")} Ă˘â€ â€™ ${escapeHtml(`${pin.peripheral}.${pin.signal}`)}`).join("<br>") : "None detected"}</div>
     <div style="margin-top:8px;"><strong>Peripherals:</strong> ${peripherals.length ? peripherals.map((peripheral) => escapeHtml(peripheral.name)).join(", ") : "None detected"}</div>
     ${warnings.length ? `<div style="margin-top:8px;"><strong>Warnings:</strong><br>${warnings.map((warning) => escapeHtml(warning)).join("<br>")}</div>` : ""}
   `;
@@ -446,7 +488,7 @@ function arduinoRender() {
   const boardSummary = $("#arduinoBoardSummary");
   if (boardSummary) {
     boardSummary.textContent = boardData
-      ? `${boardData.board} • ${boardData.soc} • ${boardData.package || "package n/a"}`
+      ? `${boardData.board} Ă˘â‚¬Ë ${boardData.soc} Ă˘â‚¬Ë ${boardData.package || "package n/a"}`
       : "No board loaded.";
   }
   arduinoRenderScannedFiles();
@@ -1003,92 +1045,295 @@ function collectOutputViews() {
     { id: "conf", label: "prj.conf", content: generatedConf },
   ];
 
-  if (generatedFragments.protocols?.code) {
-    views.push({
-      id: "protocols:protocol_stack.c",
-      label: "protocols:protocol_stack.c",
-      content: generatedFragments.protocols.code,
-    });
-  }
-  if (generatedFragments.protocols?.header) {
-    views.push({
-      id: "protocols:protocol_stack.h",
-      label: "protocols:protocol_stack.h",
-      content: generatedFragments.protocols.header,
-    });
-  }
-  if (generatedFragments.protocols?.integration) {
-    views.push({
-      id: "protocols:protocol_stack_integration.md",
-      label: "protocols:protocol_stack_integration.md",
-      content: generatedFragments.protocols.integration,
-    });
+  if (collectGeneratedFileEntries().length) {
+    views.push({ id: "files", label: "Files", content: "" });
   }
 
-  if (generatedFragments.lvgl?.code) {
-    views.push({
-      id: "lvgl:ui_layout.c",
-      label: "lvgl:ui_layout.c",
-      content: generatedFragments.lvgl.code,
+  return views.filter(view => view.id === "files" || view.content);
+}
+
+function collectGeneratedFileEntries() {
+  const files = [
+    { id: "generated:.overlay", label: ".overlay", path: ".overlay", content: generatedOverlay },
+    { id: "generated:prj.conf", label: "prj.conf", path: "prj.conf", content: generatedConf },
+  ];
+
+  const optionalFragments = [
+    [generatedFragments.protocols?.code, "protocols/protocol_stack.c"],
+    [generatedFragments.protocols?.header, "protocols/protocol_stack.h"],
+    [generatedFragments.protocols?.integration, "protocols/protocol_stack_integration.md"],
+    [generatedFragments.lvgl?.code, "lvgl/ui_layout.c"],
+    [generatedFragments.lvgl?.header, "lvgl/ui_layout.h"],
+    [generatedFragments.lvgl?.hooksHeader, "lvgl/ui_layout_hooks.h"],
+    [generatedFragments.lvgl?.hooks, "lvgl/ui_layout_hooks.template.c"],
+    [generatedFragments.lvgl?.integration, "lvgl/ui_layout_integration.md"],
+    [generatedFragments.lvgl?.validation, "lvgl/ui_layout_validation.md"],
+    [generatedFragments.lvgl?.styleSchema, "lvgl/style_schema.json"],
+  ];
+
+  optionalFragments.forEach(([content, path]) => {
+    if (!content) return;
+    files.push({
+      id: `generated:${path}`,
+      label: path,
+      path,
+      content,
     });
-  }
-  if (generatedFragments.lvgl?.header) {
-    views.push({
-      id: "lvgl:ui_layout.h",
-      label: "lvgl:ui_layout.h",
-      content: generatedFragments.lvgl.header,
-    });
-  }
-  if (generatedFragments.lvgl?.hooksHeader) {
-    views.push({
-      id: "lvgl:ui_layout_hooks.h",
-      label: "lvgl:ui_layout_hooks.h",
-      content: generatedFragments.lvgl.hooksHeader,
-    });
-  }
-  if (generatedFragments.lvgl?.hooks) {
-    views.push({
-      id: "lvgl:ui_layout_hooks.template.c",
-      label: "lvgl:ui_layout_hooks.template.c",
-      content: generatedFragments.lvgl.hooks,
-    });
-  }
-  if (generatedFragments.lvgl?.integration) {
-    views.push({
-      id: "lvgl:ui_layout_integration.md",
-      label: "lvgl:ui_layout_integration.md",
-      content: generatedFragments.lvgl.integration,
-    });
-  }
-  if (generatedFragments.lvgl?.validation) {
-    views.push({
-      id: "lvgl:ui_layout_validation.md",
-      label: "lvgl:ui_layout_validation.md",
-      content: generatedFragments.lvgl.validation,
-    });
-  }
-  if (generatedFragments.lvgl?.styleSchema) {
-    views.push({
-      id: "lvgl:style_schema.json",
-      label: "lvgl:style_schema.json",
-      content: generatedFragments.lvgl.styleSchema,
-    });
-  }
+  });
 
   for (const target of ["arduino", "baremetal"]) {
-    const files = generatedTargets[target] || {};
-    Object.keys(files).sort().forEach(filename => {
-      views.push({
-        id: `${target}:${filename}`,
-        label: `${target}:${filename}`,
-        content: files[filename],
+    const targetFiles = generatedTargets[target] || {};
+    Object.keys(targetFiles).sort().forEach((filename) => {
+      files.push({
+        id: `generated:${target}/${filename}`,
+        label: `${target}/${filename}`,
+        path: `${target}/${filename}`,
+        content: targetFiles[filename],
       });
     });
   }
 
-  return views.filter(view => view.content);
+  return files.filter((file) => file.content);
 }
 
+function detectGeneratedFileLanguage(path) {
+  const lowerPath = String(path || "").toLowerCase();
+  if (lowerPath.endsWith(".c") || lowerPath.endsWith(".h")) return "c";
+  if (lowerPath.endsWith(".md")) return "markdown";
+  if (lowerPath.endsWith(".json")) return "json";
+  if (lowerPath.endsWith(".yaml") || lowerPath.endsWith(".yml")) return "yaml";
+  if (lowerPath.endsWith(".conf") || lowerPath.endsWith("prj.conf")) return "ini";
+  if (lowerPath.endsWith(".overlay") || lowerPath.endsWith(".dts") || lowerPath.endsWith(".dtsi")) return "plaintext";
+  return "plaintext";
+}
+
+function generatedFileGroupLabel(path) {
+  const normalized = String(path || "");
+  if (normalized === ".overlay" || normalized === "prj.conf") return "Zephyr";
+  if (normalized.startsWith("protocols/")) return "Protocol Editor";
+  if (normalized.startsWith("lvgl/")) return "LVGL Layout";
+  if (normalized.startsWith("arduino/")) return "Arduino";
+  if (normalized.startsWith("baremetal/")) return "Bare Metal";
+  return "Generated";
+}
+
+function matchesGeneratedFileFilter(file, filterText) {
+  if (!filterText) return true;
+  const haystack = [file.label, file.path, detectGeneratedFileLanguage(file.path), generatedFileGroupLabel(file.path)]
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes(filterText);
+}
+
+function escapeHtmlAttr(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+const outputFilesView = document.querySelector("#outputFilesView");
+const outputFilesSearch = document.querySelector("#outputFilesSearch");
+const outputFilesList = document.querySelector("#outputFilesList");
+const outputFilesEditorHost = document.querySelector("#outputFilesEditor");
+const outputFilesFallback = document.querySelector("#outputFilesFallback");
+const outputFilesCurrentPath = document.querySelector("#outputFilesCurrentPath");
+const outputFilesCopyBtn = document.querySelector("#outputFilesCopyBtn");
+const outputFilesDownloadBtn = document.querySelector("#outputFilesDownloadBtn");
+let monacoLoadPromise = null;
+function ensureMonacoLoader() {
+  if (window.monaco?.editor) return Promise.resolve(window.monaco);
+  if (monacoLoadPromise) return monacoLoadPromise;
+
+  const baseUrl = "https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min/";
+  monacoLoadPromise = new Promise((resolve, reject) => {
+    const loadMonaco = () => {
+      if (!window.require?.config) {
+        reject(new Error("Monaco loader unavailable"));
+        return;
+      }
+      window.MonacoEnvironment = {
+        getWorkerUrl() {
+          const workerSource = [
+            `self.MonacoEnvironment = { baseUrl: '${baseUrl}' };`,
+            `importScripts('${baseUrl}vs/base/worker/workerMain.js');`,
+          ].join("\n");
+          return `data:text/javascript;charset=utf-8,${encodeURIComponent(workerSource)}`;
+        },
+      };
+      window.require.config({ paths: { vs: `${baseUrl}vs` } });
+      window.require(["vs/editor/editor.main"], () => resolve(window.monaco), reject);
+    };
+
+    if (window.require?.config) {
+      loadMonaco();
+      return;
+    }
+
+    let loaderScript = document.querySelector('script[data-monaco-loader="true"]');
+    if (!loaderScript) {
+      loaderScript = document.createElement("script");
+      loaderScript.src = `${baseUrl}vs/loader.min.js`;
+      loaderScript.async = true;
+      loaderScript.dataset.monacoLoader = "true";
+      document.head.appendChild(loaderScript);
+    }
+
+    loaderScript.addEventListener("load", loadMonaco, { once: true });
+    loaderScript.addEventListener("error", () => reject(new Error("Failed to load Monaco editor assets")), { once: true });
+  }).catch((error) => {
+    monacoLoadPromise = null;
+    throw error;
+  });
+
+  return monacoLoadPromise;
+}
+
+function ensureGeneratedFilesEditor() {
+  if (generatedFilesEditor || generatedFilesEditorFailed || !outputFilesEditorHost) return Promise.resolve(generatedFilesEditor);
+  return ensureMonacoLoader().then((monaco) => {
+    if (generatedFilesEditor) return generatedFilesEditor;
+    generatedFilesEditor = monaco.editor.create(outputFilesEditorHost, {
+      value: "",
+      language: "plaintext",
+      theme: "vs-dark",
+      readOnly: true,
+      automaticLayout: true,
+      minimap: { enabled: false },
+      scrollBeyondLastLine: false,
+      renderLineHighlight: "none",
+      wordWrap: "off",
+      tabSize: 2,
+    });
+    return generatedFilesEditor;
+  }).catch((error) => {
+    generatedFilesEditorFailed = true;
+    if (outputFilesFallback) {
+      outputFilesFallback.hidden = false;
+      outputFilesFallback.textContent = `Monaco editor unavailable. ${error.message}`;
+    }
+    return null;
+  });
+}
+
+function setGeneratedFilesOverviewSelection(fileId) {
+  const files = collectGeneratedFileEntries();
+  const current = files.find((file) => file.id === fileId) || files[0] || null;
+  generatedFilesOverviewSelection = current?.id || "";
+
+  if (outputFilesList) {
+    outputFilesList.querySelectorAll(".generated-file-item").forEach((item) => {
+      item.classList.toggle("active", item.dataset.fileId === generatedFilesOverviewSelection);
+    });
+  }
+
+  if (!current) {
+    if (outputFilesFallback) outputFilesFallback.textContent = "No generated files yet.";
+    if (outputFilesCurrentPath) outputFilesCurrentPath.textContent = "No file selected";
+    return;
+  }
+
+  if (outputFilesCurrentPath) {
+    outputFilesCurrentPath.textContent = `${current.path} • ${detectGeneratedFileLanguage(current.path)}`;
+  }
+  if (outputFilesFallback) outputFilesFallback.textContent = current.content || "";
+  if (!generatedFilesEditor || !window.monaco?.editor) return;
+
+  let model = generatedFilesModels.get(current.id);
+  if (!model) {
+    model = window.monaco.editor.createModel(current.content || "", detectGeneratedFileLanguage(current.path));
+    generatedFilesModels.set(current.id, model);
+  } else {
+    if (model.getValue() !== (current.content || "")) {
+      model.setValue(current.content || "");
+    }
+    window.monaco.editor.setModelLanguage(model, detectGeneratedFileLanguage(current.path));
+  }
+
+  generatedFilesEditor.setModel(model);
+  generatedFilesEditor.updateOptions({ wordWrap: current.path.endsWith(".md") ? "on" : "off" });
+}
+
+function selectedGeneratedFileEntry() {
+  const files = collectGeneratedFileEntries();
+  return files.find((file) => file.id === generatedFilesOverviewSelection) || files[0] || null;
+}
+
+function renderGeneratedFilesOverview() {
+  if (!outputFilesView) return;
+
+  const allFiles = collectGeneratedFileEntries();
+  const filterText = String(generatedFilesFilter || "").trim().toLowerCase();
+  const files = allFiles.filter((file) => matchesGeneratedFileFilter(file, filterText));
+
+  if (outputFilesSearch) {
+    outputFilesSearch.hidden = !allFiles.length;
+  }
+
+  if (!allFiles.length) {
+    if (outputFilesList) outputFilesList.innerHTML = '<div class="generated-file-empty">Generate outputs to browse files here.</div>';
+    if (outputFilesFallback) {
+      outputFilesFallback.hidden = false;
+      outputFilesFallback.textContent = 'Generate outputs to browse files here.';
+    }
+    if (outputFilesCurrentPath) outputFilesCurrentPath.textContent = 'No file selected';
+    return;
+  }
+
+  if (!files.length) {
+    if (outputFilesList) outputFilesList.innerHTML = '<div class="generated-file-empty">No generated files match the current filter.</div>';
+    if (outputFilesFallback) {
+      outputFilesFallback.hidden = false;
+      outputFilesFallback.textContent = 'No generated files match the current filter.';
+    }
+    if (outputFilesCurrentPath) outputFilesCurrentPath.textContent = 'No file selected';
+    return;
+  }
+
+  if (!files.some((file) => file.id === generatedFilesOverviewSelection)) {
+    generatedFilesOverviewSelection = files[0].id;
+  }
+
+  const groups = new Map();
+  files.forEach((file) => {
+    const group = generatedFileGroupLabel(file.path);
+    if (!groups.has(group)) groups.set(group, []);
+    groups.get(group).push(file);
+  });
+
+  if (outputFilesList) {
+    outputFilesList.innerHTML = "";
+    groups.forEach((groupFiles, groupName) => {
+      const section = document.createElement("section");
+      section.className = "generated-file-group";
+      const title = document.createElement("div");
+      title.className = "generated-file-group-title";
+      title.textContent = groupName;
+      section.appendChild(title);
+
+      groupFiles.forEach((file) => {
+        const item = document.createElement("button");
+        item.type = "button";
+        item.className = "generated-file-item" + (file.id === generatedFilesOverviewSelection ? " active" : "");
+        item.dataset.fileId = file.id;
+        item.innerHTML = `
+          <span class="generated-file-label">${escapeHtml(file.label)}</span>
+          <span class="generated-file-meta">${escapeHtml(detectGeneratedFileLanguage(file.path))}</span>
+        `;
+        item.addEventListener("click", () => setGeneratedFilesOverviewSelection(file.id));
+        section.appendChild(item);
+      });
+
+      outputFilesList.appendChild(section);
+    });
+  }
+
+  if (outputFilesFallback) outputFilesFallback.hidden = false;
+  ensureGeneratedFilesEditor().finally(() => {
+    setGeneratedFilesOverviewSelection(generatedFilesOverviewSelection);
+  });
+}
 function aggregateGeneratedText(sections, options = {}) {
   const {
     commentPrefix = "#",
@@ -1110,7 +1355,7 @@ function aggregateGeneratedText(sections, options = {}) {
   ];
 
   nonEmpty.forEach((section, index) => {
-    lines.push(`${commentPrefix} ── ${section.title} ${"─".repeat(Math.max(1, 56 - section.title.length))}`);
+    lines.push(`${commentPrefix} -- ${section.title} ${"-".repeat(Math.max(1, 56 - section.title.length))}`);
     lines.push(section.content);
     if (index < nonEmpty.length - 1) {
       lines.push("");
@@ -1282,7 +1527,7 @@ function zephyrCatalogRenderList() {
   list.innerHTML = visible.map((item) => `
     <button class="zcatalog-item${item.key === zephyrCatalogActiveKey ? " active" : ""}" data-zcatalog-key="${escapeHtml(item.key)}">
       <strong>${escapeHtml(item.label || item.name)}</strong>
-      <span class="zcatalog-item-meta">${escapeHtml(item.kind === "mcu" ? `${item.vendor || "vendor"} • ${item.name}` : `${item.compatible} • ${item.buses?.join(", ") || "bus n/a"}`)}</span>
+      <span class="zcatalog-item-meta">${escapeHtml(item.kind === "mcu" ? `${item.vendor || "vendor"} Ă˘â‚¬Ë ${item.name}` : `${item.compatible} Ă˘â‚¬Ë ${item.buses?.join(", ") || "bus n/a"}`)}</span>
     </button>
   `).join("");
   list.querySelectorAll("[data-zcatalog-key]").forEach((button) => {
@@ -1334,7 +1579,7 @@ function zephyrCatalogRenderDetail() {
     : (item.properties || []).slice(0, 18).map((prop) => `
       <tr>
         <th>${escapeHtml(prop.name)}</th>
-        <td>${escapeHtml(prop.type)}${prop.required ? ' • required' : ''}${prop.description ? `<div class="zcatalog-detail-meta">${escapeHtml(prop.description)}</div>` : ''}</td>
+        <td>${escapeHtml(prop.type)}${prop.required ? ' Ă˘â‚¬Ë required' : ''}${prop.description ? `<div class="zcatalog-detail-meta">${escapeHtml(prop.description)}</div>` : ''}</td>
       </tr>
     `).join("");
 
@@ -1366,7 +1611,7 @@ function zephyrCatalogRenderSummary() {
   const summary = $("#zephyrCatalogSummary");
   if (!summary) return;
   summary.textContent = zephyrCatalogItems.length
-    ? `Root: ${zephyrCatalogRoot} • ${zephyrCatalogSummary.mcu_count} MCU boards • ${zephyrCatalogSummary.sensor_count} sensors`
+    ? `Root: ${zephyrCatalogRoot} Ă˘â‚¬Ë ${zephyrCatalogSummary.mcu_count} MCU boards Ă˘â‚¬Ë ${zephyrCatalogSummary.sensor_count} sensors`
     : "Load the local Zephyr tree to browse supported boards and sensor bindings.";
 }
 
@@ -2148,7 +2393,7 @@ function renderOutputTabs() {
   appendOutputToggle();
 }
 
-// ── Board loading ────────────────────────────────────────────────────
+// Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ Board loading Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
 
 let boardLoadPromise = Promise.resolve();
 
@@ -2160,7 +2405,7 @@ async function loadBoardList() {
   availableBoards.forEach(b => {
     const opt = document.createElement("option");
     opt.value = b.id;
-    const pkg = b.package ? ` – ${b.package}` : "";
+    const pkg = b.package ? ` - ${b.package}` : "";
     opt.textContent = `${b.name}${pkg}`;
     boardSelect.appendChild(opt);
   });
@@ -2303,7 +2548,7 @@ function renderBoardEditorDrafts() {
   list.innerHTML = drafts.map(draft => `
     <div class="board-editor-draft-item" data-board-draft="${escapeHtml(draft.filename)}">
       <div class="board-editor-draft-name">${escapeHtml(draft.filename)}</div>
-      <div class="board-editor-draft-meta">${draft.size} bytes • ${escapeHtml(formatBoardDraftDate(draft.updated_at))}</div>
+      <div class="board-editor-draft-meta">${draft.size} bytes Ă˘â‚¬Ë ${escapeHtml(formatBoardDraftDate(draft.updated_at))}</div>
       <div class="board-editor-draft-actions">
         <button class="board-editor-draft-btn" data-board-draft-load="${escapeHtml(draft.filename)}">Load</button>
         <button class="board-editor-draft-btn" data-board-draft-duplicate="${escapeHtml(draft.filename)}">Duplicate</button>
@@ -2517,7 +2762,7 @@ function cleanBoardEditorPartLabel(summary, job) {
 function cleanBoardEditorPackagePinName(name) {
   return String(name || "")
     .trim()
-    .replace(/^[-_\s—–]+/, "")
+    .replace(/^[-_\sĂ˘â‚¬â€ťĂ˘â‚¬â€ś]+/, "")
     .replace(/^\d+[_\s/-]*/, "")
     .replace(/^[_\s/-]+/, "")
     .replace(/\s+/g, "_");
@@ -3557,12 +3802,12 @@ function renderBoardEditorCanvas(board) {
         ? `${packageInfo.width_mm} x ${packageInfo.height_mm} mm`
         : "";
       const pitch = Number(packageInfo.pitch_mm) > 0 ? `${packageInfo.pitch_mm} mm pitch` : "";
-      const subtitle = [layout.device.package || packageInfo.name || "package", dims, pitch].filter(Boolean).join(" • ");
+      const subtitle = [layout.device.package || packageInfo.name || "package", dims, pitch].filter(Boolean).join(" Ă˘â‚¬Ë ");
       parts.push(`<g class="board-editor-device-card${boardEditorCanvasDrag?.deviceId === layout.device.id ? " dragging" : ""}" transform="translate(${layout.x} ${layout.y})">`);
       parts.push(`<text class="board-editor-device-title" x="10" y="22">${escapeHtml(layout.device.display)}</text>`);
       parts.push(`<text class="board-editor-device-subtitle" x="10" y="38">${escapeHtml(subtitle)}</text>`);
       parts.push(`<circle class="board-editor-device-delete" data-device-remove="${escapeHtml(layout.device.id)}" cx="${layout.width - 12}" cy="16" r="10" />`);
-      parts.push(`<text class="board-editor-device-delete-label" x="${layout.width - 12}" y="20" text-anchor="middle">×</text>`);
+      parts.push(`<text class="board-editor-device-delete-label" x="${layout.width - 12}" y="20" text-anchor="middle">Ä‚â€”</text>`);
       parts.push(`<rect class="board-editor-device-body" data-device-drag="${escapeHtml(layout.device.id)}" x="${layout.bodyX - layout.x}" y="${layout.bodyY - layout.y}" width="${layout.bodyW}" height="${layout.bodyH}" rx="12" />`);
       parts.push(`<text class="board-editor-mcu-subtitle" x="${layout.bodyX - layout.x + layout.bodyW / 2}" y="${layout.bodyY - layout.y + layout.bodyH / 2}" text-anchor="middle">${escapeHtml(layout.device.package || packageInfo.name || "pkg")}</text>`);
       layout.pinLayouts.forEach((pinLayout) => {
@@ -3590,9 +3835,9 @@ function renderBoardEditorCanvas(board) {
     parts.push(`<g class="board-editor-device-card${boardEditorCanvasDrag?.deviceId === layout.device.id ? " dragging" : ""}" transform="translate(${layout.x} ${layout.y})">`);
     parts.push(`<rect class="board-editor-device-body" data-device-drag="${escapeHtml(layout.device.id)}" width="${layout.width}" height="${layout.height}" rx="12" />`);
     parts.push(`<text class="board-editor-device-title" x="14" y="22">${escapeHtml(layout.device.display)}</text>`);
-    parts.push(`<text class="board-editor-device-subtitle" x="14" y="38">${escapeHtml(layout.device.category || "device")}${layout.device.bus ? ` • ${escapeHtml(layout.device.bus)}` : ""}</text>`);
+    parts.push(`<text class="board-editor-device-subtitle" x="14" y="38">${escapeHtml(layout.device.category || "device")}${layout.device.bus ? ` Ă˘â‚¬Ë ${escapeHtml(layout.device.bus)}` : ""}</text>`);
     parts.push(`<circle class="board-editor-device-delete" data-device-remove="${escapeHtml(layout.device.id)}" cx="${layout.width - 16}" cy="16" r="10" />`);
-    parts.push(`<text class="board-editor-device-delete-label" x="${layout.width - 16}" y="20" text-anchor="middle">×</text>`);
+    parts.push(`<text class="board-editor-device-delete-label" x="${layout.width - 16}" y="20" text-anchor="middle">Ä‚â€”</text>`);
     layout.pinLayouts.forEach((pin, index) => {
       const pinY = layout.headerHeight + index * 26 + 6;
       const selected = boardEditorCanvasStart?.type === "device" && boardEditorCanvasStart.deviceId === layout.device.id && boardEditorCanvasStart.pin === pin.name ? " selected" : "";
@@ -4103,7 +4348,7 @@ function initBoardEditor() {
   updateBoardEditorCanvasZoomLabel();
 }
 
-// ── Peripheral panel ─────────────────────────────────────────────────
+// Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ Peripheral panel Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
 
 function renderPeripherals() {
   const panel = periphPanel;
@@ -4479,6 +4724,292 @@ function pinDisplayName(pin, state = pinStates?.[pin?.number]) {
   return pinCustomName(state) || pin.name;
 }
 
+function pinChipLabel(pin, state = pinStates?.[pin?.number], side = "any") {
+  const displayName = pinDisplayName(pin, state);
+  const maxLength = side === "top" || side === "bottom" ? 6 : 8;
+  if (displayName.length <= maxLength) return displayName;
+  if (maxLength <= 3) return displayName.slice(0, maxLength);
+  return `${displayName.slice(0, maxLength - 3)}...`;
+}
+
+function pinChipFunctionLabel(pin, state = pinStates?.[pin?.number]) {
+  if (state?.af) return state.af.name || "";
+  if (pin.kind !== "io") return pin.default_function || "";
+  return "";
+}
+
+function pinSummaryRows() {
+  if (!boardData?.pins) return [];
+
+  return boardData.pins
+    .map((pin) => {
+      const state = pinStates?.[pin.number];
+      const customName = pinCustomName(state);
+      if (!state?.af && !customName) return null;
+
+      let signal = "Custom label only";
+      if (state?.af) {
+        const signalParts = [];
+        if (state.af.peripheral) signalParts.push(String(state.af.peripheral).toUpperCase());
+        if (state.af.signal) signalParts.push(state.af.signal);
+        else if (state.af.name) signalParts.push(state.af.name);
+        signal = signalParts.join(" / ") || state.af.name || "Assigned";
+      }
+
+      return {
+        pinNumber: pin.number,
+        pinLabel: `${pin.number} - ${pin.name}`,
+        signal,
+        customName,
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => Number(left.pinNumber) - Number(right.pinNumber));
+}
+
+function renderPinSummaryOverlay() {
+  if (!pinSummaryBody || !pinSummaryEmpty || !pinSummaryCount) return;
+  const rows = pinSummaryRows();
+  pinSummaryCount.textContent = `${rows.length} configured pin(s)`;
+  pinSummaryBody.innerHTML = rows.map((row) => `
+    <tr>
+      <td>${escapeHtml(row.pinLabel)}</td>
+      <td>${escapeHtml(row.signal)}</td>
+      <td>${escapeHtml(row.customName || "-")}</td>
+    </tr>
+  `).join("");
+  pinSummaryEmpty.hidden = rows.length > 0;
+}
+
+
+function pinSummaryOverlayBounds(width, height) {
+  const areaRect = chipArea?.getBoundingClientRect();
+  const padding = 12;
+  const maxWidth = Math.max(260, (areaRect?.width || 0) - padding * 2);
+  const maxHeight = Math.max(160, (areaRect?.height || 0) - padding * 2);
+  return {
+    padding,
+    maxWidth,
+    maxHeight,
+    width: Math.max(260, Math.min(width ?? 420, maxWidth)),
+    height: Math.max(160, Math.min(height ?? Math.min(320, maxHeight), maxHeight)),
+  };
+}
+
+function applyPinSummaryOverlayLayout() {
+  if (!pinSummaryOverlay || !chipArea) return;
+  if (!pinSummaryOverlayState.initialized) {
+    const rect = pinSummaryOverlay.getBoundingClientRect();
+    const bounds = pinSummaryOverlayBounds(rect.width || 420, rect.height || 240);
+    pinSummaryOverlayState = {
+      ...pinSummaryOverlayState,
+      left: 12,
+      top: 12,
+      width: bounds.width,
+      height: bounds.height,
+      initialized: true,
+    };
+  }
+
+  const bounds = pinSummaryOverlayBounds(pinSummaryOverlayState.width, pinSummaryOverlayState.height);
+  const clampedLeft = Math.max(bounds.padding, Math.min(pinSummaryOverlayState.left, bounds.maxWidth + bounds.padding - bounds.width));
+  const clampedTop = Math.max(bounds.padding, Math.min(pinSummaryOverlayState.top, bounds.maxHeight + bounds.padding - bounds.height));
+
+  pinSummaryOverlayState.left = clampedLeft;
+  pinSummaryOverlayState.top = clampedTop;
+  pinSummaryOverlayState.width = bounds.width;
+  pinSummaryOverlayState.height = bounds.height;
+
+  pinSummaryOverlay.style.left = `${clampedLeft}px`;
+  pinSummaryOverlay.style.top = `${clampedTop}px`;
+  pinSummaryOverlay.style.width = `${bounds.width}px`;
+  pinSummaryOverlay.style.height = `${bounds.height}px`;
+}
+
+function beginPinSummaryOverlayPointer(mode, event) {
+  if (!pinSummaryOverlay || !chipArea) return;
+  const overlayRect = pinSummaryOverlay.getBoundingClientRect();
+  const areaRect = chipArea.getBoundingClientRect();
+  pinSummaryOverlayPointerState = {
+    mode,
+    startClientX: event.clientX,
+    startClientY: event.clientY,
+    startLeft: overlayRect.left - areaRect.left,
+    startTop: overlayRect.top - areaRect.top,
+    startWidth: overlayRect.width,
+    startHeight: overlayRect.height,
+  };
+  pinSummaryOverlay.classList.toggle("is-dragging", mode === "drag");
+  pinSummaryOverlay.classList.toggle("is-resizing", mode === "resize");
+}
+
+function updatePinSummaryOverlayPointer(event) {
+  if (!pinSummaryOverlayPointerState) return;
+  const deltaX = event.clientX - pinSummaryOverlayPointerState.startClientX;
+  const deltaY = event.clientY - pinSummaryOverlayPointerState.startClientY;
+
+  if (pinSummaryOverlayPointerState.mode === "drag") {
+    pinSummaryOverlayState.left = pinSummaryOverlayPointerState.startLeft + deltaX;
+    pinSummaryOverlayState.top = pinSummaryOverlayPointerState.startTop + deltaY;
+  } else {
+    pinSummaryOverlayState.width = pinSummaryOverlayPointerState.startWidth + deltaX;
+    pinSummaryOverlayState.height = pinSummaryOverlayPointerState.startHeight + deltaY;
+  }
+
+  applyPinSummaryOverlayLayout();
+}
+
+function endPinSummaryOverlayPointer() {
+  if (!pinSummaryOverlayPointerState) return;
+  pinSummaryOverlayPointerState = null;
+  pinSummaryOverlay?.classList.remove("is-dragging", "is-resizing");
+}
+
+function ensurePinSummaryOverlayInteractions() {
+  if (!pinSummaryOverlay || !pinSummaryHeader || !pinSummaryResizeHandle) return;
+  if (pinSummaryOverlay.dataset.interactiveReady === "true") {
+    applyPinSummaryOverlayLayout();
+    return;
+  }
+
+  pinSummaryHeader.addEventListener("mousedown", (event) => {
+    if (event.button !== 0) return;
+    if (event.target.closest("select,button")) return;
+    event.preventDefault();
+    beginPinSummaryOverlayPointer("drag", event);
+  });
+
+  pinSummaryResizeHandle.addEventListener("mousedown", (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    beginPinSummaryOverlayPointer("resize", event);
+  });
+
+  window.addEventListener("mousemove", updatePinSummaryOverlayPointer);
+  window.addEventListener("mouseup", endPinSummaryOverlayPointer);
+  pinSummaryOverlay.dataset.interactiveReady = "true";
+  applyPinSummaryOverlayLayout();
+}
+
+function pinSummaryCsv(rows) {
+  const escapeCsv = (value) => {
+    const text = String(value ?? "");
+    return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  };
+  return [
+    ["Pin", "Signal", "User Name"].map(escapeCsv).join(","),
+    ...rows.map((row) => [row.pinLabel, row.signal, row.customName || ""].map(escapeCsv).join(",")),
+  ].join("\n");
+}
+
+function pinSummaryMarkdown(rows) {
+  const escapeMd = (value) => String(value ?? "").replace(/\|/g, "\\|");
+  return [
+    "| Pin | Signal | User Name |",
+    "| --- | --- | --- |",
+    ...rows.map((row) => `| ${escapeMd(row.pinLabel)} | ${escapeMd(row.signal)} | ${escapeMd(row.customName || "-")} |`),
+  ].join("\n");
+}
+
+function pinSummaryExcel(rows) {
+  const makeCell = (value) => `<Cell><Data ss:Type="String">${escapeXml(value)}</Data></Cell>`;
+  const bodyRows = rows.map((row) => `\n    <Row>${makeCell(row.pinLabel)}${makeCell(row.signal)}${makeCell(row.customName || "")}</Row>`).join("");
+  return `<?xml version="1.0"?>\n<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">\n  <Worksheet ss:Name="Pin Summary">\n    <Table>\n      <Row>${makeCell("Pin")}${makeCell("Signal")}${makeCell("User Name")}</Row>${bodyRows}\n    </Table>\n  </Worksheet>\n</Workbook>`;
+}
+
+function pinSummarySvg(rows) {
+  const columns = [110, 190, 120];
+  const rowHeight = 28;
+  const headerHeight = 30;
+  const width = columns.reduce((sum, value) => sum + value, 0);
+  const height = headerHeight + Math.max(rows.length, 1) * rowHeight;
+  const headers = ["Pin", "Signal", "User Name"];
+  const xPositions = columns.reduce((positions, widthValue, index) => {
+    positions.push(index === 0 ? 0 : positions[index - 1] + columns[index - 1]);
+    return positions;
+  }, []);
+  const headerCells = headers.map((header, index) => `\n    <rect x="${xPositions[index]}" y="0" width="${columns[index]}" height="${headerHeight}" fill="#1f2430" stroke="#444c60" />\n    <text x="${xPositions[index] + 8}" y="20" font-size="12" font-family="Segoe UI, Arial" fill="#d9dde7">${escapeXml(header)}</text>`).join("");
+  const body = (rows.length ? rows : [{ pinLabel: "No configured pins", signal: "", customName: "" }]).map((row, rowIndex) => {
+    const y = headerHeight + rowIndex * rowHeight;
+    const values = [row.pinLabel, row.signal, row.customName || "-"];
+    return values.map((value, index) => `\n      <rect x="${xPositions[index]}" y="${y}" width="${columns[index]}" height="${rowHeight}" fill="#292d3a" stroke="#444c60" />\n      <text x="${xPositions[index] + 8}" y="${y + 18}" font-size="11" font-family="Segoe UI, Arial" fill="#f1f4fb">${escapeXml(value)}</text>`).join("");
+  }).join("");
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${headerCells}${body}</svg>`;
+}
+
+function pinSummaryDrawio(rows) {
+  const rowHeight = 28;
+  const widths = [120, 220, 140];
+  const headers = ["Pin", "Signal", "User Name"];
+  const cells = ['<mxCell id="0"/>', '<mxCell id="1" parent="0"/>'];
+  const addCell = (id, value, x, y, width, height, style) => {
+    cells.push(`<mxCell id="${id}" value="${escapeXml(value)}" style="${style}" vertex="1" parent="1"><mxGeometry x="${x}" y="${y}" width="${width}" height="${height}" as="geometry"/></mxCell>`);
+  };
+  let id = 2;
+  let x = 0;
+  headers.forEach((header, index) => {
+    addCell(id++, header, x, 0, widths[index], rowHeight, "rounded=0;whiteSpace=wrap;html=1;fillColor=#1f2430;strokeColor=#444c60;fontColor=#d9dde7;fontStyle=1;");
+    x += widths[index];
+  });
+  (rows.length ? rows : [{ pinLabel: "No configured pins", signal: "", customName: "" }]).forEach((row, rowIndex) => {
+    const values = [row.pinLabel, row.signal, row.customName || "-"];
+    let cellX = 0;
+    values.forEach((value, index) => {
+      addCell(id++, value, cellX, rowHeight * (rowIndex + 1), widths[index], rowHeight, "rounded=0;whiteSpace=wrap;html=1;fillColor=#292d3a;strokeColor=#444c60;fontColor=#f1f4fb;");
+      cellX += widths[index];
+    });
+  });
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<mxfile host="app.diagrams.net">\n  <diagram id="pin-summary" name="Pin Summary">\n    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="0" arrows="0" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827">\n      <root>${cells.join("")}</root>\n    </mxGraphModel>\n  </diagram>\n</mxfile>`;
+}
+
+function exportPinSummaryAsPng(rows) {
+  const svg = pinSummarySvg(rows);
+  const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const image = new Image();
+  image.onload = () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = image.width;
+    canvas.height = image.height;
+    const context = canvas.getContext("2d");
+    context.fillStyle = "#202330";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(image, 0, 0);
+    canvas.toBlob((pngBlob) => {
+      if (!pngBlob) {
+        toast("Failed to export PNG");
+        URL.revokeObjectURL(url);
+        return;
+      }
+      const pngUrl = URL.createObjectURL(pngBlob);
+      const link = document.createElement("a");
+      link.href = pngUrl;
+      link.download = "pin-summary.png";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(pngUrl), 0);
+      URL.revokeObjectURL(url);
+    }, "image/png");
+  };
+  image.onerror = () => {
+    URL.revokeObjectURL(url);
+    toast("Failed to export PNG");
+  };
+  image.src = url;
+}
+
+function exportPinSummary() {
+  const rows = pinSummaryRows();
+  const format = pinSummaryExportFormat?.value || "md";
+  if (format === "md") return downloadTextFile("pin-summary.md", pinSummaryMarkdown(rows), "text/markdown;charset=utf-8");
+  if (format === "csv") return downloadTextFile("pin-summary.csv", pinSummaryCsv(rows), "text/csv;charset=utf-8");
+  if (format === "excel") return downloadTextFile("pin-summary.xls", pinSummaryExcel(rows), "application/vnd.ms-excel");
+  if (format === "svg") return downloadTextFile("pin-summary.svg", pinSummarySvg(rows), "image/svg+xml;charset=utf-8");
+  if (format === "drawio") return downloadTextFile("pin-summary.drawio", pinSummaryDrawio(rows), "application/xml;charset=utf-8");
+  if (format === "png") return exportPinSummaryAsPng(rows);
+}
+
 function pinLabelForConflict(pinNum) {
   const pin = boardData?.pins?.find((entry) => entry.number === Number(pinNum));
   if (!pin) return `Pin ${pinNum}`;
@@ -4685,7 +5216,7 @@ function renderConfiguratorHealth(snapshot = collectConfigurationHealth()) {
   });
 }
 
-// ── Chip SVG renderer ────────────────────────────────────────────────
+// Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ Chip SVG renderer Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
 
 /** Detect whether the package name indicates a BGA / grid layout. */
 function isBgaPackage(pkgName) {
@@ -4703,16 +5234,17 @@ function renderChip() {
     renderChipQfp();
   }
 
-  // Attach click handlers (shared)
   chipContainer.querySelectorAll(".pin-pad").forEach(el => {
     el.addEventListener("click", () => {
       const pinNum = parseInt(el.dataset.pin);
       selectPin(pinNum);
     });
   });
+
+  renderPinSummaryOverlay();
 }
 
-// ── QFP / LQFP / QFN renderer (4-sided) ─────────────────────────────
+// Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ QFP / LQFP / QFN renderer (4-sided) Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
 
 function renderChipQfp() {
   const pinCount = boardData.pin_count;
@@ -4792,6 +5324,7 @@ function renderChipQfp() {
   function renderQfpPin(svg_, pin, x, y, w, h, side) {
     const state = pinStates[pin.number];
     const displayName = pinDisplayName(pin, state);
+    const chipLabel = pinChipLabel(pin, state, side);
     const isSelected = selectedPin === pin.number;
     const hasConflict = pinConflictsFor(pin.number, conflictMap).length > 0;
     const isPeripheralMatch = highlightedPeripheralSignal
@@ -4812,32 +5345,39 @@ function renderChipQfp() {
 
     let numX, numY, nameX, nameY, funcX, funcY;
     let numAnchor = "middle", nameAnchor = "middle";
+    let nameTransform = "";
+    let funcTransform = "";
 
     if (side === "left") {
       numX  = x + w + 4;  numY  = y + h/2 + 3;  numAnchor = "start";
-      nameX = x - 4;      nameY = y + h/2 + 3;   nameAnchor = "end";
-      funcX = x - 4;      funcY = y + h/2 + 13;
+      nameX = x - 6;      nameY = y + h/2 + 3;  nameAnchor = "end";
+      funcX = x - 44;     funcY = y + h/2 + 3;
     } else if (side === "right") {
       numX  = x - 4;       numY  = y + h/2 + 3;  numAnchor = "end";
-      nameX = x + w + 4;   nameY = y + h/2 + 3;  nameAnchor = "start";
-      funcX = x + w + 4;   funcY = y + h/2 + 13;
+      nameX = x + w + 6;   nameY = y + h/2 + 3;  nameAnchor = "start";
+      funcX = x + w + 44;  funcY = y + h/2 + 3;
     } else if (side === "bottom") {
       numX  = x + w/2;     numY  = y - 4;         numAnchor = "middle";
-      nameX = x + w/2;     nameY = y + h + 12;    nameAnchor = "middle";
-      funcX = x + w/2;     funcY = y + h + 23;
+      nameX = x + w/2;     nameY = y + h + 10;    nameAnchor = "middle";
+      funcX = x + w/2;     funcY = y + h + 40;
+      nameTransform = ` transform="rotate(-90 ${nameX} ${nameY})"`;
+      funcTransform = ` transform="rotate(-90 ${funcX} ${funcY})"`;
     } else { // top
       numX  = x + w/2;     numY  = y + h + 12;    numAnchor = "middle";
-      nameX = x + w/2;     nameY = y - 4;         nameAnchor = "middle";
-      funcX = x + w/2;     funcY = y - 14;
+      nameX = x + w/2;     nameY = y - 2;         nameAnchor = "middle";
+      funcX = x + w/2;     funcY = y - 30;
+      nameTransform = ` transform="rotate(-90 ${nameX} ${nameY})"`;
+      funcTransform = ` transform="rotate(-90 ${funcX} ${funcY})"`;
     }
 
     svg += `<text class="pin-num" x="${numX}" y="${numY}" text-anchor="${numAnchor}">${pin.number}</text>`;
-    svg += `<text class="pin-name" x="${nameX}" y="${nameY}" text-anchor="${nameAnchor}">${escapeHtml(displayName)}</text>`;
+    svg += `<text class="pin-name" x="${nameX}" y="${nameY}" text-anchor="${nameAnchor}"${nameTransform}>${escapeHtml(chipLabel)}<title>${escapeHtml(displayName)}</title></text>`;
 
-    const funcLabel = state && state.af ? state.af.name : (pin.kind !== "io" ? pin.default_function : "");
+    const funcLabel = pinChipFunctionLabel(pin, state);
     if (funcLabel) {
       const fanchor = (side === "left") ? "end" : (side === "right") ? "start" : "middle";
-      svg += `<text class="pin-func" x="${funcX}" y="${funcY}" text-anchor="${fanchor}">${funcLabel}</text>`;
+      const funcClass = state?.af ? "pin-func-assigned" : "pin-func-default";
+      svg += `<text class="pin-func ${funcClass}" x="${funcX}" y="${funcY}" text-anchor="${fanchor}"${funcTransform}>${escapeHtml(funcLabel)}</text>`;
     }
   }
 
@@ -4845,7 +5385,7 @@ function renderChipQfp() {
   chipContainer.innerHTML = svg;
 }
 
-// ── BGA / WLCSP / UFBGA renderer (grid layout) ──────────────────────
+// Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ BGA / WLCSP / UFBGA renderer (grid layout) Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
 
 function renderChipBga() {
   const pins = boardData.pins;
@@ -4896,7 +5436,7 @@ function renderChipBga() {
       for (const pin of pins) {
         const row = Math.floor(pin.number / 100);
         const col = pin.number % 100;
-        const rowLetter = String.fromCharCode(64 + row); // 1→A, 2→B, ...
+        const rowLetter = String.fromCharCode(64 + row); // 1Ă˘â€ â€™A, 2Ă˘â€ â€™B, ...
         rowSet.add(rowLetter);
         colSet.add(col);
         gridMap[`${rowLetter}_${col}`] = pin;
@@ -5002,8 +5542,8 @@ function renderChipBga() {
       svg += `<circle class="${cls}" cx="${bcx}" cy="${bcy}" r="${br}" data-pin="${pin.number}"/>`;
 
       // Pin name inside or below ball
-      const shortName = displayName.length > 4 ? displayName.slice(0, 4) : displayName;
-      svg += `<text class="bga-label" x="${bcx}" y="${bcy + 3}" text-anchor="middle" font-size="7" font-family="Consolas" fill="var(--fg)">${escapeHtml(shortName)}</text>`;
+      const shortName = pinChipLabel(pin, state, "grid");
+      svg += `<text class="bga-label" x="${bcx}" y="${bcy + 3}" text-anchor="middle" font-size="7" font-family="Consolas" fill="var(--fg)">${escapeHtml(shortName)}<title>${escapeHtml(displayName)}</title></text>`;
 
       // Show assigned function as tooltip title
       const funcLabel = state && state.af ? state.af.name : (pin.kind !== "io" ? pin.default_function : "");
@@ -5021,7 +5561,7 @@ function updatePinVisuals() {
   renderChip();
 }
 
-// ── Pin selection & config panel ─────────────────────────────────────
+// Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ Pin selection & config panel Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
 
 function selectPin(pinNum) {
   selectedPin = pinNum;
@@ -5249,7 +5789,7 @@ async function requestGenerateOutput(force = false) {
   return true;
 }
 
-// ── Generate overlay ─────────────────────────────────────────────────
+// Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ Generate overlay Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
 
 async function generateOutput() {
   if (!boardData) return;
@@ -5313,42 +5853,25 @@ async function generateOutput() {
   toast("Generated Zephyr, Arduino, and bare-metal outputs");
 }
 
-// ── Output bar ───────────────────────────────────────────────────────
+// Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ Output bar Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
 
 function showOutput(tab) {
   const views = collectOutputViews();
   const current = views.find(view => view.id === tab) || views[0] || { id: "overlay", content: generatedOverlay };
-  activeTab = tab;
+  activeTab = current.id;
+  const isFilesTab = current.id === "files";
+
   outputPre.textContent = current.content || "";
-  $$(".output-tab").forEach(t => t.classList.toggle("active", t.dataset.tab === tab));
-}
+  outputPre.hidden = isFilesTab;
+  if (outputFilesView) outputFilesView.hidden = !isFilesTab;
+  document.querySelectorAll(".output-tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === current.id));
 
-// ── Save to project ──────────────────────────────────────────────────
-
-async function saveToProject(projectPath) {
-  if (!generatedOverlay) {
-    const generated = await requestGenerateOutput();
-    if (!generated) return;
-  }
-  const res = await fetch("/api/save-project", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      project_path: projectPath,
-      overlay: generatedOverlay,
-      prj_conf: generatedConf,
-      board: boardData?.board || "custom_board",
-    }),
-  });
-  const result = await res.json();
-  if (result.saved) {
-    toast(`Saved to ${projectPath}`);
-  } else {
-    toast(`Error: ${result.error}`);
+  if (isFilesTab) {
+    renderGeneratedFilesOverview();
   }
 }
 
-// ── Zoom controls ────────────────────────────────────────────────────
+// Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ Zoom controls Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
 
 function applyZoom() {
   chipContainer.style.transform = `scale(${chipZoom})`;
@@ -5384,7 +5907,7 @@ function zoomFit() {
   applyZoom();
 }
 
-// ── Project file save/load ───────────────────────────────────────────
+// Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ Project file save/load Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
 
 function serializePinStates() {
   // Convert pinStates into a clean serializable form
@@ -5594,7 +6117,7 @@ async function loadProjectFile(filePath) {
   toast(`Project loaded (${Object.keys(pinStates).length} pin(s))`);
 }
 
-// ── Event wiring ─────────────────────────────────────────────────────
+// Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ Event wiring Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
 
 document.addEventListener("DOMContentLoaded", () => {
   loadBoardList();
@@ -5640,7 +6163,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // ── Save project file modal ──────────────────────────────────────
+  // Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ Save project file modal Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
   $("#btnSaveProject").addEventListener("click", () => {
     $("#saveProjectModal").classList.add("show");
   });
@@ -5660,7 +6183,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // ── Load project file modal ──────────────────────────────────────
+  // Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ Load project file modal Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
   $("#btnLoadProject").addEventListener("click", () => {
     $("#loadProjectModal").classList.add("show");
   });
@@ -5680,7 +6203,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // ── LVGL import / save modal ───────────────────────────────────
+  // Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ LVGL import / save modal Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
   $("#lvglBtnImportGui")?.addEventListener("click", () => {
     lvglResetImportModal();
     $("#lvglImportModal")?.classList.add("show");
@@ -5837,11 +6360,13 @@ document.addEventListener("DOMContentLoaded", () => {
     $("#lvglSaveModal")?.classList.remove("show");
   });
 
-  // ── Zoom controls ─────────────────────────────────────────────────
+  // Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ Zoom controls Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
   $("#zoomIn").addEventListener("click", zoomIn);
   $("#zoomOut").addEventListener("click", zoomOut);
   $("#zoomReset").addEventListener("click", zoomReset);
   $("#zoomFit").addEventListener("click", zoomFit);
+  pinSummaryExportBtn?.addEventListener("click", exportPinSummary);
+  ensurePinSummaryOverlayInteractions();
 
   // Mouse wheel zoom on chip area
   chipArea.addEventListener("wheel", (e) => {
@@ -5877,45 +6402,45 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // ── App-level tab switching ────────────────────────────────────────
+  // Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ App-level tab switching Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
   $$(".app-tab").forEach(tab => {
     tab.addEventListener("click", async () => {
       await openAppTab(tab.dataset.appTab);
     });
   });
 
-  // ── Module Configurator init ───────────────────────────────────────
+  // Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ Module Configurator init Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
   modInit();
 
-  // ── Package Manager init ───────────────────────────────────────────
+  // Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ Package Manager init Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
   pkgInit();
 
-  // ── Peripheral Configurator init ───────────────────────────────────
+  // Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ Peripheral Configurator init Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
   pcfgInit();
 
-  // ── Clock System Configurator init ─────────────────────────────────
+  // Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ Clock System Configurator init Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
   clkInit();
 
-  // ── Import Configurator init ───────────────────────────────────────
+  // Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ Import Configurator init Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
   impInit();
 
-  // ── MCU Lookup init ────────────────────────────────────────────────
+  // Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ MCU Lookup init Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
   mcuInit();
 
-  // ── Sensor Parser init ─────────────────────────────────────────────
+  // Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ Sensor Parser init Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
   snsInit();
 });
 
 
-// ══════════════════════════════════════════════════════════════════════
+// Ă˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘Â
 // Package Manager module
-// ══════════════════════════════════════════════════════════════════════
+// Ă˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘Â
 
 let pkgJobs = [];           // Parsed PDF jobs
 let pkgSelectedJob = null;  // Currently selected job_id
 let pkgSelectedPkgs = new Set(); // Selected package names for generation
 
-// ── LocalStorage persistence helpers ─────────────────────────────────
+// Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ LocalStorage persistence helpers Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
 
 function pkgSaveToStorage() {
   try {
@@ -6350,7 +6875,7 @@ async function pkgGenerate() {
     } else {
       const names = data.files.map(f => f.filename).join(", ");
       toast(`Generated: ${names}`);
-      if (statusEl) statusEl.textContent = `✓ Generated: ${names}`;
+      if (statusEl) statusEl.textContent = `Ă˘Ĺ›â€ś Generated: ${names}`;
 
       // Reload existing packages list
       pkgLoadExisting();
@@ -6382,7 +6907,7 @@ async function pkgLoadExisting() {
     }
 
     list.innerHTML = files.map(f => {
-      // Derive a display name from the module: e.g. "stm32l476_lqfp64" → "STM32L476 – LQFP64"
+      // Derive a display name from the module: e.g. "stm32l476_lqfp64" Ă˘â€ â€™ "STM32L476 Ă˘â‚¬â€ś LQFP64"
       const parts = f.module.split("_");
       let soc = "", pkg = "";
       // Find where package part starts (common suffixes: qfp, lqfp, ufbga, wlcsp, bga, qfn, etc.)
@@ -6395,7 +6920,7 @@ async function pkgLoadExisting() {
         }
       }
       if (!soc) { soc = f.module.toUpperCase(); }
-      const label = pkg ? `${soc} – ${pkg}` : soc;
+      const label = pkg ? `${soc} - ${pkg}` : soc;
 
       return `
       <li class="pkg-board-link" data-module="${f.module}" title="Click to open in Pin Configurator">
@@ -6405,7 +6930,7 @@ async function pkgLoadExisting() {
       </li>`;
     }).join("");
 
-    // Make entries clickable → switch to Pin Configurator with that board
+    // Make entries clickable Ă˘â€ â€™ switch to Pin Configurator with that board
     list.querySelectorAll(".pkg-board-link").forEach(li => {
       li.style.cursor = "pointer";
       li.addEventListener("click", () => {
@@ -6431,13 +6956,13 @@ async function pkgLoadExisting() {
 }
 
 
-// ══════════════════════════════════════════════════════════════════════
-// Module Configurator  (dynamic – all Zephyr modules)
-// ══════════════════════════════════════════════════════════════════════
+// Ă˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘Â
+// Module Configurator  (dynamic Ă˘â‚¬â€ś all Zephyr modules)
+// Ă˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘Â
 
 let modModules = [];            // All module definitions from API
 let modActiveId = null;         // Currently selected module in sidebar
-let modEnabled = {};            // { moduleId: bool } — which modules are "enabled"
+let modEnabled = {};            // { moduleId: bool } Ă˘â‚¬â€ť which modules are "enabled"
 let modValuesMap = {};          // { moduleId: { CONFIG_KEY: value } }
 let modDefaultsMap = {};        // { moduleId: { CONFIG_KEY: default } }
 
@@ -6492,10 +7017,10 @@ function modRenderSidebar(filter = "") {
     return `
       <div class="modcfg-module-item ${m.id === modActiveId ? 'active' : ''} ${enabled ? 'enabled' : ''}"
            data-mod-id="${m.id}">
-        <div class="mod-icon">${m.icon || '📦'}</div>
+        <div class="mod-icon">${m.icon || 'Ä‘Ĺşâ€śÂ¦'}</div>
         <div class="mod-label">
           ${m.name}
-          ${changed > 0 ? `<span class="mod-changed-dot" title="${changed} changed">●</span>` : ''}
+          ${changed > 0 ? `<span class="mod-changed-dot" title="${changed} changed">Ă˘â€”Ĺą</span>` : ''}
         </div>
         <div class="mod-badge">${optCount}</div>
         <input type="checkbox" class="mod-enable-cb" data-mod-enable="${m.id}"
@@ -6503,7 +7028,7 @@ function modRenderSidebar(filter = "") {
       </div>`;
   }).join("");
 
-  // Click on item → select
+  // Click on item Ă˘â€ â€™ select
   list.querySelectorAll(".modcfg-module-item").forEach(el => {
     el.addEventListener("click", (e) => {
       // Don't select when clicking the checkbox itself
@@ -6542,7 +7067,7 @@ function modUpdateGenerateAllBtn() {
   const btn = document.getElementById("modGenerateAllBtn");
   if (!btn) return;
   const count = Object.values(modEnabled).filter(Boolean).length;
-  btn.textContent = `⚡ Generate All (${count} module${count !== 1 ? 's' : ''})`;
+  btn.textContent = `Ă˘ĹˇË‡ Generate All (${count} module${count !== 1 ? 's' : ''})`;
   btn.disabled = count === 0;
 }
 
@@ -6560,14 +7085,14 @@ function modSelectModule(id) {
     </div>
     <div class="modcfg-body" id="modBody"></div>
     <div class="modcfg-actions">
-      <button class="btn" id="modResetBtn">⟲ Reset Module</button>
-      <button class="btn" id="modEnableBtn">${modEnabled[id] ? '✓ Enabled' : '○ Enable'}</button>
+      <button class="btn" id="modResetBtn">Ă˘ĹşË› Reset Module</button>
+      <button class="btn" id="modEnableBtn">${modEnabled[id] ? 'Ă˘Ĺ›â€ś Enabled' : 'Ă˘â€”â€ą Enable'}</button>
       <span class="spacer"></span>
       <label style="font-size:12px;display:flex;align-items:center;gap:6px;">
         <input type="checkbox" id="modFullOverlay"> Full overlay
       </label>
-      <button class="btn btn-primary" id="modGenerateAllBtn">⚡ Generate All (0)</button>
-      <button class="btn" id="modCopyBtn" style="display:none">📋 Copy</button>
+      <button class="btn btn-primary" id="modGenerateAllBtn">Ă˘ĹˇË‡ Generate All (0)</button>
+      <button class="btn" id="modCopyBtn" style="display:none">Ä‘Ĺşâ€śâ€ą Copy</button>
     </div>
     <div class="modcfg-output" id="modOutput" style="display:none">
       <pre id="modOutputPre"></pre>
@@ -6592,7 +7117,7 @@ function modSelectModule(id) {
   const enableBtn = document.getElementById("modEnableBtn");
   enableBtn.addEventListener("click", () => {
     modEnabled[id] = !modEnabled[id];
-    enableBtn.textContent = modEnabled[id] ? "✓ Enabled" : "○ Enable";
+    enableBtn.textContent = modEnabled[id] ? "Ă˘Ĺ›â€ś Enabled" : "Ă˘â€”â€ą Enable";
     modUpdateGenerateAllBtn();
     modRenderSidebar(document.getElementById("modSearch")?.value?.trim().toLowerCase() || "");
     // Re-highlight the active item
@@ -6606,8 +7131,8 @@ function modSelectModule(id) {
     const text = document.getElementById("modOutputPre").textContent;
     navigator.clipboard.writeText(text).then(() => {
       const btn = document.getElementById("modCopyBtn");
-      btn.textContent = "✓ Copied!";
-      setTimeout(() => btn.textContent = "📋 Copy", 1500);
+      btn.textContent = "Ă˘Ĺ›â€ś Copied!";
+      setTimeout(() => btn.textContent = "Ä‘Ĺşâ€śâ€ą Copy", 1500);
     });
   });
 }
@@ -6623,7 +7148,7 @@ function modRenderBody(mod) {
     return `
       <div class="cfg-group" data-cat="${cat.id}">
         <div class="cfg-group-header">
-          <span class="chevron">▼</span>
+          <span class="chevron">Ă˘â€“Ä˝</span>
           ${cat.title}
           <span class="group-count">${cat.options.length} options</span>
         </div>
@@ -6728,7 +7253,7 @@ async function modGenerateAll() {
     return;
   }
 
-  btn.textContent = "⏳ Generating…";
+  btn.textContent = "Ă˘ĹąĹ‚ GeneratingĂ˘â‚¬Â¦";
   btn.disabled = true;
 
   try {
@@ -6759,9 +7284,9 @@ async function modGenerateAll() {
 }
 
 
-// ══════════════════════════════════════════════════════════════════════
+// Ă˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘Â
 // Peripheral Configurator  (board-aware instance config)
-// ══════════════════════════════════════════════════════════════════════
+// Ă˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘Â
 
 let pcfgInstances   = [];          // enriched peripheral instance list from API
 let pcfgActiveInst  = null;        // currently selected instance name
@@ -6845,7 +7370,7 @@ async function pcfgLoadInstances(boardName) {
     // Show empty main area
     const main = document.getElementById("pcfgMain");
     main.innerHTML = `<div class="pkg-empty">
-      <div class="icon">🔧</div>
+      <div class="icon">Ä‘Ĺşâ€ťÂ§</div>
       <div>Peripheral Configurator</div>
       <div class="hint">Select a peripheral from the sidebar to configure it.<br>
         ${pcfgInstances.length} peripheral instance(s) found for ${data.soc || boardName}.</div>
@@ -6884,10 +7409,10 @@ function pcfgRenderSidebar(filter = "") {
       const changed = pcfgCountChanged(inst.instance);
       return `
         <div class="pcfg-instance-item ${isActive ? 'active' : ''}" data-inst="${inst.instance}">
-          <div class="pcfg-icon">${inst.icon || '⚙️'}</div>
+          <div class="pcfg-icon">${inst.icon || 'Ă˘Ĺˇâ„˘ÄŹÂ¸Ĺą'}</div>
           <div class="pcfg-inst-label">
             ${inst.display}
-            ${changed > 0 ? `<span class="pcfg-changed-dot" title="${changed} changed">●</span>` : ''}
+            ${changed > 0 ? `<span class="pcfg-changed-dot" title="${changed} changed">Ă˘â€”Ĺą</span>` : ''}
           </div>
           <div class="pcfg-inst-compat">${inst.compatible.split(',').pop() || ''}</div>
           <div class="pcfg-status-dot ${statusVal === 'okay' ? 'enabled' : 'disabled'}"
@@ -6943,10 +7468,10 @@ function pcfgSelectInstance(instName) {
     </div>
     <div class="pcfg-body" id="pcfgBody"></div>
     <div class="pcfg-actions">
-      <button class="btn" id="pcfgResetBtn">⟲ Reset</button>
+      <button class="btn" id="pcfgResetBtn">Ă˘ĹşË› Reset</button>
       <span class="spacer"></span>
-      <button class="btn btn-accent" id="pcfgGenerateBtn">⚡ Generate Config</button>
-      <button class="btn" id="pcfgCopyBtn" style="display:none">📋 Copy</button>
+      <button class="btn btn-accent" id="pcfgGenerateBtn">Ă˘ĹˇË‡ Generate Config</button>
+      <button class="btn" id="pcfgCopyBtn" style="display:none">Ä‘Ĺşâ€śâ€ą Copy</button>
     </div>
     <div class="pcfg-output" id="pcfgOutput" style="display:none">
       <div class="pcfg-output-tabs">
@@ -6979,8 +7504,8 @@ function pcfgSelectInstance(instName) {
     const text = document.getElementById("pcfgOutputPre").textContent;
     navigator.clipboard.writeText(text).then(() => {
       const btn = document.getElementById("pcfgCopyBtn");
-      btn.textContent = "✓ Copied!";
-      setTimeout(() => btn.textContent = "📋 Copy", 1500);
+      btn.textContent = "Ă˘Ĺ›â€ś Copied!";
+      setTimeout(() => btn.textContent = "Ä‘Ĺşâ€śâ€ą Copy", 1500);
     });
   });
 
@@ -7006,7 +7531,7 @@ function pcfgRenderBody(inst) {
   const defs = pcfgDefaults[inst.instance] || {};
 
   if (!inst.groups || inst.groups.length === 0) {
-    body.innerHTML = '<div class="pkg-empty" style="padding:40px;"><div class="icon">⚙️</div><div>No configurable properties</div><div class="hint">This peripheral has no configuration template.</div></div>';
+    body.innerHTML = '<div class="pkg-empty" style="padding:40px;"><div class="icon">Ă˘Ĺˇâ„˘ÄŹÂ¸Ĺą</div><div>No configurable properties</div><div class="hint">This peripheral has no configuration template.</div></div>';
     return;
   }
 
@@ -7015,7 +7540,7 @@ function pcfgRenderBody(inst) {
     return `
       <div class="cfg-group" data-cat="${grp.id}">
         <div class="cfg-group-header">
-          <span class="chevron">▼</span>
+          <span class="chevron">Ă˘â€“Ä˝</span>
           ${grp.title}
           <span class="group-count">${grp.props.length} properties</span>
         </div>
@@ -7135,7 +7660,7 @@ async function pcfgGenerate() {
     return;
   }
 
-  btn.textContent = "⏳ Generating…";
+  btn.textContent = "Ă˘ĹąĹ‚ GeneratingĂ˘â‚¬Â¦";
   btn.disabled = true;
 
   try {
@@ -7167,15 +7692,15 @@ async function pcfgGenerate() {
     preEl.textContent = `ERROR: ${err.message}`;
     outEl.style.display = "";
   } finally {
-    btn.textContent = "⚡ Generate Config";
+    btn.textContent = "Ă˘ĹˇË‡ Generate Config";
     btn.disabled = false;
   }
 }
 
 
-// ══════════════════════════════════════════════════════════════════════
+// Ă˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘Â
 // Clock System Configurator module
-// ══════════════════════════════════════════════════════════════════════
+// Ă˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘Â
 
 let clkTrees = [];          // summary list from /api/clock-trees
 let clkCurrentTree = null;  // full tree object
@@ -7308,7 +7833,7 @@ async function clkLoadTrees() {
     const res = await fetch("/api/clock-trees");
     clkTrees = await res.json();
     const sel = $("#clkTreeSelect");
-    sel.innerHTML = '<option value="">— Select clock tree —</option>';
+    sel.innerHTML = '<option value="">Ă˘â‚¬â€ť Select clock tree Ă˘â‚¬â€ť</option>';
     clkTrees.forEach(t => {
       const opt = document.createElement("option");
       opt.value = t.id;
@@ -7423,7 +7948,7 @@ function clkRenderEmpty() {
   if (!main) return;
   main.innerHTML = `
     <div class="pkg-empty">
-      <div class="icon">⏱</div>
+      <div class="icon">Ă˘ĹąÂ±</div>
       <div>Clock System Configurator</div>
       <div class="hint">${clkCurrentTree
         ? "Select a clock node from the sidebar to configure it."
@@ -7471,11 +7996,11 @@ function clkBuildPropertyRows(props) {
 function clkBuildWarningsGroup() {
   if (!clkWarnings.length) return "";
   let html = `<div class="cfg-group"><div class="cfg-group-header" style="cursor:default;">
-    <span class="toggle">⚠</span> Warnings
+    <span class="toggle">Ă˘ĹˇÂ </span> Warnings
   </div><div class="cfg-group-body" style="display:block;">`;
   html += `<div style="padding:8px 0 2px 0;">`;
   clkWarnings.forEach(warning => {
-    html += `<div style="font-size:12px;color:var(--yellow);margin-bottom:6px;">• ${escapeHtml(warning)}</div>`;
+    html += `<div style="font-size:12px;color:var(--yellow);margin-bottom:6px;">Ă˘â‚¬Ë ${escapeHtml(warning)}</div>`;
   });
   html += `</div></div></div>`;
   return html;
@@ -7484,8 +8009,8 @@ function clkBuildWarningsGroup() {
 function clkBuildActions() {
   return `
     <div class="clkcfg-actions">
-      <button class="btn btn-accent" id="clkGenerateBtn" onclick="clkGenerate()">⚡ Generate Config</button>
-      <button class="btn" id="clkCopyBtn" style="display:none;" onclick="clkCopyOutput()">📋 Copy</button>
+      <button class="btn btn-accent" id="clkGenerateBtn" onclick="clkGenerate()">Ă˘ĹˇË‡ Generate Config</button>
+      <button class="btn" id="clkCopyBtn" style="display:none;" onclick="clkCopyOutput()">Ä‘Ĺşâ€śâ€ą Copy</button>
       <span class="spacer"></span>
       <span style="font-size:12px;color:var(--fg-dim);">
         Max SoC freq: ${clkFormatFreq(clkCurrentTree.max_freq)}
@@ -7620,7 +8145,7 @@ function clkBuildOverviewDiagram() {
   const { columns, nodeMap, incoming, outgoing } = clkOverviewGraph();
   const activeCount = clkSortedNodes().filter(node => (clkFreqs[node.id] || 0) > 0).length;
   let html = `<div class="cfg-group"><div class="cfg-group-header" style="cursor:default;">
-    <span class="toggle">🕸</span> Clock Overview
+    <span class="toggle">Ä‘Ĺşâ€˘Â¸</span> Clock Overview
   </div><div class="cfg-group-body" style="display:block;">`;
 
   html += `<div class="clkcfg-overview-shell" style="--clkcfg-overview-column-count:${Math.max(1, columns.length)}; --clkcfg-overview-gap:18px;">
@@ -7639,7 +8164,7 @@ function clkBuildOverviewDiagram() {
       html += `
         <div class="clkcfg-overview-node" data-clk-diagram-node="${node.id}" data-clk-node-card="${node.id}">
           <div class="clkcfg-overview-top">
-            <span class="clkcfg-overview-icon">${node.icon || "•"}</span>
+            <span class="clkcfg-overview-icon">${node.icon || "Ă˘â‚¬Ë"}</span>
             <span class="clkcfg-overview-name">${node.name}</span>
             <span class="clkcfg-overview-type t-${node.type}">${node.type}</span>
           </div>
@@ -7727,7 +8252,7 @@ function clkRenderAllSettings(main) {
   let html = `
     <div class="clkcfg-header">
       <div class="clkcfg-title">
-        <span>⏱</span>
+        <span>Ă˘ĹąÂ±</span>
         <span>${clkCurrentTree.name}</span>
         <span class="node-type t-mux" style="font-size:11px;padding:2px 8px;border-radius:6px;font-weight:600;text-transform:uppercase;">all settings</span>
       </div>
@@ -7765,7 +8290,7 @@ function clkRenderAllSettings(main) {
 
   if (!configurableNodes.length) {
     html += `<div class="cfg-group"><div class="cfg-group-header" style="cursor:default;">
-      <span class="toggle">ℹ</span> Info
+      <span class="toggle">Ă˘â€žÄ…</span> Info
     </div><div class="cfg-group-body" style="display:block;">
       <div style="padding:12px;color:var(--fg-dim);font-size:13px;">This clock tree has no editable properties.</div>
     </div></div>`;
@@ -7796,7 +8321,7 @@ function clkRenderBody() {
   const freq = clkFreqs[node.id] || 0;
   const props = node.props || [];
 
-  // ── Header ──
+  // Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ Header Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
   let html = `
     <div class="clkcfg-header">
       <div class="clkcfg-title">
@@ -7809,7 +8334,7 @@ function clkRenderBody() {
     </div>
   `;
 
-  // ── Tree diagram (visual) ──
+  // Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ Tree diagram (visual) Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
   html += `<div class="clkcfg-body">`;
 
   // Show upstream/downstream context
@@ -7821,7 +8346,7 @@ function clkRenderBody() {
 
   if (upstreamIds.length || downstreamIds.length) {
     html += `<div class="cfg-group"><div class="cfg-group-header" style="cursor:default;">
-      <span class="toggle">🔗</span> Clock Path
+      <span class="toggle">Ä‘Ĺşâ€ťâ€”</span> Clock Path
     </div><div class="cfg-group-body" style="display:block;">`;
 
     html += `<div class="clkcfg-tree-diagram">`;
@@ -7874,14 +8399,14 @@ function clkRenderBody() {
 
   if (props.length) {
     html += `<div class="cfg-group"><div class="cfg-group-header" style="cursor:default;">
-      <span class="toggle">⚙</span> Configuration
+      <span class="toggle">Ă˘Ĺˇâ„˘</span> Configuration
     </div><div class="cfg-group-body" style="display:block;">`;
     html += clkBuildPropertyRows(props);
 
     html += `</div></div>`;
   } else {
     html += `<div class="cfg-group"><div class="cfg-group-header" style="cursor:default;">
-      <span class="toggle">ℹ</span> Info
+      <span class="toggle">Ă˘â€žÄ…</span> Info
     </div><div class="cfg-group-body" style="display:block;">
       <div style="padding:12px;color:var(--fg-dim);font-size:13px;">
         This node has no configurable properties. Its frequency is derived from upstream nodes.
@@ -7889,13 +8414,13 @@ function clkRenderBody() {
     </div></div>`;
   }
 
-  // ── Peripheral clock assignments ──
+  // Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ Peripheral clock assignments Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
   if (node.type === "output" && clkCurrentTree.peripheral_clocks) {
     const assignments = Object.entries(clkCurrentTree.peripheral_clocks)
       .filter(([, clk]) => clk === node.id);
     if (assignments.length) {
       html += `<div class="cfg-group"><div class="cfg-group-header" style="cursor:default;">
-        <span class="toggle">🔌</span> Peripheral Assignments
+        <span class="toggle">Ä‘Ĺşâ€ťĹš</span> Peripheral Assignments
       </div><div class="cfg-group-body" style="display:block;">`;
       html += `<div style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 0;">`;
       for (const [periph] of assignments) {
@@ -7917,7 +8442,7 @@ function clkRenderBody() {
 
 function clkFormatFreqTable(freqs) {
   if (!freqs || !clkCurrentTree) return "";
-  const lines = ["Clock Node Frequencies", "═".repeat(50), ""];
+  const lines = ["Clock Node Frequencies", "Ă˘â€˘Â".repeat(50), ""];
   const nodeMap = {};
   clkCurrentTree.nodes.forEach(n => { nodeMap[n.id] = n; });
   for (const [id, hz] of Object.entries(freqs)) {
@@ -7930,11 +8455,11 @@ function clkFormatFreqTable(freqs) {
   if (clkCurrentTree.peripheral_clocks && Object.keys(clkCurrentTree.peripheral_clocks).length) {
     lines.push("");
     lines.push("Peripheral Clock Assignments");
-    lines.push("─".repeat(50));
+    lines.push("Ă˘â€ťâ‚¬".repeat(50));
     for (const [periph, clk] of Object.entries(clkCurrentTree.peripheral_clocks)) {
       const hz = freqs[clk] || 0;
       const pad = 25 - periph.length;
-      lines.push(`  ${periph}${" ".repeat(Math.max(1, pad))}← ${clk} (${clkFormatFreq(hz)})`);
+      lines.push(`  ${periph}${" ".repeat(Math.max(1, pad))}Ă˘â€ Â ${clk} (${clkFormatFreq(hz)})`);
     }
   }
   return lines.join("\n");
@@ -7979,7 +8504,7 @@ async function clkGenerate() {
     preEl.textContent = `ERROR: ${err.message}`;
     outEl.style.display = "";
   } finally {
-    btn.textContent = "⚡ Generate Config";
+    btn.textContent = "Ă˘ĹˇË‡ Generate Config";
     btn.disabled = false;
   }
 }
@@ -7992,9 +8517,9 @@ function clkCopyOutput() {
 }
 
 
-// ══════════════════════════════════════════════════════════════════════
+// Ă˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘Â
 // Import Configuration module
-// ══════════════════════════════════════════════════════════════════════
+// Ă˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘Â
 
 let impOverlayText = "";
 let impConfText = "";
@@ -8300,9 +8825,9 @@ function impApply() {
 }
 
 
-// ══════════════════════════════════════════════════════════════════════
+// Ă˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘Â
 // MCU Lookup module (in Package Manager)
-// ══════════════════════════════════════════════════════════════════════
+// Ă˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘Â
 
 function mcuInit() {
   const input = $("#mcuPartInput");
@@ -8321,7 +8846,7 @@ function mcuRenderSearchCandidates(candidates) {
     return "";
   }
 
-  let html = `<div style="padding:4px;">• Search results:</div>`;
+  let html = `<div style="padding:4px;">Ă˘â‚¬Ë Search results:</div>`;
   candidates.forEach((candidate, index) => {
     const label = candidate.kind || "result";
     html += `<div style="padding:4px 4px 6px 16px;border-left:1px solid var(--border);margin:4px 0;">
@@ -8485,14 +9010,14 @@ async function mcuFetchDatasheet(partNumber) {
 }
 
 
-// ══════════════════════════════════════════════════════════════════════
+// Ă˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘Â
 // Sensor Parser module
-// ══════════════════════════════════════════════════════════════════════
+// Ă˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘ÂĂ˘â€˘Â
 
 let snsJobs = [];
 let snsSelectedJob = null;
 
-// ── LocalStorage persistence helpers ─────────────────────────────────
+// Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ LocalStorage persistence helpers Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
 
 function snsSaveToStorage() {
   try {
@@ -8532,7 +9057,7 @@ function snsRemoveJob(jobId) {
   if (snsSelectedJob) snsSelectJob(snsSelectedJob);
   else {
     $("#snsMain").innerHTML = `<div class="sns-empty">
-      <div class="icon">🔬</div>
+      <div class="icon">Ä‘Ĺşâ€ťÂ¬</div>
       <div>Sensor / IC Register Parser</div>
       <div class="hint">Upload a sensor datasheet PDF to extract the register map,<br>
         I2C/SPI addresses, bit-fields, and generate C headers.</div>
@@ -8599,7 +9124,7 @@ function snsInit() {
 }
 
 
-// ── Upload & Parse ───────────────────────────────────────────────────
+// Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ Upload & Parse Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
 
 async function snsUploadPdf(file) {
   const uploadArea = $("#snsUploadArea");
@@ -8642,7 +9167,7 @@ async function snsUploadPdf(file) {
 }
 
 
-// ── Load existing jobs ───────────────────────────────────────────────
+// Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ Load existing jobs Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
 
 async function snsLoadJobs() {
   // First restore from localStorage (has full result data)
@@ -8690,7 +9215,7 @@ async function snsLoadJobs() {
 }
 
 
-// ── Render job list ──────────────────────────────────────────────────
+// Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ Render job list Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
 
 function snsRenderJobList() {
   const list = $("#snsJobList");
@@ -8735,7 +9260,7 @@ function snsRenderJobList() {
         ${pn}
         ${vendor ? `<span class="sns-badge">${vendor}</span>` : ""}
       </div>
-      <div class="job-info">${type ? type + " · " : ""}${regCount} registers</div>
+      <div class="job-info">${type ? type + " Ă‚Â· " : ""}${regCount} registers</div>
     </div>`;
   }).join("");
 
@@ -8756,7 +9281,7 @@ function snsRenderJobList() {
 }
 
 
-// ── Select job & render detail ───────────────────────────────────────
+// Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ Select job & render detail Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
 
 async function snsSelectJob(jobId) {
   snsSelectedJob = jobId;
@@ -8798,29 +9323,29 @@ function snsRenderDetail(job) {
   let headerHTML = `<div class="sns-detail-header">
     <h2>${s.part_number || job.filename}</h2>
     <div class="sns-specs">
-      ${s.vendor_name ? `<span>🏭 ${s.vendor_name}</span>` : ""}
-      ${s.sensor_type ? `<span>📡 ${s.sensor_type}</span>` : ""}
-      ${addr.protocol ? `<span>🔌 ${addr.protocol.toUpperCase()}</span>` : ""}
-      ${addr.i2c_addresses && addr.i2c_addresses.length ? `<span>📍 I2C: ${addr.i2c_addresses.join(", ")}</span>` : ""}
-      ${addr.spi_max_freq_mhz ? `<span>⚡ SPI ${addr.spi_max_freq_mhz} MHz</span>` : ""}
-      <span>📋 ${regs.length} registers</span>
+      ${s.vendor_name ? `<span>Ä‘ĹşĹąÂ­ ${s.vendor_name}</span>` : ""}
+      ${s.sensor_type ? `<span>Ä‘Ĺşâ€śË‡ ${s.sensor_type}</span>` : ""}
+      ${addr.protocol ? `<span>Ä‘Ĺşâ€ťĹš ${addr.protocol.toUpperCase()}</span>` : ""}
+      ${addr.i2c_addresses && addr.i2c_addresses.length ? `<span>Ä‘Ĺşâ€śĹ¤ I2C: ${addr.i2c_addresses.join(", ")}</span>` : ""}
+      ${addr.spi_max_freq_mhz ? `<span>Ă˘ĹˇË‡ SPI ${addr.spi_max_freq_mhz} MHz</span>` : ""}
+      <span>Ä‘Ĺşâ€śâ€ą ${regs.length} registers</span>
     </div>
   </div>`;
 
   // Body
   let bodyHTML = `<div class="sns-detail-body">`;
 
-  // ─── Description ───
+  // Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ Description Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
   if (s.description) {
     bodyHTML += `<div class="sns-section">
-      <h3>📄 Description</h3>
+      <h3>Ä‘Ĺşâ€śâ€ž Description</h3>
       <p style="font-size:12px;line-height:1.6;color:var(--fg);">${snsEsc(s.description)}</p>
     </div>`;
   }
 
-  // ─── Address Info ───
+  // Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ Address Info Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
   bodyHTML += `<div class="sns-section">
-    <h3>📍 Address / Interface</h3>
+    <h3>Ä‘Ĺşâ€śĹ¤ Address / Interface</h3>
     <table class="sns-reg-table" style="max-width:500px;">
       <tr><th>Property</th><th>Value</th></tr>
       <tr><td>Protocol</td><td>${addr.protocol || "unknown"}</td></tr>
@@ -8829,10 +9354,10 @@ function snsRenderDetail(job) {
     </table>
   </div>`;
 
-  // ─── Register Map ───
+  // Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ Register Map Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
   if (regs.length) {
     bodyHTML += `<div class="sns-section">
-      <h3>🗂 Register Map (${regs.length} registers)</h3>
+      <h3>Ä‘Ĺşâ€”â€š Register Map (${regs.length} registers)</h3>
       <table class="sns-reg-table">
         <thead>
           <tr>
@@ -8875,20 +9400,20 @@ function snsRenderDetail(job) {
     bodyHTML += `</tbody></table></div>`;
   }
 
-  // ─── C Header Generation ───
+  // Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ C Header Generation Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
   bodyHTML += `<div class="sns-section">
-    <h3>💻 C Register Header</h3>
+    <h3>Ä‘Ĺşâ€™Â» C Register Header</h3>
     <div class="sns-code-actions">
       <button class="btn" id="snsGenHeader">Generate Header</button>
-      <button class="btn" id="snsCopyHeader" style="display:none;">📋 Copy</button>
-      <button class="btn" id="snsGenDriver">🔧 Generate Zephyr Driver</button>
+      <button class="btn" id="snsCopyHeader" style="display:none;">Ä‘Ĺşâ€śâ€ą Copy</button>
+      <button class="btn" id="snsGenDriver">Ä‘Ĺşâ€ťÂ§ Generate Zephyr Driver</button>
     </div>
     <div id="snsHeaderCode" class="sns-code-block" style="display:none;"></div>
   </div>`;
 
-  // ─── Driver Generation ───
+  // Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ Driver Generation Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
   bodyHTML += `<div class="sns-section" id="snsDriverSection" style="display:none;">
-    <h3>🔧 Generated Zephyr Driver</h3>
+    <h3>Ä‘Ĺşâ€ťÂ§ Generated Zephyr Driver</h3>
     <div id="snsDriverFiles"></div>
   </div>`;
 
@@ -8903,7 +9428,7 @@ function snsRenderDetail(job) {
 }
 
 
-// ── Generate C header ────────────────────────────────────────────────
+// Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ Generate C header Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
 
 async function snsGenerateHeader(jobId) {
   const btn = $("#snsGenHeader");
@@ -8952,7 +9477,7 @@ function snsCopyHeaderToClipboard() {
 }
 
 
-// ── Generate Zephyr driver ───────────────────────────────────────────
+// Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ Generate Zephyr driver Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
 
 async function snsGenerateDriver(jobId) {
   const btn = $("#snsGenDriver");
@@ -9004,12 +9529,12 @@ async function snsGenerateDriver(jobId) {
     toast("Error: " + err.message);
   } finally {
     btn.disabled = false;
-    btn.textContent = "🔧 Generate Zephyr Driver";
+    btn.textContent = "Ä‘Ĺşâ€ťÂ§ Generate Zephyr Driver";
   }
 }
 
 
-// ── Sensor Identify ──────────────────────────────────────────────────
+// Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ Sensor Identify Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
 
 async function snsIdentifySensor() {
   const input = $("#snsPartInput");
@@ -9032,9 +9557,9 @@ async function snsIdentifySensor() {
     const data = await res.json();
 
     if (data.known) {
-      resultEl.innerHTML = `<span style="color:var(--green);">✅ ${data.vendor_name}</span> (${data.vendor})`;
+      resultEl.innerHTML = `<span style="color:var(--green);">Ă˘Ĺ›â€¦ ${data.vendor_name}</span> (${data.vendor})`;
     } else {
-      resultEl.innerHTML = `<span style="color:var(--yellow);">⚠ Unknown vendor for "${pn}"</span>`;
+      resultEl.innerHTML = `<span style="color:var(--yellow);">Ă˘ĹˇÂ  Unknown vendor for "${pn}"</span>`;
     }
   } catch (err) {
     resultEl.innerHTML = `<span style="color:var(--red);">Error: ${err.message}</span>`;
@@ -9042,7 +9567,7 @@ async function snsIdentifySensor() {
 }
 
 
-// ── Utility ──────────────────────────────────────────────────────────
+// Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬ Utility Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬Ă˘â€ťâ‚¬
 
 function snsEsc(str) {
   if (!str) return "";

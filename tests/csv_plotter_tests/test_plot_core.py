@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from pyontrust.analysis.metrics import compute_signal_spectrum  # noqa: E402
 from pyontrust.csv_plotter import (  # noqa: E402
     PanelFileEntry,
     build_browser_plot_model,
+    export_dataframe_bytes,
     build_histogram_panel_payload,
     build_plot_scene,
     build_spectrum_panel_payload,
@@ -67,3 +69,26 @@ def test_compute_signal_spectrum_detects_bins() -> None:
     assert baseline is not None
     assert len(freqs) == len(magnitudes)
     assert len(freqs) > 1
+
+
+def test_export_dataframe_bytes_json_and_csv() -> None:
+    df = pd.DataFrame(
+        {
+            "Timestamp": [0.0, 0.5],
+            "A": [1.25, 2.5],
+        }
+    )
+
+    json_payload = export_dataframe_bytes(df, "json")
+    csv_payload = export_dataframe_bytes(df, "csv")
+
+    records = json.loads(json_payload.decode("utf-8"))
+    assert records == [
+        {"Timestamp": 0.0, "A": 1.25},
+        {"Timestamp": 0.5, "A": 2.5},
+    ]
+    assert csv_payload.decode("utf-8").splitlines() == [
+        "Timestamp,A",
+        "0.0,1.25",
+        "0.5,2.5",
+    ]

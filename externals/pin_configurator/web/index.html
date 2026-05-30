@@ -87,16 +87,25 @@ body {
   display: flex;
   flex: 1;
   overflow: hidden;
+  position: relative;
 }
 
 /* ─── Left panel: Peripherals ──────────────────────────────── */
 .periph-panel {
   width: 240px;
+  min-width: 0;
   background: var(--bg2);
   border-right: 1px solid var(--border);
   overflow-y: auto;
   flex-shrink: 0;
   padding: 10px;
+  transition: width .12s ease, padding .12s ease, border-color .12s ease;
+}
+.periph-panel.panel-collapsed {
+  width: 0 !important;
+  padding: 0;
+  border-right-color: transparent;
+  overflow: hidden;
 }
 .periph-panel h3 {
   font-size: 12px;
@@ -209,10 +218,184 @@ body {
   padding: 20px;
   position: relative;
 }
+.side-panel-handle {
+  width: 18px;
+  flex-shrink: 0;
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12px;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.02), rgba(255,255,255,0));
+}
+.side-panel-handle::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border);
+}
+.side-panel-handle-left {
+  cursor: ew-resize;
+}
+.side-panel-handle-left::before {
+  right: 0;
+}
+.side-panel-handle-right {
+  cursor: ew-resize;
+}
+.side-panel-handle-right::before {
+  left: 0;
+}
+.side-panel-handle.is-collapsed {
+  cursor: default;
+}
+.side-panel-toggle {
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg3);
+  color: var(--fg);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.18);
+  z-index: 1;
+}
+.side-panel-toggle:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.side-panel-handle.is-collapsed .side-panel-toggle {
+  background: rgba(137, 180, 250, 0.12);
+  border-color: rgba(137, 180, 250, 0.45);
+}
 .chip-container {
   position: relative;
   transform-origin: center center;
   transition: transform 0.15s ease;
+}
+.pin-summary-overlay {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  width: min(420px, calc(100% - 24px));
+  min-width: 260px;
+  min-height: 160px;
+  max-height: calc(100% - 24px);
+  display: flex;
+  flex-direction: column;
+  background: rgba(24, 24, 32, 0.92);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 30px rgba(0,0,0,0.28);
+  backdrop-filter: blur(10px);
+  z-index: 9;
+}
+.pin-summary-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+  cursor: move;
+  user-select: none;
+  touch-action: none;
+}
+.pin-summary-overlay.is-dragging .pin-summary-header,
+.pin-summary-overlay.is-resizing .pin-summary-header {
+  cursor: grabbing;
+}
+.pin-summary-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--fg);
+}
+.pin-summary-count {
+  font-size: 11px;
+  color: var(--fg-dim);
+}
+.pin-summary-spacer {
+  flex: 1;
+}
+.pin-summary-export {
+  display: flex;
+  gap: 6px;
+}
+.pin-summary-export select,
+.pin-summary-export button {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 11px;
+}
+.pin-summary-export button {
+  cursor: pointer;
+}
+.pin-summary-export button:hover {
+  border-color: var(--accent);
+}
+.pin-summary-body {
+  flex: 1;
+  overflow: auto;
+  padding: 0;
+}
+.pin-summary-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.pin-summary-table th,
+.pin-summary-table td {
+  padding: 7px 8px;
+  border-bottom: 1px solid rgba(255,255,255,.06);
+  text-align: left;
+  vertical-align: top;
+}
+.pin-summary-table th {
+  position: sticky;
+  top: 0;
+  background: rgba(30, 30, 40, 0.98);
+  color: var(--fg-dim);
+  font-size: 10px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  z-index: 1;
+}
+.pin-summary-table td {
+  color: var(--fg);
+}
+.pin-summary-empty {
+  padding: 18px 14px;
+  color: var(--fg-dim);
+  font-size: 12px;
+}
+.pin-summary-resize-handle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 18px;
+  height: 18px;
+  cursor: nwse-resize;
+  user-select: none;
+  touch-action: none;
+}
+.pin-summary-resize-handle::before {
+  content: "";
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 10px;
+  height: 10px;
+  border-right: 2px solid rgba(255,255,255,.35);
+  border-bottom: 2px solid rgba(255,255,255,.35);
 }
 
 /* Zoom controls */
@@ -321,10 +504,15 @@ svg.chip-svg .pin-name {
   font-weight: 600;
 }
 svg.chip-svg .pin-func {
-  font-size: 9px;
-  fill: var(--green);
+  font-size: 8px;
   pointer-events: none;
   font-family: Consolas, monospace;
+}
+svg.chip-svg .pin-func.pin-func-assigned {
+  fill: var(--green);
+}
+svg.chip-svg .pin-func.pin-func-default {
+  fill: var(--fg-dim);
 }
 
 /* Colour coding for peripheral types */
@@ -382,11 +570,19 @@ svg.chip-svg .bga-label {
 /* ─── Right panel: Pin config ──────────────────────────────── */
 .config-panel {
   width: 320px;
+  min-width: 0;
   background: var(--bg2);
   border-left: 1px solid var(--border);
   overflow-y: auto;
   flex-shrink: 0;
   padding: 14px;
+  transition: width .12s ease, padding .12s ease, border-color .12s ease;
+}
+.config-panel.panel-collapsed {
+  width: 0 !important;
+  padding: 0;
+  border-left-color: transparent;
+  overflow: hidden;
 }
 .config-panel h3 {
   font-size: 14px;
@@ -571,8 +767,8 @@ svg.chip-svg .bga-label {
 .output-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 .output-content {
   flex: 1;
-  overflow: auto;
-  padding: 10px 16px;
+  overflow: hidden;
+  min-height: 0;
 }
 .output-content pre {
   font-family: Consolas, 'Courier New', monospace;
@@ -580,6 +776,11 @@ svg.chip-svg .bga-label {
   line-height: 1.5;
   white-space: pre;
   color: var(--fg);
+  margin: 0;
+  padding: 10px 16px;
+  overflow: auto;
+  height: 100%;
+  box-sizing: border-box;
 }
 .output-toggle {
   margin-left: auto;
@@ -587,6 +788,148 @@ svg.chip-svg .bga-label {
   font-size: 11px;
   color: var(--fg-dim);
   padding: 8px 12px;
+}
+.output-files-view {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+}
+.output-files-sidebar {
+  width: 240px;
+  border-right: 1px solid var(--border);
+  background: var(--bg);
+  overflow: auto;
+  padding: 8px;
+  box-sizing: border-box;
+}
+.output-files-search {
+  width: 100%;
+  margin: 0 0 8px;
+  padding: 7px 10px;
+  box-sizing: border-box;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg2);
+  color: var(--fg);
+  font-size: 12px;
+}
+.output-files-search::placeholder {
+  color: var(--fg-dim);
+}
+.generated-file-group {
+  position: sticky;
+  top: -8px;
+  z-index: 1;
+  padding: 10px 4px 6px;
+  margin: 0 -8px 4px;
+  background: linear-gradient(180deg, var(--bg) 70%, rgba(0, 0, 0, 0));
+  color: var(--fg-dim);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.output-files-editor-shell {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  background: #1e1e1e;
+}
+.output-files-current-path {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 34px;
+  padding: 0 10px 0 12px;
+  box-sizing: border-box;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+  background: #181818;
+  color: #c5c8d4;
+  font-size: 11px;
+  letter-spacing: .02em;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.output-files-current-path-text {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.output-files-current-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.output-files-action {
+  border: 1px solid rgba(255,255,255,.12);
+  background: #232323;
+  color: #d6d9e4;
+  font-size: 11px;
+  border-radius: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+.output-files-action:hover {
+  background: #2c2c2c;
+}
+.output-files-editor {
+  width: 100%;
+  height: calc(100% - 34px);
+  margin-top: 34px;
+}
+.output-files-fallback {
+  width: 100%;
+  height: calc(100% - 34px);
+  margin: 0;
+  padding: 12px 16px;
+  margin-top: 34px;
+  box-sizing: border-box;
+  overflow: auto;
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fg);
+  background: var(--bg2);
+}
+.generated-file-item {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--fg-dim);
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.generated-file-item:hover {
+  background: var(--bg2);
+  color: var(--fg);
+}
+.generated-file-item.active {
+  background: rgba(137, 180, 250, .12);
+  border-color: rgba(137, 180, 250, .25);
+  color: var(--fg);
+}
+.generated-file-name {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  word-break: break-word;
+}
+.generated-file-meta {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--fg-dim);
 }
 
 /* ─── Toast notification ───────────────────────────────────── */
@@ -4823,16 +5166,53 @@ svg.chip-svg .bga-label {
 <div class="config-health-panel" id="configHealthPanel"></div>
 
 <!-- ─── Main ────────────────────────────────────────────────── -->
-<div class="main">
+<div class="main" id="mainLayout">
 
   <!-- Peripherals panel -->
   <div class="periph-panel" id="periphPanel">
     <h3>Peripherals</h3>
   </div>
+  <div class="side-panel-handle side-panel-handle-left" id="periphResizeHandle">
+    <button class="side-panel-toggle" id="periphPanelToggle" type="button" aria-label="Toggle peripherals panel">&#9776;</button>
+  </div>
 
   <!-- Chip diagram -->
   <div class="chip-area" id="chipArea">
     <div class="chip-container" id="chipContainer"></div>
+    <div class="pin-summary-overlay" id="pinSummaryOverlay">
+      <div class="pin-summary-header" id="pinSummaryHeader">
+        <div>
+          <div class="pin-summary-title">Used Pins</div>
+          <div class="pin-summary-count" id="pinSummaryCount">0 configured pin(s)</div>
+        </div>
+        <div class="pin-summary-spacer"></div>
+        <div class="pin-summary-export">
+          <select id="pinSummaryExportFormat" aria-label="Pin summary export format">
+            <option value="md">Markdown</option>
+            <option value="excel">Excel</option>
+            <option value="csv">CSV</option>
+            <option value="svg">SVG</option>
+            <option value="png">PNG</option>
+            <option value="drawio">draw.io</option>
+          </select>
+          <button id="pinSummaryExportBtn" type="button">Export</button>
+        </div>
+      </div>
+      <div class="pin-summary-body">
+        <table class="pin-summary-table">
+          <thead>
+            <tr>
+              <th>Pin</th>
+              <th>Signal</th>
+              <th>User Name</th>
+            </tr>
+          </thead>
+          <tbody id="pinSummaryBody"></tbody>
+        </table>
+        <div class="pin-summary-empty" id="pinSummaryEmpty" hidden>No pins are currently assigned or renamed.</div>
+      </div>
+      <div class="pin-summary-resize-handle" id="pinSummaryResizeHandle" aria-hidden="true"></div>
+    </div>
     <div class="zoom-controls" id="zoomControls">
       <button class="zoom-btn" id="zoomIn" title="Zoom in">+</button>
       <span class="zoom-level" id="zoomLevel">100%</span>
@@ -4840,6 +5220,9 @@ svg.chip-svg .bga-label {
       <button class="zoom-btn" id="zoomReset" title="Reset zoom">&#8634;</button>
       <button class="zoom-btn" id="zoomFit" title="Fit to view">&#9635;</button>
     </div>
+  </div>
+  <div class="side-panel-handle side-panel-handle-right" id="configResizeHandle">
+    <button class="side-panel-toggle" id="configPanelToggle" type="button" aria-label="Toggle pin configuration panel">&#9776;</button>
   </div>
 
   <!-- Pin configuration panel -->
@@ -4860,6 +5243,23 @@ svg.chip-svg .bga-label {
   </div>
   <div class="output-content">
     <pre id="outputPre">Click "Generate" to see the DTS overlay.</pre>
+    <div class="output-files-view" id="outputFilesView" hidden>
+      <div class="output-files-sidebar">
+        <input class="output-files-search" id="outputFilesSearch" type="search" placeholder="Filter generated files">
+        <div id="outputFilesList"></div>
+      </div>
+      <div class="output-files-editor-shell">
+        <div class="output-files-current-path">
+          <div class="output-files-current-path-text" id="outputFilesCurrentPath">No file selected</div>
+          <div class="output-files-current-actions">
+            <button class="output-files-action" id="outputFilesCopyBtn" type="button">Copy</button>
+            <button class="output-files-action" id="outputFilesDownloadBtn" type="button">Download</button>
+          </div>
+        </div>
+        <div class="output-files-editor" id="outputFilesEditor"></div>
+        <pre class="output-files-fallback" id="outputFilesFallback" hidden></pre>
+      </div>
+    </div>
   </div>
 </div>
 

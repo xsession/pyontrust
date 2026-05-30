@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -48,8 +49,18 @@ def _make_client(tmp_path: Path):
     return app.test_client()
 
 
+def _make_memory_client():
+    _reset_state()
+    app = Flask(__name__)
+    app.register_blueprint(csv_plotter_bp.bp, url_prefix="/csv")
+    return app.test_client()
+
+
 def test_gateway_load_patch_render_and_export(tmp_path: Path) -> None:
     client = _make_client(tmp_path)
+
+    static_response = client.get("/csv/static/app.js")
+    assert static_response.status_code == 200
 
     df = pd.DataFrame(
         {
@@ -70,6 +81,7 @@ def test_gateway_load_patch_render_and_export(tmp_path: Path) -> None:
     subplot_id = state_payload["active_subplot_id"]
     assert subplot_id == "subplot-1"
     assert "A" in state_payload["columns"]
+    assert state_payload["selectable_columns"] == ["A", "B"]
 
     patch_response = client.patch(
         f"/csv/api/subplots/{subplot_id}",
@@ -131,3 +143,39 @@ def test_gateway_layout_and_combined_export(tmp_path: Path) -> None:
     assert combined_response.status_code == 200
     assert combined_response.mimetype == "image/png"
     assert len(combined_response.data) > 100
+
+
+def test_gateway_export_data_uses_window_and_download_name() -> None:
+    client = _make_memory_client()
+
+    df = pd.DataFrame(
+        {
+            "Timestamp": [0.0, 0.5, 1.0, 1.5],
+            "A": [10.0, 20.0, 30.0, 40.0],
+            "B": [1.0, 1.5, 2.0, 2.5],
+        }
+    )
+    csv_plotter_bp._state["file_path"] = "demo.csv"
+    csv_plotter_bp._state["df"] = df
+    csv_plotter_bp._state["columns"] = [str(column) for column in df.columns]
+    csv_plotter_bp._state["rows"] = len(df)
+    app_state = client.get("/csv/api/app-state").get_json()
+    assert app_state["selectable_columns"] == ["A", "B"]
+    subplot = csv_plotter_bp._state["subplots"][0]
+    subplot["selected_columns"] = ["A"]
+    subplot["x_window"] = [0.25, 1.25]
+
+    response = client.post(
+        "/csv/api/subplots/subplot-1/export-data",
+        json={"format": "json"},
+    )
+
+    assert response.status_code == 200
+    assert response.mimetype == "application/json"
+    assert 'filename="demo_0.25_1.25.json"' in response.headers["Content-Disposition"]
+
+    rows = json.loads(response.data)
+    assert rows == [
+        {"Timestamp": 0.5, "A": 20.0},
+        {"Timestamp": 1.0, "A": 30.0},
+    ]
