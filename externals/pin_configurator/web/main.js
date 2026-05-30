@@ -87,6 +87,7 @@ let zephyrCatalogActiveKey = "";
 let zephyrCatalogFilter = "all";
 let zephyrCatalogSearch = "";
 let zephyrCatalogSummary = { mcu_count: 0, sensor_count: 0 };
+let arduinoWorkspaceState = createArduinoWorkspaceState();
 const LARGE_LIST_SEARCH_THRESHOLD = 5;
 
 // Zoom state
@@ -266,6 +267,492 @@ function escapeHtml(value) {
     .replace(/>/g, "&gt;")
     .replace(/\"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+function createArduinoWorkspaceState() {
+  return {
+    projectPath: "",
+    outputPath: "",
+    validationPath: "",
+    sketchName: "",
+    scannedFiles: [],
+    importPreview: null,
+    generatedFiles: {},
+    activeFile: "",
+  };
+}
+
+function normalizeArduinoScannedFile(file) {
+  const source = file && typeof file === "object" ? file : {};
+  return {
+    path: String(source.path || ""),
+    relative: String(source.relative || source.name || ""),
+    name: String(source.name || ""),
+    type: String(source.type || ""),
+    size: Number(source.size || 0),
+    content: String(source.content || ""),
+    selected: !!(source.selected || source._selected),
+  };
+}
+
+function arduinoSerializeState() {
+  return {
+    project_path: arduinoWorkspaceState.projectPath,
+    output_path: arduinoWorkspaceState.outputPath,
+    validation_path: arduinoWorkspaceState.validationPath,
+    sketch_name: arduinoWorkspaceState.sketchName,
+    scanned_files: arduinoWorkspaceState.scannedFiles.map((file) => ({
+      path: file.path,
+      relative: file.relative,
+      name: file.name,
+      type: file.type,
+      size: file.size,
+      content: file.content,
+      selected: !!file.selected,
+    })),
+    import_preview: arduinoWorkspaceState.importPreview || null,
+    generated_files: { ...(arduinoWorkspaceState.generatedFiles || {}) },
+    active_file: arduinoWorkspaceState.activeFile || "",
+  };
+}
+
+function arduinoEnsureActiveFile() {
+  const filenames = Object.keys(arduinoWorkspaceState.generatedFiles || {}).sort();
+  if (!filenames.length) {
+    arduinoWorkspaceState.activeFile = "";
+    return;
+  }
+  if (!filenames.includes(arduinoWorkspaceState.activeFile)) {
+    arduinoWorkspaceState.activeFile = filenames[0];
+  }
+}
+
+function arduinoSelectedImportText(type) {
+  return arduinoWorkspaceState.scannedFiles
+    .filter((file) => file.selected && file.type === type)
+    .map((file) => file.content)
+    .join("\n");
+}
+
+function arduinoAutoSelectScannedFiles() {
+  let overlaySelected = false;
+  let confSelected = false;
+  arduinoWorkspaceState.scannedFiles.forEach((file) => {
+    file.selected = false;
+  });
+  arduinoWorkspaceState.scannedFiles.forEach((file) => {
+    if (file.type === "overlay" && !overlaySelected) {
+      file.selected = true;
+      overlaySelected = true;
+      return;
+    }
+    if (file.type === "conf" && !confSelected) {
+      file.selected = true;
+      confSelected = true;
+    }
+  });
+}
+
+function arduinoRenderScannedFiles() {
+  const list = $("#arduinoProjectFiles");
+  if (!list) return;
+  if (!arduinoWorkspaceState.scannedFiles.length) {
+    list.innerHTML = '<div class="zcatalog-empty">No Zephyr project scanned yet.</div>';
+    return;
+  }
+  list.innerHTML = arduinoWorkspaceState.scannedFiles.map((file, index) => `
+    <button class="zcatalog-item${file.selected ? " active" : ""}" data-arduino-scan-index="${index}">
+      <strong>${escapeHtml(file.relative || file.name || `file-${index + 1}`)}</strong>
+      <span class="zcatalog-item-meta">${escapeHtml(file.type || "file")} • ${Math.max(0, file.size / 1024).toFixed(1)} KB</span>
+    </button>
+  `).join("");
+  list.querySelectorAll("[data-arduino-scan-index]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const index = Number(button.dataset.arduinoScanIndex);
+      const file = arduinoWorkspaceState.scannedFiles[index];
+      if (!file) return;
+      file.selected = !file.selected;
+      arduinoRenderScannedFiles();
+      await arduinoPreviewImport();
+    });
+  });
+}
+
+function arduinoRenderImportPreview() {
+  const preview = $("#arduinoImportPreview");
+  const summary = $("#arduinoImportSummary");
+  if (!preview || !summary) return;
+  if (!arduinoWorkspaceState.importPreview) {
+    preview.className = "zcatalog-note";
+    preview.innerHTML = "Select a Zephyr project or click Preview Import after choosing files to inspect what will be applied to the current board.";
+    summary.textContent = arduinoWorkspaceState.projectPath
+      ? `Project: ${arduinoWorkspaceState.projectPath}`
+      : "Scan a Zephyr project to pull in its overlay and prj.conf, then regenerate the matching Arduino sketch from the current board.";
+    return;
+  }
+  const data = arduinoWorkspaceState.importPreview;
+  const pins = data.pins || [];
+  const peripherals = data.peripherals || [];
+  const warnings = data.warnings || [];
+  summary.textContent = `${pins.length} pin assignment(s) • ${peripherals.length} peripheral(s) • ${warnings.length} warning(s)`;
+  preview.className = "zcatalog-note";
+  preview.innerHTML = `
+    <div><strong>Pins:</strong> ${pins.length ? pins.map((pin) => `${escapeHtml(pin.pin_name || pin.node_label || "pin")} → ${escapeHtml(`${pin.peripheral}.${pin.signal}`)}`).join("<br>") : "None detected"}</div>
+    <div style="margin-top:8px;"><strong>Peripherals:</strong> ${peripherals.length ? peripherals.map((peripheral) => escapeHtml(peripheral.name)).join(", ") : "None detected"}</div>
+    ${warnings.length ? `<div style="margin-top:8px;"><strong>Warnings:</strong><br>${warnings.map((warning) => escapeHtml(warning)).join("<br>")}</div>` : ""}
+  `;
+}
+
+function arduinoRenderGeneratedFiles() {
+  const tabs = $("#arduinoGeneratedTabs");
+  const pre = $("#arduinoGeneratedPre");
+  if (!tabs || !pre) return;
+  const filenames = Object.keys(arduinoWorkspaceState.generatedFiles || {}).sort();
+  if (!filenames.length) {
+    tabs.innerHTML = "";
+    pre.textContent = "Generate output to preview the Arduino sketch and helper files for the active board.";
+    return;
+  }
+  arduinoEnsureActiveFile();
+  tabs.innerHTML = "";
+  filenames.forEach((filename) => {
+    const button = document.createElement("div");
+    button.className = "output-tab" + (filename === arduinoWorkspaceState.activeFile ? " active" : "");
+    button.textContent = filename;
+    button.addEventListener("click", () => {
+      arduinoWorkspaceState.activeFile = filename;
+      arduinoRenderGeneratedFiles();
+    });
+    tabs.appendChild(button);
+  });
+  pre.textContent = arduinoWorkspaceState.generatedFiles[arduinoWorkspaceState.activeFile] || "";
+}
+
+function arduinoRenderModulePreview() {
+  const pre = $("#arduinoModulePreview");
+  if (!pre) return;
+  pre.textContent = generatedFragments.modules?.prj_conf || "No module fragment generated yet.";
+}
+
+function arduinoRender() {
+  const pathInput = $("#arduinoProjectPath");
+  if (pathInput) pathInput.value = arduinoWorkspaceState.projectPath || "";
+  const outputInput = $("#arduinoOutputPath");
+  if (outputInput) outputInput.value = arduinoWorkspaceState.outputPath || "";
+  const validationInput = $("#arduinoValidationPath");
+  if (validationInput) validationInput.value = arduinoWorkspaceState.validationPath || "";
+  const sketchInput = $("#arduinoSketchName");
+  if (sketchInput) sketchInput.value = arduinoWorkspaceState.sketchName || "";
+  const boardSummary = $("#arduinoBoardSummary");
+  if (boardSummary) {
+    boardSummary.textContent = boardData
+      ? `${boardData.board} • ${boardData.soc} • ${boardData.package || "package n/a"}`
+      : "No board loaded.";
+  }
+  arduinoRenderScannedFiles();
+  arduinoRenderImportPreview();
+  arduinoRenderGeneratedFiles();
+  arduinoRenderModulePreview();
+}
+
+function arduinoRestoreState(state) {
+  const source = state && typeof state === "object" ? state : {};
+  arduinoWorkspaceState = createArduinoWorkspaceState();
+  arduinoWorkspaceState.projectPath = String(source.project_path || "");
+  arduinoWorkspaceState.outputPath = String(source.output_path || "");
+  arduinoWorkspaceState.validationPath = String(source.validation_path || "");
+  arduinoWorkspaceState.sketchName = String(source.sketch_name || "");
+  arduinoWorkspaceState.scannedFiles = Array.isArray(source.scanned_files)
+    ? source.scanned_files.map(normalizeArduinoScannedFile)
+    : [];
+  arduinoWorkspaceState.importPreview = source.import_preview && typeof source.import_preview === "object"
+    ? source.import_preview
+    : null;
+  arduinoWorkspaceState.generatedFiles = source.generated_files && typeof source.generated_files === "object"
+    ? { ...source.generated_files }
+    : {};
+  arduinoWorkspaceState.activeFile = String(source.active_file || "");
+  arduinoEnsureActiveFile();
+  arduinoRender();
+}
+
+function arduinoHandleBoardChanged() {
+  arduinoWorkspaceState.importPreview = null;
+  arduinoWorkspaceState.generatedFiles = {};
+  arduinoWorkspaceState.activeFile = "";
+  if (!arduinoWorkspaceState.sketchName && boardData?.board) {
+    arduinoWorkspaceState.sketchName = boardData.board;
+  }
+  arduinoRender();
+}
+
+async function arduinoPreviewImport() {
+  const overlay = arduinoSelectedImportText("overlay");
+  const conf = arduinoSelectedImportText("conf");
+  if (!overlay && !conf) {
+    arduinoWorkspaceState.importPreview = null;
+    arduinoRenderImportPreview();
+    return;
+  }
+  try {
+    const res = await fetch("/api/import-config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        overlay,
+        conf,
+        board_name: boardData?.board || "",
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      toast(`Parse error: ${data.error || "Failed to preview import"}`);
+      return;
+    }
+    arduinoWorkspaceState.importPreview = data;
+    arduinoRenderImportPreview();
+  } catch (err) {
+    toast(`Parse failed: ${err.message}`);
+  }
+}
+
+async function arduinoScanProject() {
+  const path = $("#arduinoProjectPath")?.value.trim() || arduinoWorkspaceState.projectPath || "";
+  if (!path) {
+    toast("Enter a Zephyr project directory path");
+    return;
+  }
+  try {
+    const res = await fetch("/api/scan-project", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ project_path: path }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      toast(`Scan error: ${data.error}`);
+      return;
+    }
+    arduinoWorkspaceState.projectPath = path;
+    arduinoWorkspaceState.scannedFiles = Array.isArray(data.files)
+      ? data.files.map(normalizeArduinoScannedFile)
+      : [];
+    arduinoAutoSelectScannedFiles();
+    arduinoRenderScannedFiles();
+    await arduinoPreviewImport();
+    toast(arduinoWorkspaceState.scannedFiles.length
+      ? `Found ${arduinoWorkspaceState.scannedFiles.length} file(s)`
+      : "No .overlay or .conf files found");
+  } catch (err) {
+    toast(`Scan failed: ${err.message}`);
+  }
+}
+
+async function arduinoLoadRealBlinkyDemo() {
+  try {
+    const res = await fetch("/api/demo-app/real-blinky-sample");
+    const data = await res.json();
+    if (!res.ok) {
+      toast(data.error || "Failed to locate the real blinky demo");
+      return;
+    }
+    if (!data.exists || !data.project_path) {
+      toast("Real blinky demo is not available in this workspace");
+      return;
+    }
+    arduinoWorkspaceState.projectPath = data.project_path;
+    const input = $("#arduinoProjectPath");
+    if (input) input.value = data.project_path;
+    toast(`Loaded ${data.name} for ${data.board_id}`);
+    await arduinoScanProject();
+  } catch (err) {
+    toast(err.message || "Failed to load the real blinky demo");
+  }
+}
+
+function applyImportedConfig(data) {
+  if (!data || !boardData) {
+    toast("No parsed data to apply");
+    return null;
+  }
+
+  let applied = 0;
+
+  for (const pp of (data.pins || [])) {
+    const boardPin = boardData.pins.find((pin) =>
+      pin.name.toUpperCase() === (pp.pin_name || "").toUpperCase()
+    );
+    if (!boardPin) continue;
+
+    const af = boardPin.alt_functions.find((entry) =>
+      entry.pincm === pp.pincm && entry.function_id === pp.function_id
+    ) || boardPin.alt_functions.find((entry) =>
+      entry.peripheral === pp.peripheral && entry.signal === pp.signal
+    );
+
+    if (!af) continue;
+    pinStates[boardPin.number] = {
+      af,
+      props: {
+        bias_pull_up: pp.bias_pull_up || false,
+        bias_pull_down: pp.bias_pull_down || false,
+        drive_open_drain: pp.drive_open_drain || false,
+        input_enable: pp.input_enable || false,
+      },
+    };
+    applied += 1;
+  }
+
+  for (const peripheral of (data.peripherals || [])) {
+    if (peripheral.name in periphStates) {
+      periphStates[peripheral.name] = peripheral.enabled;
+    }
+  }
+
+  renderPeripherals();
+  renderChip();
+  renderConfigPanel();
+  interruptRender();
+
+  return {
+    appliedPins: applied,
+    peripheralCount: (data.peripherals || []).length,
+  };
+}
+
+function arduinoApplyImport() {
+  const applied = applyImportedConfig(arduinoWorkspaceState.importPreview);
+  if (!applied) return;
+  toast(`Imported ${applied.appliedPins} pin(s), ${applied.peripheralCount} peripheral(s)`);
+  arduinoRender();
+}
+
+async function arduinoGenerateFromCurrentBoard() {
+  const generated = await requestGenerateOutput();
+  if (!generated) return;
+  arduinoWorkspaceState.generatedFiles = { ...(generatedTargets.arduino || {}) };
+  arduinoEnsureActiveFile();
+  arduinoRenderGeneratedFiles();
+  arduinoRenderModulePreview();
+}
+
+async function arduinoExportProject() {
+  const files = arduinoWorkspaceState.generatedFiles || {};
+  if (!Object.keys(files).length) {
+    toast("Generate Arduino output before exporting a project");
+    return;
+  }
+
+  const outputPath = $("#arduinoOutputPath")?.value.trim() || arduinoWorkspaceState.outputPath || "";
+  if (!outputPath) {
+    toast("Choose an Arduino project directory first");
+    return;
+  }
+
+  const sketchName = $("#arduinoSketchName")?.value.trim() || arduinoWorkspaceState.sketchName || "";
+  arduinoWorkspaceState.outputPath = outputPath;
+  arduinoWorkspaceState.sketchName = sketchName;
+
+  try {
+    const res = await fetch("/api/save-arduino-project", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        output_dir: outputPath,
+        sketch_name: sketchName,
+        files,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      toast(data.error || "Failed to export Arduino project");
+      return;
+    }
+    toast(`Arduino project exported to ${data.output_dir}`);
+  } catch (err) {
+    toast(err.message || "Failed to export Arduino project");
+  }
+}
+
+async function arduinoExportValidationBundle() {
+  if (!generatedOverlay && !generatedConf) {
+    toast("Generate output before exporting a Renode validation bundle");
+    return;
+  }
+
+  const outputPath = $("#arduinoValidationPath")?.value.trim() || arduinoWorkspaceState.validationPath || "";
+  if (!outputPath) {
+    toast("Choose a validation bundle directory first");
+    return;
+  }
+
+  arduinoWorkspaceState.validationPath = outputPath;
+
+  try {
+    const res = await fetch("/api/demo-app/export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        output_dir: outputPath,
+        overwrite: true,
+        board_id: boardData?.board || "",
+        pin_states: cloneJson(pinStates),
+        periph_states: cloneJson(periphStates),
+        periph_core_states: cloneJson(periphCoreStates),
+        external_device_states: cloneJson(externalDeviceStates),
+        generated_overlay: generatedOverlay,
+        generated_conf: generatedConf,
+        generated_fragments: cloneJson(generatedFragments),
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      toast(data.error || "Failed to export Renode validation bundle");
+      return;
+    }
+    toast(`Renode validation bundle exported to ${data.output_dir}`);
+  } catch (err) {
+    toast(err.message || "Failed to export Renode validation bundle");
+  }
+}
+
+function arduinoInit() {
+  if (!$("#arduinoProjectFiles")) return;
+  $("#arduinoBtnScanProject")?.addEventListener("click", () => {
+    void arduinoScanProject();
+  });
+  $("#arduinoBtnLoadRealBlinky")?.addEventListener("click", () => {
+    void arduinoLoadRealBlinkyDemo();
+  });
+  $("#arduinoBtnPreviewImport")?.addEventListener("click", () => {
+    void arduinoPreviewImport();
+  });
+  $("#arduinoBtnApplyImport")?.addEventListener("click", arduinoApplyImport);
+  $("#arduinoBtnGenerate")?.addEventListener("click", () => {
+    void arduinoGenerateFromCurrentBoard();
+  });
+  $("#arduinoBtnExportProject")?.addEventListener("click", () => {
+    void arduinoExportProject();
+  });
+  $("#arduinoBtnExportValidation")?.addEventListener("click", () => {
+    void arduinoExportValidationBundle();
+  });
+  $("#arduinoBtnOpenModules")?.addEventListener("click", () => {
+    void openAppTab("modules");
+  });
+  $("#arduinoProjectPath")?.addEventListener("change", (event) => {
+    arduinoWorkspaceState.projectPath = event.target.value.trim();
+  });
+  $("#arduinoOutputPath")?.addEventListener("change", (event) => {
+    arduinoWorkspaceState.outputPath = event.target.value.trim();
+  });
+  $("#arduinoValidationPath")?.addEventListener("change", (event) => {
+    arduinoWorkspaceState.validationPath = event.target.value.trim();
+  });
+  $("#arduinoSketchName")?.addEventListener("change", (event) => {
+    arduinoWorkspaceState.sketchName = event.target.value.trim();
+  });
+  arduinoRender();
 }
 
 function inferDeviceBusFamily(device) {
@@ -913,6 +1400,9 @@ async function openAppTab(target) {
 
   if (target === "packages") {
     pkgLoadExisting();
+  }
+  if (target === "arduino-workspace") {
+    arduinoRender();
   }
   if (target === "board-editor") {
     updateBoardEditorMeta();
@@ -1733,6 +2223,7 @@ async function applyBoardDefinition(nextBoard, options = {}) {
 
   initExternalDeviceStates();
   updateBoardEditorMeta();
+  arduinoHandleBoardChanged();
   if (syncEditor) {
     setBoardEditorText(boardData);
     setBoardEditorStatus("Loaded current board into the editor.", "ok");
@@ -3980,10 +4471,18 @@ function pinConflictsFor(pinNum, conflictMap = collectPinConflicts()) {
   return conflictMap[String(pinNum)] || [];
 }
 
+function pinCustomName(state) {
+  return String(state?.custom_name || "").trim();
+}
+
+function pinDisplayName(pin, state = pinStates?.[pin?.number]) {
+  return pinCustomName(state) || pin.name;
+}
+
 function pinLabelForConflict(pinNum) {
   const pin = boardData?.pins?.find((entry) => entry.number === Number(pinNum));
   if (!pin) return `Pin ${pinNum}`;
-  return `${pin.name} (Pin ${pin.number})`;
+  return `${pinDisplayName(pin)} (Pin ${pin.number})`;
 }
 
 function pinConflictHeadline(conflict) {
@@ -4292,6 +4791,7 @@ function renderChipQfp() {
 
   function renderQfpPin(svg_, pin, x, y, w, h, side) {
     const state = pinStates[pin.number];
+    const displayName = pinDisplayName(pin, state);
     const isSelected = selectedPin === pin.number;
     const hasConflict = pinConflictsFor(pin.number, conflictMap).length > 0;
     const isPeripheralMatch = highlightedPeripheralSignal
@@ -4332,7 +4832,7 @@ function renderChipQfp() {
     }
 
     svg += `<text class="pin-num" x="${numX}" y="${numY}" text-anchor="${numAnchor}">${pin.number}</text>`;
-    svg += `<text class="pin-name" x="${nameX}" y="${nameY}" text-anchor="${nameAnchor}">${pin.name}</text>`;
+    svg += `<text class="pin-name" x="${nameX}" y="${nameY}" text-anchor="${nameAnchor}">${escapeHtml(displayName)}</text>`;
 
     const funcLabel = state && state.af ? state.af.name : (pin.kind !== "io" ? pin.default_function : "");
     if (funcLabel) {
@@ -4479,6 +4979,7 @@ function renderChipBga() {
 
       const x = gridX + ci * CELL;
       const state = pinStates[pin.number];
+      const displayName = pinDisplayName(pin, state);
       const isSelected = selectedPin === pin.number;
       const hasConflict = pinConflictsFor(pin.number, conflictMap).length > 0;
       const isPeripheralMatch = highlightedPeripheralSignal
@@ -4501,13 +5002,13 @@ function renderChipBga() {
       svg += `<circle class="${cls}" cx="${bcx}" cy="${bcy}" r="${br}" data-pin="${pin.number}"/>`;
 
       // Pin name inside or below ball
-      const shortName = pin.name.length > 4 ? pin.name.slice(0, 4) : pin.name;
-      svg += `<text class="bga-label" x="${bcx}" y="${bcy + 3}" text-anchor="middle" font-size="7" font-family="Consolas" fill="var(--fg)">${shortName}</text>`;
+      const shortName = displayName.length > 4 ? displayName.slice(0, 4) : displayName;
+      svg += `<text class="bga-label" x="${bcx}" y="${bcy + 3}" text-anchor="middle" font-size="7" font-family="Consolas" fill="var(--fg)">${escapeHtml(shortName)}</text>`;
 
       // Show assigned function as tooltip title
       const funcLabel = state && state.af ? state.af.name : (pin.kind !== "io" ? pin.default_function : "");
       if (funcLabel) {
-        svg += `<title>${pin.name}: ${funcLabel}</title>`;
+        svg += `<title>${escapeHtml(displayName)}: ${escapeHtml(funcLabel)}</title>`;
       }
     });
   });
@@ -4556,22 +5057,55 @@ function renderConfigPanel() {
     pinLabel = `Pin ${pin.number}`;
   }
 
+  const state = pinStates[pin.number] || {};
+  const customName = pinCustomName(state);
+  const displayName = customName || pin.name;
+
   if (pin.kind !== "io") {
-    panel.innerHTML = `<h3><span class="pin-badge">${pin.name}</span> ${pinLabel}</h3>
+    panel.innerHTML = `<h3><span class="pin-badge">${escapeHtml(displayName)}</span> ${pinLabel}</h3>
+      ${customName ? `<div class="config-section" style="font-size:11px;color:var(--fg-dim);">Physical pin: ${escapeHtml(pin.name)}</div>` : ""}
+      <div class="config-section"><label for="pinCustomName">Custom Pin Name</label>
+        <input id="pinCustomName" type="text" class="input" placeholder="Optional alias" value="${escapeHtml(customName)}">
+      </div>
       <div class="empty-state">${pin.kind === 'power' ? 'Power pin' : pin.kind === 'ground' ? 'Ground pin' : 'Special pin'}<br>${pin.default_function}</div>${deviceSection}`;
+
+    const customNameInput = panel.querySelector("#pinCustomName");
+    if (customNameInput) {
+      customNameInput.addEventListener("change", () => {
+        const nextCustomName = String(customNameInput.value || "").trim();
+        if (nextCustomName) {
+          pinStates[pin.number] = {
+            af: null,
+            props: {},
+            custom_name: nextCustomName,
+          };
+        } else {
+          delete pinStates[pin.number];
+        }
+        renderChip();
+        renderConfigPanel();
+      });
+    }
+
     wireExternalDeviceControls(panel);
     return;
   }
 
-  const state = pinStates[pin.number] || {};
   const conflictMap = healthSnapshot.byPin;
   const conflicts = pinConflictsFor(pin.number, conflictMap);
 
-  let html = `<h3><span class="pin-badge">${pin.name}</span> ${pinLabel}</h3>`;
+  let html = `<h3><span class="pin-badge">${escapeHtml(displayName)}</span> ${pinLabel}</h3>`;
+  if (customName) {
+    html += `<div class="config-section" style="font-size:11px;color:var(--fg-dim);">Physical pin: ${escapeHtml(pin.name)}</div>`;
+  }
 
   // Reset button
   html += `<div style="margin-bottom:12px;">
     <button class="btn" id="btnResetPin" style="font-size:11px;">Reset to Default</button>
+  </div>`;
+
+  html += `<div class="config-section"><label for="pinCustomName">Custom Pin Name</label>
+    <input id="pinCustomName" type="text" class="input" placeholder="Optional alias" value="${escapeHtml(customName)}">
   </div>`;
 
   // Alternate functions list
@@ -4630,6 +5164,7 @@ function renderConfigPanel() {
         pinStates[pin.number] = {
           af: af,
           props: pinStates[pin.number]?.props || {},
+          custom_name: pinCustomName(pinStates[pin.number]),
         };
         // Auto-enable the peripheral
         if (!periphStates[af.peripheral]) {
@@ -4648,13 +5183,34 @@ function renderConfigPanel() {
     });
   });
 
+  const customNameInput = panel.querySelector("#pinCustomName");
+  if (customNameInput) {
+    customNameInput.addEventListener("change", () => {
+      const nextCustomName = String(customNameInput.value || "").trim();
+      const nextState = {
+        af: pinStates[pin.number]?.af || null,
+        props: { ...(pinStates[pin.number]?.props || {}) },
+      };
+      if (nextCustomName) {
+        nextState.custom_name = nextCustomName;
+      }
+      if (nextState.af || Object.keys(nextState.props).length || nextState.custom_name) {
+        pinStates[pin.number] = nextState;
+      } else {
+        delete pinStates[pin.number];
+      }
+      renderChip();
+      renderConfigPanel();
+    });
+  }
+
   // Property checkboxes
   ["propPullUp", "propPullDown", "propOpenDrain", "propInputEn"].forEach(id => {
     const el = panel.querySelector(`#${id}`);
     if (el) {
       el.addEventListener("change", () => {
         if (!pinStates[pin.number]) {
-          pinStates[pin.number] = { af: null, props: {} };
+          pinStates[pin.number] = { af: null, props: {}, custom_name: customName };
         }
         const propKey = {
           propPullUp: "bias_pull_up",
@@ -4706,6 +5262,7 @@ async function generateOutput() {
 
     assignments.push({
       pin_name:        pin.name,
+      custom_name:     pinCustomName(state),
       pincm:           state.af.pincm,
       function_id:     state.af.function_id,
       af_name:         state.af.name,
@@ -4746,6 +5303,10 @@ async function generateOutput() {
   generatedTargets = result.targets || {};
 
   refreshGeneratedOutputs();
+  arduinoWorkspaceState.generatedFiles = { ...(generatedTargets.arduino || {}) };
+  arduinoEnsureActiveFile();
+  arduinoRenderGeneratedFiles();
+  arduinoRenderModulePreview();
 
   showOutput(activeTab);
   outputBar.classList.remove("collapsed");
@@ -4843,6 +5404,9 @@ function serializePinStates() {
     if (state.props) {
       entry.props = { ...state.props };
     }
+    if (pinCustomName(state)) {
+      entry.custom_name = pinCustomName(state);
+    }
     out[pinNum] = entry;
   }
   return out;
@@ -4886,6 +5450,7 @@ async function saveProjectFile(filePath) {
       sensor_selected: snsSelectedJob || "",
       mcu_jobs: pkgJobsData,
       mcu_selected: pkgSelectedJob || "",
+      arduino_workspace: arduinoSerializeState(),
     }),
   });
   const result = await res.json();
@@ -4942,7 +5507,10 @@ async function loadProjectFile(filePath) {
     if (state.props) {
       entry.props = { ...state.props };
     }
-    if (entry.af || entry.props) {
+    if (pinCustomName(state)) {
+      entry.custom_name = pinCustomName(state);
+    }
+    if (entry.af || entry.props || entry.custom_name) {
       pinStates[pinNum] = entry;
     }
   }
@@ -4997,6 +5565,7 @@ async function loadProjectFile(filePath) {
     protocolSyncGeneratedOutputs();
     protocolRender();
   }
+  arduinoRestoreState(project.arduino_workspace || null);
 
   // Re-render everything
   renderPeripherals();
@@ -5033,6 +5602,7 @@ document.addEventListener("DOMContentLoaded", () => {
   lvglInit();
   protocolInit();
   zephyrCatalogInit();
+  arduinoInit();
   const appTabStrip = document.querySelector(".app-tabs");
   const appTabSelect = document.getElementById("appTabSelect");
   appTabStrip?.addEventListener("scroll", updateAppTabOverflowState, { passive: true });
@@ -5204,6 +5774,25 @@ document.addEventListener("DOMContentLoaded", () => {
     title: "Select Zephyr project directory",
   }, async () => {
     await impScanProject();
+  });
+  bindPathBrowseButton("#arduinoBtnBrowseProjectPath", "#arduinoProjectPath", {
+    dialogKind: "directory",
+    title: "Select Zephyr project directory",
+  }, async (input) => {
+    arduinoWorkspaceState.projectPath = input.value.trim();
+    await arduinoScanProject();
+  });
+  bindPathBrowseButton("#arduinoBtnBrowseOutputPath", "#arduinoOutputPath", {
+    dialogKind: "directory",
+    title: "Select Arduino sketch directory",
+  }, async (input) => {
+    arduinoWorkspaceState.outputPath = input.value.trim();
+  });
+  bindPathBrowseButton("#arduinoBtnBrowseValidationPath", "#arduinoValidationPath", {
+    dialogKind: "directory",
+    title: "Select Renode validation bundle directory",
+  }, async (input) => {
+    arduinoWorkspaceState.validationPath = input.value.trim();
   });
   bindPathBrowseButton("#lvglBtnBrowseImportSource", "#lvglImportSource", () => lvglImportBrowseDialogOptions(), async (input) => {
     const source = input.value.trim();
@@ -7702,59 +8291,12 @@ function impUpdateFromScanned() {
 }
 
 function impApply() {
-  if (!impParsed || !boardData) {
-    toast("No parsed data to apply");
-    return;
-  }
-
-  // Apply pin assignments
-  const data = impParsed;
-  let applied = 0;
-
-  // Match parsed pins to board pins by pin_name + pincm + peripheral
-  for (const pp of (data.pins || [])) {
-    // Find the board pin by name
-    const boardPin = boardData.pins.find(p =>
-      p.name.toUpperCase() === (pp.pin_name || "").toUpperCase()
-    );
-    if (!boardPin) continue;
-
-    // Find matching alt function
-    const af = boardPin.alt_functions.find(a =>
-      a.pincm === pp.pincm && a.function_id === pp.function_id
-    ) || boardPin.alt_functions.find(a =>
-      a.peripheral === pp.peripheral && a.signal === pp.signal
-    );
-
-    if (af) {
-      pinStates[boardPin.number] = {
-        af: af,
-        props: {
-          bias_pull_up: pp.bias_pull_up || false,
-          bias_pull_down: pp.bias_pull_down || false,
-          drive_open_drain: pp.drive_open_drain || false,
-          input_enable: pp.input_enable || false,
-        }
-      };
-      applied++;
-    }
-  }
-
-  // Apply peripheral enables
-  for (const pp of (data.peripherals || [])) {
-    if (pp.name in periphStates) {
-      periphStates[pp.name] = pp.enabled;
-    }
-  }
-
-  // Re-render
-  renderPeripherals();
-  renderChip();
-  renderConfigPanel();
+  const applied = applyImportedConfig(impParsed);
+  if (!applied) return;
 
   // Close modal
   $("#importModal").classList.remove("show");
-  toast(`Imported ${applied} pin(s), ${(data.peripherals||[]).length} peripheral(s)`);
+  toast(`Imported ${applied.appliedPins} pin(s), ${applied.peripheralCount} peripheral(s)`);
 }
 
 

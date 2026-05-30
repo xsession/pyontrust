@@ -1,0 +1,30 @@
+# {{ app_name }}
+
+Generated from `{{ title }}` using the `gui-app` scaffold.
+
+This scaffold embeds the generated Python driver and exposes a small pyontrust-native Flask dashboard.
+
+## Run
+
+```bash
+python main.py --port {{ default_port }}
+```
+
+Then open `http://{{ default_host }}:{{ default_port }}{{ route_prefix }}`.
+
+## Build
+
+Install the optional build tools in the pyontrust environment, then run:
+
+```bash
+python build_install.py
+```
+
+Set `BUILD_BACKEND=nuitka` if you want a Nuitka onefile build instead of the default PyInstaller path.
+
+## API
+
+- `GET {{ api_prefix }}/health`
+- `GET {{ api_prefix }}/summary`
+- `GET {{ api_prefix }}/metadata`
+- `GET {{ api_prefix }}/methods`

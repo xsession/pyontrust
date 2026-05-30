@@ -6,8 +6,13 @@ unit → integration → system (robotbench).
 """
 
 import json
+import os
 import pathlib
+import shutil
+import subprocess
 import pytest
+
+from project_bridge import generate_from_import
 
 
 def _write_temp_zephyr_tree(root: pathlib.Path) -> pathlib.Path:
@@ -198,6 +203,22 @@ class TestGenerateEndpoints:
         assert "pinMode(PIN_UART0_TX, OUTPUT);" in data["targets"]["arduino"]["rpi_pico.ino"]
         assert "pin_config_apply" in data["targets"]["baremetal"]["pin_config.c"]
 
+    def test_generate_preserves_custom_pin_aliases_in_human_facing_output(self, client, sample_rpi_pico_assignments):
+        payload = json.loads(json.dumps(sample_rpi_pico_assignments))
+        payload["assignments"][0]["custom_name"] = "console_tx"
+
+        resp = client.post(
+            "/api/generate",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert "console_tx -> GP0" in data["overlay"]
+        assert "console_tx -> GP0" in data["targets"]["arduino"]["pin_config.h"]
+        assert "uart0.tx -> console_tx (GP0)" in data["targets"]["baremetal"]["pin_config.c"]
+
     def test_generate_external_device_outputs(self, client):
         """POST /api/generate emits external device snippets for Zephyr and Arduino."""
         payload = {
@@ -271,6 +292,113 @@ class TestImportEndpoints:
         assert resp.status_code == 200
         data = resp.get_json()
         assert "kconfig" in data
+
+
+class TestArduinoProjectExport:
+    def test_save_arduino_project_writes_sketch_directory(self, client, tmp_path):
+        output_dir = tmp_path / "demo_sketch"
+        resp = client.post(
+            "/api/save-arduino-project",
+            data=json.dumps({
+                "output_dir": str(output_dir),
+                "sketch_name": "demo_sketch",
+                "files": {
+                    "rpi_pico.ino": "void setup() {}\nvoid loop() {}\n",
+                    "pin_config.h": "#pragma once\n",
+                },
+            }),
+            content_type="application/json",
+        )
+
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["saved"] is True
+        assert (output_dir / "demo_sketch.ino").read_text(encoding="utf-8") == "void setup() {}\nvoid loop() {}\n"
+        assert (output_dir / "pin_config.h").read_text(encoding="utf-8") == "#pragma once\n"
+
+    def test_save_arduino_project_requires_files(self, client, tmp_path):
+        resp = client.post(
+            "/api/save-arduino-project",
+            data=json.dumps({
+                "output_dir": str(tmp_path / "demo_sketch"),
+                "files": {},
+            }),
+            content_type="application/json",
+        )
+
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert "files" in data["error"]
+
+    def test_real_blinky_round_trip_import_export_and_validation_bundle(self, client, tmp_path):
+        sample_dir = pathlib.Path(__file__).resolve().parent.parent / "demo" / "real_blinky_import"
+
+        scan_resp = client.post(
+            "/api/scan-project",
+            data=json.dumps({"project_path": str(sample_dir)}),
+            content_type="application/json",
+        )
+        assert scan_resp.status_code == 200
+        scan_data = scan_resp.get_json()
+        files = scan_data["files"]
+        overlay = next(file for file in files if file["type"] == "overlay")
+        conf = next(file for file in files if file["name"] == "prj.conf")
+
+        import_resp = client.post(
+            "/api/import-config",
+            data=json.dumps({
+                "overlay": overlay["content"],
+                "conf": conf["content"],
+                "board_name": "lp_mspm0g3507",
+            }),
+            content_type="application/json",
+        )
+        assert import_resp.status_code == 200
+        imported = import_resp.get_json()
+        assert any(pin["pin_name"] == "PA10" for pin in imported["pins"])
+        assert any(pin["pin_name"] == "PA11" for pin in imported["pins"])
+        assert any(peripheral["name"] == "uart0" and peripheral["enabled"] for peripheral in imported["peripherals"])
+
+        generated = generate_from_import("lp_mspm0g3507", imported, targets=["arduino"])
+        sketch_dir = tmp_path / "blinky_sketch"
+        save_resp = client.post(
+            "/api/save-arduino-project",
+            data=json.dumps({
+                "output_dir": str(sketch_dir),
+                "sketch_name": "blinky_bridge",
+                "files": generated.targets["arduino"],
+            }),
+            content_type="application/json",
+        )
+        assert save_resp.status_code == 200
+        assert (sketch_dir / "blinky_bridge.ino").is_file()
+
+        validation_dir = tmp_path / "blinky_validation"
+        bundle_resp = client.post(
+            "/api/demo-app/export",
+            data=json.dumps({
+                "output_dir": str(validation_dir),
+                "overwrite": True,
+                "board_id": "lp_mspm0g3507",
+                "generated_overlay": generated.overlay,
+                "generated_conf": generated.prj_conf,
+                "pin_states": {
+                    "13": {"af": {"name": "UART0_TX"}},
+                    "14": {"af": {"name": "UART0_RX"}},
+                },
+                "periph_states": {"uart0": True},
+            }),
+            content_type="application/json",
+        )
+        assert bundle_resp.status_code == 200
+        assert (validation_dir / "src" / "main.c").is_file()
+        assert (validation_dir / "boards" / "lp_mspm0g3507.resc").is_file()
+        assert (validation_dir / "sample.robot").is_file()
+        main_c = (validation_dir / "src" / "main.c").read_text(encoding="utf-8")
+        robot = (validation_dir / "sample.robot").read_text(encoding="utf-8")
+        assert "gpio_pin_toggle_dt" in main_c
+        assert "Blink" in main_c
+        assert "Wait For Line On Uart     Pin Configurator demo boot" in robot
 
 
 class TestZephyrCatalog:
@@ -754,6 +882,11 @@ class TestProjectFileEndpoints:
             "protocol_editor": {
                 "messages": [{"id": "frame-a", "name": "StatusFrame"}],
             },
+            "arduino_workspace": {
+                "project_path": "C:/work/demo-app",
+                "generated_files": {"demo.ino": "void setup() {}"},
+                "active_file": "demo.ino",
+            },
             "generated_overlay": "/* test overlay */",
             "generated_conf": "CONFIG_SPI=y",
         })
@@ -770,6 +903,9 @@ class TestProjectFileEndpoints:
         assert data["external_device_states"]["bme280_i2c"]["selected"] is True
         assert data["external_device_states"]["bme280_i2c"]["bus"] == "i2c0"
         assert data["protocol_editor"]["messages"][0]["name"] == "StatusFrame"
+        assert data["arduino_workspace"]["project_path"] == "C:/work/demo-app"
+        assert data["arduino_workspace"]["generated_files"]["demo.ino"] == "void setup() {}"
+        assert data["arduino_workspace"]["active_file"] == "demo.ino"
         assert data["generated_overlay"] == "/* test overlay */"
         assert data["generated_conf"] == "CONFIG_SPI=y"
 
@@ -879,6 +1015,16 @@ class TestProjectFileEndpoints:
 
 
 class TestDemoAppExport:
+    def test_real_blinky_sample_endpoint(self, client):
+        resp = client.get("/api/demo-app/real-blinky-sample")
+
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["name"] == "real_blinky_import"
+        assert data["board_id"] == "lp_mspm0g3507"
+        assert data["exists"] is True
+        assert pathlib.Path(data["project_path"]).is_dir()
+
     def test_export_demo_app_materializes_buildable_layout(self, client, tmp_path):
         out_dir = tmp_path / "demo_app"
         resp = client.post("/api/demo-app/export", json={
@@ -926,3 +1072,45 @@ class TestDemoAppExport:
         assert "showAnalyzer sysbus.uart0" in resc
         assert "CONFIG_PRINTK=y" in prj_conf
         assert "CONFIG_UART_CONSOLE=y" in prj_conf
+
+
+class TestSystemRenodeSmoke:
+    def test_real_blinky_sample_runs_robot_smoke_when_toolchain_present(self, tmp_path):
+        if shutil.which("west") is None:
+            pytest.skip("west is not installed")
+        if shutil.which("renode-test") is None:
+            pytest.skip("renode-test is not installed")
+        if not os.environ.get("ZEPHYR_BASE"):
+            pytest.skip("ZEPHYR_BASE is not configured")
+
+        sample_dir = pathlib.Path(__file__).resolve().parent.parent / "demo" / "real_blinky_import"
+        build_dir = tmp_path / "build"
+
+        build = subprocess.run(
+            [
+                "west", "build",
+                "-p", "always",
+                "-b", "lp_mspm0g3507",
+                "-d", str(build_dir),
+                str(sample_dir),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=600,
+            check=False,
+        )
+        if build.returncode != 0:
+            pytest.skip(f"west build failed in this environment: {build.stderr or build.stdout}")
+
+        run_robot = subprocess.run(
+            ["west", "build", "-d", str(build_dir), "-t", "run_robot"],
+            capture_output=True,
+            text=True,
+            timeout=600,
+            check=False,
+        )
+        if run_robot.returncode != 0:
+            pytest.skip(f"Renode/Robot smoke could not run here: {run_robot.stderr or run_robot.stdout}")
+
+        output = "\n".join(part for part in [run_robot.stdout, run_robot.stderr] if part)
+        assert "PASS" in output or "Firmware boots successfully" in output

@@ -1,0 +1,18 @@
+from __future__ import annotations
+
+from sequence import {{ sequence_class_name }}
+
+
+def test_sequence_summary_includes_transport() -> None:
+    sequence = {{ sequence_class_name }}()
+    summary = sequence.summary()
+
+    assert summary["title"] == {{ title | tojson }}
+    assert summary["transport"] == {{ transport | tojson }}
+
+
+def test_sequence_exposes_metadata_and_driver_name() -> None:
+    sequence = {{ sequence_class_name }}()
+
+    assert sequence.metadata() == {{ metadata_json }}
+    assert sequence.driver_class_name() == {{ driver_class_name | tojson }}

@@ -1,0 +1,23 @@
+from __future__ import annotations
+
+import argparse
+
+from app_factory import create_app
+
+
+__version__ = {{ app_version | tojson }}
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="{{ app_name }} generated dashboard")
+    parser.add_argument("--host", default="{{ default_host }}")
+    parser.add_argument("--port", type=int, default={{ default_port }})
+    parser.add_argument("--debug", action="store_true")
+    args = parser.parse_args()
+
+    app = create_app()
+    app.run(host=args.host, port=args.port, debug=args.debug)
+
+
+if __name__ == "__main__":
+    main()

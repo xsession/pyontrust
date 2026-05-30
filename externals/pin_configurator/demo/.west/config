@@ -1,0 +1,7 @@
+[manifest]
+path = zephyr_ci_workspace
+file = west.yml
+
+[zephyr]
+base = deps/zephyr
+

@@ -34,8 +34,8 @@ def main():
                         help="Open browser automatically")
     parser.add_argument(
         "--ui-path",
-        default=os.environ.get("PIN_CONFIGURATOR_UI_PATH", "/app"),
-        help="UI path to open in the browser (default: /app)",
+        default=os.environ.get("PIN_CONFIGURATOR_UI_PATH", "/"),
+        help="UI path to open in the browser (default: /)",
     )
     args = parser.parse_args()
 

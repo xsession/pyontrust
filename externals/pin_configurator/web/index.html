@@ -4384,6 +4384,7 @@ svg.chip-svg .bga-label {
     <option value="peripherals">Peripheral Configurator</option>
     <option value="clock">Clock Configurator</option>
     <option value="configurator">Pin Configurator</option>
+    <option value="arduino-workspace">Arduino Importer</option>
     <option value="board-editor">Board Editor</option>
     <option value="packages">Package Manager</option>
     <option value="sensors">Sensor Parser</option>
@@ -4411,6 +4412,9 @@ svg.chip-svg .bga-label {
   </div>
   <div class="app-tab" data-app-tab="configurator">
     <span class="tab-icon">&#128204;</span>Pin Configurator
+  </div>
+  <div class="app-tab" data-app-tab="arduino-workspace">
+    <span class="tab-icon">🧰</span>Arduino Importer
   </div>
   <div class="app-tab" data-app-tab="board-editor">
     <span class="tab-icon">🧩</span>Board Editor
@@ -4860,6 +4864,82 @@ svg.chip-svg .bga-label {
 </div>
 
 </div><!-- /tab configurator -->
+
+<!-- ══════════════════════════════════════════════════════════════
+     TAB: Arduino Importer
+     ══════════════════════════════════════════════════════════ -->
+<div class="tab-content" data-app-content="arduino-workspace">
+<div class="zcatalog">
+  <div class="zcatalog-sidebar">
+    <h3>Zephyr Project</h3>
+    <div class="zcatalog-controls">
+      <div class="path-input-row">
+        <input type="text" id="arduinoProjectPath" placeholder="C:\GIT\WORK\codelayer\locator_base\apps\locator_base">
+        <button class="btn" type="button" id="arduinoBtnBrowseProjectPath">Browse</button>
+      </div>
+      <div class="zcatalog-actions">
+        <button class="btn" id="arduinoBtnScanProject">Scan Project</button>
+        <button class="btn" id="arduinoBtnLoadRealBlinky">Load Real Blinky Demo</button>
+        <button class="btn" id="arduinoBtnPreviewImport">Preview Import</button>
+        <button class="btn btn-accent" id="arduinoBtnApplyImport">Apply To Board</button>
+      </div>
+    </div>
+    <div class="zcatalog-summary" id="arduinoImportSummary">Scan a Zephyr project to pull in its overlay and prj.conf, then regenerate the matching Arduino sketch from the current board.</div>
+    <div class="zcatalog-list" id="arduinoProjectFiles">
+      <div class="zcatalog-empty">No Zephyr project scanned yet.</div>
+    </div>
+
+    <h3>Zephyr Module Generator</h3>
+    <div class="zcatalog-note">Use the Module Configurator to generate module fragments that complement the imported board wiring before emitting Arduino output.</div>
+    <div class="zcatalog-actions">
+      <button class="btn" id="arduinoBtnOpenModules">Open Module Configurator</button>
+    </div>
+    <pre id="arduinoModulePreview">No module fragment generated yet.</pre>
+  </div>
+
+  <div class="zcatalog-main">
+    <div class="zcatalog-detail" id="arduinoWorkspaceDetail">
+      <div class="zcatalog-detail-head">
+        <div>
+          <h2>Arduino Import Workspace</h2>
+          <div class="zcatalog-detail-meta" id="arduinoBoardSummary">No board loaded.</div>
+        </div>
+        <div class="zcatalog-actions">
+          <button class="btn" id="arduinoBtnGenerate">Generate Arduino Output</button>
+        </div>
+      </div>
+
+      <div class="zcatalog-detail-section">
+        <h3>Import Preview</h3>
+        <div id="arduinoImportPreview" class="zcatalog-note">Select a Zephyr project or click Preview Import after choosing files to inspect what will be applied to the current board.</div>
+      </div>
+
+      <div class="zcatalog-detail-section">
+        <h3>Generated Arduino Files</h3>
+        <div class="zcatalog-controls" style="margin-bottom:12px;">
+          <div class="path-input-row">
+            <input type="text" id="arduinoOutputPath" placeholder="C:\GIT\WORK\arduino\locator_base_bridge">
+            <button class="btn" type="button" id="arduinoBtnBrowseOutputPath">Browse</button>
+          </div>
+          <div class="path-input-row">
+            <input type="text" id="arduinoSketchName" placeholder="Sketch name (defaults to folder name)">
+            <button class="btn" id="arduinoBtnExportProject">Export Arduino Project</button>
+          </div>
+          <div class="path-input-row">
+            <input type="text" id="arduinoValidationPath" placeholder="C:\GIT\WORK\renode\locator_base_validation">
+            <button class="btn" type="button" id="arduinoBtnBrowseValidationPath">Browse</button>
+          </div>
+          <div class="zcatalog-actions">
+            <button class="btn" id="arduinoBtnExportValidation">Export Renode Blinky Bundle</button>
+          </div>
+        </div>
+        <div class="output-tabs" id="arduinoGeneratedTabs"></div>
+        <pre id="arduinoGeneratedPre">Generate output to preview the Arduino sketch and helper files for the active board.</pre>
+      </div>
+    </div>
+  </div>
+</div>
+</div><!-- /tab arduino-workspace -->
 
 <!-- ══════════════════════════════════════════════════════════════
      TAB: Board Editor

@@ -1,0 +1,19 @@
+#include <zephyr/dt-bindings/pinctrl/mspm0-pinctrl.h>
+
+&pinctrl {
+    uart0_tx_pa10: uart0_tx_pa10 {
+        pinmux = <MSP_PINMUX(21, MSPM0_PIN_FUNCTION_2)>;
+    };
+
+    uart0_rx_pa11: uart0_rx_pa11 {
+        pinmux = <MSP_PINMUX(22, MSPM0_PIN_FUNCTION_2)>;
+        input-enable;
+    };
+};
+
+&uart0 {
+    status = "okay";
+    pinctrl-0 = <&uart0_tx_pa10 &uart0_rx_pa11>;
+    pinctrl-names = "default";
+    current-speed = <115200>;
+};

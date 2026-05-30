@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Demo Dashboard Dashboard</title>
+  <style>
+    :root {
+      --bg: #f4efe5;
+      --ink: #1f2a2e;
+      --panel: rgba(255, 255, 255, 0.8);
+      --accent: #0f766e;
+      --accent-soft: #d7f0ec;
+      --line: rgba(31, 42, 46, 0.12);
+    }
+    body {
+      margin: 0;
+      font-family: Georgia, "Times New Roman", serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(15, 118, 110, 0.18), transparent 28%),
+        linear-gradient(135deg, #f5efe3, #e9f1ef 55%, #f9f7f1);
+      min-height: 100vh;
+    }
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 32px 20px 56px;
+    }
+    .hero {
+      display: grid;
+      gap: 14px;
+      margin-bottom: 24px;
+    }
+    .eyebrow {
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      font-size: 12px;
+      color: rgba(31, 42, 46, 0.65);
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(2.2rem, 5vw, 4.6rem);
+      line-height: 0.95;
+      max-width: 10ch;
+    }
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin: 24px 0;
+    }
+    .card, pre {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 14px 30px rgba(31, 42, 46, 0.08);
+    }
+    .card {
+      padding: 16px 18px;
+    }
+    .label {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: rgba(31, 42, 46, 0.6);
+      margin-bottom: 10px;
+    }
+    .value {
+      font-size: 1.7rem;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+    }
+    pre {
+      padding: 18px;
+      overflow: auto;
+      white-space: pre-wrap;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      width: fit-content;
+      padding: 7px 12px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <div class="eyebrow">Generated GUI App</div>
+      <h1>Demo Dashboard</h1>
+      <div class="status" id="status">Checking API…</div>
+    </section>
+
+    <section class="summary" id="summary"></section>
+
+    <section class="grid">
+      <div>
+        <div class="label">Methods</div>
+        <pre id="methods"></pre>
+      </div>
+      <div>
+        <div class="label">Metadata</div>
+        <pre id="metadata"></pre>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    async function loadJson(path) {
+      const response = await fetch(path);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      return response.json();
+    }
+
+    function renderSummary(summary) {
+      const root = document.getElementById("summary");
+      root.innerHTML = "";
+      Object.entries(summary).forEach(([key, value]) => {
+        const card = document.createElement("article");
+        card.className = "card";
+        card.innerHTML = `<div class="label">${key.replaceAll("_", " ")}</div><div class="value">${value}</div>`;
+        root.appendChild(card);
+      });
+    }
+
+    async function boot() {
+      try {
+        const [health, summary, metadata, methods] = await Promise.all([
+          loadJson("/demo-dashboard/api/health"),
+          loadJson("/demo-dashboard/api/summary"),
+          loadJson("/demo-dashboard/api/metadata"),
+          loadJson("/demo-dashboard/api/methods"),
+        ]);
+        document.getElementById("status").textContent = `API ${health.status}`;
+        renderSummary(summary);
+        document.getElementById("metadata").textContent = JSON.stringify(metadata, null, 2);
+        document.getElementById("methods").textContent = JSON.stringify(methods, null, 2);
+      } catch (error) {
+        document.getElementById("status").textContent = `API error: ${error.message}`;
+      }
+    }
+
+    boot();
+  </script>
+</body>
+</html>

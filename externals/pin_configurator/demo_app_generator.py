@@ -22,6 +22,7 @@ def _config_lines(text: str) -> list[str]:
 def _merge_prj_conf(project: dict) -> str:
     required = [
         "CONFIG_CONSOLE=y",
+        "CONFIG_GPIO=y",
         "CONFIG_PRINTK=y",
         "CONFIG_SERIAL=y",
         "CONFIG_UART_CONSOLE=y",
@@ -67,22 +68,49 @@ def _summary_header(project: dict) -> str:
 def _main_c() -> str:
     return textwrap.dedent(
         """\
+        #include <zephyr/devicetree.h>
+        #include <zephyr/drivers/gpio.h>
         #include <zephyr/kernel.h>
         #include <zephyr/sys/printk.h>
 
         #include \"generated_project_summary.h\"
 
+        #define SLEEP_TIME_MS 1000
+        #define LED0_NODE DT_ALIAS(led0)
+
+        #if DT_NODE_HAS_STATUS(LED0_NODE, okay)
+        static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
+        #endif
+
         int main(void)
         {
-        \tprintk("Pin Configurator demo boot\\n");
-        \tprintk("Board: %s\\n", PINCFG_DEMO_BOARD);
-        \tprintk("Pins configured: %d\\n", PINCFG_DEMO_PIN_COUNT);
-        \tprintk("Enabled peripherals: %s\\n", PINCFG_DEMO_ENABLED_PERIPHERALS);
-        \tprintk("Selected external devices: %s\\n", PINCFG_DEMO_SELECTED_DEVICES);
-        \twhile (1) {
-        \t\tk_msleep(1000);
-        \t}
-        \treturn 0;
+        	printk("Pin Configurator demo boot\\n");
+        	printk("Board: %s\\n", PINCFG_DEMO_BOARD);
+        	printk("Pins configured: %d\\n", PINCFG_DEMO_PIN_COUNT);
+        	printk("Enabled peripherals: %s\\n", PINCFG_DEMO_ENABLED_PERIPHERALS);
+        	printk("Selected external devices: %s\\n", PINCFG_DEMO_SELECTED_DEVICES);
+
+        	#if DT_NODE_HAS_STATUS(LED0_NODE, okay)
+        	if (!gpio_is_ready_dt(&led)) {
+        		printk("LED0 not ready\\n");
+        	} else if (gpio_pin_configure_dt(&led, GPIO_OUTPUT_ACTIVE) < 0) {
+        		printk("LED0 configure failed\\n");
+        	} else {
+        		printk("LED0 ready\\n");
+        	}
+        	#else
+        	printk("LED0 alias missing; running console-only blinky\\n");
+        	#endif
+
+        	while (1) {
+        		#if DT_NODE_HAS_STATUS(LED0_NODE, okay)
+        		gpio_pin_toggle_dt(&led);
+        		#endif
+        		printk("Blink\\n");
+        		k_msleep(SLEEP_TIME_MS);
+        	}
+
+        	return 0;
         }
         """
     )
@@ -182,7 +210,7 @@ def _demo_readme(project: dict) -> str:
 
         It contains:
         - generated Zephyr overlay and `prj.conf`
-        - a small firmware entrypoint that prints the collected configuration summary
+        - a Zephyr-style blinky firmware entrypoint that also prints the collected configuration summary
         - a Renode appbench script in `boards/{board_id}.resc`
         - a RobotFramework smoke test in `sample.robot`
         - preserved generated source artifacts under `generated/`

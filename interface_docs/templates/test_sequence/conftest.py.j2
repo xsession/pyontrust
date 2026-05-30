@@ -1,0 +1,27 @@
+from __future__ import annotations
+
+import os
+
+import pytest
+
+from {{ board_module }} import {{ board_symbol }}
+from pyontrust.hil import HILTestFixture
+
+
+ENABLE_HIL = os.environ.get("PYONTRUST_ENABLE_HIL") == "1"
+HIL_APP_PATH = "{{ hil_app_path }}"
+
+
+@pytest.fixture(scope="session")
+def hil_enabled() -> bool:
+    return ENABLE_HIL
+
+
+@pytest.fixture(scope="session")
+def hil_fixture():
+    if not ENABLE_HIL:
+        pytest.skip("Set PYONTRUST_ENABLE_HIL=1 to run hardware-in-the-loop checks")
+
+    fixture = HILTestFixture(board={{ board_symbol }})
+    with fixture:
+        yield fixture

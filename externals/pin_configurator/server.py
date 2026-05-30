@@ -31,7 +31,7 @@ import uuid
 import shutil
 import mimetypes
 
-from flask import Flask, jsonify, redirect, request, send_file, send_from_directory, Response
+from flask import Flask, jsonify, request, send_file, send_from_directory, Response
 import pdfplumber
 from werkzeug.utils import secure_filename
 
@@ -60,6 +60,7 @@ from datasheet_fetcher import identify_vendor, download_datasheet, fetch_and_par
 from driver_generator import (
     DriverSpec, DRIVER_TYPES, generate_driver, driver_to_json, spec_from_json,
 )
+from project_bridge import export_generated_target, scan_zephyr_project
 from project_model import build_project_document, normalize_project_document
 from sensor_parser import (
     parse_sensor_datasheet, SensorDatasheetInfo,
@@ -801,7 +802,7 @@ def _extract_lvgl_layout_from_display_pdf(pdf_bytes: bytes, source: str) -> dict
 
 @app.route("/")
 def index():
-    return redirect("/app")
+    return send_from_directory(app.static_folder, "index.html")
 
 
 def _serve_frontend_asset(asset_path: str = "index.html"):
@@ -959,6 +960,7 @@ def generate_overlay():
                     a["function_id"],
                 )) else ""
             ),
+            custom_name=a.get("custom_name", ""),
             bias_pull_up=a.get("bias_pull_up", False),
             bias_pull_down=a.get("bias_pull_down", False),
             drive_open_drain=a.get("drive_open_drain", False),
@@ -1057,6 +1059,31 @@ def save_project():
     })
 
 
+@app.route("/api/save-arduino-project", methods=["POST"])
+def save_arduino_project():
+    """Write generated Arduino files into a sketch directory."""
+    body = request.get_json(force=True)
+    output_dir = str(body.get("output_dir", "")).strip()
+    files = body.get("files") or {}
+    sketch_name = str(body.get("sketch_name", "")).strip()
+
+    if not output_dir:
+        return jsonify({"error": "output_dir is required"}), 400
+    if not isinstance(files, dict) or not files:
+        return jsonify({"error": "files must contain at least one generated Arduino file"}), 400
+
+    try:
+        written = export_generated_target(output_dir, {str(name): str(content) for name, content in files.items()}, sketch_name=sketch_name)
+    except OSError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    return jsonify({
+        "saved": True,
+        "output_dir": str(pathlib.Path(output_dir).resolve()),
+        "files": written,
+    })
+
+
 # ── Project File (save / load full editor state) ─────────────────────
 
 PROJECT_FILE_VERSION = 1
@@ -1146,6 +1173,17 @@ def export_demo_app():
     testbench_cmake = (_HERE / "testbench" / "CMakeLists.txt").read_text(encoding="utf-8")
     result = materialize_demo_app(project, output_dir, testbench_cmake=testbench_cmake)
     return jsonify({"saved": True, **result})
+
+
+@app.route("/api/demo-app/real-blinky-sample", methods=["GET"])
+def demo_app_real_blinky_sample():
+    sample_dir = _HERE / "demo" / "real_blinky_import"
+    return jsonify({
+        "name": "real_blinky_import",
+        "board_id": "lp_mspm0g3507",
+        "project_path": str(sample_dir),
+        "exists": sample_dir.is_dir(),
+    })
 
 
 @app.route("/api/path-dialog", methods=["POST"])
@@ -1768,41 +1806,10 @@ def scan_project():
     body = request.get_json(force=True)
     project = pathlib.Path(body.get("project_path", ""))
 
-    if not project.is_dir():
+    try:
+        found = scan_zephyr_project(project)
+    except FileNotFoundError:
         return jsonify({"error": f"Directory does not exist: {project}"}), 400
-
-    found = []
-
-    # Search project root and boards/ subdirectory
-    search_dirs = [project]
-    boards_dir = project / "boards"
-    if boards_dir.is_dir():
-        search_dirs.append(boards_dir)
-
-    for d in search_dirs:
-        for f in sorted(d.iterdir()):
-            if f.is_file() and f.suffix in (".overlay", ".conf"):
-                rel = f.relative_to(project)
-                found.append({
-                    "path": str(f),
-                    "relative": str(rel),
-                    "name": f.name,
-                    "type": f.suffix.lstrip("."),
-                    "size": f.stat().st_size,
-                    "content": f.read_text(encoding="utf-8", errors="replace"),
-                })
-
-    # Also check for prj.conf in root
-    prj_conf = project / "prj.conf"
-    if prj_conf.is_file() and not any(f["name"] == "prj.conf" for f in found):
-        found.append({
-            "path": str(prj_conf),
-            "relative": "prj.conf",
-            "name": "prj.conf",
-            "type": "conf",
-            "size": prj_conf.stat().st_size,
-            "content": prj_conf.read_text(encoding="utf-8", errors="replace"),
-        })
 
     return jsonify({"files": found})
 

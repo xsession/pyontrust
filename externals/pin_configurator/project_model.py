@@ -57,6 +57,7 @@ def build_project_document(body: dict | None) -> dict:
         "sensor_selected": payload.get("sensor_selected", ""),
         "mcu_jobs": deepcopy(payload.get("mcu_jobs") or []),
         "mcu_selected": payload.get("mcu_selected", ""),
+        "arduino_workspace": deepcopy(payload.get("arduino_workspace") or {}),
         "renode": renode,
         "tabs": deepcopy(payload.get("tabs") or {}),
     }

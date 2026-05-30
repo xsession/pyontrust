@@ -27,11 +27,16 @@ class PinAssignment:
     signal: str         # e.g. "tx"
     direction: str      # "in", "out", "io", "analog"
     zephyr_pinmux: str = ""
+    custom_name: str = ""
     # Optional pin properties
     bias_pull_up: bool = False
     bias_pull_down: bool = False
     drive_open_drain: bool = False
     input_enable: bool = False
+
+    @property
+    def display_name(self) -> str:
+        return self.custom_name.strip() or self.pin_name
 
 
 @dataclass
@@ -303,6 +308,8 @@ def _generate_zephyr_output(
             props.append("\t\tdrive-open-drain;")
 
         node_text = f"\t{label}: {label} {{\n"
+        if a.custom_name.strip():
+            node_text += f"\t\t/* {a.display_name} -> {a.pin_name} */\n"
         node_text += "\n".join(props) + "\n"
         node_text += "\t};\n"
         pinctrl_nodes.append(node_text)
@@ -383,9 +390,12 @@ def _generate_arduino_output(
     for index, assignment in enumerate(sorted(assignments, key=lambda item: item.pincm), start=1):
         symbol = f"PIN_{_sanitize_symbol(assignment.peripheral)}_{_sanitize_symbol(assignment.signal)}"
         pin_value = _pin_numeric_value(assignment.pin_name, index)
-        constants.append(f"constexpr uint8_t {symbol} = {pin_value};")
+        alias_comment = f" // {assignment.display_name} -> {assignment.pin_name}" if assignment.custom_name.strip() else ""
+        constants.append(f"constexpr uint8_t {symbol} = {pin_value};{alias_comment}")
         if assignment.peripheral in periph_cores:
             setup_lines.append(f"  // {assignment.peripheral} owned by {periph_cores[assignment.peripheral]}")
+        if assignment.custom_name.strip():
+            setup_lines.append(f"  // {assignment.display_name} uses physical pin {assignment.pin_name}")
         setup_lines.append(f"  pinMode({symbol}, {_arduino_mode(assignment)});")
 
     include_lines, device_setup_lines = _generate_external_device_arduino(external_devices)
@@ -434,7 +444,7 @@ def _generate_baremetal_output(
         if assignment.peripheral in periph_cores:
             comments.append(f"  /* {assignment.peripheral} owned by {periph_cores[assignment.peripheral]} */")
         comments.append(
-            f"  /* {assignment.peripheral}.{assignment.signal} -> {assignment.pin_name} */"
+            f"  /* {assignment.peripheral}.{assignment.signal} -> {assignment.display_name} ({assignment.pin_name}) */"
         )
 
     header = textwrap.dedent("""\

@@ -26,10 +26,29 @@ find_program(RENODE renode HINTS
     "/opt/renode"
     "$ENV{HOME}/.local/bin"
 )
-find_program(RENODE_TEST renode-test HINTS
+find_program(RENODE_TEST NAMES renode-test renode-test.bat renode-test.exe HINTS
     "C:/Program Files/Renode/bin"
     "/opt/renode"
 )
+
+set(RENODE_TEST_COMMAND ${RENODE_TEST})
+if(CMAKE_HOST_WIN32 AND RENODE_TEST AND NOT RENODE_TEST STREQUAL "RENODE_TEST-NOTFOUND")
+    get_filename_component(RENODE_BIN_DIR "${RENODE_TEST}" DIRECTORY)
+    get_filename_component(RENODE_ROOT_DIR "${RENODE_BIN_DIR}" DIRECTORY)
+    set(RENODE_TEST_RUNNER "${RENODE_ROOT_DIR}/tests/run_tests.py")
+    if(EXISTS "${RENODE_TEST_RUNNER}")
+        if(NOT Python3_EXECUTABLE)
+            find_package(Python3 REQUIRED COMPONENTS Interpreter)
+        endif()
+        set(RENODE_TEST_COMMAND
+            ${Python3_EXECUTABLE}
+            "${RENODE_TEST_RUNNER}"
+            --css-file "${RENODE_ROOT_DIR}/tests/robot.css"
+            --exclude skip_windows
+            --robot-framework-remote-server-full-directory "${RENODE_ROOT_DIR}/bin"
+        )
+    endif()
+endif()
 
 if(NOT RENODE)
     message(STATUS "Renode not found — testbench targets will not be available")
@@ -45,29 +64,36 @@ if(NOT DEFINED PYONTRUST_BASE)
     set(PYONTRUST_BASE "${CMAKE_CURRENT_LIST_DIR}/..")
 endif()
 
-# Standard Renode command preamble
-set(RENODE_COMMANDS "")
-string(APPEND RENODE_COMMANDS
-    "set bin @${APPLICATION_BINARY_DIR}/zephyr/${KERNEL_ELF_NAME}\;")
-string(APPEND RENODE_COMMANDS
-    "set APPLICATION_BINARY_DIR @${APPLICATION_BINARY_DIR}\;")
+set(RENODE_COMMON_SCRIPT "${APPLICATION_BINARY_DIR}/pincfg-renode-common.resc")
+set(RENODE_COMMON_CONTENT
+    "set bin @${APPLICATION_BINARY_DIR}/zephyr/${KERNEL_ELF_NAME}\n"
+    "set APPLICATION_BINARY_DIR @${APPLICATION_BINARY_DIR}\n"
+)
 
 if(DEFINED PROJECT_BASE)
-    string(APPEND RENODE_COMMANDS "set PROJECT_BASE @${PROJECT_BASE}\;")
+    string(APPEND RENODE_COMMON_CONTENT "set PROJECT_BASE @${PROJECT_BASE}\n")
 endif()
+
+file(GENERATE OUTPUT "${RENODE_COMMON_SCRIPT}" CONTENT "${RENODE_COMMON_CONTENT}")
+
+set(RENODE_RESULTS_DIR "${APPLICATION_BINARY_DIR}/robot-results")
 
 # ── Board-level testbench ─────────────────────────────────────────────
 # Look for <board>.resc in the board directory
 
 if(DEFINED BOARD_DIR AND EXISTS "${BOARD_DIR}/${BOARD}.resc")
-    set(BOARD_BENCH_COMMANDS "include @${BOARD_DIR}/${BOARD}.resc\;")
+    set(BOARD_BENCH_SCRIPT "${APPLICATION_BINARY_DIR}/pincfg-boardbench.resc")
+    set(BOARD_BENCH_CONTENT
+        "include @${RENODE_COMMON_SCRIPT}\n"
+        "include @${BOARD_DIR}/${BOARD}.resc\n"
+        "start\n"
+    )
+    file(GENERATE OUTPUT "${BOARD_BENCH_SCRIPT}" CONTENT "${BOARD_BENCH_CONTENT}")
 
     add_custom_target(
         boardbench
         COMMAND ${RENODE} --console --disable-xwt
-            -e "${RENODE_COMMANDS}"
-            -e "${BOARD_BENCH_COMMANDS}"
-            -e "start\;"
+            -e "include @${BOARD_BENCH_SCRIPT}"
         COMMENT "Running board-level Renode simulation"
         WORKING_DIRECTORY ${APPLICATION_BINARY_DIR}
         DEPENDS ${APPLICATION_BINARY_DIR}/zephyr/${KERNEL_ELF_NAME}
@@ -77,9 +103,7 @@ if(DEFINED BOARD_DIR AND EXISTS "${BOARD_DIR}/${BOARD}.resc")
     add_custom_target(
         boardbench_xwt
         COMMAND ${RENODE}
-            -e "${RENODE_COMMANDS}"
-            -e "${BOARD_BENCH_COMMANDS}"
-            -e "start\;"
+            -e "include @${BOARD_BENCH_SCRIPT}"
         COMMENT "Running board-level Renode simulation (GUI)"
         WORKING_DIRECTORY ${APPLICATION_BINARY_DIR}
         DEPENDS ${APPLICATION_BINARY_DIR}/zephyr/${KERNEL_ELF_NAME}
@@ -98,15 +122,25 @@ endif()
 # Look for boards/<board>.resc in the application source directory
 
 if(EXISTS "${APPLICATION_SOURCE_DIR}/boards/${BOARD}.resc")
-    set(APP_BENCH_COMMANDS
-        "include @${APPLICATION_SOURCE_DIR}/boards/${BOARD}.resc\;")
+    set(APP_BENCH_SCRIPT "${APPLICATION_BINARY_DIR}/pincfg-appbench.resc")
+    set(APP_BENCH_DEBUG_SCRIPT "${APPLICATION_BINARY_DIR}/pincfg-appbench-debug.resc")
+    set(APP_BENCH_CONTENT
+        "include @${RENODE_COMMON_SCRIPT}\n"
+        "include @${APPLICATION_SOURCE_DIR}/boards/${BOARD}.resc\n"
+        "start\n"
+    )
+    set(APP_BENCH_DEBUG_CONTENT
+        "include @${RENODE_COMMON_SCRIPT}\n"
+        "machine StartGdbServer 3333\n"
+        "include @${APPLICATION_SOURCE_DIR}/boards/${BOARD}.resc\n"
+    )
+    file(GENERATE OUTPUT "${APP_BENCH_SCRIPT}" CONTENT "${APP_BENCH_CONTENT}")
+    file(GENERATE OUTPUT "${APP_BENCH_DEBUG_SCRIPT}" CONTENT "${APP_BENCH_DEBUG_CONTENT}")
 
     add_custom_target(
         appbench
         COMMAND ${RENODE} --console --disable-xwt
-            -e "${RENODE_COMMANDS}"
-            -e "${APP_BENCH_COMMANDS}"
-            -e "start\;"
+            -e "include @${APP_BENCH_SCRIPT}"
         COMMENT "Running application-specific Renode simulation"
         WORKING_DIRECTORY ${APPLICATION_BINARY_DIR}
         DEPENDS ${APPLICATION_BINARY_DIR}/zephyr/${KERNEL_ELF_NAME}
@@ -116,9 +150,7 @@ if(EXISTS "${APPLICATION_SOURCE_DIR}/boards/${BOARD}.resc")
     add_custom_target(
         appbench_xwt
         COMMAND ${RENODE}
-            -e "${RENODE_COMMANDS}"
-            -e "${APP_BENCH_COMMANDS}"
-            -e "start\;"
+            -e "include @${APP_BENCH_SCRIPT}"
         COMMENT "Running application Renode simulation (GUI)"
         WORKING_DIRECTORY ${APPLICATION_BINARY_DIR}
         DEPENDS ${APPLICATION_BINARY_DIR}/zephyr/${KERNEL_ELF_NAME}
@@ -129,9 +161,7 @@ if(EXISTS "${APPLICATION_SOURCE_DIR}/boards/${BOARD}.resc")
     add_custom_target(
         appbench_debugserver
         COMMAND ${RENODE} --console --disable-xwt
-            -e "${RENODE_COMMANDS}\;"
-            -e "machine StartGdbServer 3333\;"
-            -e "${APP_BENCH_COMMANDS}"
+            -e "include @${APP_BENCH_DEBUG_SCRIPT}"
         COMMENT "Running Renode simulation + GDB server on :3333"
         WORKING_DIRECTORY ${APPLICATION_BINARY_DIR}
         DEPENDS ${APPLICATION_BINARY_DIR}/zephyr/${KERNEL_ELF_NAME}
@@ -151,14 +181,25 @@ endif()
 
 if(DEFINED TESTBENCH AND EXISTS "${PYONTRUST_BASE}/testbench/${TESTBENCH}/testbench.resc")
     set(TESTBENCH_DIR "${PYONTRUST_BASE}/testbench/${TESTBENCH}")
-    set(TB_COMMANDS
-        "include @${TESTBENCH_DIR}/testbench.resc\; s\;")
+    set(TESTBENCH_SCRIPT "${APPLICATION_BINARY_DIR}/pincfg-testbench.resc")
+    set(TESTBENCH_DEBUG_SCRIPT "${APPLICATION_BINARY_DIR}/pincfg-testbench-debug.resc")
+    set(TESTBENCH_CONTENT
+        "include @${RENODE_COMMON_SCRIPT}\n"
+        "include @${TESTBENCH_DIR}/testbench.resc\n"
+        "s\n"
+    )
+    set(TESTBENCH_DEBUG_CONTENT
+        "include @${RENODE_COMMON_SCRIPT}\n"
+        "include @${TESTBENCH_DIR}/testbench.resc\n"
+        "machine StartGdbServer 3333\n"
+    )
+    file(GENERATE OUTPUT "${TESTBENCH_SCRIPT}" CONTENT "${TESTBENCH_CONTENT}")
+    file(GENERATE OUTPUT "${TESTBENCH_DEBUG_SCRIPT}" CONTENT "${TESTBENCH_DEBUG_CONTENT}")
 
     add_custom_target(
         testbench
         COMMAND ${RENODE} --console --disable-xwt
-            -e "${RENODE_COMMANDS}"
-            -e "${TB_COMMANDS}"
+            -e "include @${TESTBENCH_SCRIPT}"
         COMMENT "Running testbench: ${TESTBENCH}"
         WORKING_DIRECTORY ${APPLICATION_BINARY_DIR}
         DEPENDS ${APPLICATION_BINARY_DIR}/zephyr/${KERNEL_ELF_NAME}
@@ -168,8 +209,7 @@ if(DEFINED TESTBENCH AND EXISTS "${PYONTRUST_BASE}/testbench/${TESTBENCH}/testbe
     add_custom_target(
         testbench_xwt
         COMMAND ${RENODE}
-            -e "${RENODE_COMMANDS}"
-            -e "${TB_COMMANDS}"
+            -e "include @${TESTBENCH_SCRIPT}"
         COMMENT "Running testbench (GUI): ${TESTBENCH}"
         WORKING_DIRECTORY ${APPLICATION_BINARY_DIR}
         DEPENDS ${APPLICATION_BINARY_DIR}/zephyr/${KERNEL_ELF_NAME}
@@ -179,9 +219,7 @@ if(DEFINED TESTBENCH AND EXISTS "${PYONTRUST_BASE}/testbench/${TESTBENCH}/testbe
     add_custom_target(
         testbench_debugserver
         COMMAND ${RENODE} --console --disable-xwt
-            -e "${RENODE_COMMANDS}\;"
-            -e "${TB_COMMANDS}"
-            -e "machine StartGdbServer 3333\;"
+            -e "include @${TESTBENCH_DEBUG_SCRIPT}"
         COMMENT "Running testbench + GDB server: ${TESTBENCH}"
         WORKING_DIRECTORY ${APPLICATION_BINARY_DIR}
         DEPENDS ${APPLICATION_BINARY_DIR}/zephyr/${KERNEL_ELF_NAME}
@@ -210,7 +248,8 @@ if(RENODE_TEST AND DEFINED TESTBENCH
                 APPLICATION_BINARY_DIR=${APPLICATION_BINARY_DIR}
                 APPLICATION_SOURCE_DIR=${APPLICATION_SOURCE_DIR}
                 BOARD=${BOARD}
-            ${RENODE_TEST} --show-log
+            ${RENODE_TEST_COMMAND} --show-log
+                --results-dir ${RENODE_RESULTS_DIR}
                 ${PYONTRUST_BASE}/testbench/${TESTBENCH}/testbench.robot
         COMMENT "Running RobotFramework automated tests"
         WORKING_DIRECTORY ${APPLICATION_BINARY_DIR}
@@ -237,7 +276,8 @@ if(RENODE_TEST AND EXISTS "${APPLICATION_SOURCE_DIR}/sample.robot")
                 APPLICATION_BINARY_DIR=${APPLICATION_BINARY_DIR}
                 APPLICATION_SOURCE_DIR=${APPLICATION_SOURCE_DIR}
                 BOARD=${BOARD}
-            ${RENODE_TEST} --show-log
+            ${RENODE_TEST_COMMAND} --show-log
+                --results-dir ${RENODE_RESULTS_DIR}
                 ${APPLICATION_SOURCE_DIR}/sample.robot
         COMMENT "Running application robot script"
         WORKING_DIRECTORY ${APPLICATION_BINARY_DIR}

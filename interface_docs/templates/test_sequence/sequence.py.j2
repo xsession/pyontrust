@@ -1,0 +1,28 @@
+from __future__ import annotations
+
+from driver import {{ driver_class_name }}
+
+
+SUMMARY = {{ summary_json }}
+METADATA = {{ metadata_json }}
+
+
+class {{ sequence_class_name }}:
+    device_label = {{ device_label | tojson }}
+    device_key = {{ device_key | tojson }}
+    device_serial_regex = {{ device_serial_regex | tojson }}
+
+    def summary(self) -> dict:
+        return dict(SUMMARY)
+
+    def metadata(self) -> dict:
+        return dict(METADATA)
+
+    def expected_reader_methods(self) -> list[str]:
+        return {{ read_methods_json }}
+
+    def expected_writer_methods(self) -> list[str]:
+        return {{ write_methods_json }}
+
+    def driver_class_name(self) -> str:
+        return {{ driver_class_name }}.__name__

@@ -31,6 +31,13 @@ gui = [
     "flask>=3.0",
     "flask-sock>=0.7",
 ]
+mcp = [
+    "mcp>=1.9.0",
+]
+build = [
+    "pyinstaller>=6.0",
+    "nuitka>=2.6",
+]
 analysis = [
     "pandas>=1.5",
     "numpy>=1.23",
@@ -63,11 +70,12 @@ dev = [
     "sphinx-rtd-theme>=2.0",
 ]
 all = [
-    "pyontrust[gui,analysis,sdr,power,aoi,thermal,dev]",
+    "pyontrust[gui,build,analysis,sdr,power,aoi,thermal,dev]",
 ]
 
 [project.scripts]
 pyontrust = "pyontrust.gateway.app:main"
+pyontrust-mcp = "pyontrust.mcp_server:main"
 
 [project.entry-points."pyontrust.instruments"]
 simulated     = "pyontrust.instruments.simulated:create"

@@ -1,0 +1,52 @@
+from __future__ import annotations
+
+from flask import Blueprint, jsonify, send_from_directory
+
+from pyontrust.gateway.app import create_app as create_gateway_app
+
+from driver import {{ driver_class_name }}
+
+
+SUMMARY = {{ summary_json }}
+METADATA = {{ metadata_json }}
+READ_METHODS = {{ read_methods_json }}
+WRITE_METHODS = {{ write_methods_json }}
+
+
+def create_blueprint() -> Blueprint:
+    bp = Blueprint("{{ route_segment }}_generated", __name__, static_folder="web")
+
+    @bp.get("/")
+    def index():
+        return send_from_directory(bp.static_folder, "index.html")
+
+    @bp.get("/api/health")
+    def health():
+        return {"status": "ok", "title": SUMMARY["title"]}
+
+    @bp.get("/api/summary")
+    def summary():
+        return jsonify(SUMMARY)
+
+    @bp.get("/api/metadata")
+    def metadata():
+        return jsonify(METADATA)
+
+    @bp.get("/api/methods")
+    def methods():
+        return jsonify(
+            {
+                "driver_class": "{{ driver_class_name }}",
+                "available_readers": READ_METHODS,
+                "available_writers": WRITE_METHODS,
+                "generated_class_name": {{ driver_class_name }}.__name__,
+            }
+        )
+
+    return bp
+
+
+def create_app():
+    app = create_gateway_app()
+    app.register_blueprint(create_blueprint(), url_prefix="{{ route_prefix }}")
+    return app

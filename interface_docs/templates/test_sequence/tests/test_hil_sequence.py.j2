@@ -1,0 +1,15 @@
+from __future__ import annotations
+
+import pytest
+
+from sequence import {{ sequence_class_name }}
+
+
+@pytest.mark.skipif(not __import__("os").environ.get("PYONTRUST_ENABLE_HIL") == "1", reason="HIL disabled")
+def test_hil_fixture_can_optionally_boot_sample_app(hil_fixture) -> None:
+    sequence = {{ sequence_class_name }}()
+
+    hil_fixture.load_app({{ hil_app_path | tojson }}, build=False, flash=False)
+    hil_fixture.wait_for_boot(timeout_s=0.0)
+
+    assert sequence.device_key == {{ device_key | tojson }}

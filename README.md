@@ -172,6 +172,17 @@ Interactive time-series viewer for power measurement CSV data:
 python gui_app\csv_plotter\csv_plotter.py
 ```
 
+## MCP server
+
+This repository includes a local MCP server for LM Studio and other tool-using agents. Install the optional dependency and run it from the repository root:
+
+```powershell
+python -m pip install -e .[mcp]
+python mcp_server.py
+```
+
+Setup details and example LM Studio configuration are in [docs/LM_STUDIO_MCP.md](docs/LM_STUDIO_MCP.md).
+
 ## Project structure
 
 The framework lives in `pyontrust_packages/power_test_framework/`.
