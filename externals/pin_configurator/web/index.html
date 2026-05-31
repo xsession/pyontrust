@@ -5519,7 +5519,7 @@ svg.chip-svg .bga-label {
     <div class="pkg-upload-area" id="pdfUploadArea">
       <div class="upload-icon">&#128196;</div>
       <div>Drop PDF here or click to browse</div>
-      <div class="upload-hint">Supports TI MSPM0 datasheets</div>
+      <div class="upload-hint">Upload MCU PDFs here for package extraction and artifact generation.</div>
       <input type="file" id="pdfFileInput" accept=".pdf" style="display:none;">
     </div>
 
@@ -5551,8 +5551,8 @@ svg.chip-svg .bga-label {
     <div class="pkg-empty">
       <div class="icon">&#128230;</div>
       <div>MCU Package Generator</div>
-      <div class="hint">Upload an MCU datasheet PDF to extract pin-mux data<br>
-        and generate board definition files.</div>
+      <div class="hint">Generate board, overlay, KiCad footprint, and 3D model artifacts<br>
+        for parsed MCU packages.</div>
     </div>
   </div>
 
@@ -5770,7 +5770,8 @@ svg.chip-svg .bga-label {
 <!-- ─── Toast ───────────────────────────────────────────────── -->
 <div class="toast" id="toast"></div>
 
-  <script src="main.js?v=20260531m"></script>
+  <script src="main.js?v=20260531x"></script>
+  <script src="package-manager-live.js?v=20260531zb"></script>
   <script src="lvgl-registry.js?v=20260531g"></script>
   <script src="lvgl-model.js?v=20260531g"></script>
   <script src="lvgl-build.js?v=20260531g"></script>

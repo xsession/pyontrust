@@ -30,6 +30,7 @@ from sensor_parser import (
     _extract_registers_from_table,
     _extract_bitfields_from_table,
     _extract_registers_from_text,
+    _extract_package_info,
     extract_addresses,
 )
 
@@ -117,6 +118,66 @@ class TestDataModels:
 
 class TestHelpers:
     """Test internal helper functions."""
+
+    def test_extract_package_info_bmp280_style_text(self):
+        texts = [
+            """
+            BMP280
+            Digital Pressure Sensor
+            Key parameters
+            Package 8-pin LGA metal-lid
+            Footprint : 2.0 x 2.5 mm2, height: 0.95 mm
+            Digital interfaces I2C and SPI
+            """
+        ]
+
+        package = _extract_package_info(texts, "BMP280")
+
+        assert package == {
+            "name": "LGA-8",
+            "package_type": "LGA",
+            "pin_count": 8,
+            "width_mm": 2.0,
+            "height_mm": 2.5,
+            "thickness_mm": 0.95,
+            "component_name": "BMP280",
+        }
+
+    def test_extract_package_info_returns_empty_without_match(self):
+        assert _extract_package_info(["No package details here"], "TEST") == {}
+
+    def test_extract_package_info_includes_pin_table_names(self):
+        texts = [
+            """
+            BMP280
+            Package 8-pin LGA metal-lid
+            Footprint : 2.0 x 2.5 mm2, height: 0.95 mm
+            Table 29: Pin description
+            Pin Name I/O Type Description Connect to
+            1 GND Supply Ground GND
+            2 CSB In Chip select CSB
+            3 SDI In/Out Serial data input SDA
+            4 SCK In Serial clock input SCL
+            5 SDO In/Out Serial data output GND
+            6 VDDIO Supply Digital interface supply VDDIO
+            7 GND Supply Ground GND
+            8 VDD Supply Analog supply VDD
+            Figure 14: Pin-out top and bottom view
+            """
+        ]
+
+        package = _extract_package_info(texts, "BMP280")
+
+        assert package["pins"] == [
+            {"number": 1, "name": "GND"},
+            {"number": 2, "name": "CSB"},
+            {"number": 3, "name": "SDI"},
+            {"number": 4, "name": "SCK"},
+            {"number": 5, "name": "SDO"},
+            {"number": 6, "name": "VDDIO"},
+            {"number": 7, "name": "GND"},
+            {"number": 8, "name": "VDD"},
+        ]
 
     @pytest.mark.parametrize("raw,expected", [
         ("RW", "RW"),
@@ -555,6 +616,12 @@ class TestJsonSerialisation:
                 spi_max_freq_hz=10_000_000,
                 spi_mode=3,
             ),
+            package={
+                "name": "LGA-12",
+                "width_mm": 2.0,
+                "height_mm": 2.0,
+                "pitch_mm": 0.5,
+            },
             register_map=RegisterMap(registers=[
                 SensorRegister(address=0x0F, name="WHO_AM_I", access="RO",
                                reset_value=0x33),
@@ -573,6 +640,12 @@ class TestJsonSerialisation:
         assert restored.summary.who_am_i_value == 0x33
         assert restored.address.i2c_addresses == [0x18, 0x19]
         assert restored.address.spi_mode == 3
+        assert restored.package == {
+            "name": "LGA-12",
+            "width_mm": 2.0,
+            "height_mm": 2.0,
+            "pitch_mm": 0.5,
+        }
         assert len(restored.register_map.registers) == 2
         assert restored.register_map.registers[0].name == "WHO_AM_I"
         assert restored.register_map.registers[0].reset_value == 0x33

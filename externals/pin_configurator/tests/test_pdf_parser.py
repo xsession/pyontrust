@@ -19,6 +19,7 @@ from pdf_parser import (
     _finalize_packages,
     _generic_parse_package_table,
     _generic_parse_pinmux_table,
+    _norm_periph,
     _stm32_parse_af,
 )
 
@@ -117,6 +118,15 @@ class TestVendorDetection:
 
 
 class TestGenericFamilyTables:
+    @pytest.mark.parametrize(("func_name", "expected"), [
+        ("I2S4_CK", ("i2s4", "ck")),
+        ("I2S3EXT_SD", ("i2s3ext", "sd")),
+        ("USART2_CTS", ("usart2", "cts")),
+        ("USB_FS_SOF", ("usb", "fs_sof")),
+    ])
+    def test_norm_periph_handles_mixed_alnum_prefixes(self, func_name, expected):
+        assert _norm_periph(func_name) == expected
+
     def test_decode_stm32_package_label_uses_longest_reversed_digit_group(self):
         assert _decode_stm32_package_label(")2(671AGBFU") == "UFBGA176"
         assert _decode_stm32_package_label("612AGBFT") == "TFBGA216"

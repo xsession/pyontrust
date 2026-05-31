@@ -21,6 +21,7 @@ from sensor_parser import (
     SensorRegister,
     SensorSummary,
 )
+from pdf_parser import DatasheetInfo, DeviceSummary, PackageInfo, PackagePin, PinMuxEntry
 
 
 def _write_temp_zephyr_tree(root: pathlib.Path) -> pathlib.Path:
@@ -645,6 +646,125 @@ class TestSensorDriverEndpoint:
         assert data["custom_template_output"] == "Custom BMP280 driver for bmp280\nBus=i2c\nRegisters=7"
         assert "source_c" in data
         assert "arduino_source" in data
+        assert data["kicad_footprint_path"].endswith(".kicad_mod")
+        assert data["wrl_model_path"].endswith(".wrl")
+        assert "(module" in data["kicad_footprint"]
+        assert "#VRML V2.0 utf8" in data["wrl_model"]
+
+
+class TestPackageManagerArtifactEndpoint:
+    def test_generate_package_returns_mcu_artifacts(self, client, monkeypatch, tmp_path):
+        import server
+
+        info = DatasheetInfo(
+            device=DeviceSummary(
+                soc="DEMO123",
+                vendor="demo",
+                flash_size_kb=128,
+                sram_size_kb=32,
+                clock_hz=48_000_000,
+            ),
+            packages=[
+                PackageInfo(
+                    name="QFN-8",
+                    pin_count=8,
+                    pins=[
+                        PackagePin(number=1, name="PA0", port="A", gpio_num=0, kind="io"),
+                        PackagePin(number=2, name="PA1", port="A", gpio_num=1, kind="io"),
+                        PackagePin(number=3, name="PA2", port="A", gpio_num=2, kind="io"),
+                        PackagePin(number=4, name="GND", kind="ground"),
+                        PackagePin(number=5, name="PB0", port="B", gpio_num=0, kind="io"),
+                        PackagePin(number=6, name="PB1", port="B", gpio_num=1, kind="io"),
+                        PackagePin(number=7, name="PB2", port="B", gpio_num=2, kind="io"),
+                        PackagePin(number=8, name="VDD", kind="power"),
+                    ],
+                )
+            ],
+            pin_mux={
+                "PA0": [PinMuxEntry("PA0", 1, 2, "UART0_TX", "uart0", "tx", "out")],
+                "PA1": [PinMuxEntry("PA1", 2, 3, "UART0_RX", "uart0", "rx", "in")],
+                "PB0": [PinMuxEntry("PB0", 3, 4, "I2C0_SCL", "i2c0", "scl", "io")],
+                "PB1": [PinMuxEntry("PB1", 4, 5, "I2C0_SDA", "i2c0", "sda", "io")],
+            },
+        )
+
+        monkeypatch.setattr(server, "_PARSED_JOBS", {"demojob": {"filename": "demo.pdf", "info": info}})
+        monkeypatch.setattr(server, "_SENSOR_JOBS", {})
+        monkeypatch.setattr(server, "_HERE", tmp_path)
+        monkeypatch.setattr(server, "_reload_boards", lambda: None)
+
+        resp = client.post(
+            "/api/generate-package",
+            data=json.dumps({"job_id": "demojob", "packages": ["QFN-8"]}),
+            content_type="application/json",
+        )
+
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["job_kind"] == "mcu"
+        assert any(item["filename"].endswith("demo123_qfn8.py") for item in data["files"])
+        artifact_paths = {artifact["path"] for artifact in data["artifacts"]}
+        assert any(path.endswith(".overlay") for path in artifact_paths)
+        assert any(path.endswith(".ino") for path in artifact_paths)
+        assert any(path.endswith(".kicad_mod") for path in artifact_paths)
+        assert any(path.endswith(".wrl") for path in artifact_paths)
+
+    def test_generate_package_returns_sensor_artifacts(self, client, monkeypatch):
+        import server
+
+        info = SensorDatasheetInfo(
+            summary=SensorSummary(
+                part_number="MCP9808",
+                vendor="microchip",
+                vendor_name="Microchip",
+                sensor_type="temperature",
+                description="Temperature sensor",
+            ),
+            address=SensorAddress(
+                protocol="i2c",
+                i2c_addresses=[0x18],
+            ),
+            package={
+                "name": "DFN-8",
+                "package_type": "DFN",
+                "pin_count": 8,
+                "width_mm": 3.0,
+                "height_mm": 3.0,
+                "pins": [
+                    {"number": 1, "name": "SDA", "kind": "special"},
+                    {"number": 2, "name": "SCL", "kind": "special"},
+                    {"number": 3, "name": "ALERT", "kind": "io"},
+                    {"number": 4, "name": "GND", "kind": "ground"},
+                    {"number": 5, "name": "A2", "kind": "io"},
+                    {"number": 6, "name": "A1", "kind": "io"},
+                    {"number": 7, "name": "A0", "kind": "io"},
+                    {"number": 8, "name": "VDD", "kind": "power"},
+                ],
+            },
+            register_map=RegisterMap(registers=[
+                SensorRegister(address=0x01, name="CONFIG", access="RW"),
+                SensorRegister(address=0x05, name="AMBIENT_TEMP", access="RO"),
+            ]),
+        )
+
+        monkeypatch.setattr(server, "_PARSED_JOBS", {})
+        monkeypatch.setattr(server, "_SENSOR_JOBS", {"sensorjob": {"filename": "sensor.pdf", "info": info}})
+
+        resp = client.post(
+            "/api/generate-package",
+            data=json.dumps({"job_id": "sensorjob", "driver_name": "mcp9808"}),
+            content_type="application/json",
+        )
+
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["job_kind"] == "sensor"
+        assert data["files"] == []
+        artifact_paths = {artifact["path"] for artifact in data["artifacts"]}
+        assert "sensor/mcp9808.c" in artifact_paths
+        assert any(path.endswith(".ino") for path in artifact_paths)
+        assert any(path.endswith(".kicad_mod") for path in artifact_paths)
+        assert any(path.endswith(".wrl") for path in artifact_paths)
 
 
 class TestModuleEndpoints:

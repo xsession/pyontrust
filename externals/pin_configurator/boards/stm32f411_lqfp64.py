@@ -1,5 +1,5 @@
 """
-STM32F411 – 48-pin UFQFPN48 board definition for the Zephyr Pin Configurator.
+STM32F411 – 64-pin LQFP64 board definition for the Zephyr Pin Configurator.
 
 Pin-mux data derived from the STM32F411 datasheet (PINCM table) and the
 Zephyr ``mspm0-pinctrl.h`` header: MSP_PINMUX(pincm, function).
@@ -57,21 +57,21 @@ _GPIO = lambda port, bit: _AF(1, f"GPIO{port}{bit}", f"gpio{port.lower()}", f"{b
 _ANA  = lambda label, periph, sig: _AF(0, label, periph, sig, "analog")
 
 
-def build_stm32f411_ufqfpn48() -> BoardDef:
+def build_stm32f411_lqfp64() -> BoardDef:
     """
-    Return the full STM32F411 UFQFPN48 board definition.
+    Return the full STM32F411 LQFP64 board definition.
 
-    Pin numbering follows the UFQFPN48 package:
-      Left   (top→bottom): pins 1-12
-      Bottom (left→right): pins 13-24
-      Right  (bottom→top): pins 25-36
-      Top    (right→left): pins 37-48
+    Pin numbering follows the LQFP64 package:
+      Left   (top→bottom): pins 1-16
+      Bottom (left→right): pins 17-32
+      Right  (bottom→top): pins 33-48
+      Top    (right→left): pins 49-64
     """
     L, B, R, T = PinSide.LEFT, PinSide.BOTTOM, PinSide.RIGHT, PinSide.TOP
 
     pins: list[Pin] = [
 
-# ═══ LEFT SIDE (pins 1–12) ═══
+# ═══ LEFT SIDE (pins 1–16) ═══
 _pwr(1, "VBAT", L),
 _io(2, "PC13", "C", 13, L, -1, [
     _AF(-1, "GPIOC13", "gpioc", "13", "io"),
@@ -89,9 +89,29 @@ _io(6, "PH1", "H", 1, L, -1, [
     _AF(-1, "GPIOH1", "gpioh", "1", "io"),
 ]),
 _spec(7, "NRST", L, "NRST"),
-_pwr(8, "VSSA/VREF", L),
-_pwr(9, "VDDA/VREF+", L),
-_io(10, "PA0", "A", 0, L, 1, [
+_io(8, "PC0", "C", 0, L, 15, [
+    _AF(15, "EVENTOUT", "eventout", "", "io"),
+    _AF(-1, "GPIOC0", "gpioc", "0", "io"),
+]),
+_io(9, "PC1", "C", 1, L, 15, [
+    _AF(15, "EVENTOUT", "eventout", "", "io"),
+    _AF(-1, "GPIOC1", "gpioc", "1", "io"),
+]),
+_io(10, "PC2", "C", 2, L, 5, [
+    _AF(5, "SPI2_MISO", "spi2", "miso", "in"),
+    _AF(6, "I2S2EXT_SD", "i2s2ext", "sd", "io"),
+    _AF(15, "EVENTOUT", "eventout", "", "io"),
+    _AF(-1, "GPIOC2", "gpioc", "2", "io"),
+]),
+_io(11, "PC3", "C", 3, L, 5, [
+    _AF(5, "SPI2_MOSI", "spi2", "mosi", "out"),
+    _AF(5, "I2S2_SD", "i2s2", "sd", "io"),
+    _AF(15, "EVENTOUT", "eventout", "", "io"),
+    _AF(-1, "GPIOC3", "gpioc", "3", "io"),
+]),
+_pwr(12, "VSSA/VREF", L),
+_pwr(13, "VDDA/VREF+", L),
+_io(14, "PA0", "A", 0, L, 1, [
     _AF(1, "TIM2_CH1", "tim2", "ch1", "io"),
     _AF(1, "TIM2_ETR", "tim2", "etr", "io"),
     _AF(2, "TIM5_CH1", "tim5", "ch1", "io"),
@@ -99,171 +119,215 @@ _io(10, "PA0", "A", 0, L, 1, [
     _AF(15, "EVENTOUT", "eventout", "", "io"),
     _AF(-1, "GPIOA0", "gpioa", "0", "io"),
 ]),
-_io(11, "PA1", "A", 1, L, 1, [
+_io(15, "PA1", "A", 1, L, 1, [
     _AF(1, "TIM2_CH2", "tim2", "ch2", "io"),
     _AF(2, "TIM5_CH2", "tim5", "ch2", "io"),
     _AF(5, "SPI4_MOSI", "spi4", "mosi", "out"),
-    _AF(5, "I2S4_SD", "i2", "", "io"),
+    _AF(5, "I2S4_SD", "i2s4", "sd", "io"),
     _AF(7, "USART2_RTS", "usart2", "rts", "out"),
     _AF(15, "EVENTOUT", "eventout", "", "io"),
     _AF(-1, "GPIOA1", "gpioa", "1", "io"),
 ]),
-_io(12, "PA2", "A", 2, L, 1, [
+_io(16, "PA2", "A", 2, L, 1, [
     _AF(1, "TIM2_CH3", "tim2", "ch3", "io"),
     _AF(2, "TIM5_CH3", "tim5", "ch3", "io"),
     _AF(3, "TIM9_CH1", "tim9", "ch1", "io"),
-    _AF(5, "I2S2_CKIN", "i2", "", "io"),
+    _AF(5, "I2S2_CKIN", "i2s2", "ckin", "io"),
     _AF(7, "USART2_TX", "usart2", "tx", "out"),
     _AF(15, "EVENTOUT", "eventout", "", "io"),
     _AF(-1, "GPIOA2", "gpioa", "2", "io"),
 ]),
 
-# ═══ BOTTOM SIDE (pins 13–24) ═══
-_io(13, "PA3", "A", 3, B, 1, [
+# ═══ BOTTOM SIDE (pins 17–32) ═══
+_io(17, "PA3", "A", 3, B, 1, [
     _AF(1, "TIM2_CH4", "tim2", "ch4", "io"),
     _AF(2, "TIM5_CH4", "tim5", "ch4", "io"),
     _AF(3, "TIM9_CH2", "tim9", "ch2", "io"),
-    _AF(5, "I2S2_MCK", "i2", "", "io"),
+    _AF(5, "I2S2_MCK", "i2s2", "mck", "io"),
     _AF(7, "USART2_RX", "usart2", "rx", "in"),
     _AF(15, "EVENTOUT", "eventout", "", "io"),
     _AF(-1, "GPIOA3", "gpioa", "3", "io"),
 ]),
-_io(14, "PA4", "A", 4, B, 5, [
+_gnd(18, "VSS", B),
+_pwr(19, "VDD", B),
+_io(20, "PA4", "A", 4, B, 5, [
     _AF(5, "SPI1_NSS", "spi1", "nss", "io"),
-    _AF(5, "I2S1_WS", "i2", "", "io"),
+    _AF(5, "I2S1_WS", "i2s1", "ws", "io"),
     _AF(6, "SPI3_NSS", "spi3", "nss", "io"),
-    _AF(6, "I2S3_WS", "i2", "", "io"),
+    _AF(6, "I2S3_WS", "i2s3", "ws", "io"),
     _AF(7, "USART2_CK", "usart2", "ck", "io"),
     _AF(15, "EVENTOUT", "eventout", "", "io"),
     _AF(-1, "GPIOA4", "gpioa", "4", "io"),
 ]),
-_io(15, "PA5", "A", 5, B, 1, [
+_io(21, "PA5", "A", 5, B, 1, [
     _AF(1, "TIM2_CH1", "tim2", "ch1", "io"),
     _AF(1, "TIM2_ETR", "tim2", "etr", "io"),
     _AF(5, "SPI1_SCK", "spi1", "sck", "io"),
-    _AF(5, "I2S1_CK", "i2", "", "io"),
+    _AF(5, "I2S1_CK", "i2s1", "ck", "io"),
     _AF(15, "EVENTOUT", "eventout", "", "io"),
     _AF(-1, "GPIOA5", "gpioa", "5", "io"),
 ]),
-_io(16, "PA6", "A", 6, B, 1, [
+_io(22, "PA6", "A", 6, B, 1, [
     _AF(1, "TIM1_BKIN", "tim1", "bkin", "io"),
     _AF(2, "TIM3_CH1", "tim3", "ch1", "io"),
     _AF(5, "SPI1_MISO", "spi1", "miso", "in"),
-    _AF(6, "I2S2_MCK", "i2", "", "io"),
+    _AF(6, "I2S2_MCK", "i2s2", "mck", "io"),
     _AF(12, "SDIO_CMD", "sdio", "cmd", "io"),
     _AF(15, "EVENTOUT", "eventout", "", "io"),
     _AF(-1, "GPIOA6", "gpioa", "6", "io"),
 ]),
-_io(17, "PA7", "A", 7, B, 1, [
+_io(23, "PA7", "A", 7, B, 1, [
     _AF(1, "TIM1_CH1N", "tim1", "ch1n", "io"),
     _AF(2, "TIM3_CH2", "tim3", "ch2", "io"),
     _AF(5, "SPI1_MOSI", "spi1", "mosi", "out"),
-    _AF(5, "I2S1_SD", "i2", "", "io"),
+    _AF(5, "I2S1_SD", "i2s1", "sd", "io"),
     _AF(15, "EVENTOUT", "eventout", "", "io"),
     _AF(-1, "GPIOA7", "gpioa", "7", "io"),
 ]),
-_io(18, "PB0", "B", 0, B, 1, [
+_io(24, "PC4", "C", 4, B, 15, [
+    _AF(15, "EVENTOUT", "eventout", "", "io"),
+    _AF(-1, "GPIOC4", "gpioc", "4", "io"),
+]),
+_io(25, "PC5", "C", 5, B, 15, [
+    _AF(15, "EVENTOUT", "eventout", "", "io"),
+    _AF(-1, "GPIOC5", "gpioc", "5", "io"),
+]),
+_io(26, "PB0", "B", 0, B, 1, [
     _AF(1, "TIM1_CH2N", "tim1", "ch2n", "io"),
     _AF(2, "TIM3_CH3", "tim3", "ch3", "io"),
     _AF(6, "SPI5_SCK", "spi5", "sck", "io"),
-    _AF(6, "I2S5_CK", "i2", "", "io"),
+    _AF(6, "I2S5_CK", "i2s5", "ck", "io"),
     _AF(15, "EVENTOUT", "eventout", "", "io"),
     _AF(-1, "GPIOB0", "gpiob", "0", "io"),
 ]),
-_io(19, "PB1", "B", 1, B, 1, [
+_io(27, "PB1", "B", 1, B, 1, [
     _AF(1, "TIM1_CH3N", "tim1", "ch3n", "io"),
     _AF(2, "TIM3_CH4", "tim3", "ch4", "io"),
     _AF(6, "SPI5_NSS", "spi5", "nss", "io"),
-    _AF(6, "I2S5_WS", "i2", "", "io"),
+    _AF(6, "I2S5_WS", "i2s5", "ws", "io"),
     _AF(15, "EVENTOUT", "eventout", "", "io"),
     _AF(-1, "GPIOB1", "gpiob", "1", "io"),
 ]),
-_io(20, "PB2", "B", 2, B, 15, [
+_io(28, "PB2", "B", 2, B, 15, [
     _AF(15, "EVENTOUT", "eventout", "", "io"),
     _AF(-1, "GPIOB2", "gpiob", "2", "io"),
 ]),
-_io(21, "PB10", "B", 10, B, 1, [
+_io(29, "PB10", "B", 10, B, 1, [
     _AF(1, "TIM2_CH3", "tim2", "ch3", "io"),
-    _AF(4, "I2C2_SCL", "i2", "", "io"),
+    _AF(4, "I2C2_SCL", "i2c2", "scl", "io"),
     _AF(5, "SPI2_SCK", "spi2", "sck", "io"),
-    _AF(5, "I2S2_CK", "i2", "", "io"),
-    _AF(6, "I2S3_MCK", "i2", "", "io"),
+    _AF(5, "I2S2_CK", "i2s2", "ck", "io"),
+    _AF(6, "I2S3_MCK", "i2s3", "mck", "io"),
     _AF(12, "SDIO_D7", "sdio", "d7", "io"),
     _AF(15, "EVENTOUT", "eventout", "", "io"),
     _AF(-1, "GPIOB10", "gpiob", "10", "io"),
 ]),
-_spec(22, "VCAP_1", B, "VCAP_1"),
-_gnd(23, "VSS", B),
-_pwr(24, "VDD", B),
+_spec(30, "VCAP_1", B, "VCAP_1"),
+_gnd(31, "VSS", B),
+_pwr(32, "VDD", B),
 
-# ═══ RIGHT SIDE (pins 25–36) ═══
-_io(25, "PB12", "B", 12, R, 1, [
+# ═══ RIGHT SIDE (pins 33–48) ═══
+_io(33, "PB12", "B", 12, R, 1, [
     _AF(1, "TIM1_BKIN", "tim1", "bkin", "io"),
-    _AF(4, "I2C2_SMBA", "i2", "", "io"),
+    _AF(4, "I2C2_SMBA", "i2c2", "smba", "io"),
     _AF(5, "SPI2_NSS", "spi2", "nss", "io"),
-    _AF(5, "I2S2_WS", "i2", "", "io"),
+    _AF(5, "I2S2_WS", "i2s2", "ws", "io"),
     _AF(6, "SPI4_NSS", "spi4", "nss", "io"),
-    _AF(6, "I2S4_WS", "i2", "", "io"),
+    _AF(6, "I2S4_WS", "i2s4", "ws", "io"),
     _AF(7, "SPI3_SCK", "spi3", "sck", "io"),
-    _AF(7, "I2S3_CK", "i2", "", "io"),
+    _AF(7, "I2S3_CK", "i2s3", "ck", "io"),
     _AF(15, "EVENTOUT", "eventout", "", "io"),
     _AF(-1, "GPIOB12", "gpiob", "12", "io"),
 ]),
-_io(26, "PB13", "B", 13, R, 1, [
+_io(34, "PB13", "B", 13, R, 1, [
     _AF(1, "TIM1_CH1N", "tim1", "ch1n", "io"),
     _AF(5, "SPI2_SCK", "spi2", "sck", "io"),
-    _AF(5, "I2S2_CK", "i2", "", "io"),
+    _AF(5, "I2S2_CK", "i2s2", "ck", "io"),
     _AF(6, "SPI4_SCK", "spi4", "sck", "io"),
-    _AF(6, "I2S4_CK", "i2", "", "io"),
+    _AF(6, "I2S4_CK", "i2s4", "ck", "io"),
     _AF(15, "EVENTOUT", "eventout", "", "io"),
     _AF(-1, "GPIOB13", "gpiob", "13", "io"),
 ]),
-_io(27, "PB14", "B", 14, R, 1, [
+_io(35, "PB14", "B", 14, R, 1, [
     _AF(1, "TIM1_CH2N", "tim1", "ch2n", "io"),
     _AF(5, "SPI2_MISO", "spi2", "miso", "in"),
-    _AF(6, "I2S2EXT_SD", "i2", "", "io"),
+    _AF(6, "I2S2EXT_SD", "i2s2ext", "sd", "io"),
     _AF(12, "SDIO_D6", "sdio", "d6", "io"),
     _AF(15, "EVENTOUT", "eventout", "", "io"),
     _AF(-1, "GPIOB14", "gpiob", "14", "io"),
 ]),
-_io(28, "PB15", "B", 15, R, 0, [
+_io(36, "PB15", "B", 15, R, 0, [
     _AF(0, "RTC_50HZ", "rtc", "50hz", "io"),
     _AF(1, "TIM1_CH3N", "tim1", "ch3n", "io"),
     _AF(5, "SPI2_MOSI", "spi2", "mosi", "out"),
-    _AF(5, "I2S2_SD", "i2", "", "io"),
+    _AF(5, "I2S2_SD", "i2s2", "sd", "io"),
     _AF(12, "SDIO_CK", "sdio", "ck", "io"),
     _AF(15, "EVENTOUT", "eventout", "", "io"),
     _AF(-1, "GPIOB15", "gpiob", "15", "io"),
 ]),
-_io(29, "PA8", "A", 8, R, 0, [
+_io(37, "PC6", "C", 6, R, 2, [
+    _AF(2, "TIM3_CH1", "tim3", "ch1", "io"),
+    _AF(5, "I2S2_MCK", "i2s2", "mck", "io"),
+    _AF(8, "USART6_TX", "usart6", "tx", "out"),
+    _AF(12, "SDIO_D6", "sdio", "d6", "io"),
+    _AF(15, "EVENTOUT", "eventout", "", "io"),
+    _AF(-1, "GPIOC6", "gpioc", "6", "io"),
+]),
+_io(38, "PC7", "C", 7, R, 2, [
+    _AF(2, "TIM3_CH2", "tim3", "ch2", "io"),
+    _AF(5, "SPI2_SCK", "spi2", "sck", "io"),
+    _AF(5, "I2S2_CK", "i2s2", "ck", "io"),
+    _AF(6, "I2S3_MCK", "i2s3", "mck", "io"),
+    _AF(8, "USART6_RX", "usart6", "rx", "in"),
+    _AF(12, "SDIO_D7", "sdio", "d7", "io"),
+    _AF(15, "EVENTOUT", "eventout", "", "io"),
+    _AF(-1, "GPIOC7", "gpioc", "7", "io"),
+]),
+_io(39, "PC8", "C", 8, R, 2, [
+    _AF(2, "TIM3_CH3", "tim3", "ch3", "io"),
+    _AF(8, "USART6_CK", "usart6", "ck", "io"),
+    _AF(12, "SDIO_D0", "sdio", "d0", "io"),
+    _AF(15, "EVENTOUT", "eventout", "", "io"),
+    _AF(-1, "GPIOC8", "gpioc", "8", "io"),
+]),
+_io(40, "PC9", "C", 9, R, 0, [
+    _AF(0, "MCO_2", "mco", "2", "io"),
+    _AF(2, "TIM3_CH4", "tim3", "ch4", "io"),
+    _AF(4, "I2C3_SDA", "i2c3", "sda", "io"),
+    _AF(5, "I2S2_CKIN", "i2s2", "ckin", "io"),
+    _AF(12, "SDIO_D1", "sdio", "d1", "io"),
+    _AF(15, "EVENTOUT", "eventout", "", "io"),
+    _AF(-1, "GPIOC9", "gpioc", "9", "io"),
+]),
+_io(41, "PA8", "A", 8, R, 0, [
     _AF(0, "MCO_1", "mco", "1", "io"),
     _AF(1, "TIM1_CH1", "tim1", "ch1", "io"),
-    _AF(4, "I2C3_SCL", "i2", "", "io"),
+    _AF(4, "I2C3_SCL", "i2c3", "scl", "io"),
     _AF(7, "USART1_CK", "usart1", "ck", "io"),
     _AF(10, "USB_FS_SOF", "usb", "fs_sof", "io"),
     _AF(12, "SDIO_D1", "sdio", "d1", "io"),
     _AF(15, "EVENTOUT", "eventout", "", "io"),
     _AF(-1, "GPIOA8", "gpioa", "8", "io"),
 ]),
-_io(30, "PA9", "A", 9, R, 1, [
+_io(42, "PA9", "A", 9, R, 1, [
     _AF(1, "TIM1_CH2", "tim1", "ch2", "io"),
-    _AF(4, "I2C3_SMBA", "i2", "", "io"),
+    _AF(4, "I2C3_SMBA", "i2c3", "smba", "io"),
     _AF(7, "USART1_TX", "usart1", "tx", "out"),
     _AF(10, "USB_FS_VBUS", "usb", "fs_vbus", "io"),
     _AF(12, "SDIO_D2", "sdio", "d2", "io"),
     _AF(15, "EVENTOUT", "eventout", "", "io"),
     _AF(-1, "GPIOA9", "gpioa", "9", "io"),
 ]),
-_io(31, "PA10", "A", 10, R, 1, [
+_io(43, "PA10", "A", 10, R, 1, [
     _AF(1, "TIM1_CH3", "tim1", "ch3", "io"),
     _AF(6, "SPI5_MOSI", "spi5", "mosi", "out"),
-    _AF(6, "I2S5_SD", "i2", "", "io"),
+    _AF(6, "I2S5_SD", "i2s5", "sd", "io"),
     _AF(7, "USART1_RX", "usart1", "rx", "in"),
     _AF(10, "USB_FS_ID", "usb", "fs_id", "io"),
     _AF(15, "EVENTOUT", "eventout", "", "io"),
     _AF(-1, "GPIOA10", "gpioa", "10", "io"),
 ]),
-_io(32, "PA11", "A", 11, R, 1, [
+_io(44, "PA11", "A", 11, R, 1, [
     _AF(1, "TIM1_CH4", "tim1", "ch4", "io"),
     _AF(6, "SPI4_MISO", "spi4", "miso", "in"),
     _AF(7, "USART1_CTS", "usart1", "cts", "in"),
@@ -272,7 +336,7 @@ _io(32, "PA11", "A", 11, R, 1, [
     _AF(15, "EVENTOUT", "eventout", "", "io"),
     _AF(-1, "GPIOA11", "gpioa", "11", "io"),
 ]),
-_io(33, "PA12", "A", 12, R, 1, [
+_io(45, "PA12", "A", 12, R, 1, [
     _AF(1, "TIM1_ETR", "tim1", "etr", "io"),
     _AF(6, "SPI5_MISO", "spi5", "miso", "in"),
     _AF(7, "USART1_RTS", "usart1", "rts", "out"),
@@ -281,130 +345,167 @@ _io(33, "PA12", "A", 12, R, 1, [
     _AF(15, "EVENTOUT", "eventout", "", "io"),
     _AF(-1, "GPIOA12", "gpioa", "12", "io"),
 ]),
-_io(34, "PA13", "A", 13, R, 0, [
+_io(46, "PA13", "A", 13, R, 0, [
     _AF(0, "JTMS-SWDIO", "jtms", "", "io"),
     _AF(15, "EVENTOUT", "eventout", "", "io"),
     _AF(-1, "GPIOA13", "gpioa", "13", "io"),
 ]),
-_gnd(35, "VSS", R),
-_pwr(36, "VDD", R),
+_gnd(47, "VSS", R),
+_pwr(48, "VDD", R),
 
-# ═══ TOP SIDE (pins 37–48) ═══
-_io(37, "PA14", "A", 14, T, 0, [
+# ═══ TOP SIDE (pins 49–64) ═══
+_io(49, "PA14", "A", 14, T, 0, [
     _AF(0, "JTCK-SWCLK", "jtck", "", "io"),
     _AF(15, "EVENTOUT", "eventout", "", "io"),
     _AF(-1, "GPIOA14", "gpioa", "14", "io"),
 ]),
-_io(38, "PA15", "A", 15, T, 0, [
+_io(50, "PA15", "A", 15, T, 0, [
     _AF(0, "JTDI", "jtdi", "", "io"),
     _AF(1, "TIM2_CH1", "tim2", "ch1", "io"),
     _AF(1, "TIM2_ETR", "tim2", "etr", "io"),
     _AF(5, "SPI1_NSS", "spi1", "nss", "io"),
-    _AF(5, "I2S1_WS", "i2", "", "io"),
+    _AF(5, "I2S1_WS", "i2s1", "ws", "io"),
     _AF(6, "SPI3_NSS", "spi3", "nss", "io"),
-    _AF(6, "I2S3_WS", "i2", "", "io"),
+    _AF(6, "I2S3_WS", "i2s3", "ws", "io"),
     _AF(7, "USART1_TX", "usart1", "tx", "out"),
     _AF(15, "EVENTOUT", "eventout", "", "io"),
     _AF(-1, "GPIOA15", "gpioa", "15", "io"),
 ]),
-_io(39, "PB3", "B", 3, T, 0, [
+_io(51, "PC10", "C", 10, T, 6, [
+    _AF(6, "SPI3_SCK", "spi3", "sck", "io"),
+    _AF(6, "I2S3_CK", "i2s3", "ck", "io"),
+    _AF(12, "SDIO_D2", "sdio", "d2", "io"),
+    _AF(15, "EVENTOUT", "eventout", "", "io"),
+    _AF(-1, "GPIOC10", "gpioc", "10", "io"),
+]),
+_io(52, "PC11", "C", 11, T, 5, [
+    _AF(5, "I2S3EXT_SD", "i2s3ext", "sd", "io"),
+    _AF(6, "SPI3_MISO", "spi3", "miso", "in"),
+    _AF(12, "SDIO_D3", "sdio", "d3", "io"),
+    _AF(15, "EVENTOUT", "eventout", "", "io"),
+    _AF(-1, "GPIOC11", "gpioc", "11", "io"),
+]),
+_io(53, "PC12", "C", 12, T, 6, [
+    _AF(6, "SPI3_MOSI", "spi3", "mosi", "out"),
+    _AF(6, "I2S3_SD", "i2s3", "sd", "io"),
+    _AF(12, "SDIO_CK", "sdio", "ck", "io"),
+    _AF(15, "EVENTOUT", "eventout", "", "io"),
+    _AF(-1, "GPIOC12", "gpioc", "12", "io"),
+]),
+_io(54, "PD2", "D", 2, T, 2, [
+    _AF(2, "TIM3_ETR", "tim3", "etr", "io"),
+    _AF(12, "SDIO_CMD", "sdio", "cmd", "io"),
+    _AF(15, "EVENTOUT", "eventout", "", "io"),
+    _AF(-1, "GPIOD2", "gpiod", "2", "io"),
+]),
+_io(55, "PB3", "B", 3, T, 0, [
     _AF(0, "JTDO-SWO", "jtdo", "", "io"),
     _AF(1, "TIM2_CH2", "tim2", "ch2", "io"),
     _AF(5, "SPI1_SCK", "spi1", "sck", "io"),
-    _AF(5, "I2S1_CK", "i2", "", "io"),
+    _AF(5, "I2S1_CK", "i2s1", "ck", "io"),
     _AF(6, "SPI3_SCK", "spi3", "sck", "io"),
-    _AF(6, "I2S3_CK", "i2", "", "io"),
+    _AF(6, "I2S3_CK", "i2s3", "ck", "io"),
     _AF(7, "USART1_RX", "usart1", "rx", "in"),
-    _AF(9, "I2C2_SDA", "i2", "", "io"),
+    _AF(9, "I2C2_SDA", "i2c2", "sda", "io"),
     _AF(15, "EVENTOUT", "eventout", "", "io"),
     _AF(-1, "GPIOB3", "gpiob", "3", "io"),
 ]),
-_io(40, "PB4", "B", 4, T, 0, [
+_io(56, "PB4", "B", 4, T, 0, [
     _AF(0, "JTRST", "jtrst", "", "io"),
     _AF(2, "TIM3_CH1", "tim3", "ch1", "io"),
     _AF(5, "SPI1_MISO", "spi1", "miso", "in"),
     _AF(6, "SPI3_MISO", "spi3", "miso", "in"),
-    _AF(7, "I2S3EXT_SD", "i2", "", "io"),
-    _AF(9, "I2C3_SDA", "i2", "", "io"),
+    _AF(7, "I2S3EXT_SD", "i2s3ext", "sd", "io"),
+    _AF(9, "I2C3_SDA", "i2c3", "sda", "io"),
     _AF(12, "SDIO_D0", "sdio", "d0", "io"),
     _AF(15, "EVENTOUT", "eventout", "", "io"),
     _AF(-1, "GPIOB4", "gpiob", "4", "io"),
 ]),
-_io(41, "PB5", "B", 5, T, 2, [
+_io(57, "PB5", "B", 5, T, 2, [
     _AF(2, "TIM3_CH2", "tim3", "ch2", "io"),
-    _AF(4, "I2C1_SMBA", "i2", "", "io"),
+    _AF(4, "I2C1_SMBA", "i2c1", "smba", "io"),
     _AF(5, "SPI1_MOSI", "spi1", "mosi", "out"),
-    _AF(5, "I2S1_SD", "i2", "", "io"),
+    _AF(5, "I2S1_SD", "i2s1", "sd", "io"),
     _AF(6, "SPI3_MOSI", "spi3", "mosi", "out"),
-    _AF(6, "I2S3_SD", "i2", "", "io"),
+    _AF(6, "I2S3_SD", "i2s3", "sd", "io"),
     _AF(12, "SDIO_D3", "sdio", "d3", "io"),
     _AF(15, "EVENTOUT", "eventout", "", "io"),
     _AF(-1, "GPIOB5", "gpiob", "5", "io"),
 ]),
-_io(42, "PB6", "B", 6, T, 2, [
+_io(58, "PB6", "B", 6, T, 2, [
     _AF(2, "TIM4_CH1", "tim4", "ch1", "io"),
-    _AF(4, "I2C1_SCL", "i2", "", "io"),
+    _AF(4, "I2C1_SCL", "i2c1", "scl", "io"),
     _AF(7, "USART1_TX", "usart1", "tx", "out"),
     _AF(15, "EVENTOUT", "eventout", "", "io"),
     _AF(-1, "GPIOB6", "gpiob", "6", "io"),
 ]),
-_io(43, "PB7", "B", 7, T, 2, [
+_io(59, "PB7", "B", 7, T, 2, [
     _AF(2, "TIM4_CH2", "tim4", "ch2", "io"),
-    _AF(4, "I2C1_SDA", "i2", "", "io"),
+    _AF(4, "I2C1_SDA", "i2c1", "sda", "io"),
     _AF(7, "USART1_RX", "usart1", "rx", "in"),
     _AF(12, "SDIO_D0", "sdio", "d0", "io"),
     _AF(15, "EVENTOUT", "eventout", "", "io"),
     _AF(-1, "GPIOB7", "gpiob", "7", "io"),
 ]),
-_spec(44, "BOOT0", T, "BOOT0"),
-_io(45, "PB8", "B", 8, T, 2, [
+_spec(60, "BOOT0", T, "BOOT0"),
+_io(61, "PB8", "B", 8, T, 2, [
     _AF(2, "TIM4_CH3", "tim4", "ch3", "io"),
     _AF(3, "TIM10_CH1", "tim10", "ch1", "io"),
-    _AF(4, "I2C1_SCL", "i2", "", "io"),
+    _AF(4, "I2C1_SCL", "i2c1", "scl", "io"),
     _AF(6, "SPI5_MOSI", "spi5", "mosi", "out"),
-    _AF(6, "I2S5_SD", "i2", "", "io"),
-    _AF(9, "I2C3_SDA", "i2", "", "io"),
+    _AF(6, "I2S5_SD", "i2s5", "sd", "io"),
+    _AF(9, "I2C3_SDA", "i2c3", "sda", "io"),
     _AF(12, "SDIO_D4", "sdio", "d4", "io"),
     _AF(15, "EVENTOUT", "eventout", "", "io"),
     _AF(-1, "GPIOB8", "gpiob", "8", "io"),
 ]),
-_io(46, "PB9", "B", 9, T, 2, [
+_io(62, "PB9", "B", 9, T, 2, [
     _AF(2, "TIM4_CH4", "tim4", "ch4", "io"),
     _AF(3, "TIM11_CH1", "tim11", "ch1", "io"),
-    _AF(4, "I2C1_SDA", "i2", "", "io"),
+    _AF(4, "I2C1_SDA", "i2c1", "sda", "io"),
     _AF(5, "SPI2_NSS", "spi2", "nss", "io"),
-    _AF(5, "I2S2_WS", "i2", "", "io"),
-    _AF(9, "I2C2_SDA", "i2", "", "io"),
+    _AF(5, "I2S2_WS", "i2s2", "ws", "io"),
+    _AF(9, "I2C2_SDA", "i2c2", "sda", "io"),
     _AF(12, "SDIO_D5", "sdio", "d5", "io"),
     _AF(15, "EVENTOUT", "eventout", "", "io"),
     _AF(-1, "GPIOB9", "gpiob", "9", "io"),
 ]),
-_gnd(47, "VSS", T),
-_pwr(48, "VDD", T),
+_gnd(63, "VSS", T),
+_pwr(64, "VDD", T),
     ]
 
     peripherals = [
         Peripheral("gpioa", "GPIO A", "ti,mspm0-gpio", [], "0x400a0000", "&gpioa"),
 Peripheral("gpiob", "GPIO B", "ti,mspm0-gpio", [], "0x400a2000", "&gpiob"),
 Peripheral("spi1", "SPI 1", "ti,mspm0-spi", ["sclk", "pico", "poci", "cs0"], "", "&spi1"),
+Peripheral("i2c1", "I2C 1", "ti,mspm0-i2c", ["scl", "sda"], "", "&i2c1"),
 Peripheral("tim1", "TIM1", "ti,mspm0-tim", ["bkin", "ch1", "ch1n", "ch2", "ch2n", "ch3", "ch3n", "ch4", "etr"], "", "&tim1"),
 Peripheral("tim10", "TIM10", "ti,mspm0-tim", ["ch1"], "", "&tim10"),
 Peripheral("tim11", "TIM11", "ti,mspm0-tim", ["ch1"], "", "&tim11"),
 Peripheral("tim2", "TIM2", "ti,mspm0-tim", ["ch1", "ch2", "ch3", "ch4", "etr"], "", "&tim2"),
-Peripheral("tim3", "TIM3", "ti,mspm0-tim", ["ch1", "ch2", "ch3", "ch4"], "", "&tim3"),
+Peripheral("tim3", "TIM3", "ti,mspm0-tim", ["ch1", "ch2", "ch3", "ch4", "etr"], "", "&tim3"),
 Peripheral("tim4", "TIM4", "ti,mspm0-tim", ["ch1", "ch2", "ch3", "ch4"], "", "&tim4"),
 Peripheral("tim5", "TIM5", "ti,mspm0-tim", ["ch1", "ch2", "ch3", "ch4"], "", "&tim5"),
 Peripheral("tim9", "TIM9", "ti,mspm0-tim", ["ch1", "ch2"], "", "&tim9"),
 Peripheral("eventout", "EVENTOUT", "ti,mspm0-eventout", [], "", "&eventout"),
-Peripheral("gpioc", "GPIOC", "ti,mspm0-gpioc", ["13", "14", "15"], "", "&gpioc"),
+Peripheral("gpioc", "GPIOC", "ti,mspm0-gpioc", ["0", "1", "10", "11", "12", "13", "14", "15", "2", "3", "4", "5", "6", "7", "8", "9"], "", "&gpioc"),
+Peripheral("gpiod", "GPIOD", "ti,mspm0-gpiod", ["2"], "", "&gpiod"),
 Peripheral("gpioh", "GPIOH", "ti,mspm0-gpioh", ["0", "1"], "", "&gpioh"),
-Peripheral("i2", "I2", "ti,mspm0-i", [], "", "&i2"),
+Peripheral("i2c2", "I2C2", "ti,mspm0-i2c", ["scl", "sda", "smba"], "", "&i2c2"),
+Peripheral("i2c3", "I2C3", "ti,mspm0-i2c", ["scl", "sda", "smba"], "", "&i2c3"),
+Peripheral("i2s1", "I2S1", "ti,mspm0-i2s", ["ck", "sd", "ws"], "", "&i2s1"),
+Peripheral("i2s2", "I2S2", "ti,mspm0-i2s", ["ck", "ckin", "mck", "sd", "ws"], "", "&i2s2"),
+Peripheral("i2s2ext", "I2S2EXT", "ti,mspm0-i2s2ext", ["sd"], "", "&i2s2ext"),
+Peripheral("i2s3", "I2S3", "ti,mspm0-i2s", ["ck", "mck", "sd", "ws"], "", "&i2s3"),
+Peripheral("i2s3ext", "I2S3EXT", "ti,mspm0-i2s3ext", ["sd"], "", "&i2s3ext"),
+Peripheral("i2s4", "I2S4", "ti,mspm0-i2s", ["ck", "sd", "ws"], "", "&i2s4"),
+Peripheral("i2s5", "I2S5", "ti,mspm0-i2s", ["ck", "sd", "ws"], "", "&i2s5"),
 Peripheral("jtck", "JTCK", "ti,mspm0-jtck", [], "", "&jtck"),
 Peripheral("jtdi", "JTDI", "ti,mspm0-jtdi", [], "", "&jtdi"),
 Peripheral("jtdo", "JTDO", "ti,mspm0-jtdo", [], "", "&jtdo"),
 Peripheral("jtms", "JTMS", "ti,mspm0-jtms", [], "", "&jtms"),
 Peripheral("jtrst", "JTRST", "ti,mspm0-jtrst", [], "", "&jtrst"),
-Peripheral("mco", "MCO", "ti,mspm0-mco", ["1"], "", "&mco"),
+Peripheral("mco", "MCO", "ti,mspm0-mco", ["1", "2"], "", "&mco"),
 Peripheral("rtc", "RTC", "ti,mspm0-rtc", ["50hz"], "", "&rtc"),
 Peripheral("sdio", "SDIO", "ti,mspm0-sdio", ["ck", "cmd", "d0", "d1", "d2", "d3", "d4", "d5", "d6", "d7"], "", "&sdio"),
 Peripheral("spi2", "SPI2", "ti,mspm0-spi", ["miso", "mosi", "nss", "sck"], "", "&spi2"),
@@ -413,7 +514,7 @@ Peripheral("spi4", "SPI4", "ti,mspm0-spi", ["miso", "mosi", "nss", "sck"], "", "
 Peripheral("spi5", "SPI5", "ti,mspm0-spi", ["miso", "mosi", "nss", "sck"], "", "&spi5"),
 Peripheral("usart1", "USART1", "ti,mspm0-usart", ["ck", "cts", "rts", "rx", "tx"], "", "&usart1"),
 Peripheral("usart2", "USART2", "ti,mspm0-usart", ["ck", "cts", "rts", "rx", "tx"], "", "&usart2"),
-Peripheral("usart6", "USART6", "ti,mspm0-usart", ["rx", "tx"], "", "&usart6"),
+Peripheral("usart6", "USART6", "ti,mspm0-usart", ["ck", "rx", "tx"], "", "&usart6"),
 Peripheral("usb", "USB", "ti,mspm0-usb", ["fs_dm", "fs_dp", "fs_id", "fs_sof", "fs_vbus"], "", "&usb"),
     ]
 
@@ -425,8 +526,8 @@ Peripheral("usb", "USB", "ti,mspm0-usb", ["fs_dm", "fs_dp", "fs_id", "fs_sof", "
         soc="STM32F411",
         board="lp_stm32f411",
         vendor="st",
-        package="UFQFPN48",
-        pin_count=48,
+        package="LQFP64",
+        pin_count=64,
         pins=pins,
         peripherals=peripherals,
         external_devices=external_devices,

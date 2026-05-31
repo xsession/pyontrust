@@ -24,6 +24,8 @@ from .stm32f427_lqfp176 import build_stm32f427_lqfp176
 from .stm32f427_lqfp208 import build_stm32f427_lqfp208
 from .stm32f427_bga216 import build_stm32f427_bga216
 
+from .stm32f411_lqfp64 import build_stm32f411_lqfp64
+
 BOARDS = {
     "mspm0g3507": build_mspm0g3507_48qfp,
     "rpi_pico": build_rpi_pico,
@@ -46,4 +48,5 @@ BOARDS = {
     "stm32f427_lqfp176": build_stm32f427_lqfp176,
     "stm32f427_lqfp208": build_stm32f427_lqfp208,
     "stm32f427_bga216": build_stm32f427_bga216,
+    "stm32f411_lqfp64": build_stm32f411_lqfp64,
 }

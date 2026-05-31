@@ -142,6 +142,7 @@ class SensorDatasheetInfo:
     """Everything extracted from one sensor datasheet PDF."""
     summary: SensorSummary = field(default_factory=SensorSummary)
     address: SensorAddress = field(default_factory=SensorAddress)
+    package: dict = field(default_factory=dict)
     register_map: RegisterMap = field(default_factory=RegisterMap)
 
     def to_c_header(self, guard_prefix: str = "") -> str:
@@ -230,6 +231,23 @@ _RE_WHO_AM_I = re.compile(
     r'(?:WHO[\s_]*AM[\s_]*I|CHIP[\s_]*ID|DEVICE[\s_]*ID|ID[\s_]*REG(?:ISTER)?)\s*'
     r'(?:=|:|\s)\s*(?:0[xX])?([0-9A-Fa-f]{2})',
     re.I)
+_PACKAGE_TYPES = "UFQFPN|VFQFPN|UFBGA|TFBGA|WLCSP|LQFP|TQFP|QFP|QFN|DFN|LGA|BGA|CSP|SOIC|SSOP|TSSOP"
+_RE_PACKAGE_PIN_TYPE = re.compile(
+    rf'\b(?P<pins>\d{{1,3}})\s*[- ]pin\b[^.\n]{{0,48}}\b(?P<ptype>{_PACKAGE_TYPES})\b',
+    re.I,
+)
+_RE_PACKAGE_TYPE_PIN = re.compile(
+    rf'\b(?P<ptype>{_PACKAGE_TYPES})\b[^.\n]{{0,48}}\b(?P<pins>\d{{1,3}})\s*[- ]pin\b',
+    re.I,
+)
+_RE_PACKAGE_FOOTPRINT = re.compile(
+    r'Footprint\s*[:=]?\s*(?P<width>\d+(?:\.\d+)?)\s*[x×]\s*(?P<height>\d+(?:\.\d+)?)\s*mm',
+    re.I,
+)
+_RE_PACKAGE_HEIGHT = re.compile(
+    r'(?:package\s+)?height\s*[:=]?\s*(?P<height>\d+(?:\.\d+)?)\s*mm',
+    re.I,
+)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -1432,6 +1450,67 @@ def _extract_sensor_summary(
     return summary
 
 
+def _extract_package_info(texts: list[str], part_number: str = "") -> dict:
+    """Infer package metadata from sensor datasheet text for CAD generation."""
+    scan = "\n".join(texts[:12] if texts else [])
+    normalized_scan = scan.replace("\u00d7", "x")
+    full_scan = "\n".join(texts if texts else []).replace("\u00d7", "x")
+
+    package_match = _RE_PACKAGE_PIN_TYPE.search(normalized_scan) or _RE_PACKAGE_TYPE_PIN.search(normalized_scan)
+    if not package_match:
+        return {}
+
+    package_type = package_match.group("ptype").upper()
+    pin_count = int(package_match.group("pins"))
+    package = {
+        "name": f"{package_type}-{pin_count}",
+        "package_type": package_type,
+        "pin_count": pin_count,
+    }
+
+    footprint_match = _RE_PACKAGE_FOOTPRINT.search(normalized_scan)
+    if footprint_match:
+        package["width_mm"] = float(footprint_match.group("width"))
+        package["height_mm"] = float(footprint_match.group("height"))
+
+    height_match = _RE_PACKAGE_HEIGHT.search(normalized_scan)
+    if height_match:
+        package["thickness_mm"] = float(height_match.group("height"))
+
+    pins: list[dict[str, object]] = []
+    in_pin_table = False
+    for raw_line in full_scan.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        lower = line.lower()
+        if "pin description" in lower:
+            in_pin_table = True
+            continue
+        if not in_pin_table:
+            continue
+        if lower.startswith(("figure ", "note", "modifications reserved", "connection diagram")):
+            break
+        match = re.match(r'^(\d{1,3})\s+([A-Za-z][A-Za-z0-9_+\-/]*)\b', line)
+        if not match:
+            continue
+        pin_number = int(match.group(1))
+        pin_name = match.group(2).upper()
+        if any(existing["number"] == pin_number for existing in pins):
+            continue
+        pins.append({"number": pin_number, "name": pin_name})
+        if len(pins) >= pin_count:
+            break
+
+    if pins:
+        package["pins"] = pins
+
+    if part_number:
+        package["component_name"] = part_number
+
+    return package
+
+
 # ═══════════════════════════════════════════════════════════════════════
 #  C code generation
 # ═══════════════════════════════════════════════════════════════════════
@@ -2221,6 +2300,10 @@ def sensor_info_to_json(info: SensorDatasheetInfo) -> dict:
             "spi_mode": info.address.spi_mode,
             "spi_word_size": info.address.spi_word_size,
         },
+        "package": {
+            key: _ascii_safe_text(value) if isinstance(value, str) else value
+            for key, value in (info.package or {}).items()
+        },
         "register_map": {
             "register_count": len(info.register_map.registers),
             "address_bits": info.register_map.address_bits,
@@ -2258,6 +2341,7 @@ def sensor_info_from_json(data: dict) -> SensorDatasheetInfo:
     """Reconstruct SensorDatasheetInfo from a JSON dict."""
     s = data.get("summary", {})
     a = data.get("address", {})
+    package = data.get("package", {})
     rm = data.get("register_map", {})
 
     summary = SensorSummary(
@@ -2325,6 +2409,7 @@ def sensor_info_from_json(data: dict) -> SensorDatasheetInfo:
     return SensorDatasheetInfo(
         summary=summary,
         address=address,
+        package=package if isinstance(package, dict) else {},
         register_map=regmap,
     )
 
@@ -2377,6 +2462,9 @@ def parse_sensor_datasheet(
         # Extract summary
         summary = _extract_sensor_summary(texts, vendor, vendor_name, part_number)
 
+        # Extract package metadata for footprint/3D model generation.
+        package = _extract_package_info(texts, summary.part_number)
+
         # Extract addresses
         address = extract_addresses(texts)
         log.info("Protocol: %s, I2C addresses: %s",
@@ -2401,6 +2489,7 @@ def parse_sensor_datasheet(
         info = SensorDatasheetInfo(
             summary=summary,
             address=address,
+            package=package,
             register_map=regmap,
         )
 

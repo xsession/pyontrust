@@ -106,7 +106,7 @@ _RE_PKG_NxPIN = re.compile(r'(\d+)[\s-]*[Pp]in\s+([A-Z]{2,8})', re.I)
 _RE_PKG_TYPE  = re.compile(
     r'(LQFP|UFBGA|WLCSP|BGA|TFBGA|TSSOP|UFQFPN|QFN|QFP|TQFP|VFQFPN|HVQFN|'
     r'MAPBGA|EWLCSP|SO|SOIC|SSOP|CSP|MLF|TFLGA|FBGA)\s*[-]?\s*(\d+)', re.I)
-_RE_FUNC_SPLIT = re.compile(r'([A-Za-z]+\d*)(?:_(.+))?')
+_RE_FUNC_SPLIT = re.compile(r'([A-Za-z][A-Za-z0-9]*)(?:_(.+))?')
 _RE_BGA_COORD  = re.compile(r'^([A-Z])(\d+)$')
 
 # ── broad SOC-detection patterns (most specific first) ──

@@ -54,6 +54,16 @@ from boards import BOARDS
 from demo_app_generator import materialize_demo_app
 from dts_generator import ExternalDeviceConfig, PinAssignment, PeripheralConfig, generate
 from pdf_parser import parse_datasheet, DatasheetInfo
+from package_artifacts import (
+    artifact_entries,
+    build_mcu_framework_outputs,
+    build_sensor_framework_outputs,
+    generate_kicad_footprint,
+    generate_wrl_model,
+    normalize_package,
+    package_info_from_mcu,
+    slugify,
+)
 from package_generator import generate_board_files
 from overlay_parser import parse_import, import_result_to_json
 from datasheet_fetcher import identify_vendor, download_datasheet, fetch_and_parse, search_datasheet_candidates
@@ -1511,30 +1521,36 @@ def generate_package():
     """
     body = request.get_json(force=True)
     job_id = body.get("job_id", "")
-
-    if job_id not in _PARSED_JOBS:
-        return jsonify({"error": f"Job '{job_id}' not found. Parse a PDF first."}), 404
-
-    job = _PARSED_JOBS[job_id]
-    info: DatasheetInfo = job["info"]
-
-    # Optional package filter
-    pkg_filter = body.get("packages")
-    if pkg_filter:
-        pkg_set = {p.upper().replace("-", "") for p in pkg_filter}
-        info.packages = [
-            p for p in info.packages
-            if p.name.upper().replace("-", "") in pkg_set
-        ]
-        if not info.packages:
-            return jsonify({"error": f"No matching packages. Available: "
-                            f"{[p.name for p in _PARSED_JOBS[job_id]['info'].packages]}"}), 400
-
-    boards_dir = _HERE / "boards"
     external_devices = body.get("external_devices")
     if not isinstance(external_devices, list):
         external_devices = []
+    package_overrides = body.get("package_overrides") if isinstance(body.get("package_overrides"), dict) else {}
 
+    if job_id not in _PARSED_JOBS:
+        return jsonify({"error": f"Job '{job_id}' not found. Parse an MCU PDF first."}), 404
+
+    job = _PARSED_JOBS[job_id]
+    original_info: DatasheetInfo = job["info"]
+
+    selected_packages = list(original_info.packages)
+    pkg_filter = body.get("packages")
+    if pkg_filter:
+        pkg_set = {p.upper().replace("-", "") for p in pkg_filter}
+        selected_packages = [
+            p for p in original_info.packages
+            if p.name.upper().replace("-", "") in pkg_set
+        ]
+        if not selected_packages:
+            return jsonify({"error": f"No matching packages. Available: "
+                            f"{[p.name for p in original_info.packages]}"}), 400
+
+    info = DatasheetInfo(
+        device=original_info.device,
+        packages=selected_packages,
+        pin_mux=original_info.pin_mux,
+    )
+
+    boards_dir = _HERE / "boards"
     try:
         files = generate_board_files(
             info,
@@ -1550,20 +1566,52 @@ def generate_package():
         log.exception("Package generation failed")
         return jsonify({"error": f"Generation failed: {exc}"}), 500
 
-    # Reload BOARDS registry so the new board appears immediately
     _reload_boards()
 
     generated = []
-    for fp in files:
-        p = pathlib.Path(fp)
-        generated.append({
-            "filename": p.name,
-            "path": str(p),
-        })
+    artifacts = []
+    file_map = {pathlib.Path(path).stem: pathlib.Path(path) for path in files}
+    base_board_name = str(body.get("board_name") or f"lp_{original_info.device.soc.lower()}").strip() or f"lp_{original_info.device.soc.lower()}"
+
+    for package in selected_packages:
+        package_slug = package.name.replace("-", "").lower()
+        board_stem = f"{original_info.device.soc.lower()}_{package_slug}"
+        board_path = file_map.get(board_stem)
+        if board_path and board_path.exists():
+            generated.append({
+                "filename": board_path.name,
+                "path": str(board_path),
+            })
+            artifacts.append({
+                "id": f"boards/{board_path.name}",
+                "label": board_path.name,
+                "path": f"boards/{board_path.name}",
+                "group": "Package Manager",
+                "content": board_path.read_text(encoding="utf-8"),
+            })
+
+        board_name = base_board_name if len(selected_packages) == 1 else f"{base_board_name}_{package_slug}"
+        framework_outputs = build_mcu_framework_outputs(
+            original_info,
+            package,
+            board_name=board_name,
+            external_devices=external_devices,
+        )
+        artifacts.extend(artifact_entries(framework_outputs, "Package Manager"))
+
+        package_info = normalize_package(package_info_from_mcu(package), package_overrides)
+        component_name = f"{original_info.device.soc}_{package_info['name']}"
+        cad_outputs = {
+            f"cad/{package_slug}/{package_slug}.kicad_mod": generate_kicad_footprint(package_info, component_name),
+            f"cad/{package_slug}/{package_slug}.wrl": generate_wrl_model(package_info, component_name),
+        }
+        artifacts.extend(artifact_entries(cad_outputs, "Package Manager"))
 
     return jsonify({
         "success": True,
+        "job_kind": "mcu",
         "files": generated,
+        "artifacts": artifacts,
     })
 
 
@@ -1591,10 +1639,12 @@ def list_parse_jobs():
         info = job["info"]
         jobs.append({
             "job_id": jid,
+            "kind": "mcu",
             "filename": job["filename"],
             "soc": info.device.soc,
             "packages": [p.name for p in info.packages],
             "pin_count": len(info.pin_mux),
+            "result": _datasheet_to_json(info),
         })
     return jsonify(jobs)
 
@@ -2123,6 +2173,7 @@ def list_sensor_jobs():
         info: SensorDatasheetInfo = jdata["info"]
         jobs.append({
             "job_id": jid,
+            "kind": "sensor",
             "filename": jdata["filename"],
             "part_number": info.summary.part_number,
             "vendor": info.summary.vendor_name,
@@ -2225,6 +2276,22 @@ def generate_sensor_driver_from_job(job_id: str):
                 package=result,
                 template_path=custom_template_path,
             ))
+
+        package_info = sensor.package if isinstance(sensor.package, dict) and sensor.package else {
+            "name": sensor.summary.part_number or "sensor-package",
+            "pin_count": 0,
+            "pins": [],
+        }
+        normalized_package = normalize_package(package_info)
+        component_name = sensor.summary.part_number or sensor.summary.vendor_name or "sensor"
+        package_slug = slugify(normalized_package["name"])
+        component_slug = slugify(component_name)
+        result.update({
+            "kicad_footprint": generate_kicad_footprint(normalized_package, component_name),
+            "kicad_footprint_path": f"cad/{package_slug}/{component_slug}.kicad_mod",
+            "wrl_model": generate_wrl_model(normalized_package, component_name),
+            "wrl_model_path": f"cad/{package_slug}/{component_slug}.wrl",
+        })
         return jsonify(result)
     except Exception as exc:
         log.exception("Driver generation from sensor job failed")
