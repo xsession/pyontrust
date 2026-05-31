@@ -660,6 +660,46 @@ function protocolPreviewContent() {
   }
 }
 
+function protocolPreviewFiles() {
+  return [
+    {
+      id: "prj_conf",
+      label: "prj.conf",
+      path: "protocols/prj.conf",
+      group: "Protocol Editor",
+      content: generatedFragments.protocols.prj_conf || "",
+    },
+    {
+      id: "overlay",
+      label: ".overlay",
+      path: "protocols/protocols.overlay",
+      group: "Protocol Editor",
+      content: generatedFragments.protocols.overlay || "",
+    },
+    {
+      id: "header",
+      label: "protocol_stack.h",
+      path: "protocols/protocol_stack.h",
+      group: "Protocol Editor",
+      content: generatedFragments.protocols.header || "",
+    },
+    {
+      id: "code",
+      label: "protocol_stack.c",
+      path: "protocols/protocol_stack.c",
+      group: "Protocol Editor",
+      content: generatedFragments.protocols.code || "",
+    },
+    {
+      id: "integration",
+      label: "integration.md",
+      path: "protocols/integration.md",
+      group: "Protocol Editor",
+      content: generatedFragments.protocols.integration || "",
+    },
+  ];
+}
+
 function protocolRenderCatalog() {
   const state = protocolEnsureState();
   const catalog = $("#protoCatalog");
@@ -843,12 +883,13 @@ function protocolApplyFieldChange(input) {
 
 function protocolRenderPreview() {
   const state = protocolEnsureState();
-  const tabs = $$("[data-proto-preview]");
-  const pre = $("#protoPreviewPre");
-  tabs.forEach(tab => tab.classList.toggle("active", tab.dataset.protoPreview === state.previewTab));
-  if (pre) {
-    pre.textContent = protocolPreviewContent();
-  }
+  window.renderCodeReviewPanel?.("protocolPreviewReview", protocolPreviewFiles(), {
+    emptyMessage: "Add an enabled interface to generate Zephyr Kconfig settings.",
+    preferredSelection: state.previewTab,
+    onSelect: (file) => {
+      state.previewTab = file.id;
+    },
+  });
 }
 
 function protocolRender() {
@@ -920,13 +961,6 @@ function protocolInit() {
     toast("Generated protocol stack starter files");
   });
   $("#protoBtnReset")?.addEventListener("click", protocolReset);
-  $$("[data-proto-preview]").forEach(button => {
-    button.addEventListener("click", () => {
-      const state = protocolEnsureState();
-      state.previewTab = button.dataset.protoPreview;
-      protocolRenderPreview();
-    });
-  });
   protocolEnsureState();
   protocolSyncGeneratedOutputs();
   protocolRender();

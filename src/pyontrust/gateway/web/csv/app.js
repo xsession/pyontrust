@@ -3,6 +3,7 @@ const state = {
   browser: null,
   browserSelection: null,
   patchInFlight: false,
+  selectorActionInFlight: false,
   patchStatusText: "",
   signalFilter: "",
   roots: [],
@@ -184,6 +185,18 @@ function setPatchBusy(isBusy, statusText = "") {
   });
   els.signalList.classList.toggle("busy-surface", isBusy);
   renderControlExperience(getActiveSubplot());
+}
+
+function setSelectorActionBusy(isBusy) {
+  state.selectorActionInFlight = isBusy;
+  [
+    els.addSubplotBtn,
+    els.deleteSubplotBtn,
+    els.quickAddSubplotBtn,
+  ].forEach((element) => {
+    element.disabled = isBusy;
+  });
+  els.subplotTabs.classList.toggle("busy-surface", isBusy);
 }
 
 async function api(url, options = {}) {
@@ -449,6 +462,21 @@ function formatWindowSummary(windowRange) {
   return `Window: ${formatMetricValue(windowRange[0])} to ${formatMetricValue(windowRange[1])}`;
 }
 
+function formatSignalPreview(selectedColumns) {
+  const columns = Array.isArray(selectedColumns) ? selectedColumns.filter(Boolean) : [];
+  if (!columns.length) {
+    return "No signals selected";
+  }
+  if (columns.length <= 2) {
+    return columns.join(" · ");
+  }
+  return `${columns.slice(0, 2).join(" · ")} +${columns.length - 2} more`;
+}
+
+function findSubplot(subplotId) {
+  return (state.appState?.subplots || []).find((subplot) => subplot.id === subplotId) || null;
+}
+
 async function updateVisibleSignalSelection(selectVisible) {
   const visible = new Set(visibleSignalNames());
   if (!visible.size) {
@@ -469,26 +497,34 @@ function renderSubplots(subplots, activeId) {
   els.subplotTabs.innerHTML = subplots
     .map(
       (subplot) => `
-        <button class="subplot-tab ${subplot.id === activeId ? "active" : ""}" type="button" data-subplot-id="${subplot.id}">
-          <div class="subplot-tab-head">
-            <div>
-              <div class="subplot-title">${subplot.title}</div>
-              <div class="subplot-mode">${subplot.mode}</div>
+        <article class="subplot-tab ${subplot.id === activeId ? "active" : ""}" data-subplot-id="${subplot.id}">
+          <button class="subplot-tab-main" type="button" data-action="open-subplot" data-subplot-id="${subplot.id}">
+            <div class="subplot-tab-head">
+              <div>
+                <div class="subplot-title">${subplot.title}</div>
+                <div class="subplot-mode">${subplot.mode}</div>
+              </div>
+              ${subplot.id === activeId ? '<span class="subplot-active-pill">Active</span>' : ""}
             </div>
-            ${subplot.id === activeId ? '<span class="subplot-active-pill">Active</span>' : ""}
+            <div class="subplot-summary-grid">
+              <div class="subplot-stat">
+                <span class="subplot-stat-label">Signals</span>
+                <span class="subplot-stat-value">${subplot.selected_columns?.length || 0}</span>
+              </div>
+              <div class="subplot-stat">
+                <span class="subplot-stat-label">Overlays</span>
+                <span class="subplot-stat-value">${subplot.overlays?.length || 0}</span>
+              </div>
+            </div>
+            <div class="subplot-signal-preview">${formatSignalPreview(subplot.selected_columns)}</div>
+            <div class="subplot-window">${formatWindowSummary(subplot.x_window)}</div>
+          </button>
+          <div class="subplot-card-actions">
+            <button class="subplot-action-btn" type="button" data-action="duplicate-subplot" data-subplot-id="${subplot.id}">Duplicate</button>
+            <button class="subplot-action-btn" type="button" data-action="subplot-mode" data-subplot-id="${subplot.id}" data-mode="Histogram">Hist</button>
+            <button class="subplot-action-btn" type="button" data-action="subplot-mode" data-subplot-id="${subplot.id}" data-mode="Statistics">Stats</button>
           </div>
-          <div class="subplot-summary-grid">
-            <div class="subplot-stat">
-              <span class="subplot-stat-label">Signals</span>
-              <span class="subplot-stat-value">${subplot.selected_columns?.length || 0}</span>
-            </div>
-            <div class="subplot-stat">
-              <span class="subplot-stat-label">Overlays</span>
-              <span class="subplot-stat-value">${subplot.overlays?.length || 0}</span>
-            </div>
-          </div>
-          <div class="subplot-window">${formatWindowSummary(subplot.x_window)}</div>
-        </button>
+        </article>
       `
     )
     .join("");
@@ -1033,10 +1069,108 @@ async function loadFolder(path) {
   setMessage(`Loaded newest supported file from ${path}`);
 }
 
-async function createSubplot() {
-  const response = await api("/csv/api/subplots", { method: "POST" });
-  await refreshAppState();
-  setMessage(`Created ${response?.subplot?.title || "a new subplot"}`);
+async function createSubplot(body = {}, pendingMessage = "Creating subplot...", completionPrefix = "Created") {
+  if (state.selectorActionInFlight) {
+    return;
+  }
+  setSelectorActionBusy(true);
+  setMessage(pendingMessage);
+  try {
+    const response = await api("/csv/api/subplots", { method: "POST", body });
+    const title = response?.subplot?.title || "a new subplot";
+    if (state.appState && response?.subplot) {
+      const nextSubplots = [...(state.appState.subplots || [])];
+      nextSubplots.push(response.subplot);
+      state.appState = {
+        ...state.appState,
+        subplots: nextSubplots,
+        active_subplot_id: response.active_subplot_id || response.subplot.id,
+      };
+      renderAppState();
+    }
+    await refreshAppState();
+    setMessage(`${completionPrefix} ${title}`);
+  } finally {
+    setSelectorActionBusy(false);
+  }
+}
+
+async function switchActiveSubplot(subplotId) {
+  if (state.selectorActionInFlight) {
+    return;
+  }
+  const target = findSubplot(subplotId);
+  const targetTitle = target?.title || subplotId;
+  try {
+    setSelectorActionBusy(true);
+    setMessage(`Opening ${targetTitle}...`);
+    await api(`/csv/api/subplots/${subplotId}`);
+    state.appState.active_subplot_id = subplotId;
+    renderAppState();
+    await refreshDetails();
+    setMessage(`Switched to ${targetTitle}`);
+  } catch (error) {
+    setMessage(error.message, true);
+  } finally {
+    setSelectorActionBusy(false);
+  }
+}
+
+async function duplicateSubplot(subplotId) {
+  const source = findSubplot(subplotId);
+  if (!source) {
+    return;
+  }
+  await createSubplot(
+    {
+      title: `${source.title} copy`,
+      mode: source.mode,
+      selected_columns: source.selected_columns,
+      x_window: source.x_window,
+      y_limits: source.y_limits,
+      x_align: source.x_align,
+      show_trigger_markers: source.show_trigger_markers,
+      histogram_bins: source.histogram_bins,
+      spectrum_baseline_cutoff: source.spectrum_baseline_cutoff,
+      barrier_config: source.barrier_config,
+      custom_code: source.custom_code,
+      detector_config: source.detector_config,
+    },
+    `Duplicating ${source.title}...`,
+    "Duplicated"
+  );
+}
+
+async function setSubplotMode(subplotId, mode) {
+  if (state.selectorActionInFlight) {
+    return;
+  }
+  const target = findSubplot(subplotId);
+  const targetTitle = target?.title || subplotId;
+  try {
+    setSelectorActionBusy(true);
+    setMessage(`Switching ${targetTitle} to ${mode}...`);
+    const response = await api(`/csv/api/subplots/${subplotId}`, {
+      method: "PATCH",
+      body: { mode },
+    });
+    if (state.appState && response?.subplot) {
+      state.appState = {
+        ...state.appState,
+        active_subplot_id: response.subplot.id,
+        subplots: (state.appState.subplots || []).map((subplot) =>
+          subplot.id === response.subplot.id ? response.subplot : subplot
+        ),
+      };
+      renderAppState();
+    }
+    await refreshDetails();
+    setMessage(`${targetTitle} set to ${mode}`);
+  } catch (error) {
+    setMessage(error.message, true);
+  } finally {
+    setSelectorActionBusy(false);
+  }
 }
 
 async function addOverlay() {
@@ -1243,16 +1377,22 @@ function bindEvents() {
   });
 
   els.subplotTabs.addEventListener("click", async (event) => {
-    const button = event.target.closest("[data-subplot-id]");
-    if (!button) {
+    const actionButton = event.target.closest("[data-action]");
+    if (!actionButton || state.selectorActionInFlight) {
       return;
     }
     try {
-      await api(`/csv/api/subplots/${button.dataset.subplotId}`);
-      state.appState.active_subplot_id = button.dataset.subplotId;
-      renderAppState();
-      await refreshDetails();
-      setMessage(`Switched to ${button.querySelector(".subplot-title")?.textContent || button.dataset.subplotId}`);
+      if (actionButton.dataset.action === "open-subplot") {
+        await switchActiveSubplot(actionButton.dataset.subplotId);
+        return;
+      }
+      if (actionButton.dataset.action === "duplicate-subplot") {
+        await duplicateSubplot(actionButton.dataset.subplotId);
+        return;
+      }
+      if (actionButton.dataset.action === "subplot-mode") {
+        await setSubplotMode(actionButton.dataset.subplotId, actionButton.dataset.mode);
+      }
     } catch (error) {
       setMessage(error.message, true);
     }
@@ -1268,16 +1408,20 @@ function bindEvents() {
 
   els.deleteSubplotBtn.addEventListener("click", async () => {
     const active = getActiveSubplot();
-    if (!active) {
+    if (!active || state.selectorActionInFlight) {
       return;
     }
     try {
       const deletedTitle = active.title;
+      setSelectorActionBusy(true);
+      setMessage(`Deleting ${deletedTitle}...`);
       await api(`/csv/api/subplots/${active.id}`, { method: "DELETE" });
       await refreshAppState();
       setMessage(`Deleted ${deletedTitle}`);
     } catch (error) {
       setMessage(error.message, true);
+    } finally {
+      setSelectorActionBusy(false);
     }
   });
 

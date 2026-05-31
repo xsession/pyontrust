@@ -12,10 +12,11 @@ from werkzeug.serving import make_server
 
 
 def _write_temp_zephyr_tree(root: Path) -> Path:
-        (root / "boards" / "vendor" / "demo_board").mkdir(parents=True, exist_ok=True)
-        (root / "dts" / "bindings" / "sensor").mkdir(parents=True, exist_ok=True)
-        (root / "boards" / "vendor" / "demo_board" / "board.yml").write_text(
-                """
+    (root / "boards" / "vendor" / "demo_board").mkdir(parents=True, exist_ok=True)
+    (root / "dts" / "bindings" / "sensor").mkdir(parents=True, exist_ok=True)
+    (root / "dts" / "bindings" / "display").mkdir(parents=True, exist_ok=True)
+    (root / "boards" / "vendor" / "demo_board" / "board.yml").write_text(
+        """
 board:
     name: demo_board
     full_name: Demo Board
@@ -23,10 +24,10 @@ board:
     socs:
         - name: DEMO_SOC
 """.strip(),
-                encoding="utf-8",
-        )
-        (root / "dts" / "bindings" / "sensor" / "demo,temp-i2c.yaml").write_text(
-                """
+        encoding="utf-8",
+    )
+    (root / "dts" / "bindings" / "sensor" / "demo,temp-i2c.yaml").write_text(
+        """
 description: Demo temperature sensor
 compatible: demo,temp
 title: Demo Temp
@@ -37,9 +38,31 @@ properties:
         required: true
         description: I2C address
 """.strip(),
-                encoding="utf-8",
-        )
-        return root
+        encoding="utf-8",
+    )
+    (root / "dts" / "bindings" / "display" / "demo,panel-spi.yaml").write_text(
+        """
+description: Demo SPI display panel
+title: Demo SPI Panel
+compatible: demo,panel
+include: [spi-device.yaml]
+properties:
+    x-resolution:
+        type: int
+        default: 320
+        description: Horizontal resolution
+    y-resolution:
+        type: int
+        default: 240
+        description: Vertical resolution
+    pixel-format:
+        type: string
+        default: rgb565
+        description: Pixel format
+""".strip(),
+        encoding="utf-8",
+    )
+    return root
 
 
 def _write_matching_mcu_zephyr_tree(root: Path) -> Path:
@@ -716,6 +739,50 @@ def test_zephyr_catalog_mcu_action_loads_matching_board(app, tmp_path):
                     "() => document.querySelector('#boardSelect')?.value === 'rpi_pico'"
                 )
                 assert page.locator("#boardSelect").input_value() == "rpi_pico"
+            finally:
+                browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.integration
+def test_zephyr_catalog_display_action_updates_lvgl_layout(app, tmp_path):
+    playwright = pytest.importorskip("playwright.sync_api", reason="Install playwright to run browser integration tests")
+
+    port = _free_port()
+    server = make_server("127.0.0.1", port, app)
+    server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+    server_thread.start()
+
+    zephyr_root = _write_temp_zephyr_tree(tmp_path / "zephyr")
+
+    try:
+        with playwright.sync_playwright() as instance:
+            try:
+                browser = instance.chromium.launch()
+            except Exception as exc:  # pragma: no cover - environment dependent
+                pytest.skip(f"Playwright browser launch unavailable: {exc}")
+
+            try:
+                page = browser.new_page()
+                page.goto(f"http://127.0.0.1:{port}/", wait_until="networkidle")
+                page.evaluate(
+                    "root => localStorage.setItem('zpincfg_zephyr_catalog_root', root)",
+                    str(zephyr_root),
+                )
+                page.locator('[data-app-tab="zephyr-catalog"]').click(force=True)
+
+                page.locator('#zephyrCatalogKind').select_option('display')
+                page.locator("#zephyrCatalogList .zcatalog-item").first.wait_for()
+                page.locator("#zephyrCatalogList .zcatalog-item").first.click()
+                page.locator('[data-zcatalog-action="use-display-lvgl"]').click()
+
+                page.locator('[data-app-content="lvgl-layout"].active').wait_for()
+                assert "Demo SPI Panel" in page.locator("#lvglStageMeta").text_content()
+                assert "320 x 240" in page.locator("#lvglStageMeta").text_content()
+                assert "demo,panel" in page.locator("#lvglPropsPanel").text_content()
+                assert "pixel-format - string - default=rgb565" in page.locator("#lvglPropsPanel").text_content()
             finally:
                 browser.close()
     finally:

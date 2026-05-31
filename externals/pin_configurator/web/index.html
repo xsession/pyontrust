@@ -369,6 +369,13 @@ body {
   text-transform: uppercase;
   z-index: 1;
 }
+.pin-summary-table th[data-sort-key] {
+  cursor: pointer;
+  user-select: none;
+}
+.pin-summary-table th[data-sort-key]:hover {
+  color: var(--fg);
+}
 .pin-summary-table td {
   color: var(--fg);
 }
@@ -895,6 +902,19 @@ svg.chip-svg .bga-label {
   line-height: 1.5;
   color: var(--fg);
   background: var(--bg2);
+}
+.reviewable-generated-code {
+  min-height: 320px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--bg);
+}
+.reviewable-generated-code .output-files-view {
+  height: 320px;
+}
+.reviewable-generated-code.compact .output-files-view {
+  height: 260px;
 }
 .generated-file-item {
   width: 100%;
@@ -4736,40 +4756,40 @@ svg.chip-svg .bga-label {
 </div>
 <div class="app-tabs">
   <div class="app-tab active" data-app-tab="modules">
-    <span class="tab-icon">&#9881;</span>Module Configurator
+    <span class="tab-icon">[MOD]</span>Module Configurator
   </div>
   <div class="app-tab" data-app-tab="lvgl-layout">
-    <span class="tab-icon">🖼</span>LVGL Layout
+    <span class="tab-icon">[GUI]</span>LVGL Layout
   </div>
   <div class="app-tab" data-app-tab="protocols">
-    <span class="tab-icon">📡</span>Protocol Editor
+    <span class="tab-icon">[PRT]</span>Protocol Editor
   </div>
   <div class="app-tab" data-app-tab="interrupts">
-    <span class="tab-icon">⚠</span>Interrupt Configurator
+    <span class="tab-icon">[INT]</span>Interrupt Configurator
   </div>
   <div class="app-tab" data-app-tab="peripherals">
-    <span class="tab-icon">🔧</span>Peripheral Configurator
+    <span class="tab-icon">[PER]</span>Peripheral Configurator
   </div>
   <div class="app-tab" data-app-tab="clock">
-    <span class="tab-icon">⏱</span>Clock Configurator
+    <span class="tab-icon">[CLK]</span>Clock Configurator
   </div>
   <div class="app-tab" data-app-tab="configurator">
-    <span class="tab-icon">&#128204;</span>Pin Configurator
+    <span class="tab-icon">[PIN]</span>Pin Configurator
   </div>
   <div class="app-tab" data-app-tab="arduino-workspace">
-    <span class="tab-icon">🧰</span>Arduino Importer
+    <span class="tab-icon">[ARD]</span>Arduino Importer
   </div>
   <div class="app-tab" data-app-tab="board-editor">
-    <span class="tab-icon">🧩</span>Board Editor
+    <span class="tab-icon">[BRD]</span>Board Editor
   </div>
   <div class="app-tab" data-app-tab="packages">
-    <span class="tab-icon">&#128230;</span>Package Manager
+    <span class="tab-icon">[PKG]</span>Package Manager
   </div>
   <div class="app-tab" data-app-tab="sensors">
-    <span class="tab-icon">🔬</span>Sensor Parser
+    <span class="tab-icon">[SNS]</span>Sensor Parser
   </div>
   <div class="app-tab" data-app-tab="zephyr-catalog">
-    <span class="tab-icon">📚</span>Zephyr Catalog
+    <span class="tab-icon">[CAT]</span>Zephyr Catalog
   </div>
 </div>
 
@@ -4930,7 +4950,24 @@ svg.chip-svg .bga-label {
     </div>
 
     <div class="lvgl-layout-output">
-      <pre id="lvglCodePre">Press "Generate LVGL Code" to export the current layout as starter C code.</pre>
+      <div class="reviewable-generated-code" data-code-review-panel="lvglGeneratedReview">
+        <div class="output-files-view">
+          <div class="output-files-sidebar">
+            <input class="output-files-search" data-code-review-search type="search" placeholder="Filter generated files">
+            <div data-code-review-list></div>
+          </div>
+          <div class="output-files-editor-shell">
+            <div class="output-files-current-path">
+              <div class="output-files-current-path-text" data-code-review-path>No file selected</div>
+              <div class="output-files-current-actions">
+                <button class="output-files-action" data-code-review-copy type="button">Copy</button>
+                <button class="output-files-action" data-code-review-download type="button">Download</button>
+              </div>
+            </div>
+            <pre class="output-files-fallback" data-code-review-fallback>Press "Generate LVGL Code" to export the current layout as starter C code.</pre>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -5034,14 +5071,24 @@ svg.chip-svg .bga-label {
 
     <div class="proto-editor-preview">
       <h3>Generated Output</h3>
-      <div class="proto-editor-preview-tabs">
-        <button class="proto-editor-preview-tab active" data-proto-preview="prj_conf">prj.conf</button>
-        <button class="proto-editor-preview-tab" data-proto-preview="overlay">.overlay</button>
-        <button class="proto-editor-preview-tab" data-proto-preview="header">protocol_stack.h</button>
-        <button class="proto-editor-preview-tab" data-proto-preview="code">protocol_stack.c</button>
-        <button class="proto-editor-preview-tab" data-proto-preview="integration">Integration Guide</button>
+      <div class="reviewable-generated-code" data-code-review-panel="protocolPreviewReview">
+        <div class="output-files-view">
+          <div class="output-files-sidebar">
+            <input class="output-files-search" data-code-review-search type="search" placeholder="Filter generated files">
+            <div data-code-review-list></div>
+          </div>
+          <div class="output-files-editor-shell">
+            <div class="output-files-current-path">
+              <div class="output-files-current-path-text" data-code-review-path>No file selected</div>
+              <div class="output-files-current-actions">
+                <button class="output-files-action" data-code-review-copy type="button">Copy</button>
+                <button class="output-files-action" data-code-review-download type="button">Download</button>
+              </div>
+            </div>
+            <pre class="output-files-fallback" data-code-review-fallback>Add an enabled interface to generate Zephyr Kconfig settings.</pre>
+          </div>
+        </div>
       </div>
-      <pre id="protoPreviewPre">Add an enabled interface to generate Zephyr Kconfig settings.</pre>
     </div>
   </div>
 
@@ -5202,9 +5249,9 @@ svg.chip-svg .bga-label {
         <table class="pin-summary-table">
           <thead>
             <tr>
-              <th>Pin</th>
-              <th>Signal</th>
-              <th>User Name</th>
+              <th data-sort-key="pinNumber" aria-sort="ascending">Pin</th>
+              <th data-sort-key="signal" aria-sort="none">Signal</th>
+              <th data-sort-key="customName" aria-sort="none">User Name</th>
             </tr>
           </thead>
           <tbody id="pinSummaryBody"></tbody>
@@ -5216,9 +5263,9 @@ svg.chip-svg .bga-label {
     <div class="zoom-controls" id="zoomControls">
       <button class="zoom-btn" id="zoomIn" title="Zoom in">+</button>
       <span class="zoom-level" id="zoomLevel">100%</span>
-      <button class="zoom-btn" id="zoomOut" title="Zoom out">&minus;</button>
+      <button class="zoom-btn" id="zoomOut" title="Zoom out">-</button>
       <button class="zoom-btn" id="zoomReset" title="Reset zoom">&#8634;</button>
-      <button class="zoom-btn" id="zoomFit" title="Fit to view">&#9635;</button>
+      <button class="zoom-btn" id="zoomFit" title="Fit to view">[]</button>
     </div>
   </div>
   <div class="side-panel-handle side-panel-handle-right" id="configResizeHandle">
@@ -5333,8 +5380,24 @@ svg.chip-svg .bga-label {
             <button class="btn" id="arduinoBtnExportValidation">Export Renode Blinky Bundle</button>
           </div>
         </div>
-        <div class="output-tabs" id="arduinoGeneratedTabs"></div>
-        <pre id="arduinoGeneratedPre">Generate output to preview the Arduino sketch and helper files for the active board.</pre>
+        <div class="reviewable-generated-code" data-code-review-panel="arduinoGeneratedReview">
+          <div class="output-files-view">
+            <div class="output-files-sidebar">
+              <input class="output-files-search" data-code-review-search type="search" placeholder="Filter generated files">
+              <div data-code-review-list></div>
+            </div>
+            <div class="output-files-editor-shell">
+              <div class="output-files-current-path">
+                <div class="output-files-current-path-text" data-code-review-path>No file selected</div>
+                <div class="output-files-current-actions">
+                  <button class="output-files-action" data-code-review-copy type="button">Copy</button>
+                  <button class="output-files-action" data-code-review-download type="button">Download</button>
+                </div>
+              </div>
+              <pre class="output-files-fallback" data-code-review-fallback>Generate output to preview the Arduino sketch and helper files for the active board.</pre>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -5375,6 +5438,7 @@ svg.chip-svg .bga-label {
         <button class="btn" id="boardEditorBtnSaveRepo">Save Draft to Repo</button>
         <button class="btn" id="boardEditorBtnExport">Export JSON</button>
         <button class="btn" id="boardEditorBtnImport">Import JSON</button>
+        <button class="btn" id="boardEditorBtnImportFolder">Import Zephyr Folder</button>
         <input type="file" id="boardEditorFileInput" accept=".json" style="display:none;">
       </div>
     </div>
@@ -5403,9 +5467,17 @@ svg.chip-svg .bga-label {
         <div class="board-editor-canvas-panel">
           <div class="board-editor-canvas-toolbar">
             <div class="board-editor-canvas-form">
-              <input class="board-editor-canvas-input" id="boardEditorDeviceLibrarySearch" type="text" placeholder="Search library devices..." hidden>
+              <input class="board-editor-canvas-input" id="boardEditorDeviceLibrarySearch" type="text" placeholder="Search Zephyr catalog and parsed PDFs...">
+              <select class="board-editor-canvas-input" id="boardEditorDeviceLibraryFilter">
+                <option value="all">All Library Items</option>
+                <option value="zephyr">Zephyr Catalog</option>
+                <option value="sensor">Sensors</option>
+                <option value="display">Displays</option>
+                <option value="mcu">MCU Modules</option>
+                <option value="parsed">Parsed PDFs</option>
+              </select>
               <select class="board-editor-canvas-input" id="boardEditorDeviceLibrary">
-                <option value="">Supported devices and parsed sensors</option>
+                <option value="">Zephyr catalog and parsed PDFs</option>
               </select>
               <button class="btn" id="boardEditorBtnAddLibrary">Add From Library</button>
               <input class="board-editor-canvas-input" id="boardEditorDeviceName" type="text" placeholder="Device name, e.g. GPS module">
@@ -5416,10 +5488,10 @@ svg.chip-svg .bga-label {
               <button class="btn" id="boardEditorBtnAutoLayout">Auto Layout</button>
               <button class="btn" id="boardEditorBtnClearLinks">Clear Wires</button>
               <div class="board-editor-canvas-zoom">
-                <button class="zoom-btn" id="boardEditorZoomOut" title="Zoom out">−</button>
+                <button class="zoom-btn" id="boardEditorZoomOut" title="Zoom out">-</button>
                 <div class="board-editor-canvas-zoom-level" id="boardEditorZoomLevel">100%</div>
                 <button class="zoom-btn" id="boardEditorZoomIn" title="Zoom in">+</button>
-                <button class="zoom-btn" id="boardEditorZoomFit" title="Fit to area">□</button>
+                <button class="zoom-btn" id="boardEditorZoomFit" title="Fit to area">[]</button>
               </div>
             </div>
           </div>
@@ -5557,6 +5629,7 @@ svg.chip-svg .bga-label {
         <option value="all">All Items</option>
         <option value="mcu">MCUs</option>
         <option value="sensor">Sensors</option>
+        <option value="display">Displays</option>
       </select>
       <input type="text" id="zephyrCatalogSearch" placeholder="Search by name, compatible, vendor, or board...">
     </div>
@@ -5697,12 +5770,12 @@ svg.chip-svg .bga-label {
 <!-- ─── Toast ───────────────────────────────────────────────── -->
 <div class="toast" id="toast"></div>
 
-  <script src="main.js"></script>
-  <script src="lvgl-registry.js"></script>
-  <script src="lvgl-model.js"></script>
-  <script src="lvgl-build.js"></script>
-  <script src="lvgl-ui.js"></script>
-  <script src="protocol-editor.js"></script>
-  <script src="interrupt-configurator.js"></script>
+  <script src="main.js?v=20260531m"></script>
+  <script src="lvgl-registry.js?v=20260531g"></script>
+  <script src="lvgl-model.js?v=20260531g"></script>
+  <script src="lvgl-build.js?v=20260531g"></script>
+  <script src="lvgl-ui.js?v=20260531g"></script>
+  <script src="protocol-editor.js?v=20260531g"></script>
+  <script src="interrupt-configurator.js?v=20260531g"></script>
 </body>
 </html>

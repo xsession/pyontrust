@@ -1,9 +1,10 @@
-"""Zephyr-backed catalog of supported MCU boards and sensor bindings."""
+"""Zephyr-backed catalog of supported MCU boards, sensor bindings, and displays."""
 
 from __future__ import annotations
 
 import os
 import pathlib
+import re
 from typing import Iterable
 
 import yaml
@@ -143,6 +144,70 @@ def _binding_properties(data: dict) -> list[dict]:
     return sorted(props, key=lambda item: item["name"])
 
 
+def _property_int(meta: dict) -> int | None:
+    if not isinstance(meta, dict):
+        return None
+
+    for key in ("const", "default"):
+        value = meta.get(key)
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, (int, float)) and int(value) > 0:
+            return int(value)
+        if isinstance(value, str) and value.strip().isdigit():
+            parsed = int(value.strip())
+            if parsed > 0:
+                return parsed
+
+    enum_values = meta.get("enum") if isinstance(meta.get("enum"), list) else []
+    if len(enum_values) == 1:
+        value = enum_values[0]
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, (int, float)) and int(value) > 0:
+            return int(value)
+        if isinstance(value, str) and value.strip().isdigit():
+            parsed = int(value.strip())
+            if parsed > 0:
+                return parsed
+
+    return None
+
+
+def _binding_resolution(data: dict, path: pathlib.Path) -> dict[str, int] | None:
+    properties = data.get("properties") if isinstance(data.get("properties"), dict) else {}
+    width = None
+    height = None
+
+    for key in ("x-resolution", "width", "horizontal-resolution"):
+        if key in properties:
+            width = _property_int(properties.get(key))
+            if width:
+                break
+
+    for key in ("y-resolution", "height", "vertical-resolution"):
+        if key in properties:
+            height = _property_int(properties.get(key))
+            if height:
+                break
+
+    if not width or not height:
+        search_text = " ".join([
+            str(data.get("title") or ""),
+            str(data.get("description") or ""),
+            str(data.get("compatible") or ""),
+            path.stem,
+        ])
+        match = re.search(r"(\d{2,5})\s*(?:x|×|by)\s*(\d{2,5})", search_text, re.IGNORECASE)
+        if match:
+            width = width or int(match.group(1))
+            height = height or int(match.group(2))
+
+    if width and height:
+        return {"width": width, "height": height}
+    return None
+
+
 def build_mcu_catalog(zephyr_root: pathlib.Path) -> list[dict]:
     boards_root = zephyr_root / "boards"
     items = []
@@ -219,6 +284,67 @@ def build_sensor_catalog(zephyr_root: pathlib.Path) -> list[dict]:
     return sorted(merged.values(), key=lambda item: (item["vendor"], item["label"], item["compatible"]))
 
 
+def build_display_catalog(zephyr_root: pathlib.Path) -> list[dict]:
+    displays_root = zephyr_root / "dts" / "bindings" / "display"
+    if not displays_root.is_dir():
+        return []
+
+    merged: dict[str, dict] = {}
+    for binding_file in displays_root.rglob("*.yaml"):
+        data = _load_yaml(binding_file)
+        compatible = str(data.get("compatible") or "").strip()
+        if not compatible:
+            continue
+
+        item = merged.setdefault(compatible, {
+            "key": f"display:{compatible}",
+            "kind": "display",
+            "name": compatible.split(",", 1)[-1].upper(),
+            "label": str(data.get("title") or compatible),
+            "vendor": compatible.split(",", 1)[0],
+            "compatible": compatible,
+            "buses": [],
+            "properties": [],
+            "binding_paths": [],
+            "description": "",
+            "display": {},
+            "parameters": {},
+        })
+
+        for bus in _binding_buses(data, binding_file):
+            if bus not in item["buses"]:
+                item["buses"].append(bus)
+
+        existing_props = {entry["name"]: entry for entry in item["properties"]}
+        for prop in _binding_properties(data):
+            existing_props.setdefault(prop["name"], prop)
+        item["properties"] = sorted(existing_props.values(), key=lambda entry: entry["name"])
+
+        rel_path = str(binding_file.relative_to(zephyr_root).as_posix())
+        if rel_path not in item["binding_paths"]:
+            item["binding_paths"].append(rel_path)
+
+        if not item["description"]:
+            item["description"] = str(data.get("description") or "").strip()
+
+        resolution = _binding_resolution(data, binding_file)
+        if resolution and not item["display"]:
+            item["display"] = {
+                "label": str(data.get("title") or compatible),
+                "width": resolution["width"],
+                "height": resolution["height"],
+            }
+
+        item["parameters"] = {
+            "compatible": compatible,
+            "buses": sorted(item["buses"]),
+            "properties": item["properties"],
+            "display": item["display"],
+        }
+
+    return sorted(merged.values(), key=lambda item: (item["vendor"], item["label"], item["compatible"]))
+
+
 def load_zephyr_catalog(preferred_root: str | os.PathLike[str] | None = None, refresh: bool = False) -> dict:
     zephyr_root = detect_zephyr_root(preferred_root)
     cache_key = str(zephyr_root)
@@ -227,14 +353,17 @@ def load_zephyr_catalog(preferred_root: str | os.PathLike[str] | None = None, re
 
     mcus = build_mcu_catalog(zephyr_root)
     sensors = build_sensor_catalog(zephyr_root)
+    displays = build_display_catalog(zephyr_root)
     catalog = {
         "root": cache_key,
         "summary": {
             "mcu_count": len(mcus),
             "sensor_count": len(sensors),
+            "display_count": len(displays),
         },
         "mcus": mcus,
         "sensors": sensors,
+        "displays": displays,
     }
     _CATALOG_CACHE[cache_key] = catalog
     return catalog

@@ -50,6 +50,7 @@
     function defaultState() {
         return {
             preset: "phone",
+            importMeta: null,
             currentScreenId: "screen_root",
             startupScreenId: "screen_root",
             selectedId: "screen_root",
@@ -104,6 +105,7 @@
             const screenId = root.id || "screen_root";
             state = {
                 preset: state.preset || "phone",
+                importMeta: state.importMeta && typeof state.importMeta === "object" ? helpers.cloneJson(state.importMeta) : null,
                 currentScreenId: screenId,
                 startupScreenId: screenId,
                 selectedId: state.selectedId || screenId,
@@ -127,6 +129,9 @@
             state = defaultState();
         }
         const normalizedState = state;
+        normalizedState.importMeta = normalizedState.importMeta && typeof normalizedState.importMeta === "object"
+            ? normalizedState.importMeta
+            : null;
         if (!normalizedState.simulation) {
             normalizedState.simulation = {
                 running: false,

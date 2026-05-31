@@ -23,6 +23,7 @@ from sensor_parser import (
     sensor_info_from_json,
     generate_register_header,
     generate_register_defines,
+    generate_sensor_driver_package,
     _norm_access,
     _parse_hex,
     _is_register_table,
@@ -485,6 +486,50 @@ class TestCodeGeneration:
         assert "EXPECTED_WHO_AM_I" in d
         assert "0x60" in d
 
+    def test_sensor_driver_package_contains_zephyr_and_arduino_outputs(self, sample_info):
+        package = generate_sensor_driver_package(sample_info)
+        assert "source_c" in package
+        assert "header_h" in package
+        assert "arduino_header" in package
+        assert "arduino_source" in package
+        assert "arduino_example" in package
+        assert "Parsed-sensor Zephyr driver" in package["source_c"]
+        assert "class Bme280Sensor" in package["arduino_header"]
+        assert "readSampleWindow" in package["arduino_source"]
+
+    def test_sensor_driver_package_outputs_are_ascii(self, sample_info):
+        package = generate_sensor_driver_package(sample_info)
+        text_keys = [
+            "source_c",
+            "header_h",
+            "register_header",
+            "register_defines",
+            "arduino_header",
+            "arduino_source",
+            "arduino_example",
+        ]
+        for key in text_keys:
+            assert all(ord(ch) < 128 for ch in package[key]), key
+
+    def test_sensor_driver_package_renders_optional_custom_template(self, sample_info):
+        package = generate_sensor_driver_package(
+            sample_info,
+            custom_template=(
+                "Driver [[driver_name]] for [[part_number]] on [[bus]]\n"
+                "Compatible: [[compatible]]\n"
+                "Registers: [[register_count]]\n"
+            ),
+            custom_template_path="templates/bmp280_custom_driver.c",
+        )
+
+        assert package["custom_template_path"] == "templates/bmp280_custom_driver.c"
+        assert package["custom_template_output"] == (
+            "Driver bme280 for BME280 on i2c\n"
+            "Compatible: bosch,bme280\n"
+            "Registers: 4\n"
+        )
+        assert all(ord(ch) < 128 for ch in package["custom_template_output"])
+
 
 # ═══════════════════════════════════════════════════════════════════════
 #  JSON serialisation tests
@@ -547,6 +592,51 @@ class TestJsonSerialisation:
         assert "register_map" in j
         assert j["register_map"]["register_count"] == 1
         assert j["address"]["i2c_addresses"] == ["0x48"]
+
+    def test_json_serialization_repairs_mojibake_and_emits_ascii(self):
+        info = SensorDatasheetInfo(
+            summary=SensorSummary(
+                part_number="BMP280",
+                vendor="bosch",
+                vendor_name="Bosch Sensortec",
+                sensor_type="pressure",
+                description="Digital pressure sensor â€“ Bosch",
+            ),
+            address=SensorAddress(protocol="i2c+spi", i2c_address_pin="SDOâ†’GND", i2c_addresses=[0x76, 0x77]),
+            register_map=RegisterMap(registers=[
+                SensorRegister(
+                    address=0xF4,
+                    name="CTRL_MEAS",
+                    access="RW",
+                    description="Oversampling â€” control register",
+                    fields=[
+                        RegisterField(
+                            name="osrs_t",
+                            bits="7:5",
+                            bit_high=7,
+                            bit_low=5,
+                            access="RW",
+                            reset_value=0,
+                            description="Temperature compensationâ€¦",
+                        )
+                    ],
+                ),
+            ]),
+        )
+
+        payload = sensor_info_to_json(info)
+
+        assert payload["summary"]["description"] == "Digital pressure sensor - Bosch"
+        assert payload["address"]["i2c_address_pin"] == "SDO->GND"
+        assert payload["register_map"]["registers"][0]["description"] == "Oversampling - control register"
+        assert payload["register_map"]["registers"][0]["fields"][0]["description"] == "Temperature compensation..."
+        for value in (
+            payload["summary"]["description"],
+            payload["address"]["i2c_address_pin"],
+            payload["register_map"]["registers"][0]["description"],
+            payload["register_map"]["registers"][0]["fields"][0]["description"],
+        ):
+            value.encode("ascii")
 
 
 # ═══════════════════════════════════════════════════════════════════════

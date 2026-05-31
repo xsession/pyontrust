@@ -356,11 +356,22 @@ p {
 }
 
 .subplot-tab {
-  cursor: pointer;
   transition: border-color 120ms ease, background 120ms ease;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.subplot-tab-main {
+  cursor: pointer;
   text-align: left;
   display: grid;
   gap: 0.55rem;
+  background: transparent;
+  color: inherit;
+  border: 0;
+  padding: 0;
+  width: 100%;
+  font: inherit;
 }
 
 .subplot-tab.active {
@@ -419,6 +430,37 @@ p {
   color: var(--fg);
   font-size: 12px;
   font-weight: 600;
+}
+
+.subplot-signal-preview {
+  color: var(--fg-dim);
+  font-size: 11px;
+  line-height: 1.35;
+  min-height: 1.5rem;
+}
+
+.subplot-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  border-top: 1px solid rgba(69, 71, 90, 0.8);
+  padding-top: 0.45rem;
+}
+
+.subplot-action-btn {
+  border: 1px solid rgba(137, 180, 250, 0.22);
+  border-radius: 999px;
+  background: rgba(137, 180, 250, 0.08);
+  color: var(--fg);
+  padding: 0.32rem 0.6rem;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.subplot-action-btn:hover {
+  border-color: rgba(137, 180, 250, 0.45);
+  background: rgba(137, 180, 250, 0.14);
 }
 
 .subplot-mode {

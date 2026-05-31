@@ -5,6 +5,7 @@ Inspired by Swedish Embedded SDK's multi-level test architecture:
 unit → integration → system (robotbench).
 """
 
+import io
 import json
 import os
 import pathlib
@@ -13,13 +14,21 @@ import subprocess
 import pytest
 
 from project_bridge import generate_from_import
+from sensor_parser import (
+    RegisterMap,
+    SensorAddress,
+    SensorDatasheetInfo,
+    SensorRegister,
+    SensorSummary,
+)
 
 
 def _write_temp_zephyr_tree(root: pathlib.Path) -> pathlib.Path:
-        (root / "boards" / "vendor" / "demo_board").mkdir(parents=True, exist_ok=True)
-        (root / "dts" / "bindings" / "sensor").mkdir(parents=True, exist_ok=True)
-        (root / "boards" / "vendor" / "demo_board" / "board.yml").write_text(
-                """
+    (root / "boards" / "vendor" / "demo_board").mkdir(parents=True, exist_ok=True)
+    (root / "dts" / "bindings" / "sensor").mkdir(parents=True, exist_ok=True)
+    (root / "dts" / "bindings" / "display").mkdir(parents=True, exist_ok=True)
+    (root / "boards" / "vendor" / "demo_board" / "board.yml").write_text(
+        """
 board:
     name: demo_board
     full_name: Demo Board
@@ -27,10 +36,10 @@ board:
     socs:
         - name: DEMO_SOC
 """.strip(),
-                encoding="utf-8",
-        )
-        (root / "dts" / "bindings" / "sensor" / "demo,temp-i2c.yaml").write_text(
-                """
+        encoding="utf-8",
+    )
+    (root / "dts" / "bindings" / "sensor" / "demo,temp-i2c.yaml").write_text(
+        """
 description: Demo temperature sensor
 compatible: demo,temp
 include: [sensor-device.yaml, i2c-device.yaml]
@@ -43,9 +52,31 @@ properties:
         type: string
         description: Output data rate
 """.strip(),
-                encoding="utf-8",
-        )
-        return root
+        encoding="utf-8",
+    )
+    (root / "dts" / "bindings" / "display" / "demo,panel-spi.yaml").write_text(
+        """
+description: Demo SPI display panel
+title: Demo SPI Panel
+compatible: demo,panel
+include: [spi-device.yaml]
+properties:
+    x-resolution:
+        type: int
+        default: 320
+        description: Horizontal resolution
+    y-resolution:
+        type: int
+        default: 240
+        description: Vertical resolution
+    pixel-format:
+        type: string
+        default: rgb565
+        description: Pixel format
+""".strip(),
+        encoding="utf-8",
+    )
+    return root
 
 
 class TestBoardEndpoints:
@@ -147,6 +178,42 @@ class TestStaticAndBoardEditorDraftEndpoints:
 
         missing = client.get(f"/api/board-editor/draft/{filename}")
         assert missing.status_code == 404
+
+    def test_board_editor_imports_zephyr_board_folder(self, client, tmp_path):
+        board_dir = tmp_path / "demo_board"
+        board_dir.mkdir(parents=True, exist_ok=True)
+        (board_dir / "board.yml").write_text(
+            """
+board:
+    name: dual_demo
+    full_name: Dual Demo Board
+    vendor: demo
+    socs:
+        - name: SOC_A
+        - name: SOC_B
+""".strip(),
+            encoding="utf-8",
+        )
+        (board_dir / "dual_demo.dts").write_text("/dts-v1/;\n/ { model = \"Dual Demo\"; };\n", encoding="utf-8")
+        (board_dir / "dual_demo_defconfig").write_text("CONFIG_GPIO=y\n", encoding="utf-8")
+
+        resp = client.post(
+            "/api/board-editor/import-zephyr-folder",
+            data=json.dumps({"path": str(board_dir)}),
+            content_type="application/json",
+        )
+
+        assert resp.status_code == 200
+        data = resp.get_json()["board"]
+        assert data["board"] == "dual_demo"
+        assert data["soc"] == "SOC_A"
+        assert data["socs"] == ["SOC_A", "SOC_B"]
+        assert len(data["mcu_modules"]) == 2
+        assert {entry["path"] for entry in data["zephyr_board_descriptor"]["files"]} == {
+            "board.yml",
+            "dual_demo.dts",
+            "dual_demo_defconfig",
+        }
 
 
 class TestGenerateEndpoints:
@@ -402,7 +469,7 @@ class TestArduinoProjectExport:
 
 
 class TestZephyrCatalog:
-    def test_catalog_endpoint_returns_mcus_and_sensors(self, client, tmp_path):
+    def test_catalog_endpoint_returns_mcus_sensors_and_displays(self, client, tmp_path):
         zephyr_root = _write_temp_zephyr_tree(tmp_path / "zephyr")
 
         resp = client.get(f"/api/zephyr/catalog?zephyr_root={zephyr_root.as_posix()}&refresh=1")
@@ -412,11 +479,15 @@ class TestZephyrCatalog:
         assert data["root"] == str(zephyr_root)
         assert data["summary"]["mcu_count"] == 1
         assert data["summary"]["sensor_count"] == 1
+        assert data["summary"]["display_count"] == 1
         assert data["mcus"][0]["name"] == "demo_board"
         assert data["mcus"][0]["socs"] == ["DEMO_SOC"]
         assert data["sensors"][0]["compatible"] == "demo,temp"
         assert data["sensors"][0]["buses"] == ["i2c"]
         assert data["sensors"][0]["properties"][0]["name"] == "odr"
+        assert data["displays"][0]["compatible"] == "demo,panel"
+        assert data["displays"][0]["buses"] == ["spi"]
+        assert data["displays"][0]["display"] == {"label": "Demo SPI Panel", "width": 320, "height": 240}
 
     def test_catalog_endpoint_rejects_missing_root(self, client, tmp_path):
         missing = tmp_path / "missing-zephyr"
@@ -472,6 +543,108 @@ class TestMcuIdentification:
         assert resp.status_code == 200
         data = resp.get_json()
         assert data.get("known") is False
+
+
+class TestPackageManagerParsing:
+    def test_parse_pdf_rejects_empty_parse_result(self, client, monkeypatch):
+        import server
+        from pdf_parser import DatasheetInfo
+
+        monkeypatch.setattr(server, "parse_datasheet", lambda *args, **kwargs: DatasheetInfo())
+
+        resp = client.post(
+            "/api/parse-pdf",
+            data={"pdf": (io.BytesIO(b"%PDF-1.4\n%demo\n"), "empty.pdf")},
+            content_type="multipart/form-data",
+        )
+
+        assert resp.status_code == 422
+        data = resp.get_json()
+        assert "Could not extract MCU package or pin-mux data" in data["error"]
+
+    def test_fetch_datasheet_rejects_result_without_packages(self, client, monkeypatch):
+        import server
+        from pdf_parser import DatasheetInfo, DeviceSummary, PinMuxEntry
+
+        info = DatasheetInfo(
+            device=DeviceSummary(soc="DEMO_SOC", vendor="demo"),
+            packages=[],
+            pin_mux={
+                "PA0": [
+                    PinMuxEntry(
+                        pin_name="PA0",
+                        pincm=1,
+                        function_id=1,
+                        function_name="UART0_TX",
+                        peripheral="uart0",
+                        signal="tx",
+                        direction="out",
+                    )
+                ]
+            },
+        )
+        monkeypatch.setattr(server, "fetch_and_parse", lambda *args, **kwargs: (info, "parsed"))
+
+        resp = client.post(
+            "/api/fetch-datasheet",
+            data=json.dumps({"part_number": "DEMO123"}),
+            content_type="application/json",
+        )
+
+        assert resp.status_code == 422
+        data = resp.get_json()
+        assert "could not identify any mcu packages" in data["error"].lower()
+
+
+class TestSensorDriverEndpoint:
+    def test_driver_endpoint_includes_custom_template_output(self, client, monkeypatch):
+        import server
+
+        info = SensorDatasheetInfo(
+            summary=SensorSummary(
+                part_number="BMP280",
+                vendor="bosch",
+                vendor_name="Bosch Sensortec",
+                sensor_type="pressure",
+                description="Digital Pressure Sensor",
+                who_am_i_reg=0xD0,
+                who_am_i_value=0x58,
+            ),
+            address=SensorAddress(
+                protocol="i2c+spi",
+                i2c_addresses=[0x76, 0x77],
+            ),
+            register_map=RegisterMap(registers=[
+                SensorRegister(address=0xD0, name="ID", access="RO", reset_value=0x58),
+                SensorRegister(address=0xF7, name="PRESS_MSB", access="RO"),
+                SensorRegister(address=0xF8, name="PRESS_LSB", access="RO"),
+                SensorRegister(address=0xF9, name="PRESS_XLSB", access="RO"),
+                SensorRegister(address=0xFA, name="TEMP_MSB", access="RO"),
+                SensorRegister(address=0xFB, name="TEMP_LSB", access="RO"),
+                SensorRegister(address=0xFC, name="TEMP_XLSB", access="RO"),
+            ]),
+        )
+
+        original_jobs = dict(server._SENSOR_JOBS)
+        monkeypatch.setattr(server, "_SENSOR_JOBS", {"job123": {"info": info}})
+
+        resp = client.post(
+            "/api/sensor-job/job123/driver",
+            data=json.dumps({
+                "custom_template": "Custom [[part_number]] driver for [[driver_name]]\nBus=[[bus]]\nRegisters=[[register_count]]",
+                "custom_template_path": "custom/bmp280_note.txt",
+            }),
+            content_type="application/json",
+        )
+
+        monkeypatch.setattr(server, "_SENSOR_JOBS", original_jobs)
+
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["custom_template_path"] == "custom/bmp280_note.txt"
+        assert data["custom_template_output"] == "Custom BMP280 driver for bmp280\nBus=i2c\nRegisters=7"
+        assert "source_c" in data
+        assert "arduino_source" in data
 
 
 class TestModuleEndpoints:

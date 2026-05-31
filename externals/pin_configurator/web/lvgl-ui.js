@@ -928,7 +928,8 @@
         }
         if (stageMeta) {
             const stageLabel = matchesPreset ? currentPreset.label : `${screen.w} x ${screen.h}`;
-            stageMeta.innerHTML = `${window.escapeHtml(screen.name)} • ${window.escapeHtml(stageLabel)}${screen.id === state.startupScreenId ? ' <span class="lvgl-layout-stage-badge">startup</span>' : ''}${state.simulation.running ? ' • simulation' : ''}`;
+            const displayLabel = state.importMeta?.display?.label ? ` • ${window.escapeHtml(state.importMeta.display.label)}` : "";
+            stageMeta.innerHTML = `${window.escapeHtml(screen.name)} • ${window.escapeHtml(stageLabel)}${displayLabel}${screen.id === state.startupScreenId ? ' <span class="lvgl-layout-stage-badge">startup</span>' : ''}${state.simulation.running ? ' • simulation' : ''}`;
         }
         if (simBtn) {
             simBtn.textContent = state.simulation.running ? "Stop Simulation" : "Start Simulation";
@@ -1342,6 +1343,62 @@
       </div>
     `;
     }
+        function displayProfileSectionMarkup(state) {
+                const meta = state?.importMeta;
+                const display = meta?.display;
+                if (!display) {
+                        return "";
+                }
+                const resolution = Number(display.width) > 0 && Number(display.height) > 0
+                        ? `${display.width} x ${display.height}`
+                        : "Inherited from current layout";
+                const buses = Array.isArray(display.buses) && display.buses.length ? display.buses.join(", ") : "bus n/a";
+                const bindings = Array.isArray(display.bindingPaths) && display.bindingPaths.length ? display.bindingPaths.join("\n") : "n/a";
+                const propertySummary = Array.isArray(display.properties) && display.properties.length
+                        ? display.properties.slice(0, 10).map((prop) => {
+                                const tokens = [prop.name, prop.type];
+                                if (prop.required)
+                                        tokens.push("required");
+                                if (prop.default !== undefined && prop.default !== null && prop.default !== "")
+                                        tokens.push(`default=${prop.default}`);
+                                return tokens.join(" - ");
+                        }).join("\n")
+                        : "No binding properties captured.";
+                return `
+            <section class="lvgl-layout-section">
+                <div class="lvgl-layout-section-title">Display Profile</div>
+                <div class="lvgl-layout-form">
+                    <div class="lvgl-layout-field">
+                        <label>Label</label>
+                        <input value="${window.escapeHtml(display.label || "Display")}" disabled>
+                    </div>
+                    <div class="lvgl-layout-field">
+                        <label>Resolution</label>
+                        <input value="${window.escapeHtml(resolution)}" disabled>
+                    </div>
+                    <div class="lvgl-layout-field full">
+                        <label>Compatible</label>
+                        <input value="${window.escapeHtml(display.compatible || "n/a")}" disabled>
+                    </div>
+                    <div class="lvgl-layout-field">
+                        <label>Bus</label>
+                        <input value="${window.escapeHtml(buses)}" disabled>
+                    </div>
+                    <div class="lvgl-layout-field">
+                        <label>Source</label>
+                        <input value="${window.escapeHtml(meta.source || meta.kind || "catalog")}" disabled>
+                    </div>
+                    <div class="lvgl-layout-field full">
+                        <label>Binding Paths</label>
+                        <textarea disabled>${window.escapeHtml(bindings)}</textarea>
+                    </div>
+                    <div class="lvgl-layout-field full">
+                        <label>Binding Properties</label>
+                        <textarea disabled>${window.escapeHtml(propertySummary)}</textarea>
+                    </div>
+                </div>
+            </section>`;
+        }
     function renderNodeActions(node, state) {
         if (!node)
             return "";
@@ -1351,6 +1408,19 @@
             isScreen && node.id !== state.startupScreenId ? '<div class="lvgl-layout-field full"><button class="btn" id="lvglBtnSetStartupScreen">Use As Startup Screen</button></div>' : "",
             isScreen && state.screens.length > 1 ? '<div class="lvgl-layout-field full"><button class="btn" id="lvglBtnDeleteScreen">Delete Screen</button></div>' : "",
         ].filter(Boolean).join("");
+    }
+    function lvglGeneratedPreviewFiles(state) {
+        return [
+            { id: "prj_conf", label: "prj.conf", path: "lvgl/prj.conf", group: "LVGL Layout", content: generatedFragments.lvgl?.prj_conf || "" },
+            { id: "overlay", label: ".overlay", path: "lvgl/lvgl.overlay", group: "LVGL Layout", content: generatedFragments.lvgl?.overlay || "" },
+            { id: "code", label: "ui_layout.c", path: "lvgl/ui_layout.c", group: "LVGL Layout", content: state.code || generatedFragments.lvgl?.code || "" },
+            { id: "header", label: "ui_layout.h", path: "lvgl/ui_layout.h", group: "LVGL Layout", content: generatedFragments.lvgl?.header || "" },
+            { id: "hooks_header", label: "ui_layout_hooks.h", path: "lvgl/ui_layout_hooks.h", group: "LVGL Layout", content: generatedFragments.lvgl?.hooksHeader || "" },
+            { id: "hooks", label: "ui_layout_hooks.template.c", path: "lvgl/ui_layout_hooks.template.c", group: "LVGL Layout", content: generatedFragments.lvgl?.hooks || "" },
+            { id: "integration", label: "integration.md", path: "lvgl/integration.md", group: "LVGL Layout", content: generatedFragments.lvgl?.integration || "" },
+            { id: "validation", label: "validation.md", path: "lvgl/validation.md", group: "LVGL Layout", content: generatedFragments.lvgl?.validation || "" },
+            { id: "style_schema", label: "style_schema.json", path: "lvgl/style_schema.json", group: "LVGL Layout", content: generatedFragments.lvgl?.styleSchema || "" },
+        ];
     }
     function bindPropertyInputs(panel, node, found, state, fields) {
         panel.querySelectorAll("[data-lvgl-prop]").forEach(input => {
@@ -1488,17 +1558,18 @@
     }
     function renderProps() {
         const panel = window.$("#lvglPropsPanel");
-        const codePre = window.$("#lvglCodePre");
         if (!panel)
             return;
         const state = window.lvglEnsureState();
         const node = window.lvglSelectedNode();
         const currentStyle = ensureSelectedStyle(state);
+        const displayProfileMarkup = displayProfileSectionMarkup(state);
         const highlightedSymbols = extractReferencedSymbols(window.LvglModel?.validateState(state) || []);
-        if (codePre && state.code) {
-            codePre.textContent = state.code;
-        }
-        if (!node && !currentStyle) {
+        window.renderCodeReviewPanel?.("lvglGeneratedReview", lvglGeneratedPreviewFiles(state), {
+            emptyMessage: 'Press "Generate LVGL Code" to export the current layout as starter C code.',
+            preferredSelection: state.code ? "code" : "prj_conf",
+        });
+        if (!node && !currentStyle && !displayProfileMarkup) {
             panel.className = "lvgl-layout-empty";
             panel.textContent = "Select a widget from the canvas or tree to edit its properties.";
             return;
@@ -1508,6 +1579,7 @@
         const fields = node ? (window.LvglRegistry?.getPropertyFields(node, fieldContext) || []) : [];
         panel.className = "";
         panel.innerHTML = `
+            ${displayProfileMarkup}
       ${node ? `
       <section class="lvgl-layout-section">
         <div class="lvgl-layout-section-title">Widget Properties</div>

@@ -1471,7 +1471,7 @@ def generate_register_header(info: SensorDatasheetInfo, guard_prefix: str = "") 
 
     # I2C addresses
     if info.address.i2c_addresses:
-        lines.append(f"/* ── I2C Addresses ─────────────────────────────────────── */")
+        lines.append("/* ---- I2C Addresses ---- */")
         for i, a in enumerate(info.address.i2c_addresses):
             suffix = f"_{i}" if len(info.address.i2c_addresses) > 1 else ""
             lines.append(f"#define {prefix}_I2C_ADDR{suffix}  0x{a:02X}u")
@@ -1481,7 +1481,7 @@ def generate_register_header(info: SensorDatasheetInfo, guard_prefix: str = "") 
 
     # WHO_AM_I
     if info.summary.who_am_i_value >= 0:
-        lines.append(f"/* ── Device Identification ─────────────────────────────── */")
+        lines.append("/* ---- Device Identification ---- */")
         if info.summary.who_am_i_reg >= 0:
             lines.append(f"#define {prefix}_WHO_AM_I_REG   0x{info.summary.who_am_i_reg:02X}u")
         lines.append(f"#define {prefix}_WHO_AM_I_VAL   0x{info.summary.who_am_i_value:02X}u")
@@ -1489,7 +1489,7 @@ def generate_register_header(info: SensorDatasheetInfo, guard_prefix: str = "") 
 
     # Register addresses
     if info.register_map.registers:
-        lines.append(f"/* ── Register Addresses ────────────────────────────────── */")
+        lines.append("/* ---- Register Addresses ---- */")
         max_name_len = max(len(f"{prefix}_REG_{r.c_name}") for r in info.register_map.registers)
         for r in info.register_map.registers:
             defname = f"{prefix}_REG_{r.c_name}"
@@ -1498,7 +1498,7 @@ def generate_register_header(info: SensorDatasheetInfo, guard_prefix: str = "") 
             if r.reset_value:
                 comment += f", reset=0x{r.reset_value:02X}"
             if r.description:
-                comment += f" — {r.description[:60]}"
+                comment += f" - {_ascii_safe_text(r.description)[:60]}"
             comment += " */"
             lines.append(f"#define {defname}{pad}0x{r.address:02X}u{comment}")
         lines.append(f"")
@@ -1506,7 +1506,7 @@ def generate_register_header(info: SensorDatasheetInfo, guard_prefix: str = "") 
     # Bit-field masks and shifts for registers that have field info
     regs_with_fields = [r for r in info.register_map.registers if r.fields]
     if regs_with_fields:
-        lines.append(f"/* ── Bit-Field Definitions ─────────────────────────────── */")
+        lines.append("/* ---- Bit-Field Definitions ---- */")
         for r in regs_with_fields:
             lines.append(f"")
             lines.append(f"/* {r.c_name} (0x{r.address:02X}) bit fields */")
@@ -1521,7 +1521,7 @@ def generate_register_header(info: SensorDatasheetInfo, guard_prefix: str = "") 
         lines.append(f"")
 
     lines.append(f"#endif /* {guard} */")
-    return "\n".join(lines)
+    return _ascii_safe_text("\n".join(lines))
 
 
 def generate_register_defines(info: SensorDatasheetInfo) -> str:
@@ -1540,7 +1540,656 @@ def generate_register_defines(info: SensorDatasheetInfo) -> str:
         lines.append(f"")
         lines.append(f"#define EXPECTED_WHO_AM_I  0x{info.summary.who_am_i_value:02X}u")
 
-    return "\n".join(lines)
+    return _ascii_safe_text("\n".join(lines))
+
+
+def _ascii_safe_text(value: str) -> str:
+    text = _repair_common_mojibake(value)
+    replacements = {
+        "\u2013": "-",
+        "\u2014": "-",
+        "\u2018": "'",
+        "\u2019": "'",
+        '"': '"',
+        "\u201c": '"',
+        "\u201d": '"',
+        "\u2022": "*",
+        "\u2026": "...",
+        "\u2192": "->",
+        "\u00b0": " deg",
+        "\u00b5": "u",
+        "\u00d7": "x",
+        "\u2500": "-",
+        "\u2502": "|",
+    }
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    return text.encode("ascii", "replace").decode("ascii")
+
+
+def _repair_common_mojibake(value: str) -> str:
+    text = str(value or "")
+    markers = ("Ã", "Â", "â", "ð", "€", "™")
+    if not any(marker in text for marker in markers):
+        return text
+
+    candidates = [text]
+    for encoding in ("latin-1", "cp1252"):
+        try:
+            repaired = text.encode(encoding).decode("utf-8")
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            continue
+        candidates.append(repaired)
+
+    def score(candidate: str) -> tuple[int, int]:
+        marker_penalty = sum(candidate.count(marker) for marker in markers)
+        replacement_penalty = candidate.count("\ufffd") + candidate.count("?")
+        printable = sum(1 for ch in candidate if ch.isprintable() or ch in "\r\n\t")
+        return (printable - (marker_penalty * 4) - (replacement_penalty * 2), -marker_penalty)
+
+    return max(candidates, key=score)
+
+
+def _sensor_driver_name(info: SensorDatasheetInfo, override: str = "") -> str:
+    raw = override.strip() or info.summary.part_number or "sensor"
+    name = re.sub(r"[^a-z0-9_]+", "_", raw.lower().replace("-", "_"))
+    return name.strip("_") or "sensor"
+
+
+def _sensor_compatible(info: SensorDatasheetInfo, override: str = "") -> str:
+    if override.strip():
+        return override.strip()
+    vendor = (info.summary.vendor or "vendor").strip().lower() or "vendor"
+    part = (info.summary.part_number or "sensor").strip().lower().replace("_", "-")
+    part = re.sub(r"[^a-z0-9-]+", "-", part).strip("-") or "sensor"
+    return f"{vendor},{part}"
+
+
+def _sensor_bus(info: SensorDatasheetInfo, override: str = "") -> str:
+    bus = override.strip().lower()
+    if bus in {"i2c", "spi"}:
+        return bus
+    protocol = (info.address.protocol or "").lower()
+    if "i2c" in protocol:
+        return "i2c"
+    if "spi" in protocol:
+        return "spi"
+    return "i2c"
+
+
+def _is_config_like_register(register: SensorRegister) -> bool:
+    token = register.c_name
+    markers = (
+        "WHO_AM_I", "CHIP_ID", "DEVICE_ID", "ID", "STATUS", "RESET",
+        "CTRL", "CONFIG", "CALIB", "TRIM", "OFFSET", "THRESH", "INT",
+    )
+    return any(marker in token for marker in markers)
+
+
+def _sample_window(info: SensorDatasheetInfo) -> tuple[int, int]:
+    scored: list[tuple[int, SensorRegister]] = []
+    for register in info.register_map.registers:
+        if register.access not in {"RO", "RW", "RC"}:
+            continue
+        if _is_config_like_register(register):
+            continue
+        token = register.c_name
+        score = 0
+        for marker in ("PRESS", "TEMP", "HUM", "OUT", "DATA", "ACC", "GYRO", "MAG", "ALS", "PROX"):
+            if marker in token:
+                score += 3
+        if score <= 0 and register.description:
+            desc = register.description.lower()
+            if any(marker in desc for marker in ("sample", "measurement", "output", "data")):
+                score += 2
+        if score > 0:
+            scored.append((score, register))
+
+    if not scored:
+        readable = [register for register in info.register_map.registers if register.access in {"RO", "RW", "RC"}]
+        if readable:
+            first = readable[0]
+            return first.address, max(1, first.size)
+        return 0, 1
+
+    registers = sorted(
+        {register.address: register for _, register in scored}.values(),
+        key=lambda register: register.address,
+    )
+    start = registers[0].address
+    end = max(register.address + max(1, register.size) - 1 for register in registers)
+    return start, max(1, end - start + 1)
+
+
+def _sensor_primary_channel(info: SensorDatasheetInfo) -> str:
+    sensor_type = (info.summary.sensor_type or "").lower()
+    if sensor_type in {"temperature"}:
+        return "SENSOR_CHAN_AMBIENT_TEMP"
+    if sensor_type in {"pressure", "environmental"}:
+        return "SENSOR_CHAN_PRESS"
+    if sensor_type in {"humidity"}:
+        return "SENSOR_CHAN_HUMIDITY"
+    if sensor_type in {"light"}:
+        return "SENSOR_CHAN_LIGHT"
+    if sensor_type in {"proximity"}:
+        return "SENSOR_CHAN_PROX"
+    if sensor_type in {"current"}:
+        return "SENSOR_CHAN_CURRENT"
+    return "SENSOR_CHAN_ALL"
+
+
+def _generate_sensor_public_header(info: SensorDatasheetInfo, name: str) -> str:
+    guard = f"__{name.upper()}_H__"
+    regs_header = f"{name}_regs.h"
+    return _ascii_safe_text(textwrap.dedent(f"""\
+        /* SPDX-License-Identifier: Apache-2.0 */
+        #ifndef {guard}
+        #define {guard}
+
+        #include <zephyr/device.h>
+        #include <stddef.h>
+        #include <stdint.h>
+
+        #include \"{regs_header}\"
+
+        int {name}_read_reg(const struct device *dev, uint8_t reg, uint8_t *buffer, size_t length);
+        int {name}_write_reg(const struct device *dev, uint8_t reg, uint8_t value);
+        int {name}_read_sample_window(const struct device *dev, uint8_t *buffer, size_t length);
+
+        #endif /* {guard} */
+    """))
+
+
+def _generate_functional_zephyr_source(info: SensorDatasheetInfo, name: str, compatible: str, bus: str) -> str:
+    regs_header = f"{name}_regs.h"
+    primary_channel = _sensor_primary_channel(info)
+    sample_start, sample_len = _sample_window(info)
+    id_check = ""
+    if info.summary.who_am_i_reg >= 0 and info.summary.who_am_i_value >= 0:
+        id_check = textwrap.dedent(f"""\
+            uint8_t chip_id = 0U;
+            ret = {name}_read_reg(dev, 0x{info.summary.who_am_i_reg:02X}u, &chip_id, 1U);
+            if (ret < 0) {{
+                LOG_ERR(\"Failed to read device ID: %d\", ret);
+                return ret;
+            }}
+            if (chip_id != 0x{info.summary.who_am_i_value:02X}u) {{
+                LOG_ERR(\"Unexpected device ID 0x%02X\", chip_id);
+                return -ENODEV;
+            }}
+        """)
+
+    if bus == "spi":
+        bus_include = "#include <zephyr/drivers/spi.h>"
+        config_fields = "    struct spi_dt_spec spi;\n"
+        helpers = textwrap.dedent(f"""\
+            static int {name}_read_reg(const struct device *dev, uint8_t reg, uint8_t *buffer, size_t length)
+            {{
+                const struct {name}_config *cfg = dev->config;
+                uint8_t address = (uint8_t)(reg | 0x80u);
+                const struct spi_buf tx_bufs[] = {{{{ .buf = &address, .len = 1U }}}};
+                const struct spi_buf_set tx = {{ .buffers = tx_bufs, .count = 1U }};
+                const struct spi_buf rx_bufs[] = {{ {{ .buf = NULL, .len = 1U }}, {{ .buf = buffer, .len = length }} }};
+                const struct spi_buf_set rx = {{ .buffers = rx_bufs, .count = 2U }};
+                return spi_transceive_dt(&cfg->spi, &tx, &rx);
+            }}
+
+            static int {name}_write_reg(const struct device *dev, uint8_t reg, uint8_t value)
+            {{
+                const struct {name}_config *cfg = dev->config;
+                uint8_t payload[2] = {{ (uint8_t)(reg & 0x7Fu), value }};
+                const struct spi_buf tx_bufs[] = {{{{ .buf = payload, .len = sizeof(payload) }}}};
+                const struct spi_buf_set tx = {{ .buffers = tx_bufs, .count = 1U }};
+                return spi_write_dt(&cfg->spi, &tx);
+            }}
+        """)
+        init_code = textwrap.dedent("""\
+            if (!spi_is_ready_dt(&cfg->spi)) {
+                LOG_ERR("SPI bus not ready");
+                return -ENODEV;
+            }
+        """)
+        config_init = "        .spi = SPI_DT_SPEC_INST_GET(inst, SPI_WORD_SET(8), 0),"
+    else:
+        bus_include = "#include <zephyr/drivers/i2c.h>"
+        config_fields = "    struct i2c_dt_spec i2c;\n"
+        helpers = textwrap.dedent(f"""\
+            static int {name}_read_reg(const struct device *dev, uint8_t reg, uint8_t *buffer, size_t length)
+            {{
+                const struct {name}_config *cfg = dev->config;
+                return i2c_burst_read_dt(&cfg->i2c, reg, buffer, length);
+            }}
+
+            static int {name}_write_reg(const struct device *dev, uint8_t reg, uint8_t value)
+            {{
+                const struct {name}_config *cfg = dev->config;
+                return i2c_reg_write_byte_dt(&cfg->i2c, reg, value);
+            }}
+        """)
+        init_code = textwrap.dedent("""\
+            if (!i2c_is_ready_dt(&cfg->i2c)) {
+                LOG_ERR("I2C bus not ready");
+                return -ENODEV;
+            }
+        """)
+        config_init = "        .i2c = I2C_DT_SPEC_INST_GET(inst),"
+
+    description = _ascii_safe_text(info.summary.description or f"{info.summary.part_number} {info.summary.sensor_type} sensor")
+    compat_macro = compatible.replace(",", "_").replace("-", "_")
+    source = textwrap.dedent(f"""\
+        /* SPDX-License-Identifier: Apache-2.0 */
+        /**
+         * @file {name}.c
+         * @brief Parsed-sensor Zephyr driver for {compatible}
+         *
+         * {description}
+         */
+
+        #include <errno.h>
+        #include <string.h>
+
+        #include <zephyr/device.h>
+        #include <zephyr/drivers/sensor.h>
+        {bus_include}
+        #include <zephyr/logging/log.h>
+
+        #include \"{regs_header}\"
+        #include \"{name}.h\"
+
+        LOG_MODULE_REGISTER({name}, CONFIG_{name.upper()}_LOG_LEVEL);
+
+        #define DT_DRV_COMPAT {compat_macro}
+        #define {name.upper()}_SAMPLE_START 0x{sample_start:02X}u
+        #define {name.upper()}_SAMPLE_LEN {sample_len}u
+
+        struct {name}_config {{
+        {config_fields}}};
+
+        struct {name}_data {{
+            uint8_t sample[{sample_len}u];
+            uint32_t raw_value;
+        }};
+
+        {helpers}
+
+        int {name}_read_sample_window(const struct device *dev, uint8_t *buffer, size_t length)
+        {{
+            if (length < {name.upper()}_SAMPLE_LEN) {{
+                return -EINVAL;
+            }}
+            return {name}_read_reg(dev, {name.upper()}_SAMPLE_START, buffer, {name.upper()}_SAMPLE_LEN);
+        }}
+
+        static uint32_t {name}_pack_sample(const uint8_t *sample, size_t length)
+        {{
+            uint32_t value = 0U;
+            size_t usable = length > 4U ? 4U : length;
+            for (size_t index = 0; index < usable; ++index) {{
+                value = (value << 8) | sample[index];
+            }}
+            return value;
+        }}
+
+        static int {name}_sample_fetch(const struct device *dev, enum sensor_channel chan)
+        {{
+            ARG_UNUSED(chan);
+            struct {name}_data *data = dev->data;
+            int ret = {name}_read_sample_window(dev, data->sample, sizeof(data->sample));
+            if (ret < 0) {{
+                return ret;
+            }}
+            data->raw_value = {name}_pack_sample(data->sample, sizeof(data->sample));
+            return 0;
+        }}
+
+        static int {name}_channel_get(const struct device *dev, enum sensor_channel chan, struct sensor_value *val)
+        {{
+            struct {name}_data *data = dev->data;
+            if (chan != SENSOR_CHAN_ALL && chan != {primary_channel}) {{
+                return -ENOTSUP;
+            }}
+            val->val1 = (int32_t)data->raw_value;
+            val->val2 = 0;
+            return 0;
+        }}
+
+        static const struct sensor_driver_api {name}_api = {{
+            .sample_fetch = {name}_sample_fetch,
+            .channel_get = {name}_channel_get,
+        }};
+
+        static int {name}_init(const struct device *dev)
+        {{
+            const struct {name}_config *cfg = dev->config;
+            ARG_UNUSED(cfg);
+            int ret = 0;
+
+        {init_code.rstrip()}
+
+        {id_check.rstrip()}
+
+            return 0;
+        }}
+
+        #define {name.upper()}_INST(inst)                                             \\
+            static struct {name}_data {name}_data_##inst;                             \\
+            static const struct {name}_config {name}_config_##inst = {{               \\
+                {config_init}                                                         \\
+            }};                                                                       \\
+            DEVICE_DT_INST_DEFINE(inst,                                               \\
+                                  {name}_init,                                        \\
+                                  NULL,                                               \\
+                                  &{name}_data_##inst,                                \\
+                                  &{name}_config_##inst,                              \\
+                                  POST_KERNEL,                                        \\
+                                  CONFIG_{name.upper()}_INIT_PRIORITY,                \\
+                                  &{name}_api);
+
+        DT_INST_FOREACH_STATUS_OKAY({name.upper()}_INST)
+    """)
+    return _ascii_safe_text(source)
+
+
+def _generate_arduino_driver(info: SensorDatasheetInfo, name: str, bus: str) -> dict:
+    class_name = "".join(part.capitalize() for part in name.split("_")) + "Sensor"
+    regs_header = f"{name}_regs.h"
+    sample_start, sample_len = _sample_window(info)
+    default_addr = info.address.i2c_addresses[0] if info.address.i2c_addresses else 0x00
+    whoami_check = ""
+    if info.summary.who_am_i_reg >= 0 and info.summary.who_am_i_value >= 0:
+        whoami_check = textwrap.dedent(f"""\
+            uint8_t chipId = 0U;
+            if (!readRegister(0x{info.summary.who_am_i_reg:02X}u, chipId)) {{
+              return false;
+            }}
+            return chipId == 0x{info.summary.who_am_i_value:02X}u;
+        """)
+    else:
+        whoami_check = "return true;"
+
+    header = _ascii_safe_text(textwrap.dedent(f"""\
+        #pragma once
+
+        #include <Arduino.h>
+        #include <SPI.h>
+        #include <Wire.h>
+
+        #include \"{regs_header}\"
+
+        class {class_name} {{
+        public:
+          bool begin(TwoWire &wire = Wire, uint8_t address = 0x{default_addr:02X});
+          bool beginSPI(SPIClass &spi, uint8_t chipSelectPin, uint32_t frequency = 1000000UL);
+          bool ping();
+          bool readRegister(uint8_t reg, uint8_t &value);
+          bool readRegisters(uint8_t reg, uint8_t *buffer, size_t length);
+          bool writeRegister(uint8_t reg, uint8_t value);
+          bool readSampleWindow(uint8_t *buffer, size_t length);
+
+        private:
+          bool useSpi_ = false;
+          TwoWire *wire_ = nullptr;
+          SPIClass *spi_ = nullptr;
+          uint8_t address_ = 0x{default_addr:02X};
+          uint8_t chipSelectPin_ = 0xFF;
+          uint32_t spiFrequency_ = 1000000UL;
+        }};
+    """))
+
+    source = _ascii_safe_text(textwrap.dedent(f"""\
+        #include \"{name}.h\"
+
+        bool {class_name}::begin(TwoWire &wire, uint8_t address) {{
+          useSpi_ = false;
+          wire_ = &wire;
+          address_ = address;
+          wire_->begin();
+          return ping();
+        }}
+
+        bool {class_name}::beginSPI(SPIClass &spi, uint8_t chipSelectPin, uint32_t frequency) {{
+          useSpi_ = true;
+          spi_ = &spi;
+          chipSelectPin_ = chipSelectPin;
+          spiFrequency_ = frequency;
+          pinMode(chipSelectPin_, OUTPUT);
+          digitalWrite(chipSelectPin_, HIGH);
+          spi_->begin();
+          return ping();
+        }}
+
+        bool {class_name}::ping() {{
+          {whoami_check.rstrip()}
+        }}
+
+        bool {class_name}::readRegister(uint8_t reg, uint8_t &value) {{
+          return readRegisters(reg, &value, 1U);
+        }}
+
+        bool {class_name}::readRegisters(uint8_t reg, uint8_t *buffer, size_t length) {{
+          if (!buffer || length == 0U) {{
+            return false;
+          }}
+          if (useSpi_) {{
+            if (!spi_) {{
+              return false;
+            }}
+            spi_->beginTransaction(SPISettings(spiFrequency_, MSBFIRST, SPI_MODE0));
+            digitalWrite(chipSelectPin_, LOW);
+            spi_->transfer(static_cast<uint8_t>(reg | 0x80u));
+            for (size_t index = 0; index < length; ++index) {{
+              buffer[index] = spi_->transfer(0x00u);
+            }}
+            digitalWrite(chipSelectPin_, HIGH);
+            spi_->endTransaction();
+            return true;
+          }}
+          if (!wire_) {{
+            return false;
+          }}
+          wire_->beginTransmission(address_);
+          wire_->write(reg);
+          if (wire_->endTransmission(false) != 0) {{
+            return false;
+          }}
+          size_t received = wire_->requestFrom(static_cast<int>(address_), static_cast<int>(length));
+          if (received != length) {{
+            return false;
+          }}
+          for (size_t index = 0; index < length; ++index) {{
+            buffer[index] = static_cast<uint8_t>(wire_->read());
+          }}
+          return true;
+        }}
+
+        bool {class_name}::writeRegister(uint8_t reg, uint8_t value) {{
+          if (useSpi_) {{
+            if (!spi_) {{
+              return false;
+            }}
+            spi_->beginTransaction(SPISettings(spiFrequency_, MSBFIRST, SPI_MODE0));
+            digitalWrite(chipSelectPin_, LOW);
+            spi_->transfer(static_cast<uint8_t>(reg & 0x7Fu));
+            spi_->transfer(value);
+            digitalWrite(chipSelectPin_, HIGH);
+            spi_->endTransaction();
+            return true;
+          }}
+          if (!wire_) {{
+            return false;
+          }}
+          wire_->beginTransmission(address_);
+          wire_->write(reg);
+          wire_->write(value);
+          return wire_->endTransmission() == 0;
+        }}
+
+        bool {class_name}::readSampleWindow(uint8_t *buffer, size_t length) {{
+          if (length < {sample_len}U) {{
+            return false;
+          }}
+          return readRegisters(0x{sample_start:02X}u, buffer, {sample_len}U);
+        }}
+    """))
+
+    example = _ascii_safe_text(textwrap.dedent(f"""\
+        #include <Arduino.h>
+        #include \"{name}.h\"
+
+        {class_name} sensor;
+
+        void setup() {{
+          Serial.begin(115200);
+          while (!Serial) {{
+          }}
+
+          if (!sensor.begin()) {{
+            Serial.println("Sensor init failed");
+            return;
+          }}
+
+          Serial.println("Sensor ready");
+        }}
+
+        void loop() {{
+          uint8_t sample[{sample_len}U] = {{0}};
+          if (sensor.readSampleWindow(sample, sizeof(sample))) {{
+            Serial.print("Sample bytes:");
+            for (size_t index = 0; index < sizeof(sample); ++index) {{
+              Serial.print(' ');
+              if (sample[index] < 0x10U) {{
+                Serial.print('0');
+              }}
+              Serial.print(sample[index], HEX);
+            }}
+            Serial.println();
+          }} else {{
+            Serial.println("Sample read failed");
+          }}
+
+          delay(1000);
+        }}
+    """))
+
+    return {
+        "arduino_header": header,
+        "arduino_source": source,
+        "arduino_example": example,
+    }
+
+
+def _normalize_custom_template_path(path: str, driver_name: str) -> str:
+    raw = str(path or "").strip().replace("\\", "/")
+    if not raw:
+        return f"custom/{driver_name}_template.txt"
+
+    segments = []
+    for segment in raw.split("/"):
+        segment = re.sub(r"[^A-Za-z0-9._-]+", "_", segment.strip())
+        if not segment or segment in {".", ".."}:
+            continue
+        segments.append(segment)
+
+    normalized = "/".join(segments)
+    if not normalized:
+        return f"custom/{driver_name}_template.txt"
+    if "/" not in normalized:
+        normalized = f"custom/{normalized}"
+    return normalized
+
+
+def _render_custom_driver_template(
+    template: str,
+    *,
+    info: SensorDatasheetInfo,
+    driver_name: str,
+    compatible_name: str,
+    bus_name: str,
+    package: dict,
+    template_path: str,
+) -> dict:
+    context = {
+        "driver_name": driver_name,
+        "part_number": info.summary.part_number or "sensor",
+        "vendor": info.summary.vendor or "vendor",
+        "vendor_name": info.summary.vendor_name or "Vendor",
+        "sensor_type": info.summary.sensor_type or "sensor",
+        "compatible": compatible_name,
+        "bus": bus_name,
+        "description": info.summary.description or f"{info.summary.part_number} {info.summary.sensor_type} sensor",
+        "register_count": str(len(info.register_map.registers)),
+        "i2c_addresses": ", ".join(f"0x{address:02X}" for address in info.address.i2c_addresses),
+        "zephyr_source": package.get("source_c", ""),
+        "zephyr_header": package.get("header_h", ""),
+        "register_header": package.get("register_header", ""),
+        "register_defines": package.get("register_defines", ""),
+        "arduino_header": package.get("arduino_header", ""),
+        "arduino_source": package.get("arduino_source", ""),
+        "arduino_example": package.get("arduino_example", ""),
+    }
+    context = {key: _ascii_safe_text(value) for key, value in context.items()}
+
+    def replace_token(match: re.Match) -> str:
+        token = match.group(1).strip().lower()
+        return context.get(token, match.group(0))
+
+    rendered = re.sub(r"\[\[\s*([A-Za-z0-9_]+)\s*\]\]", replace_token, template)
+    return {
+        "custom_template_output": _ascii_safe_text(rendered),
+        "custom_template_path": _normalize_custom_template_path(template_path, driver_name),
+    }
+
+
+def generate_sensor_driver_package(
+    info: SensorDatasheetInfo,
+    *,
+    name: str = "",
+    compatible: str = "",
+    bus: str = "",
+    has_interrupt: bool = False,
+    custom_template: str = "",
+    custom_template_path: str = "",
+) -> dict:
+    from driver_generator import DriverSpec, RegisterDef, driver_to_json, generate_driver
+
+    driver_name = _sensor_driver_name(info, name)
+    compatible_name = _sensor_compatible(info, compatible)
+    bus_name = _sensor_bus(info, bus)
+    registers = [
+        RegisterDef(name=register.c_name, address=register.address, size=register.size, rw=register.access)
+        for register in info.register_map.registers
+    ]
+
+    spec = DriverSpec(
+        name=driver_name,
+        driver_type="sensor",
+        compatible=compatible_name,
+        bus=bus_name,
+        description=_ascii_safe_text(info.summary.description or f"{info.summary.part_number} {info.summary.sensor_type} driver"),
+        vendor=(info.summary.vendor or "vendor"),
+        has_interrupt=has_interrupt,
+        registers=registers,
+    )
+    package = driver_to_json(generate_driver(spec))
+    package["source_c"] = _generate_functional_zephyr_source(info, driver_name, compatible_name, bus_name)
+    package["header_h"] = _generate_sensor_public_header(info, driver_name)
+    package["register_header"] = generate_register_header(info)
+    package["register_defines"] = generate_register_defines(info)
+    package.update(_generate_arduino_driver(info, driver_name, bus_name))
+    if str(custom_template or "").strip():
+        package.update(_render_custom_driver_template(
+            str(custom_template),
+            info=info,
+            driver_name=driver_name,
+            compatible_name=compatible_name,
+            bus_name=bus_name,
+            package=package,
+            template_path=custom_template_path,
+        ))
+    for key, value in list(package.items()):
+        if isinstance(value, str):
+            package[key] = _ascii_safe_text(value)
+    return package
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -1551,11 +2200,11 @@ def sensor_info_to_json(info: SensorDatasheetInfo) -> dict:
     """Convert SensorDatasheetInfo to a JSON-serialisable dict."""
     return {
         "summary": {
-            "part_number": info.summary.part_number,
-            "vendor": info.summary.vendor,
-            "vendor_name": info.summary.vendor_name,
-            "sensor_type": info.summary.sensor_type,
-            "description": info.summary.description,
+            "part_number": _ascii_safe_text(info.summary.part_number),
+            "vendor": _ascii_safe_text(info.summary.vendor),
+            "vendor_name": _ascii_safe_text(info.summary.vendor_name),
+            "sensor_type": _ascii_safe_text(info.summary.sensor_type),
+            "description": _ascii_safe_text(info.summary.description),
             "who_am_i_reg": info.summary.who_am_i_reg,
             "who_am_i_value": info.summary.who_am_i_value,
             "supply_voltage_min": info.summary.supply_voltage_min,
@@ -1564,9 +2213,9 @@ def sensor_info_to_json(info: SensorDatasheetInfo) -> dict:
             "temp_range_max": info.summary.temp_range_max,
         },
         "address": {
-            "protocol": info.address.protocol,
+            "protocol": _ascii_safe_text(info.address.protocol),
             "i2c_addresses": [f"0x{a:02X}" for a in info.address.i2c_addresses],
-            "i2c_address_pin": info.address.i2c_address_pin,
+            "i2c_address_pin": _ascii_safe_text(info.address.i2c_address_pin),
             "spi_max_freq_hz": info.address.spi_max_freq_hz,
             "spi_max_freq_mhz": info.address.spi_max_freq_hz / 1_000_000 if info.address.spi_max_freq_hz else 0,
             "spi_mode": info.address.spi_mode,
@@ -1580,21 +2229,21 @@ def sensor_info_to_json(info: SensorDatasheetInfo) -> dict:
                 {
                     "address": f"0x{r.address:02X}",
                     "address_int": r.address,
-                    "name": r.name,
-                    "c_name": r.c_name,
+                    "name": _ascii_safe_text(r.name),
+                    "c_name": _ascii_safe_text(r.c_name),
                     "size": r.size,
-                    "access": r.access,
+                    "access": _ascii_safe_text(r.access),
                     "reset_value": f"0x{r.reset_value:02X}",
-                    "description": r.description,
+                    "description": _ascii_safe_text(r.description),
                     "fields": [
                         {
-                            "name": f.name,
+                            "name": _ascii_safe_text(f.name),
                             "bits": f.bits,
                             "bit_high": f.bit_high,
                             "bit_low": f.bit_low,
-                            "access": f.access,
+                            "access": _ascii_safe_text(f.access),
                             "reset_value": f.reset_value,
-                            "description": f.description,
+                            "description": _ascii_safe_text(f.description),
                         }
                         for f in r.fields
                     ],

@@ -66,8 +66,9 @@ from sensor_parser import (
     parse_sensor_datasheet, SensorDatasheetInfo,
     sensor_info_to_json, sensor_info_from_json,
     identify_sensor, generate_register_header, generate_register_defines,
+    generate_sensor_driver_package,
 )
-from zephyr_catalog import load_zephyr_catalog
+from zephyr_catalog import load_zephyr_catalog, _load_yaml, _flatten_soc_variants
 
 
 app = Flask(
@@ -76,6 +77,7 @@ app = Flask(
     static_url_path="",
 )
 app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100 MB upload limit
+app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
 
 log = logging.getLogger(__name__)
 
@@ -893,6 +895,103 @@ def load_board_editor_draft(filename: str):
     return jsonify({"filename": path.name, "board": board})
 
 
+def _zephyr_board_descriptor_files(board_dir: pathlib.Path) -> list[dict]:
+    patterns = (
+        "board.yml",
+        "*.dts",
+        "*.dtsi",
+        "*.overlay",
+        "*.conf",
+        "*.defconfig",
+        "*_defconfig",
+        "Kconfig*",
+        "CMakeLists.txt",
+        "*.cmake",
+        "*.yaml",
+        "*.yml",
+    )
+    seen: set[str] = set()
+    files: list[dict] = []
+    for pattern in patterns:
+        for path in sorted(board_dir.glob(pattern)):
+            if not path.is_file():
+                continue
+            rel = path.relative_to(board_dir).as_posix()
+            if rel in seen:
+                continue
+            seen.add(rel)
+            files.append({
+                "path": rel,
+                "size": path.stat().st_size,
+                "content": path.read_text(encoding="utf-8", errors="replace"),
+            })
+    return files
+
+
+def _board_editor_payload_from_zephyr_folder(folder_path: pathlib.Path) -> dict:
+    board_dir = folder_path.expanduser().resolve(strict=False)
+    board_yml = board_dir / "board.yml"
+    if not board_dir.is_dir():
+        raise FileNotFoundError(f"Board directory does not exist: {board_dir}")
+    if not board_yml.is_file():
+        raise FileNotFoundError(f"No board.yml found in {board_dir}")
+
+    data = _load_yaml(board_yml)
+    board = data.get("board") if isinstance(data.get("board"), dict) else {}
+    board_name = str(board.get("name") or board_dir.name).strip() or board_dir.name
+    socs = _flatten_soc_variants(board.get("socs") or [])
+    primary_soc = socs[0] if socs else board_name
+    descriptor_files = _zephyr_board_descriptor_files(board_dir)
+
+    return {
+        "board": board_name,
+        "soc": primary_soc,
+        "socs": socs or [primary_soc],
+        "vendor": str(board.get("vendor") or "zephyr"),
+        "package": str(board.get("full_name") or board_name),
+        "pins": [],
+        "peripherals": [],
+        "external_devices": [],
+        "mcu_modules": [
+            {
+                "id": re.sub(r"[^a-z0-9]+", "_", soc.lower()).strip("_") or f"mcu_{index + 1}",
+                "display": soc,
+                "category": "mcu",
+                "required_signals": ["VCC", "GND", "RESET", "UART_TX", "UART_RX"],
+                "pins": ["VCC", "GND", "RESET", "UART_TX", "UART_RX"],
+                "notes": f"Imported from Zephyr board descriptor {board_name}.",
+            }
+            for index, soc in enumerate(socs)
+        ],
+        "manual_connections": [],
+        "zephyr_board_dir": str(board_dir),
+        "zephyr_board_descriptor": {
+            "board_yml": "board.yml",
+            "full_name": str(board.get("full_name") or board_name),
+            "directories": [str(board_dir)],
+            "files": descriptor_files,
+        },
+    }
+
+
+@app.route("/api/board-editor/import-zephyr-folder", methods=["POST"])
+def import_board_editor_zephyr_folder():
+    body = request.get_json(force=True)
+    folder_path = str(body.get("path") or "").strip()
+    if not folder_path:
+        return jsonify({"error": "Provide a Zephyr board directory path."}), 400
+
+    try:
+        board = _board_editor_payload_from_zephyr_folder(pathlib.Path(folder_path))
+    except FileNotFoundError as exc:
+        return jsonify({"error": str(exc)}), 404
+    except Exception as exc:
+        log.exception("Failed to import Zephyr board folder: %s", folder_path)
+        return jsonify({"error": f"Failed to import Zephyr board folder: {exc}"}), 500
+
+    return jsonify({"board": board})
+
+
 @app.route("/api/board-editor/save", methods=["POST"])
 def save_board_editor_draft():
     body = request.get_json(force=True)
@@ -1337,6 +1436,15 @@ def _datasheet_to_json(info: DatasheetInfo) -> dict:
     }
 
 
+def _validate_package_manager_parse(info: DatasheetInfo) -> str | None:
+    """Return an error message when an MCU datasheet parse is not usable for package generation."""
+    if info.packages:
+        return None
+    if info.pin_mux:
+        return "Parsed the datasheet but could not identify any MCU packages. Use a datasheet PDF that includes the package pinout tables."
+    return "Could not extract MCU package or pin-mux data from this PDF. Use an MCU datasheet PDF with package and pin-mux tables."
+
+
 @app.route("/api/parse-pdf", methods=["POST"])
 def parse_pdf():
     """
@@ -1364,6 +1472,11 @@ def parse_pdf():
         upload_path.unlink(missing_ok=True)
         log.exception("PDF parsing failed")
         return jsonify({"error": f"PDF parsing failed: {exc}"}), 500
+
+    validation_error = _validate_package_manager_parse(info)
+    if validation_error:
+        upload_path.unlink(missing_ok=True)
+        return jsonify({"error": validation_error}), 422
 
     # Store parsed result for later generation
     _PARSED_JOBS[job_id] = {
@@ -1889,6 +2002,10 @@ def api_fetch_datasheet():
     if info is None:
         return jsonify({"error": message}), 404
 
+    validation_error = _validate_package_manager_parse(info)
+    if validation_error:
+        return jsonify({"error": validation_error}), 422
+
     # Store as a parse job so it can be used for package generation
     job_id = uuid.uuid4().hex[:12]
     _PARSED_JOBS[job_id] = {
@@ -2057,6 +2174,8 @@ def generate_sensor_driver_from_job(job_id: str):
         compatible:    str  DT compatible (default: "vendor,part")
         bus:           str  "i2c" | "spi" (default: auto-detected)
         has_interrupt:  bool  include IRQ boilerplate
+        custom_template: str  optional template rendered with [[driver_name]]-style tokens
+        custom_template_path: str  optional output path for the rendered custom template
     """
     if job_id not in _SENSOR_JOBS:
         return jsonify({"error": "Job not found"}), 404
@@ -2081,29 +2200,31 @@ def generate_sensor_driver_from_job(job_id: str):
         else:
             bus = "i2c"  # safe default
 
-    # Convert sensor registers to driver RegisterDef list
-    from driver_generator import RegisterDef
-    reg_defs = [
-        RegisterDef(name=r.c_name, address=r.address, size=r.size, rw=r.access)
-        for r in sensor.register_map.registers
-    ]
+    custom_template = str(data.get("custom_template", ""))
+    custom_template_path = str(data.get("custom_template_path", ""))
 
     try:
-        spec = DriverSpec(
+        result = generate_sensor_driver_package(
+            sensor,
             name=drv_name,
-            driver_type="sensor",
             compatible=compat,
             bus=bus,
-            description=sensor.summary.description or f"{part} {sensor.summary.sensor_type} driver",
-            vendor=vendor,
             has_interrupt=data.get("has_interrupt", False),
-            registers=reg_defs,
+            custom_template=custom_template,
+            custom_template_path=custom_template_path,
         )
-        drv = generate_driver(spec)
-        result = driver_to_json(drv)
-        # Also include the register header
-        result["register_header"] = generate_register_header(sensor)
-        result["register_defines"] = generate_register_defines(sensor)
+        if custom_template.strip() and "custom_template_output" not in result:
+            from sensor_parser import _render_custom_driver_template
+
+            result.update(_render_custom_driver_template(
+                custom_template,
+                info=sensor,
+                driver_name=drv_name,
+                compatible_name=compat,
+                bus_name=bus,
+                package=result,
+                template_path=custom_template_path,
+            ))
         return jsonify(result)
     except Exception as exc:
         log.exception("Driver generation from sensor job failed")
