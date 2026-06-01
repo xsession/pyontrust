@@ -22,3 +22,5 @@ gui_app/baram/baram-web/Project(1)/
 externals/pin_configurator/.venv/
 
 externals/pin_configurator/vscode-extension/node_modules/
+
+externals/pin_configurator/.tmp/

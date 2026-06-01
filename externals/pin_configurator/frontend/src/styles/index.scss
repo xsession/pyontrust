@@ -2852,6 +2852,8 @@
 }
 
 .workspace-dock {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   height: 34rem;
   overflow: hidden;
   border: 1px solid var(--border-workspace-panel);
@@ -2860,6 +2862,7 @@
   background: rgba(22, 24, 38, 0.98);
 }
 
+.workspace-dock__tablist,
 .workspace-dock [role="tablist"] {
   display: flex;
   align-items: stretch;
@@ -2867,14 +2870,19 @@
   padding: 0;
   background: rgba(16, 19, 33, 0.98);
   border-bottom: 1px solid rgba(71, 74, 104, 0.72);
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .workspace-dock [role="tab"] {
+  flex: 0 0 auto;
   min-height: 2.2rem;
   padding: 0.55rem 0.8rem;
+  border: 0;
   border-right: 1px solid rgba(60, 63, 90, 0.8);
   background: transparent;
   color: rgba(205, 214, 244, 0.72);
+  white-space: nowrap;
 }
 
 .workspace-dock [role="tab"][aria-selected="true"] {
@@ -2882,8 +2890,19 @@
   color: #f3f6ff;
 }
 
+.workspace-dock__panel,
 .workspace-dock [role="tabpanel"] {
+  min-height: 0;
+  overflow: auto;
   background: rgba(34, 36, 56, 0.98);
+}
+
+.workspace-dock__panel--active {
+  display: block;
+}
+
+.workspace-dock__panel--hidden[hidden] {
+  display: none;
 }
 
 .dock-fallback {
@@ -2897,10 +2916,12 @@
 
 .dock-panel {
   height: 100%;
+  min-height: 0;
 }
 
 .dock-panel--stack {
   display: grid;
+  min-height: 100%;
   gap: var(--workspace-shell-gap);
   padding: 0.8rem;
   align-content: start;

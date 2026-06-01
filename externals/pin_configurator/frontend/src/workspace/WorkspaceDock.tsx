@@ -1,6 +1,4 @@
-import { DockviewReact, type DockviewApi, type DockviewReadyEvent, type IDockviewPanelProps } from "dockview";
-import "dockview/dist/styles/dockview.css";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { BoardDefinition, BoardSummary, ProtocolFieldValue } from "../contracts/api";
 import type { ClockConfiguratorPresenter } from "../domains/clock/clockConfiguratorPresenter";
 import type { BoardEditorPresenter } from "../domains/board-editor/boardEditorPresenter";
@@ -14,8 +12,7 @@ import type { SensorParserPresenter } from "../domains/sensors/sensorParserPrese
 import type { RehydratedPinStateMap } from "../project/legacyHardwareState";
 import type { ProjectDocument } from "../project/projectDocument";
 import { selectProjectArtifactStatus, selectProjectIntegrityLabel, selectProjectIntegrityStatus, selectProjectReadinessLabel } from "../project/selectors";
-import { clearWorkspaceDockLayout, loadWorkspaceDockLayout, saveWorkspaceDockLayout } from "./layout/layoutPersistence";
-import { restoreOrPopulateWorkspaceDock } from "./layout/workspaceDockLayout";
+import { getDefaultWorkspaceDockPanels } from "./layout/workspaceDockLayout";
 import { getWorkspaceLayoutPreset, type WorkspaceLayoutPresetId } from "./layout/workspaceShellPreferences";
 import { workspaceDockPanelDefinitions } from "./panels/dockPanelDefinitions";
 import { buildWorkspaceDockPanelParams, type WorkspaceDockPanelParams } from "./panels/dockPanelParams";
@@ -73,7 +70,11 @@ interface WorkspaceDockProps {
   focusRequest?: WorkspaceDockFocusRequest | null;
 }
 
-function OverviewPanel({ params }: IDockviewPanelProps<WorkspaceDockPanelParams>) {
+interface WorkspaceDockPanelContentProps {
+  params: WorkspaceDockPanelParams;
+}
+
+function OverviewPanel({ params }: WorkspaceDockPanelContentProps) {
   const { boards, activeBoard, loading, error, projectDocument } = params;
   const previewBoard = activeBoard ?? boards[0];
   const artifacts = selectProjectArtifactStatus(projectDocument);
@@ -137,7 +138,7 @@ function OverviewPanel({ params }: IDockviewPanelProps<WorkspaceDockPanelParams>
   );
 }
 
-function EditorPanel({ params }: IDockviewPanelProps<WorkspaceDockPanelParams>) {
+function EditorPanel({ params }: WorkspaceDockPanelContentProps) {
   const document = params.artifactDocuments.find((entry) => entry.id === "overlay");
 
   if (!document) {
@@ -149,7 +150,7 @@ function EditorPanel({ params }: IDockviewPanelProps<WorkspaceDockPanelParams>) 
   );
 }
 
-function ConfigPanel({ params }: IDockviewPanelProps<WorkspaceDockPanelParams>) {
+function ConfigPanel({ params }: WorkspaceDockPanelContentProps) {
   const document = params.artifactDocuments.find((entry) => entry.id === "config");
 
   if (!document) {
@@ -161,7 +162,7 @@ function ConfigPanel({ params }: IDockviewPanelProps<WorkspaceDockPanelParams>) 
   );
 }
 
-function FragmentsPanel({ params }: IDockviewPanelProps<WorkspaceDockPanelParams>) {
+function FragmentsPanel({ params }: WorkspaceDockPanelContentProps) {
   const document = params.artifactDocuments.find((entry) => entry.id === "fragments");
 
   if (!document) {
@@ -173,7 +174,7 @@ function FragmentsPanel({ params }: IDockviewPanelProps<WorkspaceDockPanelParams
   );
 }
 
-function GeneratedHeaderPanel({ params }: IDockviewPanelProps<WorkspaceDockPanelParams>) {
+function GeneratedHeaderPanel({ params }: WorkspaceDockPanelContentProps) {
   const document = params.artifactDocuments.find((entry) => entry.id === "header");
 
   if (!document) {
@@ -183,7 +184,7 @@ function GeneratedHeaderPanel({ params }: IDockviewPanelProps<WorkspaceDockPanel
   return <ArtifactReviewPanel document={document} focusRequest={params.focusRequest} />;
 }
 
-function GeneratedSourcePanel({ params }: IDockviewPanelProps<WorkspaceDockPanelParams>) {
+function GeneratedSourcePanel({ params }: WorkspaceDockPanelContentProps) {
   const document = params.artifactDocuments.find((entry) => entry.id === "source");
 
   if (!document) {
@@ -193,7 +194,7 @@ function GeneratedSourcePanel({ params }: IDockviewPanelProps<WorkspaceDockPanel
   return <ArtifactReviewPanel document={document} focusRequest={params.focusRequest} />;
 }
 
-function RenodeRescPanel({ params }: IDockviewPanelProps<WorkspaceDockPanelParams>) {
+function RenodeRescPanel({ params }: WorkspaceDockPanelContentProps) {
   const document = params.artifactDocuments.find((entry) => entry.id === "resc");
 
   if (!document) {
@@ -203,7 +204,7 @@ function RenodeRescPanel({ params }: IDockviewPanelProps<WorkspaceDockPanelParam
   return <ArtifactReviewPanel document={document} focusRequest={params.focusRequest} onSave={(value) => params.updateRenodeField("resc", value)} />;
 }
 
-function RenodeRobotPanel({ params }: IDockviewPanelProps<WorkspaceDockPanelParams>) {
+function RenodeRobotPanel({ params }: WorkspaceDockPanelContentProps) {
   const document = params.artifactDocuments.find((entry) => entry.id === "robot");
 
   if (!document) {
@@ -213,7 +214,7 @@ function RenodeRobotPanel({ params }: IDockviewPanelProps<WorkspaceDockPanelPara
   return <ArtifactReviewPanel document={document} focusRequest={params.focusRequest} onSave={(value) => params.updateRenodeField("robot", value)} />;
 }
 
-function TransportPanel({ params }: IDockviewPanelProps<WorkspaceDockPanelParams>) {
+function TransportPanel({ params }: WorkspaceDockPanelContentProps) {
   const { boards, loading, projectDocument } = params;
 
   return (
@@ -240,7 +241,7 @@ function TransportPanel({ params }: IDockviewPanelProps<WorkspaceDockPanelParams
   );
 }
 
-function RenodePanel({ params }: IDockviewPanelProps<WorkspaceDockPanelParams>) {
+function RenodePanel({ params }: WorkspaceDockPanelContentProps) {
   return (
     <div className="dock-panel dock-panel--stack">
       <div className="dock-callout">
@@ -252,7 +253,7 @@ function RenodePanel({ params }: IDockviewPanelProps<WorkspaceDockPanelParams>) 
   );
 }
 
-function ProtocolPanel({ params }: IDockviewPanelProps<WorkspaceDockPanelParams>) {
+function ProtocolPanel({ params }: WorkspaceDockPanelContentProps) {
   return (
     <div className="dock-panel dock-panel--stack">
       <div className="dock-callout">
@@ -271,7 +272,7 @@ function ProtocolPanel({ params }: IDockviewPanelProps<WorkspaceDockPanelParams>
   );
 }
 
-function PeripheralPanel({ params }: IDockviewPanelProps<WorkspaceDockPanelParams>) {
+function PeripheralPanel({ params }: WorkspaceDockPanelContentProps) {
   return (
     <div className="dock-panel dock-panel--stack">
       <div className="dock-callout">
@@ -283,7 +284,7 @@ function PeripheralPanel({ params }: IDockviewPanelProps<WorkspaceDockPanelParam
   );
 }
 
-function ModulePanel({ params }: IDockviewPanelProps<WorkspaceDockPanelParams>) {
+function ModulePanel({ params }: WorkspaceDockPanelContentProps) {
   return (
     <div className="dock-panel dock-panel--stack">
       <div className="dock-callout">
@@ -295,7 +296,7 @@ function ModulePanel({ params }: IDockviewPanelProps<WorkspaceDockPanelParams>) 
   );
 }
 
-function ClockPanel({ params }: IDockviewPanelProps<WorkspaceDockPanelParams>) {
+function ClockPanel({ params }: WorkspaceDockPanelContentProps) {
   return (
     <div className="dock-panel dock-panel--stack">
       <div className="dock-callout">
@@ -307,7 +308,7 @@ function ClockPanel({ params }: IDockviewPanelProps<WorkspaceDockPanelParams>) {
   );
 }
 
-function LvglPanel({ params }: IDockviewPanelProps<WorkspaceDockPanelParams>) {
+function LvglPanel({ params }: WorkspaceDockPanelContentProps) {
   return (
     <div className="dock-panel dock-panel--stack">
       <div className="dock-callout">
@@ -319,7 +320,7 @@ function LvglPanel({ params }: IDockviewPanelProps<WorkspaceDockPanelParams>) {
   );
 }
 
-function BoardEditorPanel({ params }: IDockviewPanelProps<WorkspaceDockPanelParams>) {
+function BoardEditorPanel({ params }: WorkspaceDockPanelContentProps) {
   return (
     <div className="dock-panel dock-panel--stack">
       <div className="dock-callout">
@@ -331,7 +332,7 @@ function BoardEditorPanel({ params }: IDockviewPanelProps<WorkspaceDockPanelPara
   );
 }
 
-function InterruptPanel({ params }: IDockviewPanelProps<WorkspaceDockPanelParams>) {
+function InterruptPanel({ params }: WorkspaceDockPanelContentProps) {
   return (
     <div className="dock-panel dock-panel--stack">
       <div className="dock-callout">
@@ -343,7 +344,7 @@ function InterruptPanel({ params }: IDockviewPanelProps<WorkspaceDockPanelParams
   );
 }
 
-function SensorJobsPanel({ params }: IDockviewPanelProps<WorkspaceDockPanelParams>) {
+function SensorJobsPanel({ params }: WorkspaceDockPanelContentProps) {
   return (
     <div className="dock-panel dock-panel--stack">
       <div className="dock-callout">
@@ -363,7 +364,7 @@ function SensorJobsPanel({ params }: IDockviewPanelProps<WorkspaceDockPanelParam
   );
 }
 
-function PackageJobsPanel({ params }: IDockviewPanelProps<WorkspaceDockPanelParams>) {
+function PackageJobsPanel({ params }: WorkspaceDockPanelContentProps) {
   return (
     <div className="dock-panel dock-panel--stack">
       <div className="dock-callout">
@@ -383,7 +384,7 @@ function PackageJobsPanel({ params }: IDockviewPanelProps<WorkspaceDockPanelPara
   );
 }
 
-function ZephyrCatalogDockPanel({ params }: IDockviewPanelProps<WorkspaceDockPanelParams>) {
+function ZephyrCatalogDockPanel({ params }: WorkspaceDockPanelContentProps) {
   return (
     <div className="dock-panel dock-panel--stack">
       <div className="dock-callout">
@@ -395,7 +396,7 @@ function ZephyrCatalogDockPanel({ params }: IDockviewPanelProps<WorkspaceDockPan
   );
 }
 
-function PinAssignmentsDockPanel({ params }: IDockviewPanelProps<WorkspaceDockPanelParams>) {
+function PinAssignmentsDockPanel({ params }: WorkspaceDockPanelContentProps) {
   return (
     <div className="dock-panel dock-panel--stack">
       <PinAssignmentsPanel
@@ -410,7 +411,7 @@ function PinAssignmentsDockPanel({ params }: IDockviewPanelProps<WorkspaceDockPa
   );
 }
 
-const dockComponents: Record<string, React.FunctionComponent<IDockviewPanelProps<WorkspaceDockPanelParams>>> = {
+const dockComponents: Record<string, React.FunctionComponent<WorkspaceDockPanelContentProps>> = {
   overview: OverviewPanel,
   editor: EditorPanel,
   config: ConfigPanel,
@@ -435,10 +436,13 @@ const dockComponents: Record<string, React.FunctionComponent<IDockviewPanelProps
 };
 
 export function WorkspaceDock({ boards, activeBoard, activeBoardDefinition, projectDocument, hydratedPinStates, pinAssignments, peripheralConfigurator, moduleConfigurator, clockConfigurator, lvglLayout, boardEditor, interruptConfigurator, sensorParser, packageManager, zephyrCatalog, clearPinAssignment, assignPinAltFunction, updatePinBooleanProperty, updateRenodeField, updateGeneratedOverlay, updateGeneratedConf, addProtocolEntry, selectProtocolEntry, removeProtocolEntry, toggleProtocolEntry, updateProtocolEntryValue, loading, error, layoutPresetId = "bring-up", focusRequest = null }: WorkspaceDockProps) {
-  const [dockApi, setDockApi] = useState<DockviewApi | null>(null);
-  const initializedRef = useRef(false);
-  const skipNextLayoutSaveRef = useRef(true);
   const layoutPreset = useMemo(() => getWorkspaceLayoutPreset(layoutPresetId), [layoutPresetId]);
+  const defaultPanels = useMemo(
+    () => getDefaultWorkspaceDockPanels(layoutPresetId),
+    [layoutPresetId],
+  );
+  const [openPanelIds, setOpenPanelIds] = useState<string[]>(() => defaultPanels.map((panel) => panel.id));
+  const [activePanelId, setActivePanelId] = useState<string>(() => layoutPreset.panelId);
 
   const panelParams = useMemo<WorkspaceDockPanelParams>(
     () => buildWorkspaceDockPanelParams({
@@ -475,101 +479,93 @@ export function WorkspaceDock({ boards, activeBoard, activeBoardDefinition, proj
     [activeBoard, activeBoardDefinition, assignPinAltFunction, boardEditor, boards, clearPinAssignment, clockConfigurator, error, focusRequest, hydratedPinStates, interruptConfigurator, loading, lvglLayout, moduleConfigurator, packageManager, peripheralConfigurator, pinAssignments, projectDocument, sensorParser, updateGeneratedConf, updateGeneratedOverlay, updatePinBooleanProperty, updateRenodeField, zephyrCatalog, addProtocolEntry, selectProtocolEntry, removeProtocolEntry, toggleProtocolEntry, updateProtocolEntryValue],
   );
 
-  const handleReady = useCallback((event: DockviewReadyEvent) => {
-    setDockApi(event.api);
-  }, []);
+  useEffect(() => {
+    const nextOpenPanelIds = defaultPanels.map((panel) => panel.id);
+    setOpenPanelIds(nextOpenPanelIds);
+    setActivePanelId(nextOpenPanelIds.includes(layoutPreset.panelId) ? layoutPreset.panelId : nextOpenPanelIds[0] ?? layoutPreset.panelId);
+  }, [defaultPanels, layoutPreset.panelId]);
 
   useEffect(() => {
-    if (!dockApi || initializedRef.current) {
+    if (!openPanelIds.length) {
+      setActivePanelId(layoutPreset.panelId);
       return;
     }
 
-    initializedRef.current = true;
-    skipNextLayoutSaveRef.current = true;
-    const persistedLayout = loadWorkspaceDockLayout(layoutPresetId);
-    const restoredPersistedLayout = restoreOrPopulateWorkspaceDock(
-      dockApi,
-      panelParams,
-      persistedLayout?.layout ?? null,
-      layoutPresetId,
-    );
-
-    if (!restoredPersistedLayout && persistedLayout) {
-      clearWorkspaceDockLayout(layoutPresetId);
+    if (!openPanelIds.includes(activePanelId)) {
+      setActivePanelId(openPanelIds[0] ?? layoutPreset.panelId);
     }
-
-    if (!restoredPersistedLayout) {
-      dockApi.getPanel(layoutPreset.panelId)?.api.setActive();
-    }
-  }, [dockApi, layoutPreset.panelId, layoutPresetId, panelParams]);
+  }, [activePanelId, layoutPreset.panelId, openPanelIds]);
 
   useEffect(() => {
-    if (!dockApi || !initializedRef.current) {
+    if (!focusRequest) {
       return;
     }
 
-    const disposable = dockApi.onDidLayoutChange(() => {
-      if (skipNextLayoutSaveRef.current) {
-        skipNextLayoutSaveRef.current = false;
-        return;
-      }
-
-      saveWorkspaceDockLayout(dockApi.toJSON(), layoutPresetId);
-    });
-
-    return () => {
-      disposable.dispose();
-    };
-  }, [dockApi, layoutPresetId]);
-
-  useEffect(() => {
-    if (!dockApi || !initializedRef.current) {
+    const panelDefinition = workspaceDockPanelDefinitions.find(({ id }) => id === focusRequest.panelId);
+    if (!panelDefinition) {
       return;
     }
 
-    workspaceDockPanelDefinitions.forEach(({ id: panelId }) => {
-      dockApi.getPanel(panelId)?.api.updateParameters(panelParams);
-    });
-  }, [dockApi, panelParams]);
+    setOpenPanelIds((current) => (current.includes(panelDefinition.id) ? current : [...current, panelDefinition.id]));
+    setActivePanelId(panelDefinition.id);
+  }, [focusRequest]);
 
-  useEffect(() => {
-    if (!dockApi || !initializedRef.current || !focusRequest) {
-      return;
-    }
-
-    let panel = dockApi.getPanel(focusRequest.panelId);
-    if (!panel) {
-      const panelDefinition = workspaceDockPanelDefinitions.find(({ id }) => id === focusRequest.panelId);
-      if (panelDefinition) {
-        panel = dockApi.addPanel({
-          id: panelDefinition.id,
-          title: panelDefinition.title,
-          component: panelDefinition.component,
-          params: panelParams,
-        });
-      }
-    }
-
-    if (!panel) {
-      return;
-    }
-
-    panel.api.setActive();
-    dockApi.focus();
-  }, [dockApi, focusRequest, panelParams]);
-
-  if (typeof ResizeObserver === "undefined") {
-    return (
-      <div className="dock-fallback" data-testid="workspace-dock-fallback">
-        <strong>Dockview preview</strong>
-        <span>The docked workspace activates in a full browser runtime with ResizeObserver support.</span>
-      </div>
-    );
-  }
+  const visiblePanels = openPanelIds
+    .map((panelId) => workspaceDockPanelDefinitions.find((panel) => panel.id === panelId))
+    .filter((panel): panel is (typeof workspaceDockPanelDefinitions)[number] => Boolean(panel));
+  const activePanelDefinition = visiblePanels.find((panel) => panel.id === activePanelId)
+    ?? defaultPanels[0]
+    ?? workspaceDockPanelDefinitions[0];
 
   return (
-    <div className="workspace-dock dockview-theme-light" data-testid="workspace-dock">
-      <DockviewReact components={dockComponents} onReady={handleReady} />
+    <div className="workspace-dock" data-testid="workspace-dock">
+      <div className="workspace-dock__tablist" role="tablist" aria-label="Workspace tabs">
+        {visiblePanels.map((panel) => {
+          const isActive = panel.id === activePanelId;
+          return (
+            <button
+              key={panel.id}
+              id={`workspace-dock-tab-${panel.id}`}
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              aria-controls={`workspace-dock-panel-${panel.id}`}
+              tabIndex={isActive ? 0 : -1}
+              title={panel.description}
+              onClick={() => setActivePanelId(panel.id)}
+            >
+              {panel.title}
+            </button>
+          );
+        })}
+      </div>
+      {visiblePanels.length ? (
+        visiblePanels.map((panel) => {
+          const PanelComponent = dockComponents[panel.component];
+          const isActive = panel.id === activePanelDefinition.id;
+          if (!PanelComponent) {
+            return null;
+          }
+
+          return (
+            <div
+              key={panel.id}
+              id={`workspace-dock-panel-${panel.id}`}
+              className={isActive ? "workspace-dock__panel workspace-dock__panel--active" : "workspace-dock__panel workspace-dock__panel--hidden"}
+              role="tabpanel"
+              aria-labelledby={`workspace-dock-tab-${panel.id}`}
+              hidden={!isActive}
+            >
+              <PanelComponent params={panelParams} />
+            </div>
+          );
+        })
+      ) : (
+        <div className="dock-fallback" data-testid="workspace-dock-fallback">
+          <strong>Workspace panel unavailable</strong>
+          <span>No dock panel is currently available for this workspace preset.</span>
+        </div>
+      )}
     </div>
   );
 }
