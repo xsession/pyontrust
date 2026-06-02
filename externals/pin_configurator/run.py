@@ -18,6 +18,8 @@ import pathlib
 import sys
 import webbrowser
 
+__version__ = "0.1.0"
+
 
 # Make sure package modules are importable
 _HERE = pathlib.Path(__file__).resolve().parent
