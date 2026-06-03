@@ -80,6 +80,15 @@ start.bat --port 5100
 REM → Override the default port when needed
 ```
 
+For a desktop-style Windows shell, you can also launch the React `/app`
+workspace inside Electron. The wrapper starts the Flask backend in the
+background and opens it in a native window:
+
+```bat
+start_electron.bat
+REM â†’ Installs Electron on first run, then launches the desktop shell
+```
+
 ### Using the West Extension (optional)
 
 If you are inside a Zephyr west workspace, you can register the configurator as
