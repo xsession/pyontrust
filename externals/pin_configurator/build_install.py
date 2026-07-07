@@ -23,7 +23,6 @@ if __name__ == "__main__":
     )
     app_builder.dependency_dirs = [
         (str(app_root / "web"), "web"),
-        (str(app_root / "frontend" / "dist"), "frontend/dist"),
         (str(app_root / "boards"), "boards"),
         (str(app_root / "testbench"), "testbench"),
         (str(app_root / "demo"), "demo"),

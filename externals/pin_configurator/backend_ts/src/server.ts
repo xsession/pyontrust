@@ -40,49 +40,8 @@ function boardEditorDir(rootDir: string): string {
   return path.join(boardsDir(rootDir), 'editor_json');
 }
 
-function frontendDistDir(rootDir: string): string {
-  return path.join(rootDir, 'frontend', 'dist');
-}
-
 function legacyWebDir(rootDir: string): string {
   return path.join(rootDir, 'web');
-}
-
-const frontendMimeTypes = new Map<string, string>([
-  ['.js', 'application/javascript'],
-  ['.css', 'text/css'],
-  ['.html', 'text/html'],
-  ['.json', 'application/json'],
-  ['.svg', 'image/svg+xml'],
-]);
-
-function sendFrontendBundleMissing(res: Response): void {
-  res.status(404).type('text/plain').send('Frontend bundle not found. Build the React workspace under frontend/ first.');
-}
-
-function sendFrontendAsset(res: Response, distDir: string, assetPath = 'index.html'): void {
-  if (!existsSync(distDir)) {
-    sendFrontendBundleMissing(res);
-    return;
-  }
-
-  const distRoot = path.resolve(distDir);
-  const requested = path.resolve(path.join(distRoot, assetPath));
-  if (requested !== distRoot && !requested.startsWith(`${distRoot}${path.sep}`)) {
-    res.sendStatus(404);
-    return;
-  }
-
-  if (existsSync(requested) && statSync(requested).isFile()) {
-    const mimeType = frontendMimeTypes.get(path.extname(requested).toLowerCase());
-    if (mimeType) {
-      res.type(mimeType);
-    }
-    res.sendFile(requested);
-    return;
-  }
-
-  res.type('html').sendFile(path.join(distRoot, 'index.html'));
 }
 
 function sanitizeBoardDraftName(value: string): string {
@@ -583,7 +542,6 @@ export function createApp(rootDir = pinConfiguratorRoot()): express.Express {
   const app = express();
   const upload = multer({ dest: uploadsDir(rootDir) });
   const webDir = legacyWebDir(rootDir);
-  const frontendDir = frontendDistDir(rootDir);
 
   void ensureDirectory(uploadsDir(rootDir));
 
@@ -1070,20 +1028,13 @@ export function createApp(rootDir = pinConfiguratorRoot()): express.Express {
     res.status(404).json({ error: 'Not found' });
   });
 
-  app.get('/app', (_req, res) => {
-    sendFrontendAsset(res, frontendDir);
-  });
-  app.get('/app/*', (req, res) => {
-    const wildcardParams = req.params as unknown as { '0'?: string | string[] };
-    const assetPath = Array.isArray(wildcardParams['0']) ? wildcardParams['0'][0] : wildcardParams['0'];
-    sendFrontendAsset(res, frontendDir, assetPath);
-  });
+  app.use(express.static(webDir));
 
   app.get('/', (_req, res) => {
-    res.redirect('/app');
+    res.sendFile(path.join(webDir, 'index.html'));
   });
   app.get('*', (_req, res) => {
-    res.redirect('/app');
+    res.redirect('/');
   });
 
   app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {

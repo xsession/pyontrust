@@ -29,8 +29,6 @@ import urllib.error
 import urllib.request
 import uuid
 import shutil
-import mimetypes
-
 from flask import Flask, jsonify, request, send_file, send_from_directory, Response
 import pdfplumber
 from werkzeug.utils import secure_filename
@@ -39,15 +37,6 @@ from werkzeug.utils import secure_filename
 _HERE = pathlib.Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
-
-_FRONTEND_DIST_DIR = _HERE / "frontend" / "dist"
-_FRONTEND_MIME_TYPES = {
-    ".js": "application/javascript",
-    ".css": "text/css",
-    ".html": "text/html",
-    ".json": "application/json",
-    ".svg": "image/svg+xml",
-}
 
 from board_schema import board_to_frontend
 from boards import BOARDS
@@ -815,39 +804,6 @@ def _extract_lvgl_layout_from_display_pdf(pdf_bytes: bytes, source: str) -> dict
 @app.route("/")
 def index():
     return send_from_directory(app.static_folder, "index.html")
-
-
-def _serve_frontend_asset(asset_path: str = "index.html"):
-    dist_dir = _FRONTEND_DIST_DIR
-    if not dist_dir.is_dir():
-        return Response(
-            "Frontend bundle not found. Build the React workspace under frontend/ first.",
-            status=404,
-            mimetype="text/plain",
-        )
-
-    requested = (dist_dir / asset_path).resolve()
-    dist_root = dist_dir.resolve()
-    if requested != dist_root and dist_root not in requested.parents:
-        return Response(status=404)
-
-    if requested.is_file():
-        mime_type = _FRONTEND_MIME_TYPES.get(requested.suffix.lower())
-        if not mime_type:
-            mime_type, _ = mimetypes.guess_type(str(requested))
-        return send_file(
-            requested,
-            mimetype=mime_type,
-            as_attachment=False,
-        )
-
-    return send_file(dist_root / "index.html", mimetype="text/html")
-
-
-@app.route("/app")
-@app.route("/app/<path:asset_path>")
-def frontend_app(asset_path: str = "index.html"):
-    return _serve_frontend_asset(asset_path)
 
 
 @app.route("/favicon.ico")

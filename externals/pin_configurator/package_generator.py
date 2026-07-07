@@ -537,7 +537,7 @@ def generate_board_files(
             f.write(source)
 
         generated.append(str(filepath))
-        print(f"  ✓ Generated {filepath}")
+        print(f"  [OK] Generated {filepath}")
 
     # Update __init__.py
     if register_in_init and generated:
@@ -622,4 +622,4 @@ def _update_init(boards_dir: pathlib.Path, soc: str,
                 f.write(ent + "\n")
             f.write("}\n")
 
-    print(f"  ✓ Updated {init_path}")
+    print(f"  [OK] Updated {init_path}")

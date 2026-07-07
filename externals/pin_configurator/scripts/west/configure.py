@@ -81,8 +81,8 @@ class Configure(WestCommand):
         )
         parser.add_argument(
             "--ui-path",
-            default=os.environ.get("PIN_CONFIGURATOR_UI_PATH", "/app"),
-            help="UI path to open in the browser (default: /app)",
+            default=os.environ.get("PIN_CONFIGURATOR_UI_PATH", "/"),
+            help="UI path to open in the browser (default: /)",
         )
         return parser
 

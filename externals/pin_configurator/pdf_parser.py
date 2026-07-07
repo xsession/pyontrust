@@ -99,6 +99,7 @@ class DatasheetInfo:
 # ────────────────────── compiled regex cache ─────────────────────────
 
 _RE_GPIO_PIN = re.compile(r'^P([A-K])(\d{1,2})$')
+_RE_NORDIC_GPIO_PIN = re.compile(r'^P([01])\.(\d{1,2})$')
 _RE_TI_PIN   = re.compile(r'^P([AB])(\d+)$')
 _RE_STM32_SOC = re.compile(r'STM32[A-Z]\d{3}[A-Z0-9]*', re.I)
 _RE_TI_SOC    = re.compile(r'MSPM0[A-Z]\d{4}', re.I)
@@ -107,7 +108,7 @@ _RE_PKG_TYPE  = re.compile(
     r'(LQFP|UFBGA|WLCSP|BGA|TFBGA|TSSOP|UFQFPN|QFN|QFP|TQFP|VFQFPN|HVQFN|'
     r'MAPBGA|EWLCSP|SO|SOIC|SSOP|CSP|MLF|TFLGA|FBGA)\s*[-]?\s*(\d+)', re.I)
 _RE_FUNC_SPLIT = re.compile(r'([A-Za-z][A-Za-z0-9]*)(?:_(.+))?')
-_RE_BGA_COORD  = re.compile(r'^([A-Z])(\d+)$')
+_RE_BGA_COORD  = re.compile(r'^([A-Z]{1,2})(\d+)$')
 
 # ── broad SOC-detection patterns (most specific first) ──
 _VENDOR_PATTERNS: list[tuple[str, re.Pattern]] = [
@@ -180,14 +181,23 @@ def _classify(name: str) -> str:
         return "ground"
     if u in _SPEC:
         return "special"
-    if _RE_GPIO_PIN.match(u):
+    if _RE_GPIO_PIN.match(u) or _RE_NORDIC_GPIO_PIN.match(u):
         return "io"
     return "special"
 
 
 def _port_gpio(name: str) -> tuple[str, int]:
-    m = _RE_GPIO_PIN.match(name.upper().strip())
+    normalized = name.upper().strip()
+    m = _RE_NORDIC_GPIO_PIN.match(normalized)
+    if m:
+        return (m.group(1), int(m.group(2)))
+    m = _RE_GPIO_PIN.match(normalized)
     return (m.group(1), int(m.group(2))) if m else ("", -1)
+
+
+def _extract_gpio_pin_name(value: str) -> str:
+    m = re.search(r'\b(P[01]\.\d{1,2}|P[A-K]\d{1,2}|GPIO_?\d+|IO\d+)\b', value or '', re.I)
+    return m.group(1).upper() if m else ""
 
 
 def _norm_periph(func_name: str) -> tuple[str, str]:
@@ -240,12 +250,19 @@ def _combine_table_headers(rows: list[list[str]], header_rows: int) -> list[str]
 
 
 def _looks_like_pin_name(value: str) -> bool:
-    return bool(re.search(r'(P[A-K]\d+|GPIO_?\d+|IO\d+)', value or '', re.I))
+    return bool(_extract_gpio_pin_name(value))
 
 
 def _looks_like_pin_number(value: str) -> bool:
     text = (value or '').strip().upper()
     return bool(_RE_BGA_COORD.match(text) or re.fullmatch(r'[\d\s/,-]+', text))
+
+
+def _bga_coord_number(row_letters: str, col: str) -> int:
+    row_num = 0
+    for ch in row_letters.upper():
+        row_num = row_num * 26 + (ord(ch) - 64)
+    return row_num * 100 + int(col)
 
 
 def _table_data_start(rows: list[list[str]], name_col: int) -> int:
@@ -304,10 +321,9 @@ def _generic_parse_pinmux_table(tbl: list[list[object]]) -> dict[str, list[PinMu
         raw_pin = row[pin_col].strip().upper() if row[pin_col] else ""
         if not _looks_like_pin_name(raw_pin):
             continue
-        m2 = re.search(r'(P[A-K]\d+|GPIO_?\d+|IO\d+)', raw_pin, re.I)
-        if not m2:
+        pin_name = _extract_gpio_pin_name(raw_pin)
+        if not pin_name:
             continue
-        pin_name = m2.group(1).upper()
 
         for ci, cname in func_cols:
             if ci >= len(row):
@@ -493,19 +509,20 @@ def _generic_parse_package_table(tbl: list[list[object]], page_text: str, fallba
                 continue
             ns = row[ci].strip() if row[ci] else ""
             nm = row[name_col].strip().upper() if row[name_col] else ""
-            if not ns or not _looks_like_pin_name(nm):
+            pin_name = _extract_gpio_pin_name(nm)
+            if not ns or not pin_name:
                 continue
             bm = _RE_BGA_COORD.match(ns.upper())
             if bm:
-                pnum = (ord(bm.group(1)) - 64) * 100 + int(bm.group(2))
+                pnum = _bga_coord_number(bm.group(1), bm.group(2))
             else:
                 digits = re.sub(r'[^\d]', '', ns)
                 if not digits:
                     continue
                 pnum = int(digits)
-            port, gn = _port_gpio(nm)
+            port, gn = _port_gpio(pin_name)
             packages.setdefault(pkg_name, []).append(
-                PackagePin(pnum, nm, port, gn, _classify(nm)))
+                PackagePin(pnum, pin_name, port, gn, _classify(pin_name)))
 
     return packages
 
@@ -526,6 +543,42 @@ def _extract_all_text(pdf: pdfplumber.PDF, max_workers: int = 1) -> list[str]:
         except Exception as exc:
             log.warning("Page %d text extraction failed: %s", idx + 1, exc)
             texts[idx] = ""
+    return texts
+
+
+def _extract_front_text(pdf: pdfplumber.PDF, pages: int = 12) -> list[str]:
+    texts: list[str] = []
+    for page in pdf.pages[:min(pages, len(pdf.pages))]:
+        try:
+            texts.append(page.extract_text() or "")
+        except Exception:
+            texts.append("")
+    return texts
+
+
+def _extract_nordic_text(pdf: pdfplumber.PDF, front_texts: list[str]) -> list[str]:
+    texts = [""] * len(pdf.pages)
+    for idx, text in enumerate(front_texts[:len(texts)]):
+        texts[idx] = text
+
+    start = max(len(front_texts), int(len(pdf.pages) * 0.90))
+    found_pin_assignments = False
+    pages_after_pin_assignments = 0
+
+    for idx in range(start, len(pdf.pages)):
+        try:
+            text = pdf.pages[idx].extract_text() or ""
+        except Exception:
+            text = ""
+        texts[idx] = text
+
+        if re.search(r'\b7\.1\s+Pin\s+assignments\b', text, re.I):
+            found_pin_assignments = True
+        elif found_pin_assignments:
+            pages_after_pin_assignments += 1
+            if pages_after_pin_assignments > 40 or re.search(r'\b7\.[23]\s+', text, re.I):
+                break
+
     return texts
 
 
@@ -940,7 +993,7 @@ def _stm32_parse_pindef(tables: list[list[list[str]]]) -> tuple[list[PackageInfo
                     continue
                 bm = _RE_BGA_COORD.match(cell.upper())
                 if bm:
-                    pnum = (ord(bm.group(1)) - 64) * 100 + int(bm.group(2))
+                    pnum = _bga_coord_number(bm.group(1), bm.group(2))
                 else:
                     try:
                         pnum = int(re.sub(r'[^\d]', '', cell))
@@ -1038,6 +1091,176 @@ def _generic_find_packages(pdf: pdfplumber.PDF, texts: list[str]) -> list[Packag
 #  Vendor-specific parse pipelines
 # ═══════════════════════════════════════════════════════════════════════
 
+def _nordic_package_from_heading(text: str, current: str | None) -> str | None:
+    if re.search(r'\bLeft\s+side\s+of\s+the\s+chip\b', text, re.I):
+        return "QFN48"
+    m = re.search(r'\b(aQFN\s*73|QFN\s*48|WLCSP)\s+(?:ball|pin)\s+assignments', text, re.I)
+    if m:
+        return re.sub(r'\s+', '', m.group(1)).upper()
+    return current
+
+
+def _nordic_pin_number(pin_cell: str) -> int:
+    text = pin_cell.strip()
+    bm = _RE_BGA_COORD.match(text.upper())
+    if bm:
+        return _bga_coord_number(bm.group(1), bm.group(2))
+    if re.fullmatch(r'\d+', text):
+        return int(text)
+    if re.search(r'die\s+pad', text, re.I):
+        return 0
+    return -1
+
+
+def _nordic_pin_name(name_cell: str) -> str:
+    gpio = _extract_gpio_pin_name(name_cell)
+    if gpio:
+        return gpio
+    return re.sub(r'\s+', '_', name_cell.strip().upper())
+
+
+def _nordic_extra_functions(name_cell: str, description: str, recommended: str) -> list[str]:
+    source = f"{name_cell} {description} {recommended}".upper()
+    source = source.replace("NRESET", "RESET")
+    funcs: list[str] = []
+
+    for token in re.findall(r'\b(?:AIN\d+|NFC\d+|XL\d+|XC\d+|TRACECLK|TRACEDATA\d+|SWO|RESET)\b', source):
+        funcs.append("nRESET" if token == "RESET" else token)
+
+    for qspi in re.findall(r'\bQSPI(?:[/_\s-]*(CSN|SCK|IO[0-3]))?\b', source):
+        funcs.append(f"QSPI_{qspi}" if qspi else "QSPI")
+
+    seen: set[str] = set()
+    unique: list[str] = []
+    for fn in funcs:
+        key = fn.upper()
+        if key not in seen:
+            seen.add(key)
+            unique.append(fn)
+    return unique
+
+
+def _nordic_rows_from_text(text: str) -> list[list[str]]:
+    rows: list[list[str]] = []
+    row_re = re.compile(
+        r'^(Die pad|[A-Z]{1,2}\d+|\d+)\s+'
+        r'([A-Z0-9+/\-.]+(?:\s+(?:AIN\d+|NFC\d+|XL\d+|XC\d+|TRACECLK|TRACEDATA\d+|nRESET))?)\s+'
+        r'(Digital I/O|Power|Analog input|USB|RF|Debug)\b\s*(.*)$',
+        re.I)
+    for raw_line in text.splitlines():
+        line = re.sub(r'\s+', ' ', raw_line).strip()
+        m = row_re.match(line)
+        if not m:
+            continue
+        rows.append([m.group(1), m.group(2), m.group(3), m.group(4), m.group(4)])
+    return rows
+
+
+def _nordic_record_assignment_row(
+    current_pkg: str,
+    row: list[str],
+    raw: dict[str, list[PackagePin]],
+    mux: dict[str, list[PinMuxEntry]],
+) -> None:
+    if len(row) < 5:
+        return
+    if re.match(r'^Pin$', row[0], re.I) and re.match(r'^Name$', row[1], re.I):
+        return
+
+    pin_number = _nordic_pin_number(row[0])
+    if pin_number < 0:
+        return
+
+    pin_name = _nordic_pin_name(row[1])
+    if not pin_name:
+        return
+
+    port, gpio_num = _port_gpio(pin_name)
+    kind = _classify(pin_name)
+    if "POWER" in row[2].upper():
+        kind = "ground" if "GROUND" in row[3].upper() or pin_name.startswith("VSS") else "power"
+
+    raw.setdefault(current_pkg, []).append(PackagePin(pin_number, pin_name, port, gpio_num, kind))
+
+    if not _RE_NORDIC_GPIO_PIN.match(pin_name):
+        return
+
+    gpio_periph = f"gpio{port}" if port else "gpio"
+    gpio_func = f"GPIO{port}_{gpio_num:02d}" if port else "GPIO"
+    mux.setdefault(pin_name, []).append(PinMuxEntry(
+        pin_name, -1, -1, gpio_func, gpio_periph, str(gpio_num), "io"))
+
+    for fn in _nordic_extra_functions(row[1], row[3], row[4]):
+        fn_norm = fn.upper().replace("/", "_")
+        periph, signal = _norm_periph(fn_norm)
+        mux.setdefault(pin_name, []).append(PinMuxEntry(
+            pin_name, -1, -1, fn_norm, periph, signal, _guess_dir(fn_norm, signal)))
+
+
+def _nordic_find_pin_assignments(pdf: pdfplumber.PDF, texts: list[str]) -> tuple[list[PackageInfo], dict[str, list[PinMuxEntry]]]:
+    pages = [idx for idx, text in enumerate(texts) if text]
+    if not pages:
+        return [], {}
+
+    raw: dict[str, list[PackagePin]] = {}
+    mux: dict[str, list[PinMuxEntry]] = {}
+    current_pkg: str | None = None
+    in_pin_assignments = False
+
+    for idx in sorted(set(pages)):
+        text = texts[idx]
+        if not in_pin_assignments:
+            if re.search(r'\b7\.1\s+Pin\s+assignments\b', text, re.I):
+                in_pin_assignments = True
+            else:
+                continue
+        if current_pkg and re.search(r'\b7\.[23]\s+', text, re.I):
+            break
+        current_pkg = _nordic_package_from_heading(text, current_pkg)
+        if not current_pkg:
+            continue
+
+        try:
+            page_tables = pdf.pages[idx].extract_tables()
+        except Exception:
+            continue
+
+        for tbl in page_tables:
+            for row in _clean_table_rows(tbl):
+                _nordic_record_assignment_row(current_pkg, row, raw, mux)
+
+        for row in _nordic_rows_from_text(text):
+            _nordic_record_assignment_row(current_pkg, row, raw, mux)
+
+    packages: list[PackageInfo] = []
+    for name, pins in raw.items():
+        seen: set[int] = set()
+        uniq: list[PackagePin] = []
+        for pin in pins:
+            if pin.number in seen:
+                continue
+            seen.add(pin.number)
+            uniq.append(pin)
+        uniq.sort(key=lambda pin: pin.number)
+        m = re.search(r'(\d+)', name)
+        packages.append(PackageInfo(name, int(m.group(1)) if m else len(uniq), uniq))
+
+    packages.sort(key=lambda pkg: (pkg.pin_count, pkg.name))
+
+    for pin_name, entries in list(mux.items()):
+        seen_entries: set[tuple[int, str]] = set()
+        unique_entries: list[PinMuxEntry] = []
+        for entry in entries:
+            key = (entry.function_id, entry.function_name)
+            if key in seen_entries:
+                continue
+            seen_entries.add(key)
+            unique_entries.append(entry)
+        mux[pin_name] = unique_entries
+
+    return packages, mux
+
+
 def _parse_ti(pdf: pdfplumber.PDF, texts: list[str]) -> DatasheetInfo:
     info = DatasheetInfo(device=_extract_summary(texts, "ti"))
     pincm = _ti_find_pincm(pdf, texts)
@@ -1071,6 +1294,19 @@ def _parse_stm32_like(pdf: pdfplumber.PDF, texts: list[str], vendor: str) -> Dat
         info.packages = _generic_find_packages(pdf, texts)
     log.info("STM32-like(%s): %s  flash=%dKB sram=%dKB  pins=%d  pkgs=%d",
              vendor, info.device.soc, info.device.flash_size_kb,
+             info.device.sram_size_kb, len(info.pin_mux), len(info.packages))
+    return info
+
+
+def _parse_nordic(pdf: pdfplumber.PDF, texts: list[str]) -> DatasheetInfo:
+    info = DatasheetInfo(device=_extract_summary(texts, "nordic"))
+    info.packages, info.pin_mux = _nordic_find_pin_assignments(pdf, texts)
+    if not info.packages:
+        info.packages = _generic_find_packages(pdf, texts)
+    if not info.pin_mux:
+        info.pin_mux = _generic_find_pinmux(pdf, texts)
+    log.info("Nordic: %s  flash=%dKB sram=%dKB  pins=%d  pkgs=%d",
+             info.device.soc, info.device.flash_size_kb,
              info.device.sram_size_kb, len(info.pin_mux), len(info.packages))
     return info
 
@@ -1116,11 +1352,17 @@ def parse_datasheet(pdf_path: str, verbose: bool = False) -> DatasheetInfo:
     log.info("Parsing datasheet: %s", pdf_path)
 
     with pdfplumber.open(pdf_path) as pdf:
+        front_texts = _extract_front_text(pdf)
+        vendor = _detect_vendor(front_texts)
+        log.info("Detected vendor: %s", vendor)
+
+        if vendor == "nordic":
+            texts = _extract_nordic_text(pdf, front_texts)
+            log.info("Extracted Nordic front matter and pin-assignment pages from %d-page PDF", len(texts))
+            return _parse_nordic(pdf, texts)
+
         texts = _extract_all_text(pdf)
         log.info("Extracted text from %d pages", len(texts))
-
-        vendor = _detect_vendor(texts)
-        log.info("Detected vendor: %s", vendor)
 
         if vendor == "ti":
             return _parse_ti(pdf, texts)

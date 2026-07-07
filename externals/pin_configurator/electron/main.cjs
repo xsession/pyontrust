@@ -7,7 +7,7 @@ const path = require("path");
 const APP_ROOT = path.resolve(__dirname, "..");
 const BACKEND_HOST = "127.0.0.1";
 const BACKEND_PORT = Number.parseInt(process.env.PIN_CONFIGURATOR_PORT || "4124", 10);
-const BACKEND_URL = `http://${BACKEND_HOST}:${BACKEND_PORT}/app`;
+const BACKEND_URL = `http://${BACKEND_HOST}:${BACKEND_PORT}/`;
 const BACKEND_WAIT_TIMEOUT_MS = 30_000;
 const BACKEND_WAIT_STEP_MS = 500;
 
@@ -84,7 +84,7 @@ function startBackend() {
     "--port",
     String(BACKEND_PORT),
     "--ui-path",
-    "/app",
+    "/",
   ];
 
   backendProcess = spawn(python.command, args, {
