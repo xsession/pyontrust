@@ -22,7 +22,7 @@ bp = Blueprint(
     "artifacts",
     __name__,
     static_folder=str(_WEB_DIR),
-    static_url_path="/artifacts/static",
+    static_url_path="/static",
 )
 
 

@@ -8,13 +8,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -31,6 +32,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import com.pyontrust.android.MainUiState
 import com.pyontrust.android.data.MeasurementProfile
@@ -55,6 +59,7 @@ fun PyontrustApp(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .navigationBarsPadding()
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -76,13 +81,42 @@ private fun StatusCard(state: MainUiState) {
         ) {
             Text("Live status", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                AssistChip(onClick = {}, label = { Text(if (state.isConnected) "USB connected" else "USB disconnected") })
-                AssistChip(onClick = {}, label = { Text(if (state.isRunning) "Measurement running" else "Measurement idle") })
-                AssistChip(onClick = {}, label = { Text("Latest: ${state.latestReading}") })
+                StatusBadge(
+                    text = if (state.isConnected) "USB connected" else "USB disconnected",
+                    active = state.isConnected,
+                )
+                StatusBadge(
+                    text = if (state.isRunning) "Measurement running" else "Measurement idle",
+                    active = state.isRunning,
+                )
+                StatusBadge(text = "Latest reading: ${state.latestReading}")
             }
             Text("State: ${state.status}")
             Text("Device: ${state.connectedDeviceLabel ?: "None"}")
         }
+    }
+}
+
+@Composable
+private fun StatusBadge(text: String, active: Boolean? = null) {
+    val containerColor = when (active) {
+        true -> MaterialTheme.colorScheme.primaryContainer
+        false -> MaterialTheme.colorScheme.surfaceVariant
+        null -> MaterialTheme.colorScheme.secondaryContainer
+    }
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics { stateDescription = text },
+        shape = RoundedCornerShape(12.dp),
+        color = containerColor,
+        tonalElevation = 1.dp,
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            style = MaterialTheme.typography.labelLarge,
+        )
     }
 }
 
@@ -99,9 +133,19 @@ private fun DeviceCard(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text("USB hardware", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(onClick = onRefreshDevices) { Text("Refresh") }
-                OutlinedButton(onClick = onDisconnect, enabled = state.isConnected || state.isConnecting) { Text("Disconnect") }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Button(
+                    onClick = onRefreshDevices,
+                    modifier = Modifier.weight(1f),
+                ) { Text("Refresh") }
+                OutlinedButton(
+                    onClick = onDisconnect,
+                    enabled = state.isConnected || state.isConnecting,
+                    modifier = Modifier.weight(1f),
+                ) { Text("Disconnect") }
             }
             if (state.devices.isEmpty()) {
                 Text("No USB devices discovered yet.")
@@ -115,7 +159,11 @@ private fun DeviceCard(
                         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(device.productName, fontWeight = FontWeight.SemiBold)
                             Text("VID:PID ${device.vendorId.toString(16)}:${device.productId.toString(16)}")
-                            OutlinedButton(onClick = { onConnectDevice(device.deviceId) }, enabled = !state.isConnecting) {
+                            OutlinedButton(
+                                onClick = { onConnectDevice(device.deviceId) },
+                                enabled = !state.isConnecting,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
                                 Text("Connect")
                             }
                         }
@@ -148,18 +196,22 @@ private fun ProfileCard(
                 label = { Text("Profile name") },
                 modifier = Modifier.fillMaxWidth(),
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
                     value = profile.sampleRateHz,
                     onValueChange = { onProfileChange(profile.copy(sampleRateHz = it)) },
                     label = { Text("Sample rate Hz") },
-                    modifier = Modifier.weight(1f),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
                 )
                 OutlinedTextField(
                     value = profile.durationSeconds,
                     onValueChange = { onProfileChange(profile.copy(durationSeconds = it)) },
                     label = { Text("Duration s") },
-                    modifier = Modifier.weight(1f),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
                 )
             }
             OutlinedTextField(
@@ -199,9 +251,21 @@ private fun ProfileCard(
                 fontFamily = FontFamily.Monospace,
             )
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(onClick = onApplyProfile, enabled = isConnected) { Text("Apply") }
-                Button(onClick = onStartMeasurement, enabled = isConnected && !isRunning) { Text("Start") }
-                OutlinedButton(onClick = onStopMeasurement, enabled = isConnected && isRunning) { Text("Stop") }
+                OutlinedButton(
+                    onClick = onApplyProfile,
+                    enabled = isConnected,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Apply profile") }
+                Button(
+                    onClick = onStartMeasurement,
+                    enabled = isConnected && !isRunning,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Start measurement") }
+                OutlinedButton(
+                    onClick = onStopMeasurement,
+                    enabled = isConnected && isRunning,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Stop measurement") }
             }
         }
     }

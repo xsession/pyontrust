@@ -39,7 +39,7 @@
       cursor: pointer; border-bottom: 2px solid transparent;
       transition: color 0.15s, border-color 0.15s; white-space: nowrap;
       background: none; border-top: none; border-left: none; border-right: none;
-      font-family: inherit;
+      font-family: inherit; flex: 0 0 auto;
     }
     .ifdoc-tab:hover { color: var(--fg); background: var(--bg3); }
     .ifdoc-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
@@ -81,17 +81,38 @@
     .ifdoc-statusbar .status-dot.ok { background: var(--green); }
     .ifdoc-statusbar .status-dot.err { background: var(--red); }
     .ifdoc-statusbar .status-dot.demo { background: var(--yellow); }
+
+    body { padding-bottom: 34px; }
+    .ifdoc-panel { overflow-x: auto; }
+    .ifdoc-panel table { min-width: 560px; }
+    .ifdoc-statusbar { max-width: 100%; overflow-x: auto; white-space: nowrap; }
+    .ifdoc-statusbar > * { flex-shrink: 0; }
+    @media (max-width: 680px) {
+      .ifdoc-header { align-items: flex-start; flex-wrap: wrap; padding: 10px 12px; }
+      .ifdoc-header h1 { width: 100%; }
+      .ifdoc-header .mode-toggle { margin-left: 0; }
+      .ifdoc-tabs { padding-inline: 8px; }
+      .ifdoc-tab { min-height: 40px; padding: 8px 12px; }
+      .ifdoc-content { padding: 9px; }
+      .ifdoc-panel { padding: 10px; }
+      .ifdoc-panel .ifdoc-row { align-items: stretch; }
+      .ifdoc-panel .ifdoc-row > label:first-child { width: 100%; min-width: 0; }
+      .ifdoc-panel input[type=number], .ifdoc-panel input[type=text], .ifdoc-panel select { min-width: 110px; width: auto; flex: 1 1 110px; }
+      .ifdoc-panel button { min-height: 40px; }
+      .ifdoc-statusbar { padding: 6px 10px; gap: 12px; }
+    }
   </style>
+  <link rel="stylesheet" href="/static/shell/ui-foundation.css">
 </head>
 <body>
 
 <!-- ── Header ─────────────────────────────────────────────────── -->
 <header class="ifdoc-header">
   <h1>⚡ Interface Control Panel</h1>
-  <div class="mode-toggle">
+  <label class="mode-toggle">
     <input type="checkbox" id="demo-mode" checked>
-    <label for="demo-mode">Demo mode (mock responses)</label>
-  </div>
+    <span>Demo mode (mock responses)</span>
+  </label>
 </header>
 
 <!-- ── Tabs ────────────────────────────────────────────────────── -->
@@ -105,7 +126,7 @@
 </nav>
 
 <!-- ── Tab panels ─────────────────────────────────────────────── -->
-<div class="ifdoc-content">
+<main class="ifdoc-content">
 
   <!-- ══ CANopen ══════════════════════════════════════════════ -->
   <div class="ifdoc-tab-panel active" id="panel-canopen">
@@ -511,11 +532,11 @@
     </div>
   </div>
 
-</div><!-- /ifdoc-content -->
+</main><!-- /ifdoc-content -->
 
 <!-- ── Status bar ─────────────────────────────────────────────── -->
-<footer class="ifdoc-statusbar">
-  <span><span class="status-dot demo" id="conn-dot"></span><span id="conn-text">Demo mode</span></span>
+<footer class="ifdoc-statusbar" role="status" aria-live="polite">
+  <span><span class="status-dot demo" id="conn-dot" aria-hidden="true"></span><span id="conn-text">Demo mode</span></span>
   <span id="req-counter">Requests: 0</span>
   <span id="last-req">Last: —</span>
 </footer>
@@ -532,12 +553,23 @@
   const demoToggle = eid("demo-mode");
 
   // ── Tab switching ──────────────────────────────────────────
+  document.querySelectorAll(".ifdoc-tab").forEach((tab, index) => {
+    tab.setAttribute("role", "tab");
+    tab.setAttribute("aria-selected", index === 0 ? "true" : "false");
+    tab.tabIndex = index === 0 ? 0 : -1;
+  });
+  document.querySelectorAll(".ifdoc-tab-panel").forEach((panel, index) => {
+    panel.setAttribute("role", "tabpanel");
+    panel.hidden = index !== 0;
+  });
+
   document.querySelectorAll(".ifdoc-tab").forEach(tab => {
     tab.addEventListener("click", () => {
-      document.querySelectorAll(".ifdoc-tab").forEach(t => t.classList.remove("active"));
-      document.querySelectorAll(".ifdoc-tab-panel").forEach(p => p.classList.remove("active"));
-      tab.classList.add("active");
-      eid("panel-" + tab.dataset.tab).classList.add("active");
+      document.querySelectorAll(".ifdoc-tab").forEach(t => { t.classList.remove("active"); t.setAttribute("aria-selected", "false"); t.tabIndex = -1; });
+      document.querySelectorAll(".ifdoc-tab-panel").forEach(p => { p.classList.remove("active"); p.hidden = true; });
+      tab.classList.add("active"); tab.setAttribute("aria-selected", "true"); tab.tabIndex = 0;
+      const panel = eid("panel-" + tab.dataset.tab);
+      panel.classList.add("active"); panel.hidden = false;
     });
   });
 
@@ -677,5 +709,6 @@
 })();
 </script>
 
+  <script src="/static/shell/ui-foundation.js"></script>
 </body>
 </html>

@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CSV Data Analyzer</title>
   <link rel="stylesheet" href="/csv/static/app.css">
+  <link rel="stylesheet" href="/static/shell/ui-foundation.css">
 </head>
 <body>
   <div class="app-shell">
@@ -73,11 +74,11 @@
           <button id="browse-up-btn" class="btn" type="button">Up</button>
         </div>
         <div class="browser-path-row">
-          <select id="roots-select"></select>
+          <label class="sr-only" for="roots-select">Filesystem root</label><select id="roots-select"></select>
           <button id="open-root-btn" class="btn" type="button">Open</button>
         </div>
         <div class="browser-path-row">
-          <input id="browser-path-input" type="text" placeholder="Browse path">
+          <label class="sr-only" for="browser-path-input">Browser path</label><input id="browser-path-input" type="text" placeholder="Browse path">
           <button id="browse-path-btn" class="btn" type="button">Go</button>
         </div>
         <div class="browser-columns">
@@ -111,7 +112,7 @@
           <div class="section-head">
             <h2 id="active-title">Plot</h2>
             <div class="inline-actions">
-              <select id="export-data-format">
+              <label class="sr-only" for="export-data-format">Export data format</label><select id="export-data-format">
                 <option value="csv">csv</option>
                 <option value="txt">txt</option>
                 <option value="json">json</option>
@@ -149,7 +150,7 @@
               <div id="signal-panel-summary" class="panel-summary">0 selected</div>
             </div>
             <div class="signal-toolbar">
-              <input id="signal-filter-input" type="text" placeholder="Filter signals">
+              <label class="sr-only" for="signal-filter-input">Filter signal roster</label><input id="signal-filter-input" type="search" placeholder="Filter signals">
               <div class="inline-actions signal-actions">
                 <button id="signal-select-visible-btn" class="btn" type="button">Include visible</button>
                 <button id="signal-clear-visible-btn" class="btn" type="button">Clear visible</button>
@@ -293,7 +294,7 @@
           <div class="section-head small">
             <h3>Custom code</h3>
           </div>
-          <textarea id="custom-code-input" rows="10" spellcheck="false" placeholder="def transform(x, signals, df):
+          <label class="sr-only" for="custom-code-input">Custom transform code</label><textarea id="custom-code-input" rows="10" spellcheck="false" placeholder="def transform(x, signals, df):
     return {name: series.diff().fillna(0) for name, series in signals.items()}"></textarea>
         </section>
 
@@ -315,7 +316,7 @@
             <h3>Overlays</h3>
           </div>
           <div class="browser-path-row">
-            <input id="overlay-path-input" type="text" placeholder="C:\\data\\overlay.csv">
+            <label class="sr-only" for="overlay-path-input">Overlay CSV path</label><input id="overlay-path-input" type="text" placeholder="C:\\data\\overlay.csv">
             <button id="add-overlay-btn" class="btn" type="button">Add</button>
           </div>
           <div id="overlay-list" class="overlay-list"></div>
@@ -324,7 +325,7 @@
     </main>
 
     <footer class="statusbar">
-      <div id="statusbar-message" class="statusbar-message">Ready</div>
+      <div id="statusbar-message" class="statusbar-message" role="status" aria-live="polite">Ready</div>
       <div class="statusbar-meta">
         <span id="statusbar-file">File: (none)</span>
         <span id="statusbar-shape">Rows: 0  Cols: 0</span>
@@ -334,5 +335,6 @@
   </div>
 
   <script src="/csv/static/app.js"></script>
+  <script src="/static/shell/ui-foundation.js"></script>
 </body>
 </html>

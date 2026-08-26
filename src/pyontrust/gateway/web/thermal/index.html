@@ -152,17 +152,42 @@ header .status-pill.simulated    { background: rgba(249,226,175,.15); color: var
   padding: 10px; font-family: monospace; font-size: 11px; color: var(--teal);
   max-height: 200px; overflow-y: auto; white-space: pre-wrap; margin-top: 8px;
 }
+
+.zone-scroll { max-width: 100%; overflow-x: auto; padding-bottom: 3px; }
+.zone-scroll .zone-header, .zone-scroll .zone-item { min-width: 585px; }
+.zone-item .del-btn { min-width: 34px; }
+@media (max-width: 720px) {
+  .container { padding: 10px; }
+  header { align-items: flex-start; flex-wrap: wrap; gap: 9px; }
+  header h1 { width: 100%; font-size: 19px; }
+  header > span[style] { display: none; }
+  header .btn { margin-left: auto; }
+  .tabs { max-width: 100%; overflow-x: auto; white-space: nowrap; scrollbar-width: thin; }
+  .tab-btn { flex: 0 0 auto; min-height: 40px; padding: 8px 13px; }
+  .form-row { grid-template-columns: 1fr; }
+  .btn-bar { display: grid; grid-template-columns: 1fr 1fr; }
+  .btn-bar .btn { width: 100%; }
+  .stats-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .report-item { align-items: flex-start; flex-direction: column; }
+}
+@media (max-width: 420px) {
+  .card { padding: 12px; }
+  .stats-grid { grid-template-columns: 1fr 1fr; gap: 7px; }
+  .stat-box { padding: 9px; }
+  .stat-box .val { font-size: 18px; }
+}
 </style>
+  <link rel="stylesheet" href="/static/shell/ui-foundation.css">
 </head>
 <body>
-<div class="container">
+<main class="container">
 
 <!-- ═══ Header ═══ -->
 <header>
   <h1>🌡️ Thermal Measurement</h1>
   <span id="cam-status" class="status-pill disconnected">checking…</span>
   <span style="flex:1"></span>
-  <button class="btn btn-secondary" onclick="refreshStatus()">↻ Refresh</button>
+  <button class="btn btn-secondary" type="button" onclick="refreshStatus()">↻ Refresh status</button>
 </header>
 
 <!-- ═══ Tabs ═══ -->
@@ -308,11 +333,13 @@ header .status-pill.simulated    { background: rgba(249,226,175,.15); color: var
   <!-- Zones -->
   <div class="card">
     <h3>🎯 Thermal Zones</h3>
-    <div class="zone-header">
-      <span>Name</span><span>X</span><span>Y</span><span>W</span><span>H</span>
-      <span>Warn°C</span><span>Max°C</span><span></span>
+    <div class="zone-scroll" tabindex="0" aria-label="Thermal zone coordinate editor">
+      <div class="zone-header" aria-hidden="true">
+        <span>Name</span><span>X</span><span>Y</span><span>W</span><span>H</span>
+        <span>Warn°C</span><span>Max°C</span><span></span>
+      </div>
+      <div class="zone-list" id="zone-list"></div>
     </div>
-    <div class="zone-list" id="zone-list"></div>
     <button class="btn btn-secondary" onclick="addZone()" style="margin-top:6px">+ Add Zone</button>
   </div>
 
@@ -396,18 +423,26 @@ header .status-pill.simulated    { background: rgba(249,226,175,.15); color: var
   </div>
 </div>
 
-</div><!-- /container -->
+</main><!-- /container -->
 
 <script>
 /* ═══════════════════════════════════════════════════════════════════
  *  Tab switching
  * ═══════════════════════════════════════════════════════════════════ */
+document.querySelectorAll('.tab-btn').forEach((btn, index) => {
+  btn.setAttribute('role', 'tab');
+  btn.setAttribute('aria-selected', index === 0 ? 'true' : 'false');
+  btn.tabIndex = index === 0 ? 0 : -1;
+});
+document.querySelectorAll('.tab-panel').forEach((panel, index) => { panel.setAttribute('role', 'tabpanel'); panel.hidden = index !== 0; });
+
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-    btn.classList.add('active');
-    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    document.querySelectorAll('.tab-btn').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-selected', 'false'); b.tabIndex = -1; });
+    document.querySelectorAll('.tab-panel').forEach(p => { p.classList.remove('active'); p.hidden = true; });
+    btn.classList.add('active'); btn.setAttribute('aria-selected', 'true'); btn.tabIndex = 0;
+    const activePanel = document.getElementById('tab-' + btn.dataset.tab);
+    activePanel.classList.add('active'); activePanel.hidden = false;
     if (btn.dataset.tab === 'reports') loadReports();
     if (btn.dataset.tab === 'results') loadResult();
   });
@@ -433,14 +468,14 @@ function renderZones() {
   const list = document.getElementById('zone-list');
   list.innerHTML = zones.map((z, i) =>
     `<div class="zone-item">
-      <input value="${z.name}" onchange="zones[${i}].name=this.value">
-      <input type="number" value="${z.x}" onchange="zones[${i}].x=+this.value">
-      <input type="number" value="${z.y}" onchange="zones[${i}].y=+this.value">
-      <input type="number" value="${z.w}" onchange="zones[${i}].w=+this.value">
-      <input type="number" value="${z.h}" onchange="zones[${i}].h=+this.value">
-      <input type="number" value="${z.warn}" onchange="zones[${i}].warn=+this.value">
-      <input type="number" value="${z.max}" onchange="zones[${i}].max=+this.value">
-      <button class="del-btn" onclick="zones.splice(${i},1);renderZones()">✕</button>
+      <input aria-label="Zone ${i + 1} name" value="${String(z.name).replace(/&/g, '&amp;').replace(/"/g, '&quot;')}" onchange="zones[${i}].name=this.value">
+      <input aria-label="Zone ${i + 1} X coordinate" type="number" value="${z.x}" onchange="zones[${i}].x=+this.value">
+      <input aria-label="Zone ${i + 1} Y coordinate" type="number" value="${z.y}" onchange="zones[${i}].y=+this.value">
+      <input aria-label="Zone ${i + 1} width" type="number" value="${z.w}" onchange="zones[${i}].w=+this.value">
+      <input aria-label="Zone ${i + 1} height" type="number" value="${z.h}" onchange="zones[${i}].h=+this.value">
+      <input aria-label="Zone ${i + 1} warning temperature" type="number" value="${z.warn}" onchange="zones[${i}].warn=+this.value">
+      <input aria-label="Zone ${i + 1} maximum temperature" type="number" value="${z.max}" onchange="zones[${i}].max=+this.value">
+      <button class="del-btn" type="button" aria-label="Delete zone ${i + 1}" onclick="zones.splice(${i},1);renderZones()">✕</button>
     </div>`
   ).join('');
 }
@@ -593,11 +628,8 @@ async function pollProgress() {
       pollTimer = null;
       resetUI();
       loadResult();
-      // Switch to results tab
-      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-      document.querySelector('[data-tab="results"]').classList.add('active');
-      document.getElementById('tab-results').classList.add('active');
+      // Switch through the same accessible tab handler used for pointer and keyboard input.
+      document.querySelector('[data-tab="results"]').click();
     }
   } catch (e) {
     // ignore transient fetch errors
@@ -755,5 +787,6 @@ async function loadReports() {
  * ═══════════════════════════════════════════════════════════════════ */
 refreshStatus();
 </script>
+  <script src="/static/shell/ui-foundation.js"></script>
 </body>
 </html>

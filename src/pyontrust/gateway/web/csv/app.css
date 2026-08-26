@@ -490,13 +490,18 @@ p {
 }
 
 .empty-state {
-  position: absolute;
-  inset: 0;
   display: grid;
   place-items: center;
+  min-height: 150px;
   padding: 2rem;
   text-align: center;
   color: var(--fg-dim);
+}
+
+.canvas-frame > .empty-state {
+  position: absolute;
+  inset: 0;
+  min-height: 0;
   pointer-events: none;
 }
 

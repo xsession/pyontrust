@@ -115,6 +115,12 @@
     #send-log{max-height:150px;overflow:auto;background:var(--bg);
               border:1px solid var(--border);border-radius:var(--radius);
               padding:4px;font-size:10px;color:var(--fg-dim);margin-top:8px;}
+    #saved-frames{display:grid;gap:5px;}
+    .saved-frame-row{display:grid;grid-template-columns:minmax(52px,auto) minmax(0,1fr) auto auto;
+                     gap:6px;align-items:center;padding:5px 0;border-bottom:1px solid var(--bg3);}
+    .saved-frame-id{color:var(--can-blue);font-weight:700;}
+    .saved-frame-data{color:var(--can-green);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    .saved-frame-row .btn{min-width:48px;padding-inline:8px;}
 
     /* ── Export panel ─────────────────────────────────────────── */
     .export-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;}
@@ -139,68 +145,118 @@
     ::-webkit-scrollbar{width:6px;height:6px;}
     ::-webkit-scrollbar-track{background:var(--bg);}
     ::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:3px;}
+
+    #can-workspace{flex:1;min-height:0;display:flex;overflow:hidden;}
+    #toolbar,#tab-bar,#statusbar{max-width:100%;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;}
+    #toolbar>* ,#tab-bar>* ,#statusbar>*{flex-shrink:0;}
+    #toolbar .title{margin-top:0;margin-bottom:0;white-space:nowrap;}
+    .toolbar-group{display:flex;align-items:center;gap:6px;min-width:0;}
+    .toolbar-group>*{flex-shrink:0;}
+    .toolbar-spacer{flex:1 1 auto!important;min-width:8px;}
+    .connection-group #inp-channel{width:130px;}
+    .filter-group #inp-filter{width:140px;}
+    .tab{border-top:0;border-left:0;border-right:0;background:transparent;font-family:inherit;white-space:nowrap;}
+    .tab-panel{width:100%;min-width:0;min-height:0;}
+    .export-card{font-family:inherit;color:var(--fg);}
+    #btn-filter-clear{min-width:34px;}
+    .fd-control{min-height:34px;display:inline-flex;align-items:center;gap:5px;}
+    @media(max-width:720px){
+      #toolbar{
+        display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;
+        gap:7px;padding:8px;overflow:visible;max-height:none;
+      }
+      #toolbar .title{grid-column:1;}
+      #conn-badge{grid-column:2;justify-self:end;}
+      .toolbar-spacer{display:none;}
+      .action-group{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));}
+      .action-group .btn{width:100%;}
+      .connection-group{
+        grid-column:1/-1;display:grid;grid-template-columns:minmax(72px,auto) minmax(0,1fr);
+        max-width:100%;width:100%;padding-bottom:2px;overflow:visible;
+      }
+      .connection-group select,.connection-group input[type=text]{width:100%;min-width:0;}
+      .connection-group #inp-channel{width:100%;}
+      .connection-group .fd-control{grid-column:1/-1;justify-self:start;}
+      .filter-group{grid-column:1/-1;display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;}
+      .filter-group #inp-filter{width:auto;min-width:0;}
+      .tab{min-height:40px;padding:8px 13px;}
+      .tab-panel{padding:7px;}
+      .send-row{align-items:stretch;flex-wrap:wrap;}
+      .send-row label{min-width:auto;}
+      .saved-frame-row{grid-template-columns:auto minmax(0,1fr);}
+      .saved-frame-row .btn{width:100%;}
+      .send-row input{min-width:120px;max-width:none;}
+      #panel-send>div{max-width:none!important;width:100%;}
+      #statusbar{gap:9px;padding:6px 8px;}
+    }
   </style>
+  <link rel="stylesheet" href="/static/shell/ui-foundation.css">
 </head>
 <body>
 
 <!-- ═══════════════════ TOOLBAR ═══════════════════════════════════ -->
 <div id="toolbar">
-  <span class="title">🔌 CAN Diagnostic</span>
-  <label>Interface</label>
-  <select id="sel-interface">
-    <option value="pcan">PCAN</option>
-    <option value="socketcan">SocketCAN</option>
-    <option value="vector">Vector</option>
-    <option value="kvaser">Kvaser</option>
-    <option value="ixxat">IXXAT</option>
-    <option value="virtual">Virtual</option>
-  </select>
-  <label>Channel</label>
-  <input type="text" id="inp-channel" value="PCAN_USBBUS1" style="width:130px">
-  <label>Bitrate</label>
-  <select id="sel-bitrate">
-    <option value="125000">125 kbit/s</option>
-    <option value="250000">250 kbit/s</option>
-    <option value="500000" selected>500 kbit/s</option>
-    <option value="1000000">1 Mbit/s</option>
-  </select>
-  <label><input type="checkbox" id="chk-fd"> FD</label>
-  <span class="sep"></span>
-  <button class="btn btn-primary" id="btn-start">▶ Start</button>
-  <button class="btn btn-danger" id="btn-stop" disabled>■ Stop</button>
-  <button class="btn" id="btn-clear">🗑 Clear</button>
-  <span class="sep"></span>
+  <h1 class="title">🔌 CAN Diagnostic</h1>
+  <div class="toolbar-group connection-group" aria-label="CAN connection settings">
+    <label for="sel-interface">Interface</label>
+    <select id="sel-interface">
+      <option value="pcan">PCAN</option>
+      <option value="socketcan">SocketCAN</option>
+      <option value="vector">Vector</option>
+      <option value="kvaser">Kvaser</option>
+      <option value="ixxat">IXXAT</option>
+      <option value="virtual">Virtual</option>
+    </select>
+    <label for="inp-channel">Channel</label>
+    <input type="text" id="inp-channel" value="PCAN_USBBUS1">
+    <label for="sel-bitrate">Bitrate</label>
+    <select id="sel-bitrate">
+      <option value="125000">125 kbit/s</option>
+      <option value="250000">250 kbit/s</option>
+      <option value="500000" selected>500 kbit/s</option>
+      <option value="1000000">1 Mbit/s</option>
+    </select>
+    <label class="fd-control"><input type="checkbox" id="chk-fd"> FD</label>
+  </div>
+  <div class="toolbar-group action-group" aria-label="Capture actions">
+    <button class="btn btn-primary" id="btn-start">▶ Start</button>
+    <button class="btn btn-danger" id="btn-stop" disabled>■ Stop</button>
+    <button class="btn" id="btn-clear">🗑 Clear</button>
+  </div>
   <span id="conn-badge" class="badge badge-idle">disconnected</span>
-  <span style="flex:1"></span>
-  <label>Filter IDs</label>
-  <input type="text" id="inp-filter" placeholder="0x100,0x200 or empty" style="width:140px">
-  <button class="btn" id="btn-filter">Apply</button>
-  <button class="btn" id="btn-filter-clear">✕</button>
+  <span class="toolbar-spacer" aria-hidden="true"></span>
+  <div class="toolbar-group filter-group" aria-label="CAN ID filter">
+    <label for="inp-filter">Filter IDs</label>
+    <input type="text" id="inp-filter" placeholder="0x100,0x200 or empty">
+    <button class="btn" id="btn-filter">Apply</button>
+    <button class="btn" id="btn-filter-clear" type="button" aria-label="Clear CAN ID filter">✕</button>
+  </div>
 </div>
 
 <!-- ═══════════════════ TAB BAR ═══════════════════════════════════ -->
 <div id="tab-bar">
-  <div class="tab active" data-tab="traffic">📡 Live Traffic</div>
-  <div class="tab" data-tab="stats">📊 Statistics</div>
-  <div class="tab" data-tab="canopen">🔗 CANopen</div>
-  <div class="tab" data-tab="re">🔬 Reverse Eng.</div>
-  <div class="tab" data-tab="send">📤 Send</div>
-  <div class="tab" data-tab="export">💾 Export</div>
+  <button type="button" class="tab active" data-tab="traffic">📡 Live Traffic</button>
+  <button type="button" class="tab" data-tab="stats">📊 Statistics</button>
+  <button type="button" class="tab" data-tab="canopen">🔗 CANopen</button>
+  <button type="button" class="tab" data-tab="re">🔬 Reverse Eng.</button>
+  <button type="button" class="tab" data-tab="send">📤 Send</button>
+  <button type="button" class="tab" data-tab="export">💾 Export</button>
 </div>
 
 <!-- ═══════════════════ TAB PANELS ════════════════════════════════ -->
+<main id="can-workspace">
 
 <!-- ── Live Traffic ──────────────────────────────────────────── -->
 <div id="panel-traffic" class="tab-panel active">
   <div id="traffic-table-wrap">
     <table id="traffic-table">
       <thead><tr>
-        <th class="col-ts">Time</th>
-        <th class="col-id">ID</th>
-        <th class="col-dlc">DLC</th>
-        <th class="col-data">Data</th>
-        <th class="col-co">CANopen</th>
-        <th class="col-detail">Detail</th>
+        <th scope="col" class="col-ts">Time</th>
+        <th scope="col" class="col-id">ID</th>
+        <th scope="col" class="col-dlc">DLC</th>
+        <th scope="col" class="col-data">Data</th>
+        <th scope="col" class="col-co">CANopen</th>
+        <th scope="col" class="col-detail">Detail</th>
       </tr></thead>
       <tbody id="traffic-body"></tbody>
     </table>
@@ -230,7 +286,7 @@
 <!-- ── CANopen ────────────────────────────────────────────────── -->
 <div id="panel-canopen" class="tab-panel">
   <div style="margin-bottom:6px;display:flex;gap:8px;align-items:center;">
-    <label>Show:</label>
+    <span class="filter-label">Show:</span>
     <label><input type="checkbox" class="co-filter" value="HEARTBEAT" checked> HB</label>
     <label><input type="checkbox" class="co-filter" value="NMT" checked> NMT</label>
     <label><input type="checkbox" class="co-filter" value="SDO" checked> SDO</label>
@@ -259,9 +315,9 @@
 </div>
 
 <!-- ── Reverse Engineering ────────────────────────────────────── -->
-<div id="panel-re" class="tab-panel" id="re-panel">
+<div id="panel-re" class="tab-panel">
   <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
-    <label>Analyze ID:</label>
+    <label for="re-id-select">Analyze ID:</label>
     <select id="re-id-select" style="min-width:140px;"><option>— select —</option></select>
     <button class="btn btn-primary" id="btn-analyze">🔬 Analyze</button>
     <button class="btn" id="btn-gen-dbc">📄 Generate DBC</button>
@@ -287,6 +343,7 @@
     </div>
     <div class="re-section">
       <h4>📄 DBC Output</h4>
+      <label class="sr-only" for="dbc-output">Generated DBC output</label>
       <textarea id="dbc-output" class="dbc-output" readonly placeholder="Click 'Generate DBC' to create a DBC file stub from observed traffic..."></textarea>
     </div>
   </div>
@@ -298,18 +355,18 @@
     <div class="re-section">
       <h4>📤 Send CAN Frame</h4>
       <div class="send-row">
-        <label>Arb ID:</label>
+        <label for="send-id">Arb ID:</label>
         <input type="text" id="send-id" value="0x123" style="width:80px;">
         <label><input type="checkbox" id="send-ext"> Extended</label>
       </div>
       <div class="send-row">
-        <label>Data:</label>
+        <label for="send-data">Data:</label>
         <input type="text" id="send-data" value="01 02 03 04 05 06 07 08" placeholder="hex bytes">
       </div>
       <div class="send-row">
-        <label>Repeat:</label>
+        <label for="send-repeat">Repeat:</label>
         <input type="number" id="send-repeat" value="1" min="1" max="10000" style="width:70px;">
-        <label>Interval (ms):</label>
+        <label for="send-interval">Interval (ms):</label>
         <input type="number" id="send-interval" value="100" min="1" max="60000" style="width:70px;">
       </div>
       <div style="margin-top:8px;display:flex;gap:8px;">
@@ -330,32 +387,34 @@
 <!-- ── Export ─────────────────────────────────────────────────── -->
 <div id="panel-export" class="tab-panel">
   <div class="export-grid" style="max-width:600px;margin-top:8px;">
-    <div class="export-card" data-fmt="asc">
+    <button type="button" class="export-card" data-fmt="asc">
       <div class="icon">📄</div>
       <div class="label">ASC Log</div>
       <div class="desc">PEAK-compatible ASCII log format</div>
-    </div>
-    <div class="export-card" data-fmt="csv">
+    </button>
+    <button type="button" class="export-card" data-fmt="csv">
       <div class="icon">📊</div>
       <div class="label">CSV</div>
       <div class="desc">Comma-separated values for analysis</div>
-    </div>
-    <div class="export-card" data-fmt="blf">
+    </button>
+    <button type="button" class="export-card" data-fmt="blf">
       <div class="icon">💾</div>
       <div class="label">BLF</div>
       <div class="desc">Binary Logging Format (Vector)</div>
-    </div>
-    <div class="export-card" data-fmt="dbc">
+    </button>
+    <button type="button" class="export-card" data-fmt="dbc">
       <div class="icon">🔧</div>
       <div class="label">DBC Stub</div>
       <div class="desc">Generated database from traffic</div>
-    </div>
+    </button>
   </div>
 </div>
 
+</main>
+
 <!-- ═══════════════════ STATUS BAR ════════════════════════════════ -->
-<div id="statusbar">
-  <span class="status-led led-idle" id="status-led"></span>
+<div id="statusbar" role="status" aria-live="polite">
+  <span class="status-led led-idle" id="status-led" aria-hidden="true"></span>
   <span id="sb-state">Disconnected</span>
   <span class="sep"></span>
   <span>Frames: <strong id="sb-frames">0</strong></span>
@@ -377,18 +436,33 @@ let autoScroll = true;
 let statsSortCol = 'hex_id';
 let statsSortAsc = true;
 let selectedReId = null;
-const savedFrames = JSON.parse(localStorage.getItem('can_saved_frames') || '[]');
+function loadSavedFrames() {
+  try {
+    const value = JSON.parse(localStorage.getItem('can_saved_frames') || '[]');
+    return Array.isArray(value) ? value : [];
+  } catch {
+    return [];
+  }
+}
+const savedFrames = loadSavedFrames();
 
 // ── DOM refs ──────────────────────────────────────────────────
 const $ = s => document.querySelector(s);
 const $$ = s => document.querySelectorAll(s);
 
 // ── Tab switching ─────────────────────────────────────────────
+$$('.tab').forEach((tab, index) => {
+  tab.setAttribute('role', 'tab');
+  tab.setAttribute('aria-selected', index === 0 ? 'true' : 'false');
+  tab.tabIndex = index === 0 ? 0 : -1;
+});
+$$('.tab-panel').forEach((panel, index) => { panel.setAttribute('role', 'tabpanel'); panel.hidden = index !== 0; });
+
 $$('.tab').forEach(t => t.addEventListener('click', () => {
-  $$('.tab').forEach(x => x.classList.remove('active'));
-  $$('.tab-panel').forEach(x => x.classList.remove('active'));
-  t.classList.add('active');
-  $(`#panel-${t.dataset.tab}`).classList.add('active');
+  $$('.tab').forEach(x => { x.classList.remove('active'); x.setAttribute('aria-selected', 'false'); x.tabIndex = -1; });
+  $$('.tab-panel').forEach(x => { x.classList.remove('active'); x.hidden = true; });
+  t.classList.add('active'); t.setAttribute('aria-selected', 'true'); t.tabIndex = 0;
+  const panel = $(`#panel-${t.dataset.tab}`); panel.classList.add('active'); panel.hidden = false;
 }));
 
 // ── Start / Stop ──────────────────────────────────────────────
@@ -755,6 +829,16 @@ function appendSendLog(msg) {
   log.scrollTop = log.scrollHeight;
 }
 
+function persistSavedFrames() {
+  try {
+    localStorage.setItem('can_saved_frames', JSON.stringify(savedFrames));
+    return true;
+  } catch {
+    appendSendLog('Browser storage is unavailable; saved frames will last until this page closes.');
+    return false;
+  }
+}
+
 // ── Saved frames ──────────────────────────────────────────────
 $('#btn-save-frame').addEventListener('click', () => {
   savedFrames.push({
@@ -763,32 +847,55 @@ $('#btn-save-frame').addEventListener('click', () => {
     ext: $('#send-ext').checked,
     name: `Frame ${savedFrames.length+1}`,
   });
-  localStorage.setItem('can_saved_frames', JSON.stringify(savedFrames));
+  persistSavedFrames();
   renderSavedFrames();
 });
 
 function renderSavedFrames() {
   const div = $('#saved-frames');
-  if (!savedFrames.length) { div.innerHTML = 'No saved frames.'; return; }
-  div.innerHTML = '';
+  div.replaceChildren();
+  if (!savedFrames.length) {
+    div.textContent = 'No saved frames.';
+    return;
+  }
   for (let i = 0; i < savedFrames.length; i++) {
-    const f = savedFrames[i];
+    const frame = savedFrames[i];
     const row = document.createElement('div');
-    row.style.cssText = 'display:flex;gap:6px;align-items:center;padding:2px 0;border-bottom:1px solid var(--bg3)';
-    row.innerHTML = `<span style="color:var(--can-blue)">${f.id}</span>
-      <span style="color:var(--can-green)">${f.data}</span>
-      <button class="btn" style="font-size:10px" data-idx="${i}">📤</button>
-      <button class="btn btn-danger" style="font-size:10px" data-del="${i}">✕</button>`;
-    row.querySelector('[data-idx]').addEventListener('click', () => {
-      $('#send-id').value = f.id;
-      $('#send-data').value = f.data;
-      $('#send-ext').checked = f.ext;
+    row.className = 'saved-frame-row';
+
+    const id = document.createElement('span');
+    id.className = 'saved-frame-id';
+    id.textContent = String(frame.id ?? '');
+
+    const data = document.createElement('span');
+    data.className = 'saved-frame-data';
+    data.textContent = String(frame.data ?? '');
+    data.title = data.textContent;
+
+    const load = document.createElement('button');
+    load.type = 'button';
+    load.className = 'btn';
+    load.textContent = 'Load';
+    load.setAttribute('aria-label', `Load saved CAN frame ${i + 1}`);
+    load.addEventListener('click', () => {
+      $('#send-id').value = frame.id ?? '';
+      $('#send-data').value = frame.data ?? '';
+      $('#send-ext').checked = Boolean(frame.ext);
+      $('#send-id').focus();
     });
-    row.querySelector('[data-del]').addEventListener('click', () => {
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'btn btn-danger';
+    remove.textContent = 'Delete';
+    remove.setAttribute('aria-label', `Delete saved CAN frame ${i + 1}`);
+    remove.addEventListener('click', () => {
       savedFrames.splice(i, 1);
-      localStorage.setItem('can_saved_frames', JSON.stringify(savedFrames));
+      persistSavedFrames();
       renderSavedFrames();
     });
+
+    row.append(id, data, load, remove);
     div.appendChild(row);
   }
 }
@@ -849,5 +956,6 @@ async function postJSON(url, body) {
 
 })();
 </script>
+  <script src="/static/shell/ui-foundation.js"></script>
 </body>
 </html>

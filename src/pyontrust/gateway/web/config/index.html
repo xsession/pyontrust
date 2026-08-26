@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>pyontrust Configuration</title>
+  <link rel="stylesheet" href="/static/shell/shell.css">
+  <link rel="stylesheet" href="/static/shell/ui-foundation.css">
+  <link rel="stylesheet" href="/config/static/app.css">
+</head>
+<body>
+  <a class="skip-link" href="#config-editor">Skip to configuration editor</a>
+  <main class="config-page">
+    <header class="page-header">
+      <div>
+        <p class="eyebrow">Workspace data</p>
+        <h1>Configuration</h1>
+        <p class="page-subtitle">Manage reusable HIL profiles, lab benches, and validation limit sets.</p>
+      </div>
+      <div class="header-actions">
+        <button class="btn" id="refresh-button" type="button">Refresh</button>
+        <button class="btn btn-primary" id="new-button" type="button">New configuration</button>
+      </div>
+    </header>
+
+    <nav class="category-tabs" aria-label="Configuration category">
+      <button type="button" class="category-tab active" data-category="profiles" aria-current="page">
+        <span aria-hidden="true">▶</span><span><strong>Profiles</strong><small>Executable test sequences</small></span><b id="profiles-count">0</b>
+      </button>
+      <button type="button" class="category-tab" data-category="benches">
+        <span aria-hidden="true">▦</span><span><strong>Benches</strong><small>Equipment and connection layouts</small></span><b id="benches-count">0</b>
+      </button>
+      <button type="button" class="category-tab" data-category="limits">
+        <span aria-hidden="true">±</span><span><strong>Limits</strong><small>Reusable pass/fail thresholds</small></span><b id="limits-count">0</b>
+      </button>
+    </nav>
+
+    <section class="config-workspace">
+      <aside class="config-list-pane" aria-label="Configuration files">
+        <div class="list-toolbar">
+          <label class="search-field" for="config-search">
+            <span aria-hidden="true">⌕</span>
+            <input id="config-search" type="search" placeholder="Filter files" autocomplete="off">
+          </label>
+        </div>
+        <div id="config-list" class="config-list" aria-busy="true"></div>
+      </aside>
+
+      <section class="editor-pane" id="config-editor" aria-label="JSON configuration editor">
+        <div id="editor-empty" class="empty-state">
+          <div><strong>Select a configuration</strong><p>Choose a file from the list or create a new one.</p></div>
+        </div>
+        <div id="editor-content" hidden>
+          <div class="editor-toolbar">
+            <div class="name-group">
+              <label for="config-name">File name</label>
+              <div class="name-input-row"><input id="config-name" type="text" spellcheck="false" autocomplete="off"><span>.json</span></div>
+            </div>
+            <div class="editor-actions">
+              <button class="btn" id="format-button" type="button">Format JSON</button>
+              <button class="btn btn-danger" id="delete-button" type="button">Delete</button>
+              <button class="btn btn-primary" id="save-button" type="button">Save</button>
+            </div>
+          </div>
+          <div class="editor-status-row">
+            <span id="editor-state" class="editor-state">Ready</span>
+            <span id="editor-stats">0 lines · 0 bytes</span>
+          </div>
+          <label class="sr-only" for="json-editor">Configuration JSON</label>
+          <textarea id="json-editor" class="json-editor" wrap="off" spellcheck="false" autocomplete="off" aria-describedby="json-help"></textarea>
+          <p id="json-help" class="editor-help">Valid JSON object required. Press Ctrl+S or Command+S to save; Tab inserts two spaces.</p>
+        </div>
+      </section>
+    </section>
+
+    <p class="ui-message" id="app-message" role="status" aria-live="polite"></p>
+  </main>
+
+  <dialog id="confirm-dialog" class="confirm-dialog" aria-labelledby="confirm-title">
+    <form method="dialog">
+      <h2 id="confirm-title">Delete configuration?</h2>
+      <p>This permanently removes <strong id="confirm-name"></strong>.</p>
+      <div class="dialog-actions">
+        <button class="btn" value="cancel">Cancel</button>
+        <button class="btn btn-danger" value="confirm">Delete permanently</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="/static/shell/ui-foundation.js"></script>
+  <script src="/config/static/app.js"></script>
+</body>
+</html>

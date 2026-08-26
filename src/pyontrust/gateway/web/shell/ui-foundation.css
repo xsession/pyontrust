@@ -1,0 +1,185 @@
+/* pyontrust shared UI foundation
+ * Accessibility, interaction and responsive primitives shared by all web tools.
+ */
+:root {
+  --fg-dim: #a6adc8;
+  --border: #585b70;
+  --focus-ring: #f9e2af;
+  --focus-shadow: rgba(249, 226, 175, 0.28);
+  --control-h: 34px;
+}
+
+html {
+  color-scheme: dark;
+  text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  line-height: 1.45;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: rgba(137, 180, 250, 0.34);
+  color: var(--fg, #cdd6f4);
+}
+
+button,
+.btn,
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+select,
+textarea {
+  min-height: var(--control-h);
+}
+
+button,
+.btn,
+a,
+input,
+select,
+textarea,
+[role="button"],
+[role="tab"] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+:where(button, .btn, a[href], input, select, textarea, [role="button"], [role="tab"], [tabindex]):focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--focus-shadow);
+}
+
+:where(button, .btn, input, select, textarea):disabled,
+:where(button, .btn)[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.48;
+  filter: saturate(0.65);
+}
+
+button,
+.btn {
+  touch-action: manipulation;
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  min-height: 18px;
+  flex: 0 0 auto;
+  accent-color: var(--accent, #89b4fa);
+}
+
+label:has(input[type="checkbox"]),
+label:has(input[type="radio"]) {
+  min-height: var(--control-h);
+  cursor: pointer;
+}
+
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+.skip-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 10000;
+  transform: translateY(-160%);
+  padding: 9px 13px;
+  border-radius: 6px;
+  background: var(--accent, #89b4fa);
+  color: var(--bg, #1e1e2e);
+  font-weight: 700;
+  text-decoration: none;
+  transition: transform 120ms ease;
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+[role="status"],
+[aria-live] {
+  overflow-wrap: anywhere;
+}
+
+.modal-overlay[aria-hidden="true"],
+.live-overlay[aria-hidden="true"] {
+  visibility: hidden;
+}
+
+.table-scroll {
+  max-width: 100%;
+  overflow: auto;
+  border-radius: var(--radius, 6px);
+}
+
+.empty-state {
+  display: grid;
+  place-items: center;
+  min-height: 160px;
+  padding: 24px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius, 6px);
+  color: var(--fg-dim);
+  text-align: center;
+}
+
+.ui-message {
+  min-height: 1.5em;
+  color: var(--fg-dim);
+  font-size: 12px;
+}
+
+.ui-message.is-error { color: var(--red, #f38ba8); }
+.ui-message.is-success { color: var(--green, #a6e3a1); }
+
+@media (max-width: 720px) {
+  :root { --control-h: 40px; }
+
+  body { font-size: 14px; }
+
+  button,
+  .btn {
+    min-width: 40px;
+  }
+
+  input[type="checkbox"],
+  input[type="radio"] {
+    width: 20px;
+    height: 20px;
+    min-width: 20px;
+    min-height: 20px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+@media (forced-colors: active) {
+  button,
+  .btn,
+  input,
+  select,
+  textarea,
+  .card {
+    border: 1px solid CanvasText;
+  }
+}

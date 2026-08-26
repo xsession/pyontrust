@@ -571,6 +571,33 @@
   const blocksG  = document.getElementById('blocks-layer');
   const tempWire = document.getElementById('temp-wire');
 
+
+  // Responsive side panels keep the canvas usable on narrow screens.
+  const paletteButton = document.getElementById('btn-palette');
+  const propsButton = document.getElementById('btn-props');
+  const panelBackdrop = document.getElementById('panel-backdrop');
+
+  function setPanel(panel) {
+    const paletteOpen = panel === 'palette';
+    const propsOpen = panel === 'props';
+    document.body.classList.toggle('palette-open', paletteOpen);
+    document.body.classList.toggle('props-open', propsOpen);
+    paletteButton?.setAttribute('aria-expanded', paletteOpen ? 'true' : 'false');
+    propsButton?.setAttribute('aria-expanded', propsOpen ? 'true' : 'false');
+    if (panelBackdrop) panelBackdrop.hidden = !(paletteOpen || propsOpen);
+  }
+
+  paletteButton?.addEventListener('click', () => setPanel(document.body.classList.contains('palette-open') ? '' : 'palette'));
+  propsButton?.addEventListener('click', () => setPanel(document.body.classList.contains('props-open') ? '' : 'props'));
+  panelBackdrop?.addEventListener('click', () => setPanel(''));
+  window.addEventListener('resize', () => { if (!matchMedia('(max-width: 820px)').matches) setPanel(''); });
+
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && (document.body.classList.contains('palette-open') || document.body.classList.contains('props-open'))) {
+      setPanel('');
+    }
+  });
+
   // ══════════════════════════════════════════════════════════════
   // Palette rendering
   // ══════════════════════════════════════════════════════════════
@@ -599,6 +626,9 @@
       item.className = 'pal-item';
       item.draggable = true;
       item.dataset.type = def.type;
+      item.setAttribute('role', 'button');
+      item.tabIndex = 0;
+      item.setAttribute('aria-label', `Add ${def.label} block — ${def.hint || def.type}`);
       item.innerHTML = `
         <span class="pal-icon" style="background:${def.colour}30;color:${def.colour}">${def.icon}</span>
         <span class="pal-label">${def.label}<br><span class="pal-hint">${def.hint||''}</span></span>
@@ -607,12 +637,19 @@
         e.dataTransfer.setData('block-type', def.type);
         e.dataTransfer.effectAllowed = 'copy';
       });
-      // Double-click to add at centre
-      item.addEventListener('dblclick', () => {
+      const addAtCentre = () => {
         const rect = svg.getBoundingClientRect();
         const cx = (rect.width / 2 - panX) / zoom;
         const cy = (rect.height / 2 - panY) / zoom;
         addBlock(def.type, cx - 70, cy - 30);
+        if (matchMedia('(max-width: 820px)').matches) setPanel('');
+      };
+      // Double-click, Enter, or Space adds the component at the canvas centre.
+      item.addEventListener('dblclick', addAtCentre);
+      item.addEventListener('keydown', event => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        addAtCentre();
       });
       list.appendChild(item);
     }
@@ -1008,6 +1045,7 @@
       if (g) g.classList.add('selected');
     }
     renderProps();
+    if (id && matchMedia('(max-width: 820px)').matches) setPanel('props');
   }
 
   function renderProps() {

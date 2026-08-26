@@ -10,7 +10,7 @@
 
     /* ── Header ── */
     .diag-header { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
-    .diag-header h2 { color: var(--accent); font-size: 22px; margin: 0; }
+    .diag-header h1 { color: var(--accent); font-size: 22px; margin: 0; }
     .diag-header .actions { display: flex; gap: 8px; margin-left: auto; }
 
     /* ── Summary bar ── */
@@ -213,14 +213,39 @@
     /* Card live button */
     .btn-live { background: var(--accent); color: var(--bg); }
     .btn-live:hover { filter: brightness(1.15); }
+
+    @media (max-width: 720px) {
+      .diag-page { padding: 12px; }
+      .diag-header { align-items: flex-start; margin-bottom: 16px; }
+      .diag-header .actions { width: 100%; margin-left: 0; display: grid; grid-template-columns: 1fr 1fr; }
+      .diag-header .actions .btn:first-child { grid-column: 1 / -1; }
+      .summary-bar { display: grid !important; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; }
+      .summary-card { min-width: 0; padding: 10px; }
+      .summary-card .num { font-size: 22px; }
+      .hw-grid, .sys-grid { grid-template-columns: 1fr; }
+      .live-panel { width: calc(100vw - 16px); max-height: calc(100vh - 16px); }
+      .live-panel-head { align-items: flex-start; flex-wrap: wrap; padding: 12px; }
+      .live-panel-head .stream-info { order: 3; width: 100%; }
+      .live-panel-body { padding: 12px; }
+      .sensor-select-row { display: grid; grid-template-columns: auto minmax(0,1fr); align-items: center; }
+      .sensor-select-row .btn { grid-column: span 1; }
+    }
+    @media (max-width: 420px) {
+      .summary-bar { grid-template-columns: 1fr 1fr; }
+      .hw-card { padding: 12px; }
+      .hw-card-head { flex-wrap: wrap; }
+      .hw-card-status { margin-left: 0; }
+      .sensor-select-row { grid-template-columns: 1fr; }
+    }
   </style>
+  <link rel="stylesheet" href="/static/shell/ui-foundation.css">
 </head>
 <body>
-<div class="diag-page">
+<main class="diag-page">
 
   <!-- Header -->
   <div class="diag-header">
-    <h2>🩺 Hardware Diagnostic</h2>
+    <h1>🩺 Hardware Diagnostic</h1>
     <span id="scan-time" style="font-size:12px; color:var(--fg-dim)"></span>
     <div class="actions">
       <button class="btn btn-primary" id="btn-scan" onclick="scanHardware()">🔍 Scan Hardware</button>
@@ -246,7 +271,7 @@
   </div>
 
   <!-- Progress -->
-  <div class="scan-progress" id="scan-progress" style="display:none">
+  <div class="scan-progress" id="scan-progress" style="display:none" role="status" aria-live="polite">
     <div class="spinner"></div>
     <span id="scan-msg">Scanning hardware…</span>
   </div>
@@ -273,10 +298,10 @@
     <div class="sys-grid" id="sys-grid"></div>
   </div>
 
-</div>
+</main>
 
 <!-- ═══ Live Data Panel (overlay) ═══ -->
-<div class="live-overlay" id="live-overlay">
+<div class="live-overlay" id="live-overlay" role="dialog" aria-modal="true" aria-labelledby="live-title" aria-hidden="true">
   <div class="live-panel">
     <div class="live-panel-head">
       <h3 id="live-title">📡 Live Data</h3>
@@ -288,21 +313,21 @@
         &nbsp;·&nbsp;
         <span id="stream-count">0 samples</span>
       </span>
-      <button class="btn btn-close" onclick="closeLivePanel()">✕</button>
+      <button class="btn btn-close" type="button" onclick="closeLivePanel()" aria-label="Close live data panel">✕</button>
     </div>
     <div class="live-panel-body">
       <!-- Sensor selector -->
       <div class="sensor-select-row">
-        <label>Sensor:</label>
+        <label for="live-sensor">Sensor:</label>
         <select id="live-sensor" onchange="onLiveSensorChange()"></select>
-        <label>Rate:</label>
+        <label for="live-rate">Rate:</label>
         <select id="live-rate">
           <option value="200">5 Hz (200ms)</option>
           <option value="500" selected>2 Hz (500ms)</option>
           <option value="1000">1 Hz (1s)</option>
           <option value="2000">0.5 Hz (2s)</option>
         </select>
-        <label>Mode:</label>
+        <label for="live-mode">Mode:</label>
         <select id="live-mode">
           <option value="auto">Auto</option>
           <option value="adb">ADB (real)</option>
@@ -682,11 +707,13 @@ function openLivePanel(hwType, serial, sensorNames) {
   clearLiveData();
   onLiveSensorChange();
   document.getElementById('live-overlay').classList.add('open');
+  document.getElementById('live-overlay').setAttribute('aria-hidden', 'false');
 }
 
 function closeLivePanel() {
   stopStream();
   document.getElementById('live-overlay').classList.remove('open');
+  document.getElementById('live-overlay').setAttribute('aria-hidden', 'true');
 }
 
 function onLiveSensorChange() {
@@ -920,5 +947,6 @@ document.getElementById('live-overlay').addEventListener('click', (e) => {
 // Auto-scan on load
 scanHardware();
 </script>
+  <script src="/static/shell/ui-foundation.js"></script>
 </body>
 </html>

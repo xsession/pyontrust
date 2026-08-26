@@ -6,6 +6,7 @@
   <title>FlowLab — Visual Experiment Designer</title>
   <link rel="stylesheet" href="/static/shell/shell.css">
   <link rel="stylesheet" href="/flowlab/static/flowlab.css">
+  <link rel="stylesheet" href="/static/shell/ui-foundation.css">
 </head>
 <body>
 
@@ -13,7 +14,9 @@
      TOOLBAR
      ═══════════════════════════════════════════════════════════════ -->
 <div id="toolbar">
-  <span class="toolbar-title">⚡ FlowLab</span>
+  <h1 class="toolbar-title">⚡ FlowLab</h1>
+  <button class="btn panel-toggle" id="btn-palette" type="button" aria-controls="palette" aria-expanded="false">Blocks</button>
+  <button class="btn panel-toggle" id="btn-props" type="button" aria-controls="props-panel" aria-expanded="false">Properties</button>
   <button class="btn btn-primary" id="btn-run"    title="Execute diagram (Ctrl+Enter)">▶ Run</button>
   <button class="btn"             id="btn-stop"    title="Stop execution" disabled>■ Stop</button>
   <span class="sep"></span>
@@ -37,17 +40,19 @@
 <!-- ═══════════════════════════════════════════════════════════════
      MAIN LAYOUT: Palette | Canvas | Properties
      ═══════════════════════════════════════════════════════════════ -->
-<div id="main-layout">
+<main id="main-layout">
 
   <!-- ── Block palette (left sidebar) ────────────────────────── -->
-  <aside id="palette">
+  <aside id="palette" aria-labelledby="palette-title">
+    <h2 id="palette-title" class="sr-only">Block palette</h2>
+    <label class="sr-only" for="palette-search">Search blocks</label>
     <input type="text" id="palette-search" placeholder="Search blocks…">
     <div id="palette-list"></div>
   </aside>
 
   <!-- ── Canvas ──────────────────────────────────────────────── -->
-  <div id="canvas-wrap">
-    <svg id="canvas" xmlns="http://www.w3.org/2000/svg">
+  <div id="canvas-wrap" aria-label="Diagram canvas">
+    <svg id="canvas" tabindex="0" role="application" aria-label="Interactive block diagram canvas" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <marker id="arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
           <path d="M0,0 L8,3 L0,6" fill="var(--accent)" />
@@ -70,7 +75,7 @@
   </div>
 
   <!-- ── Properties panel (right sidebar) ────────────────────── -->
-  <aside id="props-panel">
+  <aside id="props-panel" aria-labelledby="props-title">
     <h3 id="props-title">Properties</h3>
     <div id="props-body">
       <p class="hint">Select a block to edit its properties.</p>
@@ -80,7 +85,8 @@
     <pre id="console-output"></pre>
   </aside>
 
-</div>
+</main>
+<div id="panel-backdrop" class="panel-backdrop" hidden></div>
 
 <!-- ═══════════════════════════════════════════════════════════════
      HIL Import Modal
@@ -93,11 +99,11 @@
       <div id="hil-profile-list" class="profile-list"></div>
     </div>
     <div class="modal-section">
-      <label>Or paste profile JSON:</label>
+      <label for="hil-json-input">Or paste profile JSON:</label>
       <textarea id="hil-json-input" rows="10" placeholder='{"name":"...", "actions":[...]}' spellcheck="false"></textarea>
     </div>
     <div class="modal-section">
-      <label>Or upload a profile file:</label>
+      <label for="hil-file-input">Or upload a profile file:</label>
       <input type="file" id="hil-file-input" accept=".json">
     </div>
     <div class="modal-buttons">
@@ -114,11 +120,11 @@
   <div class="modal-box">
     <h3>🧪 Save as HIL Test Profile</h3>
     <div class="modal-section">
-      <label>Profile name:</label>
+      <label for="hil-save-name">Profile name:</label>
       <input type="text" id="hil-save-name" value="flowlab_export" placeholder="my_test_profile">
     </div>
     <div class="modal-section">
-      <label>Preview:</label>
+      <label for="hil-save-preview">Preview:</label>
       <pre id="hil-save-preview" class="json-preview"></pre>
     </div>
     <div class="modal-buttons">
@@ -136,7 +142,7 @@
   <div class="modal-box">
     <h3>📤 Import Test Sequence</h3>
     <div class="modal-section">
-      <label>Upload a <strong>.py</strong> (exported FlowLab script) or <strong>.json</strong> diagram:</label>
+      <label for="import-file-input">Upload a <strong>.py</strong> (exported FlowLab script) or <strong>.json</strong> diagram:</label>
       <input type="file" id="import-file-input" accept=".py,.json">
     </div>
     <div class="modal-section">
@@ -157,7 +163,8 @@
   <div class="modal-box tutorial-box">
     <div class="tutorial-header">
       <h3>❓ FlowLab Component Reference</h3>
-      <input type="text" id="tutorial-search" placeholder="Search components...">
+      <label class="sr-only" for="tutorial-search">Search component reference</label>
+      <input type="search" id="tutorial-search" placeholder="Search components...">
     </div>
     <div class="tutorial-layout">
       <nav id="tutorial-nav" class="tutorial-nav"></nav>
@@ -172,5 +179,6 @@
 </div>
 
 <script src="/flowlab/static/flowlab.js"></script>
+  <script src="/static/shell/ui-foundation.js"></script>
 </body>
 </html>
