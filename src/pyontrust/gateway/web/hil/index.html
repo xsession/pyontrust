@@ -5,271 +5,196 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>HIL Dashboard</title>
   <link rel="stylesheet" href="/static/shell/shell.css">
-  <link rel="stylesheet" href="/static/shell/ui-foundation.css">
+  <script src="https://cdn.plot.ly/plotly-2.35.0.min.js"></script>
   <style>
-    * { box-sizing: border-box; }
-    html, body { height: 100%; margin: 0; }
-    body { overflow: auto; }
-    .hil-page { min-height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr); }
-    .controls-bar {
-      position: sticky; top: 0; z-index: 10;
-      display: flex; flex-wrap: wrap; align-items: end; gap: 8px;
-      min-width: 0; padding: 10px 14px;
-      border-bottom: 1px solid var(--border); background: rgba(37,37,56,.96);
-    }
-    .hil-identity { flex: 0 0 auto; align-self: center; padding-right: 12px; border-right: 1px solid var(--border); }
-    .hil-identity .eyebrow { margin: 0 0 2px; color: var(--accent); font-size: 9px; font-weight: 750; letter-spacing: .1em; text-transform: uppercase; }
-    .hil-identity h1 { margin: 0; color: var(--fg); font-size: 16px; line-height: 1.15; white-space: nowrap; }
-    .profile-field { min-width: 240px; flex: 1 1 420px; display: grid; gap: 4px; }
-    .profile-field label { color: var(--fg-dim); font-size: 10px; font-weight: 650; }
-    .profile-field input { width: min(100%, 620px); }
-    .run-actions { display: flex; gap: 7px; }
-    .run-summary { margin-left: auto; display: flex; align-items: center; gap: 8px; align-self: center; }
-    #hil-message { min-width: min(340px, 100%); flex: 1 1 100%; margin: 0; }
     .hil-grid {
-      min-width: 0; min-height: 0;
-      display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(250px, 1fr));
-      gap: 10px; padding: 10px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+      gap: 12px;
+      padding: 16px;
+      height: calc(100vh - 16px);
     }
-    .hil-panel { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; padding: 0; }
-    .hil-panel h2 { flex-shrink: 0; margin: 0; padding: 8px 11px; border-bottom: 1px solid var(--border); color: var(--accent); font-size: 12px; }
-    .panel-body { min-height: 0; flex: 1; overflow: auto; padding: 9px 11px; }
-    .chart-wrap { min-height: 190px; position: relative; overflow: hidden; }
-    .trace-chart { width: 100%; height: 100%; min-height: 190px; display: block; }
-    .chart-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--fg-dim); font-size: 11px; pointer-events: none; }
-    .event-row { display: grid; grid-template-columns: 64px minmax(0,1fr); gap: 7px; padding: 4px 0; border-bottom: 1px solid rgba(88,91,112,.4); font: 10px/1.45 Consolas, monospace; overflow-wrap: anywhere; }
-    .event-row .ts { color: var(--fg-dim); }
-    .step-bar { display: flex; gap: 3px; min-width: 0; overflow-x: auto; padding: 6px 0; }
-    .step-item { min-width: 54px; flex: 1; height: 27px; display: grid; place-items: center; border-radius: 4px; background: var(--bg4); font-size: 9px; }
+    .hil-panel { display: flex; flex-direction: column; overflow: hidden; }
+    .hil-panel h3 {
+      font-size: 13px; color: var(--accent); padding: 8px 12px;
+      border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    .hil-panel .panel-body { flex: 1; overflow-y: auto; padding: 8px 12px; }
+    #power-chart, #rf-chart { width: 100%; height: 100%; }
+    .controls-bar {
+      display: flex; gap: 8px; padding: 12px 16px;
+      border-bottom: 1px solid var(--border); align-items: center;
+    }
+    .controls-bar label { font-size: 12px; color: var(--fg-dim); }
+    .controls-bar input { width: 300px; }
+    .event-row { font-size: 12px; font-family: 'Consolas', monospace; padding: 2px 0; }
+    .event-row .ts { color: var(--fg-dim); margin-right: 8px; }
+    .step-bar { display: flex; gap: 2px; padding: 8px 0; }
+    .step-item {
+      flex: 1; height: 24px; border-radius: 3px; background: var(--bg4);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 10px; transition: background 0.3s;
+    }
     .step-item.active { background: var(--accent); color: var(--bg); }
     .step-item.done { background: var(--green); color: var(--bg); }
     .step-item.fail { background: var(--red); color: var(--bg); }
-    .status-row { display: grid; grid-template-columns: 86px minmax(0,1fr); align-items: start; gap: 8px; padding: 6px 0; font-size: 11px; }
-    .status-row strong { color: var(--fg-dim); }
-    .history-heading { margin: 13px 0 5px; color: var(--fg-dim); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
-    .history-entry { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 5px 0; border-bottom: 1px solid rgba(88,91,112,.4); font-size: 10px; }
-    .panel-empty { min-height: 120px; display: grid; place-items: center; color: var(--fg-dim); text-align: center; font-size: 11px; }
-    @media (max-width: 760px) {
-      .hil-page { display: block; }
-      .controls-bar { position: static; align-items: stretch; padding: 9px; }
-      .hil-identity { width: 100%; padding: 0 0 8px; border-right: 0; border-bottom: 1px solid var(--border); }
-      .profile-field { flex-basis: 100%; min-width: 0; }
-      .profile-field input { width: 100%; }
-      .run-actions { flex: 1; }
-      .run-actions .btn { flex: 1; }
-      .run-summary { margin-left: 0; }
-      .hil-grid { grid-template-columns: 1fr; grid-template-rows: none; }
-      .hil-panel { min-height: 280px; }
-    }
-    @media (max-width: 420px) {
-      .run-actions { flex-basis: 100%; }
-      .run-summary { width: 100%; justify-content: space-between; }
-      .status-row { grid-template-columns: 1fr; gap: 2px; }
+    .status-row {
+      display: flex; gap: 16px; align-items: center;
+      font-size: 13px; padding: 8px 0;
     }
   </style>
 </head>
 <body>
-<main class="hil-page">
-  <section class="controls-bar" aria-label="Run controls">
-    <div class="hil-identity">
-      <p class="eyebrow">Execution</p>
-      <h1>HIL Dashboard</h1>
-    </div>
-    <div class="profile-field">
-      <label for="profile-input">Profile JSON path</label>
-      <input type="text" id="profile-input" placeholder="profiles/sleep_current.json" autocomplete="off">
-    </div>
-    <div class="run-actions">
-      <button class="btn btn-primary" id="btn-start" type="button">▶ Start run</button>
-      <button class="btn btn-danger" id="btn-stop" type="button" disabled>■ Stop</button>
-    </div>
-    <div class="run-summary"><span>Run state</span><span id="run-state" class="badge badge-info">idle</span></div>
-    <p class="ui-message" id="hil-message" role="status" aria-live="polite"></p>
-  </section>
 
-  <section class="hil-grid" aria-label="Live run telemetry">
-    <article class="card hil-panel">
-      <h2>⚡ Power trace</h2>
-      <div class="panel-body chart-wrap">
-        <canvas id="power-chart" class="trace-chart" role="img" aria-label="Real-time current trace"></canvas>
-        <div id="power-empty" class="chart-empty">Waiting for power samples</div>
+<div class="controls-bar">
+  <label for="profile-input">Profile JSON:</label>
+  <input type="text" id="profile-input" placeholder="profiles/sleep_current.json">
+  <button class="btn btn-primary" id="btn-start">▶ Start</button>
+  <button class="btn btn-danger" id="btn-stop" disabled>■ Stop</button>
+  <span class="spacer"></span>
+  <span id="run-state" class="badge badge-info">idle</span>
+</div>
+
+<div class="hil-grid">
+  <!-- Power Trace -->
+  <div class="card hil-panel">
+    <h3>⚡ Power Trace (Real-time)</h3>
+    <div class="panel-body"><div id="power-chart"></div></div>
+  </div>
+
+  <!-- CAN / Marker Log -->
+  <div class="card hil-panel">
+    <h3>📋 Event Log</h3>
+    <div class="panel-body" id="event-log"></div>
+  </div>
+
+  <!-- RF Spectrum -->
+  <div class="card hil-panel">
+    <h3>📡 RF Spectrum</h3>
+    <div class="panel-body"><div id="rf-chart"></div></div>
+  </div>
+
+  <!-- Step Progress & Instruments -->
+  <div class="card hil-panel">
+    <h3>🔧 Test Progress</h3>
+    <div class="panel-body">
+      <div class="status-row">
+        <strong>Steps:</strong>
+        <div id="step-bar" class="step-bar"></div>
       </div>
-    </article>
-
-    <article class="card hil-panel">
-      <h2>📋 Event log</h2>
-      <div class="panel-body" id="event-log" role="log" aria-live="off"><div class="panel-empty">No events received</div></div>
-    </article>
-
-    <article class="card hil-panel">
-      <h2>📡 RF spectrum</h2>
-      <div class="panel-body chart-wrap">
-        <canvas id="rf-chart" class="trace-chart" role="img" aria-label="RF power spectrum"></canvas>
-        <div id="rf-empty" class="chart-empty">Waiting for RF samples</div>
+      <div class="status-row">
+        <strong>Instruments:</strong>
+        <span id="instrument-badges"></span>
       </div>
-    </article>
-
-    <article class="card hil-panel">
-      <h2>🔧 Test progress</h2>
-      <div class="panel-body">
-        <div class="status-row"><strong>Steps</strong><div id="step-bar" class="step-bar"><span class="panel-empty">No active profile</span></div></div>
-        <div class="status-row"><strong>Instruments</strong><span id="instrument-badges">Not reported</span></div>
-        <h3 class="history-heading">Run history</h3>
-        <div id="history-list"><div class="panel-empty">No runs yet</div></div>
+      <div style="margin-top: 16px">
+        <h4 style="font-size: 12px; color: var(--fg-dim); margin-bottom: 8px;">Run History</h4>
+        <div id="history-list"></div>
       </div>
-    </article>
-  </section>
-</main>
+    </div>
+  </div>
+</div>
 
 <script>
-(() => {
+(function() {
   'use strict';
+
   const API = '/hil/api';
   const btnStart = document.getElementById('btn-start');
-  const btnStop = document.getElementById('btn-stop');
+  const btnStop  = document.getElementById('btn-stop');
   const profileInput = document.getElementById('profile-input');
   const runState = document.getElementById('run-state');
   const eventLog = document.getElementById('event-log');
-  const message = document.getElementById('hil-message');
 
-  function setMessage(text = '', type = '') {
-    message.textContent = text;
-    message.className = `ui-message${type ? ` is-${type}` : ''}`;
-  }
+  // ── Plotly layouts ──────────────────────────────────────────
+  const darkLayout = {
+    paper_bgcolor: '#1e1e2e', plot_bgcolor: '#252538',
+    font: { color: '#cdd6f4', size: 11 },
+    margin: { t: 10, r: 10, b: 30, l: 50 },
+    xaxis: { gridcolor: '#45475a' }, yaxis: { gridcolor: '#45475a' },
+  };
 
-  async function request(path, options = {}) {
-    const response = await fetch(API + path, {headers: {'Accept': 'application/json', ...(options.headers || {})}, ...options});
-    let data = null;
-    try { data = await response.json(); } catch { data = null; }
-    if (!response.ok || data?.error) throw new Error(data?.error || `Request failed (${response.status})`);
-    return data;
-  }
+  Plotly.newPlot('power-chart', [{ x: [], y: [], mode: 'lines', name: 'Current (A)',
+    line: { color: '#89b4fa', width: 1.5 }}], { ...darkLayout, yaxis: { ...darkLayout.yaxis, title: 'A' }},
+    { responsive: true });
 
-  class TraceChart {
-    constructor(canvas, empty, lineColour, unit) {
-      this.canvas = canvas; this.empty = empty; this.lineColour = lineColour; this.unit = unit; this.x = []; this.y = [];
-      this.ctx = canvas.getContext('2d');
-      this.observer = new ResizeObserver(() => this.draw());
-      this.observer.observe(canvas);
-    }
-    setData(x, y) { this.x = x.map(Number); this.y = y.map(Number); this.empty.hidden = this.y.length > 0; this.draw(); }
-    draw() {
-      const rect = this.canvas.getBoundingClientRect();
-      const ratio = Math.min(devicePixelRatio || 1, 2);
-      const width = Math.max(1, Math.round(rect.width * ratio));
-      const height = Math.max(1, Math.round(rect.height * ratio));
-      if (this.canvas.width !== width || this.canvas.height !== height) { this.canvas.width = width; this.canvas.height = height; }
-      const ctx = this.ctx; ctx.setTransform(ratio,0,0,ratio,0,0); ctx.clearRect(0,0,rect.width,rect.height);
-      const w = rect.width, h = rect.height, left = 48, right = 10, top = 10, bottom = 24;
-      ctx.strokeStyle = '#45475a'; ctx.lineWidth = 1; ctx.fillStyle = '#a6adc8'; ctx.font = '9px Segoe UI';
-      for (let i = 0; i <= 4; i++) { const yy = top + (h-top-bottom) * i/4; ctx.beginPath(); ctx.moveTo(left,yy); ctx.lineTo(w-right,yy); ctx.stroke(); }
-      if (!this.y.length) return;
-      let minY = Math.min(...this.y), maxY = Math.max(...this.y);
-      if (minY === maxY) { minY -= 1; maxY += 1; }
-      const minX = Math.min(...this.x), maxX = Math.max(...this.x); const spanX = maxX === minX ? 1 : maxX-minX;
-      ctx.fillText(`${maxY.toFixed(3)} ${this.unit}`, 3, top + 7); ctx.fillText(`${minY.toFixed(3)} ${this.unit}`, 3, h-bottom);
-      ctx.strokeStyle = this.lineColour; ctx.lineWidth = 1.6; ctx.beginPath();
-      this.y.forEach((value, index) => {
-        const px = left + ((this.x[index]-minX)/spanX)*(w-left-right);
-        const py = top + (1-(value-minY)/(maxY-minY))*(h-top-bottom);
-        index ? ctx.lineTo(px,py) : ctx.moveTo(px,py);
-      }); ctx.stroke();
-    }
-  }
+  Plotly.newPlot('rf-chart', [{ x: [], y: [], mode: 'lines', name: 'Power (dBm)',
+    line: { color: '#a6e3a1', width: 1.5 }}], { ...darkLayout, yaxis: { ...darkLayout.yaxis, title: 'dBm' }},
+    { responsive: true });
 
-  const powerChart = new TraceChart(document.getElementById('power-chart'), document.getElementById('power-empty'), '#89b4fa', 'A');
-  const rfChart = new TraceChart(document.getElementById('rf-chart'), document.getElementById('rf-empty'), '#a6e3a1', 'dBm');
-
+  // ── Controls ────────────────────────────────────────────────
   btnStart.addEventListener('click', async () => {
     const profile = profileInput.value.trim();
-    if (!profile) { setMessage('Enter a profile JSON path before starting.', 'error'); profileInput.focus(); return; }
-    btnStart.disabled = true; setMessage(`Starting ${profile}…`);
-    try {
-      await request('/start', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({profile})});
-      setMessage('Run start requested.', 'success'); await pollStatus();
-    } catch (error) { setMessage(error.message, 'error'); btnStart.disabled = false; }
-  });
-  btnStop.addEventListener('click', async () => {
-    btnStop.disabled = true; setMessage('Stopping active run…');
-    try { await request('/stop', {method: 'POST'}); setMessage('Stop requested.', 'success'); await pollStatus(); }
-    catch (error) { setMessage(error.message, 'error'); btnStop.disabled = false; }
+    if (!profile) return alert('Enter a profile path');
+    const res = await fetch(API + '/start', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ profile }),
+    });
+    const data = await res.json();
+    if (data.error) alert(data.error);
   });
 
+  btnStop.addEventListener('click', async () => {
+    await fetch(API + '/stop', { method: 'POST' });
+  });
+
+  // ── Status polling ──────────────────────────────────────────
   async function pollStatus() {
     try {
-      const data = await request('/status');
-      const state = String(data.state || 'idle').toLowerCase();
+      const res = await fetch(API + '/status');
+      const data = await res.json();
+      const state = data.state || 'idle';
       runState.textContent = state;
-      runState.className = 'badge ' + (state === 'running' ? 'badge-ok' : state === 'error' ? 'badge-err' : state === 'stopping' ? 'badge-warn' : 'badge-info');
+      runState.className = 'badge ' + (
+        state === 'running'  ? 'badge-ok' :
+        state === 'error'    ? 'badge-err' :
+        state === 'stopping' ? 'badge-warn' : 'badge-info'
+      );
       btnStart.disabled = state === 'running' || state === 'stopping';
-      btnStop.disabled = state !== 'running';
-      const steps = Array.isArray(data.steps) ? data.steps : [];
-      if (steps.length) renderSteps(steps, data.current_step);
-      if (Array.isArray(data.instruments)) renderInstruments(data.instruments);
-    } catch (error) {
-      runState.textContent = 'offline'; runState.className = 'badge badge-err'; btnStart.disabled = false; btnStop.disabled = true;
-      setMessage(`HIL status unavailable: ${error.message}`, 'error');
-    }
+      btnStop.disabled  = state !== 'running';
+    } catch {}
   }
 
-  function renderSteps(steps, current) {
-    const bar = document.getElementById('step-bar'); bar.replaceChildren();
-    steps.forEach((step, index) => {
-      const item = document.createElement('span'); item.className = 'step-item';
-      const status = typeof step === 'object' ? step.status : index < current ? 'done' : index === current ? 'active' : '';
-      if (status) item.classList.add(status === 'finished' ? 'done' : status);
-      item.textContent = typeof step === 'object' ? (step.name || `Step ${index+1}`) : String(step);
-      item.title = item.textContent; bar.append(item);
-    });
-  }
-
-  function renderInstruments(instruments) {
-    const target = document.getElementById('instrument-badges'); target.replaceChildren();
-    instruments.forEach(item => { const badge = document.createElement('span'); badge.className = `badge ${item.connected === false ? 'badge-err' : 'badge-ok'}`; badge.style.marginRight = '4px'; badge.textContent = item.name || item.type || String(item); target.append(badge); });
-  }
-
-  function renderEvents(events) {
-    eventLog.replaceChildren();
-    if (!events.length) { eventLog.innerHTML = '<div class="panel-empty">No events received</div>'; return; }
-    events.slice(-60).reverse().forEach(event => {
-      const row = document.createElement('div'); row.className = 'event-row';
-      const time = document.createElement('span'); time.className = 'ts'; time.textContent = `${Number(event.t_s || 0).toFixed(3)} s`;
-      const copy = document.createElement('span'); copy.textContent = `${event.label || event.ch || 'event'}: ${JSON.stringify(event)}`;
-      row.append(time, copy); eventLog.append(row);
-    });
-  }
-
+  // ── Event polling ───────────────────────────────────────────
   async function pollEvents() {
     try {
-      const [markers, canEvents, powerEvents, rfEvents] = await Promise.all([
-        request('/events/marker?n=50'), request('/events/can?n=50'), request('/events/power?n=200'), request('/events/rf?n=200').catch(() => []),
-      ]);
-      const power = Array.isArray(powerEvents) ? powerEvents : [];
-      powerChart.setData(power.map(e => e.t_s), power.map(e => e.current_a));
-      const rf = Array.isArray(rfEvents) ? rfEvents : [];
-      rfChart.setData(rf.map(e => e.frequency_hz ?? e.freq_hz ?? e.t_s), rf.map(e => e.power_dbm ?? e.dbm));
-      renderEvents([...(Array.isArray(markers)?markers:[]), ...(Array.isArray(canEvents)?canEvents:[])].sort((a,b) => Number(a.t_s||0)-Number(b.t_s||0)));
-    } catch (error) { if (!message.textContent) setMessage(`Telemetry unavailable: ${error.message}`, 'error'); }
+      for (const ch of ['marker', 'can', 'power']) {
+        const res = await fetch(API + '/events/' + ch + '?n=50');
+        const events = await res.json();
+        if (ch === 'power' && events.length > 0) {
+          const xs = events.map(e => e.t_s);
+          const ys = events.map(e => e.current_a);
+          Plotly.react('power-chart', [{ x: xs, y: ys, mode: 'lines',
+            name: 'Current (A)', line: { color: '#89b4fa', width: 1.5 }}],
+            { ...darkLayout, yaxis: { ...darkLayout.yaxis, title: 'A' }});
+        }
+        if (ch === 'marker' || ch === 'can') {
+          const html = events.slice(-30).reverse().map(e =>
+            `<div class="event-row"><span class="ts">${(e.t_s||0).toFixed(3)}s</span>${e.label || e.ch}: ${JSON.stringify(e)}</div>`
+          ).join('');
+          if (html) eventLog.innerHTML = html;
+        }
+      }
+    } catch {}
   }
 
+  // ── History ─────────────────────────────────────────────────
   async function pollHistory() {
     try {
-      const runs = await request('/history?limit=10');
-      const target = document.getElementById('history-list'); target.replaceChildren();
-      if (!Array.isArray(runs) || !runs.length) { target.innerHTML = '<div class="panel-empty">No runs yet</div>'; return; }
-      runs.forEach(run => {
-        const row = document.createElement('div'); row.className = 'history-entry';
-        const profile = document.createElement('span'); profile.textContent = run.profile || run.run_id || 'Unnamed run';
-        const badge = document.createElement('span'); badge.className = `badge ${run.state === 'finished' ? 'badge-ok' : run.state === 'running' ? 'badge-info' : 'badge-err'}`; badge.textContent = run.state || 'unknown';
-        row.append(profile,badge); target.append(row);
-      });
-    } catch (error) { document.getElementById('history-list').innerHTML = `<div class="panel-empty">History unavailable</div>`; }
+      const res = await fetch(API + '/history?limit=10');
+      const runs = await res.json();
+      const list = document.getElementById('history-list');
+      list.innerHTML = runs.map(r =>
+        `<div class="event-row">${r.profile} — <span class="badge ${r.state==='finished'?'badge-ok':'badge-err'}">${r.state}</span></div>`
+      ).join('') || '<span style="color:var(--fg-dim)">No runs yet</span>';
+    } catch {}
   }
 
-  pollStatus(); pollEvents(); pollHistory();
-  setInterval(pollStatus, 3000); setInterval(pollEvents, 1200); setInterval(pollHistory, 10000);
+  pollStatus(); pollHistory();
+  setInterval(pollStatus, 3000);
+  setInterval(pollEvents, 1000);
+  setInterval(pollHistory, 10000);
 })();
 </script>
-<script src="/static/shell/ui-foundation.js"></script>
 </body>
 </html>

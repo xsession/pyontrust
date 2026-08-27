@@ -10,24 +10,9 @@ Mounts at ``/config/`` and provides:
 """
 from __future__ import annotations
 
-import pathlib
+from flask import Blueprint, current_app, jsonify, request
 
-from flask import Blueprint, current_app, jsonify, request, send_from_directory
-
-_WEB_DIR = pathlib.Path(__file__).resolve().parent.parent / "web" / "config"
-
-bp = Blueprint(
-    "config",
-    __name__,
-    static_folder=str(_WEB_DIR),
-    static_url_path="/static",
-)
-
-
-@bp.route("/")
-def index():
-    """Serve the accessible configuration-management interface."""
-    return send_from_directory(str(_WEB_DIR), "index.html")
+bp = Blueprint("config", __name__)
 
 
 def _svc():

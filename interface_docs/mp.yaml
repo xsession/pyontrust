@@ -233,28 +233,3 @@
   od_name: LocatorBaseSPI
   dependencies:
     - locator_base/spi_mcu_types.yaml
-
-# ── Directory scaffolds ──────────────────────────────────────
-
-# - source: locator_base/canopen_mcu.yaml
-#   output: generated/apps/locator_base_dashboard
-#   format: gui-app
-#   od_name: LocatorBase
-#   app_name: Locator Base Dashboard
-#   route_prefix: /locator-base
-#   port: 5210
-#   dependencies:
-#     - locator_base/canopen_mcu_types.yaml
-
-# - source: locator_base/canopen_mcu.yaml
-#   output: generated/tests/locator_base_sequence
-#   format: test-sequence
-#   od_name: LocatorBase
-#   sequence_class_name: LocatorBaseSequence
-#   device_label: Locator Base
-#   device_key: locator_base
-#   board_module: pyontrust.boards.locator_base
-#   board_symbol: LOCATOR_BASE
-#   hil_app_path: samples/basic/blink
-#   dependencies:
-#     - locator_base/canopen_mcu_types.yaml

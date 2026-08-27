@@ -18,7 +18,6 @@ MetricsTuple = Tuple[str, str, str, str, str, str, str, str, str, str]
 _NA_10: MetricsTuple = ("n/a",) * 10
 _FFT_MAX_SAMPLES = 20_000
 _MIN_FREQ_SAMPLES = 8
-_SPECTRUM_MAX_SAMPLES = 131_072
 
 
 def _fmt(val: float, decimals: int = 3) -> str:
@@ -156,96 +155,3 @@ def compute_signal_metrics(x: pd.Series, y: pd.Series) -> MetricsTuple:
         freq_s,
         period_s,
     )
-
-
-def compute_signal_spectrum(
-    x: pd.Series,
-    y: pd.Series,
-    *,
-    baseline_cutoff: float | None = None,
-) -> tuple[np.ndarray, np.ndarray, float | None]:
-    """Compute a single-sided magnitude spectrum with DC suppression."""
-    try:
-        xs_arr = pd.to_numeric(x, errors="coerce").to_numpy(dtype=float, copy=False)
-        ys_arr = pd.to_numeric(y, errors="coerce").to_numpy(dtype=float, copy=False)
-    except Exception:
-        return np.empty(0, dtype=float), np.empty(0, dtype=float), None
-
-    valid = np.isfinite(xs_arr) & np.isfinite(ys_arr)
-    if int(np.count_nonzero(valid)) < _MIN_FREQ_SAMPLES:
-        return np.empty(0, dtype=float), np.empty(0, dtype=float), None
-
-    xs_arr = xs_arr[valid]
-    ys_arr = ys_arr[valid]
-
-    if xs_arr.size > 1 and np.any(np.diff(xs_arr) < 0):
-        order = np.argsort(xs_arr, kind="mergesort")
-        xs_arr = xs_arr[order]
-        ys_arr = ys_arr[order]
-
-    try:
-        unique_x, unique_idx = np.unique(xs_arr, return_index=True)
-    except Exception:
-        return np.empty(0, dtype=float), np.empty(0, dtype=float), None
-    if unique_x.size < _MIN_FREQ_SAMPLES:
-        return np.empty(0, dtype=float), np.empty(0, dtype=float), None
-
-    xs_arr = unique_x
-    ys_arr = ys_arr[unique_idx]
-    dx = np.diff(xs_arr)
-    dx_pos = dx[dx > 0]
-    if dx_pos.size == 0:
-        return np.empty(0, dtype=float), np.empty(0, dtype=float), None
-
-    dt = float(np.median(dx_pos))
-    if not math.isfinite(dt) or dt <= 0:
-        return np.empty(0, dtype=float), np.empty(0, dtype=float), None
-
-    t0 = float(xs_arr[0])
-    t1 = float(xs_arr[-1])
-    if not math.isfinite(t0) or not math.isfinite(t1) or t1 <= t0:
-        return np.empty(0, dtype=float), np.empty(0, dtype=float), None
-
-    try:
-        t_uniform = np.arange(t0, t1 + (dt * 0.5), dt, dtype=float)
-    except Exception:
-        return np.empty(0, dtype=float), np.empty(0, dtype=float), None
-    if t_uniform.size < _MIN_FREQ_SAMPLES:
-        return np.empty(0, dtype=float), np.empty(0, dtype=float), None
-
-    try:
-        y_uniform = np.interp(t_uniform, xs_arr, ys_arr)
-    except Exception:
-        return np.empty(0, dtype=float), np.empty(0, dtype=float), None
-
-    baseline = None
-    try:
-        if baseline_cutoff is not None and math.isfinite(float(baseline_cutoff)):
-            base_samples = y_uniform[y_uniform <= float(baseline_cutoff)]
-            if base_samples.size > 0:
-                baseline = float(np.nanmean(base_samples))
-        if baseline is None:
-            baseline = float(np.nanmean(y_uniform))
-    except Exception:
-        baseline = None
-
-    if baseline is None or not math.isfinite(baseline):
-        return np.empty(0, dtype=float), np.empty(0, dtype=float), None
-
-    y_centered = y_uniform - float(baseline)
-
-    if y_centered.size > _SPECTRUM_MAX_SAMPLES:
-        step = int(np.ceil(y_centered.size / _SPECTRUM_MAX_SAMPLES))
-        if step > 1:
-            y_centered = y_centered[::step]
-            dt = dt * step
-
-    if y_centered.size < _MIN_FREQ_SAMPLES:
-        return np.empty(0, dtype=float), np.empty(0, dtype=float), baseline
-
-    yf = np.fft.rfft(y_centered)
-    freqs = np.fft.rfftfreq(y_centered.size, d=dt)
-    magnitudes = np.abs(yf) / max(1, y_centered.size)
-    if magnitudes.size > 0:
-        magnitudes[0] = 0.0
-    return freqs, magnitudes, baseline

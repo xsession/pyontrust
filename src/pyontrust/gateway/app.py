@@ -15,6 +15,7 @@ import logging
 import math
 import os
 import pathlib
+from importlib import import_module
 from importlib.metadata import entry_points
 from typing import Any
 
@@ -101,13 +102,13 @@ def create_app(
         app.config.update(extra_config)
 
     # ── Initialise services and store on app ────────────────────────
-    from pyontrust.services import (
-        ArtifactService,
-        BenchService,
-        ConfigService,
-        LogService,
-        TestService,
-    )
+    # Import concrete service modules directly so optional service extras
+    # (AOI/Thermal) do not block gateway startup when not installed.
+    from pyontrust.services.artifact_service import ArtifactService
+    from pyontrust.services.bench_service import BenchService
+    from pyontrust.services.config_service import ConfigService
+    from pyontrust.services.log_service import LogService
+    from pyontrust.services.test_service import TestService
 
     app.extensions["test_service"] = TestService(artifacts_root=artifacts_root)
     app.extensions["log_service"] = LogService()
@@ -121,27 +122,36 @@ def create_app(
     # ── Register built-in Blueprints ────────────────────────────────
     from pyontrust.gateway.blueprints.shell import bp as shell_bp
     from pyontrust.gateway.blueprints.hil import bp as hil_bp
-    from pyontrust.gateway.blueprints.csv_plotter import bp as csv_bp
     from pyontrust.gateway.blueprints.bench import bp as bench_bp
     from pyontrust.gateway.blueprints.artifacts import bp as artifacts_bp
     from pyontrust.gateway.blueprints.config import bp as config_bp
     from pyontrust.gateway.blueprints.flowlab import bp as flowlab_bp
     from pyontrust.gateway.blueprints.diagnostic import bp as diag_bp
     from pyontrust.gateway.blueprints.can_diag import bp as can_bp
-    from pyontrust.gateway.blueprints.thermal_measurement import bp as thermal_bp
     from pyontrust.gateway.blueprints.ifdoc import bp as ifdoc_bp
 
     app.register_blueprint(shell_bp)  # serves / and /static/shell/
     app.register_blueprint(diag_bp, url_prefix="/diag")
     app.register_blueprint(hil_bp, url_prefix="/hil")
-    app.register_blueprint(csv_bp, url_prefix="/csv")
     app.register_blueprint(bench_bp, url_prefix="/bench")
     app.register_blueprint(artifacts_bp, url_prefix="/artifacts")
     app.register_blueprint(config_bp, url_prefix="/config")
     app.register_blueprint(flowlab_bp, url_prefix="/flowlab")
     app.register_blueprint(can_bp, url_prefix="/can")
-    app.register_blueprint(thermal_bp, url_prefix="/thermal")
     app.register_blueprint(ifdoc_bp, url_prefix="/ifdoc")
+
+    # Optional blueprints require extra dependencies; skip gracefully.
+    optional_blueprints = [
+        ("pyontrust.gateway.blueprints.csv_plotter", "/csv"),
+        ("pyontrust.gateway.blueprints.thermal_measurement", "/thermal"),
+    ]
+    for module_name, prefix in optional_blueprints:
+        try:
+            module = import_module(module_name)
+            app.register_blueprint(module.bp, url_prefix=prefix)
+            logger.info("Registered optional blueprint: %s", prefix)
+        except Exception as exc:
+            logger.warning("Skipping optional blueprint %s: %s", module_name, exc)
 
     # ── Auto-discover plugin Blueprints ─────────────────────────────
     try:

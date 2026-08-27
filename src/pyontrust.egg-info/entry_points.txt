@@ -1,5 +1,6 @@
 [console_scripts]
 pyontrust = pyontrust.gateway.app:main
+pyontrust-mcp = pyontrust.mcp_server:main
 
 [pyontrust.instruments]
 ad3_cluster = pyontrust.instruments.ad3_cluster:create

@@ -5,7 +5,6 @@ from __future__ import annotations
 import html as html_mod
 import logging
 import re
-from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
@@ -50,69 +49,6 @@ def resolve_types(deps: list[Path]) -> dict[str, dict]:
         data = load_yaml(dep)
         types.update(data.get("types", {}))
     return types
-
-
-def detect_hex_enum_types(paths: list[Path]) -> list[str]:
-    """Return enum type names whose values are authored as hex literals.
-
-    The YAML loader normalizes hex values into integers, so this scans the raw
-    source text to preserve the author's intended formatting for generated code.
-    """
-
-    detected: OrderedDict[str, None] = OrderedDict()
-    for path in paths:
-        if not path.exists():
-            continue
-
-        lines = path.read_text(encoding="utf-8").splitlines()
-        index = 0
-        while index < len(lines):
-            match = re.match(r"^\s{2}([A-Za-z0-9_]+):\s*$", lines[index])
-            if not match:
-                index += 1
-                continue
-
-            type_name = match.group(1)
-            index += 1
-            block_lines: list[str] = []
-            while index < len(lines) and not re.match(r"^\s{2}[A-Za-z0-9_]+:\s*$", lines[index]):
-                block_lines.append(lines[index])
-                index += 1
-
-            if not any(re.match(r"^\s{4}format:\s*enum\s*$", line) for line in block_lines):
-                continue
-
-            values = _extract_enum_value_literals(block_lines)
-            if values and all(_is_hex_literal(value) for value in values):
-                detected[type_name] = None
-
-    return list(detected.keys())
-
-
-def _extract_enum_value_literals(block_lines: list[str]) -> list[str]:
-    values: list[str] = []
-    in_values = False
-    for line in block_lines:
-        if re.match(r"^\s{4}values:\s*$", line):
-            in_values = True
-            continue
-        if not in_values:
-            continue
-
-        value_match = re.match(r"^\s{6}[A-Za-z0-9_]+:\s*([^\s#]+)", line)
-        if value_match:
-            values.append(value_match.group(1))
-            continue
-
-        if line.strip() == "":
-            continue
-        if re.match(r"^\s{4}[A-Za-z0-9_]+", line):
-            break
-    return values
-
-
-def _is_hex_literal(value: str) -> bool:
-    return bool(re.match(r"^0x[0-9a-fA-F]+$", value.strip()))
 
 
 # ── Type mapping helpers ─────────────────────────────────────────
