@@ -5,110 +5,175 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Lab Bench</title>
   <link rel="stylesheet" href="/static/shell/shell.css">
+  <link rel="stylesheet" href="/static/shell/ui-foundation.css">
   <style>
-    .bench-page { padding: 20px; max-width: 900px; margin: 0 auto; }
-    .bench-page h2 { color: var(--accent); margin-bottom: 16px; }
-    .bench-actions { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
-    #bench-table { margin-top: 12px; }
-    .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+    * { box-sizing: border-box; }
+    body { margin: 0; overflow: auto; }
+    .bench-page { width: min(1100px, 100%); min-height: 100vh; margin: 0 auto; padding: 18px; }
+    .bench-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; margin-bottom: 14px; }
+    .bench-header h1 { margin: 0 0 3px; color: var(--accent); font-size: 22px; }
+    .bench-header p { margin: 0; color: var(--fg-dim); font-size: 11px; }
+    .bench-actions { display: grid; grid-template-columns: minmax(240px,1fr) repeat(5,auto); align-items: end; gap: 7px; margin-bottom: 12px; }
+    .path-field { min-width: 0; display: grid; gap: 4px; }
+    .path-field label { color: var(--fg-dim); font-size: 10px; font-weight: 650; }
+    .path-field input { width: 100%; }
+    .bench-grid { display: grid; grid-template-columns: minmax(0,1fr) 280px; align-items: start; gap: 10px; }
+    .section-card { min-width: 0; padding: 0; overflow: hidden; }
+    .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 42px; padding: 8px 11px; border-bottom: 1px solid var(--border); }
+    .section-heading h2 { margin: 0; color: var(--fg); font-size: 12px; }
+    .section-heading span { color: var(--fg-dim); font-size: 9.5px; }
+    .table-scroll { max-height: calc(100vh - 220px); }
+    .bench-table { min-width: 620px; }
+    .bench-table caption { padding: 8px; color: var(--fg-dim); text-align: left; font-size: 10px; }
+    .status-dot { display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 50%; background: var(--fg-dim); }
     .status-dot.connected { background: var(--green); }
     .status-dot.error { background: var(--red); }
-    .status-dot.disabled { background: var(--fg-dim); }
     .status-dot.not_instantiated { background: var(--yellow); }
-    .types-list { font-size: 12px; color: var(--fg-dim); margin-top: 12px; }
+    .status-copy { display: inline-flex; align-items: center; }
+    .types-content { display: flex; flex-wrap: wrap; gap: 5px; padding: 11px; }
+    .types-content .badge { max-width: 100%; overflow-wrap: anywhere; }
+    .empty-cell { height: 120px; color: var(--fg-dim); text-align: center; }
+    #bench-message { margin: 9px 0 0; }
+    @media (max-width: 900px) {
+      .bench-actions { grid-template-columns: minmax(220px,1fr) repeat(3,auto); }
+      .bench-actions .path-field { grid-column: 1 / -1; }
+      .bench-grid { grid-template-columns: 1fr; }
+      .table-scroll { max-height: none; }
+    }
+    @media (max-width: 560px) {
+      .bench-page { padding: 10px; }
+      .bench-header { align-items: flex-start; flex-direction: column; }
+      .bench-actions { grid-template-columns: 1fr 1fr; }
+      .bench-actions .path-field { grid-column: 1 / -1; }
+      .bench-actions .btn { width: 100%; }
+      .bench-table { min-width: 560px; }
+    }
   </style>
 </head>
 <body>
-<div class="bench-page">
-  <h2>🏗️ Lab Bench Manager</h2>
+<main class="bench-page">
+  <header class="bench-header">
+    <div><h1>🏗️ Lab Bench Manager</h1><p>Load a bench definition, connect instruments, and review driver availability.</p></div>
+    <span id="bench-summary" class="badge badge-info">No bench loaded</span>
+  </header>
 
-  <div class="bench-actions">
-    <input type="text" id="bench-path" placeholder="benches/default.json" style="width:280px;">
-    <button class="btn" id="btn-load" onclick="loadBench()">Load</button>
-    <button class="btn" id="btn-save" onclick="saveBench()">Save</button>
-    <button class="btn btn-primary" onclick="connectAll()">Connect All</button>
-    <button class="btn btn-danger" onclick="disconnectAll()">Disconnect</button>
-    <button class="btn" onclick="refreshTypes()">Refresh Types</button>
-  </div>
+  <section class="bench-actions" aria-label="Bench actions">
+    <div class="path-field"><label for="bench-path">Bench JSON path</label><input type="text" id="bench-path" placeholder="benches/default.json" autocomplete="off"></div>
+    <button class="btn" id="btn-load" type="button">Load</button>
+    <button class="btn" id="btn-save" type="button">Save</button>
+    <button class="btn btn-primary" id="btn-connect" type="button">Connect all</button>
+    <button class="btn btn-danger" id="btn-disconnect" type="button">Disconnect</button>
+    <button class="btn" id="btn-types" type="button">Refresh types</button>
+  </section>
 
-  <div class="card">
-    <h3 style="font-size: 13px; color: var(--fg-dim); margin-bottom: 8px;">Instrument Status</h3>
-    <table id="bench-table">
-      <thead><tr><th>Type</th><th>Status</th><th>Enabled</th><th>Info</th></tr></thead>
-      <tbody id="bench-tbody"><tr><td colspan="4" style="color:var(--fg-dim)">No bench loaded</td></tr></tbody>
-    </table>
-  </div>
+  <section class="bench-grid">
+    <article class="card section-card">
+      <div class="section-heading"><h2>Instrument status</h2><span id="instrument-count">0 instruments</span></div>
+      <div class="table-scroll">
+        <table class="bench-table">
+          <caption class="sr-only">Configured lab instruments and connection status</caption>
+          <thead><tr><th scope="col">Type</th><th scope="col">Status</th><th scope="col">Enabled</th><th scope="col">Information</th></tr></thead>
+          <tbody id="bench-tbody"><tr><td colspan="4" class="empty-cell">No bench loaded</td></tr></tbody>
+        </table>
+      </div>
+    </article>
 
-  <div class="types-list card" style="margin-top: 16px;">
-    <h3 style="font-size: 13px; color: var(--fg-dim); margin-bottom: 8px;">Available Instrument Types</h3>
-    <div id="types-content">Click "Refresh Types" to discover.</div>
-  </div>
-</div>
+    <aside class="card section-card" aria-labelledby="types-title">
+      <div class="section-heading"><h2 id="types-title">Available instrument types</h2><span id="types-count">Not scanned</span></div>
+      <div id="types-content" class="types-content"><span class="empty-state">Choose “Refresh types” to discover installed drivers.</span></div>
+    </aside>
+  </section>
+
+  <p class="ui-message" id="bench-message" role="status" aria-live="polite"></p>
+</main>
 
 <script>
-const API = '/bench/api';
+(() => {
+  'use strict';
+  const API = '/bench/api';
+  const message = document.getElementById('bench-message');
+  const pathInput = document.getElementById('bench-path');
+  const tbody = document.getElementById('bench-tbody');
 
-async function loadBench() {
-  const path = document.getElementById('bench-path').value.trim();
-  const body = path ? { path } : {};
-  const res = await fetch(API + '/load', { method: 'POST',
-    headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
-  const data = await res.json();
-  if (data.error) alert(data.error);
-  refreshStatus();
-}
+  function setMessage(text = '', type = '') { message.textContent = text; message.className = `ui-message${type ? ` is-${type}` : ''}`; }
+  async function api(path, options = {}) {
+    const response = await fetch(API + path, {headers: {'Accept':'application/json', ...(options.headers || {})}, ...options});
+    let data = null; try { data = await response.json(); } catch { data = null; }
+    if (!response.ok || data?.error) throw new Error(data?.error || `Request failed (${response.status})`);
+    return data;
+  }
+  function requestBody() { const path = pathInput.value.trim(); return path ? {path} : {}; }
 
-async function saveBench() {
-  const path = document.getElementById('bench-path').value.trim();
-  const body = path ? { path } : {};
-  const res = await fetch(API + '/save', { method: 'POST',
-    headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
-  const data = await res.json();
-  if (data.error) alert(data.error); else alert('Saved');
-}
+  async function runButton(button, label, task) {
+    button.disabled = true; setMessage(label);
+    try { await task(); }
+    catch (error) { setMessage(error.message, 'error'); }
+    finally { button.disabled = false; }
+  }
 
-async function connectAll() {
-  const res = await fetch(API + '/connect', { method: 'POST' });
-  const data = await res.json();
-  console.log('Connect result:', data);
-  refreshStatus();
-}
+  document.getElementById('btn-load').addEventListener('click', event => runButton(event.currentTarget, 'Loading bench definition…', async () => {
+    await api('/load', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(requestBody())});
+    await refreshStatus(); setMessage('Bench loaded.', 'success');
+  }));
+  document.getElementById('btn-save').addEventListener('click', event => runButton(event.currentTarget, 'Saving bench definition…', async () => {
+    await api('/save', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(requestBody())});
+    setMessage('Bench definition saved.', 'success');
+  }));
+  document.getElementById('btn-connect').addEventListener('click', event => runButton(event.currentTarget, 'Connecting instruments…', async () => {
+    await api('/connect', {method:'POST'}); await refreshStatus(); setMessage('Connection attempt completed.', 'success');
+  }));
+  document.getElementById('btn-disconnect').addEventListener('click', event => runButton(event.currentTarget, 'Disconnecting instruments…', async () => {
+    await api('/disconnect', {method:'POST'}); await refreshStatus(); setMessage('All instruments disconnected.', 'success');
+  }));
+  document.getElementById('btn-types').addEventListener('click', event => runButton(event.currentTarget, 'Discovering instrument drivers…', async () => {
+    await refreshTypes(); setMessage('Instrument type discovery completed.', 'success');
+  }));
 
-async function disconnectAll() {
-  await fetch(API + '/disconnect', { method: 'POST' });
-  refreshStatus();
-}
+  function statusClass(value) {
+    const safe = String(value || 'not_instantiated').toLowerCase();
+    return ['connected','error','disabled','not_instantiated'].includes(safe) ? safe : 'not_instantiated';
+  }
 
-async function refreshStatus() {
-  try {
-    const res = await fetch(API + '/status');
-    const instruments = await res.json();
-    const tbody = document.getElementById('bench-tbody');
-    if (!Array.isArray(instruments) || instruments.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="4" style="color:var(--fg-dim)">No instruments configured</td></tr>';
-      return;
+  async function refreshStatus() {
+    try {
+      const instruments = await api('/status');
+      tbody.replaceChildren();
+      const rows = Array.isArray(instruments) ? instruments : [];
+      document.getElementById('instrument-count').textContent = `${rows.length} instrument${rows.length === 1 ? '' : 's'}`;
+      const connected = rows.filter(item => item.status === 'connected').length;
+      const summary = document.getElementById('bench-summary');
+      summary.textContent = rows.length ? `${connected}/${rows.length} connected` : 'No instruments configured';
+      summary.className = `badge ${rows.length && connected === rows.length ? 'badge-ok' : rows.some(item => item.status === 'error') ? 'badge-err' : 'badge-info'}`;
+      if (!rows.length) { tbody.innerHTML = '<tr><td colspan="4" class="empty-cell">No instruments configured</td></tr>'; return; }
+      rows.forEach(item => {
+        const row = document.createElement('tr');
+        const type = document.createElement('td'); type.textContent = item.type || 'Unknown';
+        const status = document.createElement('td');
+        const copy = document.createElement('span'); copy.className = 'status-copy';
+        const dot = document.createElement('span'); dot.className = `status-dot ${statusClass(item.status)}`; dot.setAttribute('aria-hidden','true');
+        copy.append(dot, document.createTextNode(item.status || 'not instantiated')); status.append(copy);
+        const enabled = document.createElement('td'); enabled.textContent = item.enabled ? 'Yes' : 'No';
+        const info = document.createElement('td'); info.textContent = item.info || item.error || '—'; info.style.color = 'var(--fg-dim)'; info.style.fontSize = '10px';
+        row.append(type,status,enabled,info); tbody.append(row);
+      });
+    } catch (error) {
+      tbody.innerHTML = '<tr><td colspan="4" class="empty-cell">Bench status unavailable</td></tr>';
+      setMessage(`Bench status unavailable: ${error.message}`, 'error');
     }
-    tbody.innerHTML = instruments.map(i => `<tr>
-      <td><span class="status-dot ${i.status||'not_instantiated'}"></span>${i.type}</td>
-      <td>${i.status || '—'}</td>
-      <td>${i.enabled ? '✓' : '✗'}</td>
-      <td style="font-size:11px;color:var(--fg-dim)">${i.info||i.error||'—'}</td>
-    </tr>`).join('');
-  } catch {}
-}
+  }
 
-async function refreshTypes() {
-  try {
-    const res = await fetch(API + '/types');
-    const types = await res.json();
-    const el = document.getElementById('types-content');
-    el.innerHTML = Object.keys(types).map(t =>
-      `<span class="badge badge-info" style="margin:2px">${t}</span>`
-    ).join(' ') || 'None found';
-  } catch {}
-}
+  async function refreshTypes() {
+    const types = await api('/types');
+    const names = Array.isArray(types) ? types : Object.keys(types || {});
+    const target = document.getElementById('types-content'); target.replaceChildren();
+    document.getElementById('types-count').textContent = `${names.length} type${names.length === 1 ? '' : 's'}`;
+    if (!names.length) { target.innerHTML = '<span class="empty-state">No instrument drivers were discovered.</span>'; return; }
+    names.forEach(name => { const badge = document.createElement('span'); badge.className = 'badge badge-info'; badge.textContent = name; target.append(badge); });
+  }
 
-refreshStatus();
+  refreshStatus();
+})();
 </script>
+<script src="/static/shell/ui-foundation.js"></script>
 </body>
 </html>

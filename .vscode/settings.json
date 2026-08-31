@@ -5,6 +5,5 @@
         "./pyontrust_packages",
         "./scripts",
         "./gui_app/nicegui_control/src"
-    ],
-    "terminal.integrated.stickyScroll.enabled": false
+    ]
 }

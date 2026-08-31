@@ -1,33 +1,144 @@
 """Auto-generated driver stub for: {{ title }}"""
 
 from __future__ import annotations
-from dataclasses import dataclass
+import importlib
 
-{% if transport == "canopen" %}
+ENUM_TABLES = {
+{% for enum in enum_tables %}
+    "{{ enum.name }}": {
+{% for entry in enum.entries %}
+        "{{ entry.name }}": {{ entry.value_repr }},
+{% endfor %}
+    },
+{% endfor %}
+}
+
+BITFIELD_DEFINITIONS = {
+{% for bitfield in bitfield_definitions %}
+    "{{ bitfield.name }}": {
+{% for bit in bitfield.bits %}
+        "{{ bit.name }}": {"size": {{ bit.size }}, "doc": {{ bit.doc | tojson }}},
+{% endfor %}
+    },
+{% endfor %}
+}
+
+    {% if transport == "canopen" %}
+FIELD_METADATA_BY_GROUP = {{ field_metadata_by_group }}
+
 class {{ od_name }}OD:
     """CANopen object dictionary for {{ title }}."""
+
+    FIELD_METADATA_BY_GROUP = FIELD_METADATA_BY_GROUP
+    ENUM_TABLES = ENUM_TABLES
+    BITFIELD_DEFINITIONS = BITFIELD_DEFINITIONS
 
 {% for c in constants %}
     {{ c.name }} = {{ c.value }}
 {% endfor %}
 
-    def __init__(self, node) -> None:
+    def __init__(self, node, conversion_context: dict | None = None) -> None:
         self._node = node
+        self._generated_conversion_context = dict(conversion_context or {})
+
+    def get_field_metadata(self, group_name, field_name):
+        return self.FIELD_METADATA_BY_GROUP.get(group_name, {}).get(field_name, {})
+
+    def get_enum_table(self, type_name):
+        return self.ENUM_TABLES.get(type_name, {})
+
+    def get_bitfield_definition(self, type_name):
+        return self.BITFIELD_DEFINITIONS.get(type_name, {})
+
+    def _get_raw_value(self, group_name, field_name):
+        metadata = self.get_field_metadata(group_name, field_name)
+        reader_name = metadata.get("reader_name") or f"read_{field_name}"
+        reader = getattr(self, reader_name, None)
+        if reader is None:
+            raise AttributeError(f"No reader available for {group_name}.{field_name}")
+        return reader()
+
+    def _load_conversion_callable(self, conversion_spec):
+        python_spec = (conversion_spec or {}).get("implementation", {}).get("python", {})
+        module_name = python_spec.get("module")
+        function_name = python_spec.get("function")
+        if not module_name or not function_name:
+            return None
+        try:
+            module = importlib.import_module(module_name)
+        except ModuleNotFoundError:
+            return None
+        return getattr(module, function_name, None)
+
+    def _apply_conversion_callable(self, conversion_callable, raw_value, conversion_context):
+        try:
+            return conversion_callable(raw_value, **conversion_context)
+        except TypeError:
+            try:
+                return conversion_callable(raw_value)
+            except TypeError:
+                try:
+                    return conversion_callable(value=raw_value, **conversion_context)
+                except TypeError:
+                    return raw_value
+
+    def get_converted_value(self, group_name, field_name, raw_value=None):
+        metadata = self.get_field_metadata(group_name, field_name)
+        if raw_value is None:
+            raw_value = self._get_raw_value(group_name, field_name)
+
+        conversion_spec = metadata.get("conversion")
+        if not conversion_spec:
+            return raw_value
+
+        conversion_callable = self._load_conversion_callable(conversion_spec)
+        if conversion_callable is None:
+            return raw_value
+
+        conversion_context = dict(self._generated_conversion_context)
+        return self._apply_conversion_callable(conversion_callable, raw_value, conversion_context)
+
+    def get_additional_log_fields_schema(self, group_name):
+        return {
+            f"{field_name}_converted": None
+            for field_name, metadata in self.FIELD_METADATA_BY_GROUP.get(group_name, {}).items()
+            if metadata.get("conversion")
+        }
+
+    def get_additional_log_values(self, group_name, values):
+        converted_values = {}
+        for field_name, metadata in self.FIELD_METADATA_BY_GROUP.get(group_name, {}).items():
+            if not metadata.get("conversion") or field_name not in values:
+                continue
+            converted_values[f"{field_name}_converted"] = self.get_converted_value(
+                group_name,
+                field_name,
+                values[field_name],
+            )
+        return converted_values
 
 {% for m in methods %}
 {% if m.type == "read" %}
     def read_{{ m.name }}(self):
+        """{{ m.doc }}"""
         return self._node.sdo_read({{ m.mlx }})
 
 {% elif m.type == "write" %}
     def write_{{ m.name }}(self, value):
+        """{{ m.doc }}"""
         self._node.sdo_write({{ m.mlx }}, value)
 
 {% endif %}
 {% endfor %}
 {% elif transport == "uart" %}
+UART_COMMAND_METADATA = {{ uart.command_metadata }}
+
 class {{ od_name }}Driver:
     """UART driver for {{ title }}."""
+
+    ENUM_TABLES = ENUM_TABLES
+    BITFIELD_DEFINITIONS = BITFIELD_DEFINITIONS
+    COMMAND_METADATA = UART_COMMAND_METADATA
 
     BAUD_RATE = {{ uart.baud_rate }}
 
@@ -39,6 +150,15 @@ class {{ od_name }}Driver:
         self._port = port
         self._serial = None
 
+    def get_command_metadata(self, command_name):
+        return self.COMMAND_METADATA.get(command_name, {})
+
+    def get_enum_table(self, type_name):
+        return self.ENUM_TABLES.get(type_name, {})
+
+    def get_bitfield_definition(self, type_name):
+        return self.BITFIELD_DEFINITIONS.get(type_name, {})
+
 {% for cmd in uart.commands %}
     def {{ cmd.name }}({{ cmd.sig }}):
         """{{ cmd.doc }}"""
@@ -46,8 +166,14 @@ class {{ od_name }}Driver:
 
 {% endfor %}
 {% elif transport == "rs485" %}
+MODBUS_REGISTER_METADATA = {{ modbus.register_metadata }}
+
 class {{ od_name }}Driver:
     """Modbus RTU driver for {{ title }}."""
+
+    ENUM_TABLES = ENUM_TABLES
+    BITFIELD_DEFINITIONS = BITFIELD_DEFINITIONS
+    REGISTER_METADATA = MODBUS_REGISTER_METADATA
 
     SLAVE_ID = {{ modbus.slave_id }}
 
@@ -58,6 +184,71 @@ class {{ od_name }}Driver:
     def __init__(self, port: str, slave_id: int = {{ modbus.slave_id }}) -> None:
         self._port = port
         self._slave_id = slave_id
+
+    def get_register_metadata(self, register_name, register_group="holding"):
+        return self.REGISTER_METADATA.get(register_group, {}).get(register_name, {})
+
+    def get_enum_table(self, type_name):
+        return self.ENUM_TABLES.get(type_name, {})
+
+    def get_bitfield_definition(self, type_name):
+        return self.BITFIELD_DEFINITIONS.get(type_name, {})
+
+    def _load_conversion_callable(self, conversion_spec):
+        python_spec = (conversion_spec or {}).get("implementation", {}).get("python", {})
+        module_name = python_spec.get("module")
+        function_name = python_spec.get("function")
+        if not module_name or not function_name:
+            return None
+        try:
+            module = importlib.import_module(module_name)
+        except ModuleNotFoundError:
+            return None
+        return getattr(module, function_name, None)
+
+    def _apply_conversion_callable(self, conversion_callable, raw_value):
+        try:
+            return conversion_callable(raw_value)
+        except TypeError:
+            try:
+                return conversion_callable(value=raw_value)
+            except TypeError:
+                return raw_value
+
+    def get_converted_value(self, register_name, raw_value=None, register_group="holding"):
+        metadata = self.get_register_metadata(register_name, register_group)
+        if raw_value is None:
+            reader = getattr(self, f"read_{register_name}", None)
+            if reader is None:
+                return raw_value
+            raw_value = reader()
+
+        conversion_spec = metadata.get("conversion")
+        if not conversion_spec:
+            return raw_value
+        conversion_callable = self._load_conversion_callable(conversion_spec)
+        if conversion_callable is None:
+            return raw_value
+        return self._apply_conversion_callable(conversion_callable, raw_value)
+
+    def get_additional_log_fields_schema(self, register_group="holding"):
+        return {
+            f"{register_name}_converted": None
+            for register_name, metadata in self.REGISTER_METADATA.get(register_group, {}).items()
+            if metadata.get("conversion")
+        }
+
+    def get_additional_log_values(self, values, register_group="holding"):
+        converted_values = {}
+        for register_name, metadata in self.REGISTER_METADATA.get(register_group, {}).items():
+            if not metadata.get("conversion") or register_name not in values:
+                continue
+            converted_values[f"{register_name}_converted"] = self.get_converted_value(
+                register_name,
+                values[register_name],
+                register_group=register_group,
+            )
+        return converted_values
 
 {% for m in modbus.holding_methods %}
 {% if m.type == "read" %}
@@ -79,8 +270,16 @@ class {{ od_name }}Driver:
 
 {% endfor %}
 {% elif transport in ["tcp/udp", "tcp", "udp"] %}
+TCPUDP_COMMAND_METADATA = {{ tcpudp.command_metadata }}
+UDP_MESSAGE_METADATA = {{ tcpudp.message_metadata }}
+
 class {{ od_name }}Driver:
     """TCP/UDP driver for {{ title }}."""
+
+    ENUM_TABLES = ENUM_TABLES
+    BITFIELD_DEFINITIONS = BITFIELD_DEFINITIONS
+    COMMAND_METADATA = TCPUDP_COMMAND_METADATA
+    MESSAGE_METADATA = UDP_MESSAGE_METADATA
 
 {% if tcpudp.tcp_port is not none %}
     TCP_PORT = {{ tcpudp.tcp_port }}
@@ -97,6 +296,18 @@ class {{ od_name }}Driver:
         self._host = host
         self._port = port
 
+    def get_command_metadata(self, command_name):
+        return self.COMMAND_METADATA.get(command_name, {})
+
+    def get_message_metadata(self, message_name):
+        return self.MESSAGE_METADATA.get(message_name, {})
+
+    def get_enum_table(self, type_name):
+        return self.ENUM_TABLES.get(type_name, {})
+
+    def get_bitfield_definition(self, type_name):
+        return self.BITFIELD_DEFINITIONS.get(type_name, {})
+
 {% for cmd in tcpudp.commands %}
     def {{ cmd.name }}({{ cmd.sig }}):
         """{{ cmd.doc }}"""
@@ -104,8 +315,14 @@ class {{ od_name }}Driver:
 
 {% endfor %}
 {% elif transport == "i2c" %}
+I2C_DEVICE_METADATA = {{ i2c.device_metadata }}
+
 class {{ od_name }}Driver:
     """I2C driver for {{ title }}."""
+
+    ENUM_TABLES = ENUM_TABLES
+    BITFIELD_DEFINITIONS = BITFIELD_DEFINITIONS
+    DEVICE_METADATA = I2C_DEVICE_METADATA
 
 {% for c in i2c.addr_constants %}
     ADDR_{{ c.name }} = {{ c.addr }}
@@ -113,6 +330,54 @@ class {{ od_name }}Driver:
 
     def __init__(self, bus) -> None:
         self._bus = bus
+
+    def get_device_metadata(self, device_name):
+        return self.DEVICE_METADATA.get(device_name, {})
+
+    def get_register_metadata(self, device_name, register_name):
+        return self.get_device_metadata(device_name).get("registers", {}).get(register_name, {})
+
+    def get_enum_table(self, type_name):
+        return self.ENUM_TABLES.get(type_name, {})
+
+    def get_bitfield_definition(self, type_name):
+        return self.BITFIELD_DEFINITIONS.get(type_name, {})
+
+    def _load_conversion_callable(self, conversion_spec):
+        python_spec = (conversion_spec or {}).get("implementation", {}).get("python", {})
+        module_name = python_spec.get("module")
+        function_name = python_spec.get("function")
+        if not module_name or not function_name:
+            return None
+        try:
+            module = importlib.import_module(module_name)
+        except ModuleNotFoundError:
+            return None
+        return getattr(module, function_name, None)
+
+    def _apply_conversion_callable(self, conversion_callable, raw_value):
+        try:
+            return conversion_callable(raw_value)
+        except TypeError:
+            try:
+                return conversion_callable(value=raw_value)
+            except TypeError:
+                return raw_value
+
+    def get_converted_value(self, device_name, register_name, raw_value=None):
+        metadata = self.get_register_metadata(device_name, register_name)
+        if raw_value is None:
+            reader = getattr(self, f"read_{device_name}_{register_name}", None)
+            if reader is None:
+                return raw_value
+            raw_value = reader()
+        conversion_spec = metadata.get("conversion")
+        if not conversion_spec:
+            return raw_value
+        conversion_callable = self._load_conversion_callable(conversion_spec)
+        if conversion_callable is None:
+            return raw_value
+        return self._apply_conversion_callable(conversion_callable, raw_value)
 
 {% for m in i2c.methods %}
 {% if m.type == "read" %}
@@ -128,11 +393,26 @@ class {{ od_name }}Driver:
 {% endif %}
 {% endfor %}
 {% elif transport == "spi" %}
+SPI_DEVICE_METADATA = {{ spi.device_metadata }}
+
 class {{ od_name }}Driver:
     """SPI driver for {{ title }}."""
 
+    ENUM_TABLES = ENUM_TABLES
+    BITFIELD_DEFINITIONS = BITFIELD_DEFINITIONS
+    DEVICE_METADATA = SPI_DEVICE_METADATA
+
     def __init__(self, bus) -> None:
         self._bus = bus
+
+    def get_device_metadata(self, device_name):
+        return self.DEVICE_METADATA.get(device_name, {})
+
+    def get_enum_table(self, type_name):
+        return self.ENUM_TABLES.get(type_name, {})
+
+    def get_bitfield_definition(self, type_name):
+        return self.BITFIELD_DEFINITIONS.get(type_name, {})
 
 {% for m in spi.methods %}
     def {{ m.dev }}_{{ m.name }}(self, *args):

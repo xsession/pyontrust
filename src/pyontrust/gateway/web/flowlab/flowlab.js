@@ -1752,9 +1752,6 @@
   document.getElementById('btn-save-hil').addEventListener('click', openSaveHilModal);
   document.getElementById('btn-run-hil').addEventListener('click', runAsHil);
   document.getElementById('btn-import-hil').addEventListener('click', openImportHilModal);
-  document.getElementById('btn-editor-core').addEventListener('click', () => {
-    window.open('/flowlab/editor-core', '_blank', 'noopener');
-  });
 
   // ── Import button ──────────────────────────────────────────
   document.getElementById('btn-import-py').addEventListener('click', openImportModal);

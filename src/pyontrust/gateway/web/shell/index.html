@@ -3,31 +3,99 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>pyontrust — Enterprise Test Platform</title>
+  <meta name="theme-color" content="#1e1e2e">
+  <title>pyontrust — Hardware Diagnostic</title>
+  <link rel="icon" href="/favicon.ico">
   <link rel="stylesheet" href="/static/shell/shell.css">
+  <link rel="stylesheet" href="/static/shell/ui-foundation.css">
 </head>
-<body>
+<body class="shell-body">
+  <a class="skip-link" href="#tool-frame">Skip to active tool</a>
 
-<nav id="app-nav">
-  <a href="/" class="logo">⚡ pyontrust</a>
-  <a href="/diag/"  data-tool="diag">🩺 Diagnostic</a>
-  <a href="/hil/"   data-tool="hil">🔬 HIL Dashboard</a>
-  <a href="/csv/"   data-tool="csv">📈 CSV Plotter</a>
-  <a href="/bench/" data-tool="bench">🏗️ Lab Bench</a>
-  <a href="/flowlab/" data-tool="flowlab">🔬 FlowLab</a>
-  <a href="/can/"     data-tool="can">🔌 CAN Bus</a>
-  <a href="/thermal/" data-tool="thermal">🌡️ Thermal</a>
-  <a href="/ifdoc/"   data-tool="ifdoc">📋 Interfaces</a>
-  <a href="/artifacts/" data-tool="artifacts">📦 Artifacts</a>
-  <a href="/config/api/profiles" data-tool="config">⚙️ Config</a>
-  <span class="spacer"></span>
-  <span id="status-badge" class="status-badge">● idle</span>
-</nav>
+  <div class="app-shell" id="app-shell">
+    <aside class="sidebar" id="app-sidebar" aria-label="Primary navigation">
+      <div class="brand-row">
+        <a href="#diag" class="brand" aria-label="pyontrust home">
+          <span class="brand-mark" aria-hidden="true">⚡</span>
+          <span class="brand-copy"><strong>pyontrust</strong><small>Test platform</small></span>
+        </a>
+        <button class="icon-button sidebar-close" id="sidebar-close" type="button" aria-label="Close navigation">×</button>
+      </div>
 
-<main id="app-content">
-  <iframe id="tool-frame" src="/diag/"></iframe>
-</main>
+      <nav class="tool-nav" aria-label="Engineering tools">
+        <p class="nav-heading">Operate</p>
+        <a class="active" aria-current="page" href="/diag/" data-tool="diag" data-title="Hardware Diagnostic" data-description="Inspect sensors, interfaces, and generated diagnostic reports">
+          <span class="nav-icon" aria-hidden="true">⌁</span><span>Diagnostic</span>
+        </a>
+        <a href="/hil/" data-tool="hil" data-title="HIL Dashboard" data-description="Run and monitor hardware-in-the-loop profiles">
+          <span class="nav-icon" aria-hidden="true">◉</span><span>HIL Dashboard</span>
+        </a>
+        <a href="/bench/" data-tool="bench" data-title="Lab Bench" data-description="Configure and operate connected lab equipment">
+          <span class="nav-icon" aria-hidden="true">▦</span><span>Lab Bench</span>
+        </a>
+        <a href="/can/" data-tool="can" data-title="CAN Bus" data-description="Capture, transmit, decode, and replay CAN traffic">
+          <span class="nav-icon" aria-hidden="true">⇄</span><span>CAN Bus</span>
+        </a>
+        <a href="/thermal/" data-tool="thermal" data-title="Thermal Measurement" data-description="Acquire, analyse, and report thermal measurements">
+          <span class="nav-icon" aria-hidden="true">♨</span><span>Thermal</span>
+        </a>
 
-<script src="/static/shell/shell.js"></script>
+        <p class="nav-heading">Analyse & design</p>
+        <a href="/csv/" data-tool="csv" data-title="CSV Plotter" data-description="Explore, compare, and export recorded signals">
+          <span class="nav-icon" aria-hidden="true">⌁</span><span>CSV Plotter</span>
+        </a>
+        <a href="/flowlab/" data-tool="flowlab" data-title="FlowLab" data-description="Build executable test workflows as connected blocks">
+          <span class="nav-icon" aria-hidden="true">◇</span><span>FlowLab</span>
+        </a>
+        <a href="/ifdoc/" data-tool="ifdoc" data-title="Interface Documentation" data-description="Browse registers, messages, and interface contracts">
+          <span class="nav-icon" aria-hidden="true">≡</span><span>Interfaces</span>
+        </a>
+
+        <p class="nav-heading">Manage</p>
+        <a href="/artifacts/" data-tool="artifacts" data-title="Artifacts" data-description="Search, inspect, download, and remove test run artifacts">
+          <span class="nav-icon" aria-hidden="true">▣</span><span>Artifacts</span>
+        </a>
+        <a href="/config/" data-tool="config" data-title="Configuration" data-description="Manage profiles, benches, and reusable limit sets">
+          <span class="nav-icon" aria-hidden="true">⚙</span><span>Configuration</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="platform-status" id="platform-status" role="status" aria-live="polite">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span><strong id="status-label">Checking HIL</strong><small id="status-detail">Connecting to gateway…</small></span>
+        </div>
+      </div>
+    </aside>
+
+    <div class="sidebar-backdrop" id="sidebar-backdrop" hidden></div>
+
+    <section class="workspace" aria-label="Active tool workspace">
+      <header class="workspace-header">
+        <div class="workspace-title-row">
+          <button class="icon-button menu-button" id="menu-button" type="button" aria-controls="app-sidebar" aria-expanded="false" aria-label="Open navigation">☰</button>
+          <div class="workspace-titles">
+            <h1 id="workspace-title">Hardware Diagnostic</h1>
+            <p id="workspace-description">Inspect sensors, interfaces, and generated diagnostic reports</p>
+          </div>
+        </div>
+        <div class="workspace-actions">
+          <button class="icon-button" id="reload-tool" type="button" aria-label="Reload active tool" title="Reload active tool">↻</button>
+          <a class="icon-button" id="open-tool" href="/diag/" target="_blank" rel="noopener" aria-label="Open active tool in a new tab" title="Open in a new tab">↗</a>
+        </div>
+      </header>
+
+      <main class="workspace-content" id="main-content">
+        <div class="frame-loading" id="frame-loading" role="status" aria-live="polite">
+          <span class="spinner" aria-hidden="true"></span><span>Loading Hardware Diagnostic…</span>
+        </div>
+        <iframe id="tool-frame" src="/diag/" title="Hardware Diagnostic" loading="eager"></iframe>
+      </main>
+    </section>
+  </div>
+
+  <noscript><p class="noscript">JavaScript is required to navigate the pyontrust workspace. Individual tools remain available at their direct URLs.</p></noscript>
+  <script src="/static/shell/ui-foundation.js"></script>
+  <script src="/static/shell/shell.js"></script>
 </body>
 </html>

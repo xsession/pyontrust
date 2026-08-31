@@ -11,16 +11,8 @@ from .log_service import LogService
 from .artifact_service import ArtifactService
 from .bench_service import BenchService
 from .config_service import ConfigService
-
-try:
-    from .aoi_service import AOIService
-except Exception:
-    AOIService = None
-
-try:
-    from .thermal_service import ThermalService
-except Exception:
-    ThermalService = None
+from .aoi_service import AOIService
+from .thermal_service import ThermalService
 
 __all__ = [
     "TestService",
