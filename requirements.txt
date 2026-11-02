@@ -1,0 +1,30 @@
+# ============================================================================
+# pyontrust — canonical runtime dependencies
+# Verified stack: numpy 2.x / scipy 1.18 / opencv-headless 5.0 (2026-11-02)
+# Install:  pip install -r requirements.txt          (runtime)
+#           pip install -r requirements-dev.txt      (+ dev/test tooling)
+# ============================================================================
+
+# --- Core scientific stack --------------------------------------------------
+numpy>=2.0,<3            # numeric core (2.x line; verified with scipy 1.18, cv2 5.0)
+scipy>=1.13              # signal processing (butter/sosfilt, get_window)
+matplotlib>=3.9          # plotting / colormaps
+pandas>=2.2              # data frames (CSV plotter, reporting)
+
+# --- Vision / AOI -----------------------------------------------------------
+opencv-python-headless>=4.10   # image processing (headless: no GUI libs on servers)
+scikit-image>=0.24             # advanced image analysis
+harvesters>=1.4                # GenICam industrial camera access
+
+# --- Thermal ----------------------------------------------------------------
+seekcamera-python>=1.1; sys_platform == "linux"   # Seek Thermal cameras (Linux only)
+
+# --- GUI / gateway ----------------------------------------------------------
+flask>=3.1               # Lab Bench web gateway
+flask-sock>=0.7          # WebSocket support for the gateway
+
+# --- Agent integration ------------------------------------------------------
+mcp>=1.9.0               # Model Context Protocol server (allows 2.x)
+
+# --- CLI --------------------------------------------------------------------
+docopt>=0.6.2            # profile runner CLI parsing

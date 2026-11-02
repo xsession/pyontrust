@@ -5,7 +5,7 @@ A flexible, hardware-agnostic **embedded test & measurement system** for automat
 ## Architecture
 
 ```
-pyontrust_packages/power_test_framework/
+lab_bench/power_test_framework/
 ├── core.py              # PowerSample, PowerTrace, PowerTestRunner
 ├── profiles.py          # JSON-driven test profiles + instrument factory
 ├── lab_bench.py         # Lab bench hardware inventory (JSON)
@@ -178,14 +178,14 @@ This repository includes a local MCP server for LM Studio and other tool-using a
 
 ```powershell
 python -m pip install -e .[mcp]
-python mcp_server.py
+python scripts/mcp_server.py
 ```
 
 Setup details and example LM Studio configuration are in [docs/LM_STUDIO_MCP.md](docs/LM_STUDIO_MCP.md).
 
 ## Project structure
 
-The framework lives in `pyontrust_packages/power_test_framework/`.
+The framework lives in `lab_bench/power_test_framework/`.
 
 Core design principles:
 - **Stdlib-only core** — no mandatory third-party dependencies

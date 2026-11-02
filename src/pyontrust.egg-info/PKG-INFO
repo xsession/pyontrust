@@ -19,6 +19,11 @@ Description-Content-Type: text/markdown
 Provides-Extra: gui
 Requires-Dist: flask>=3.0; extra == "gui"
 Requires-Dist: flask-sock>=0.7; extra == "gui"
+Provides-Extra: mcp
+Requires-Dist: mcp>=1.9.0; extra == "mcp"
+Provides-Extra: build
+Requires-Dist: pyinstaller>=6.0; extra == "build"
+Requires-Dist: nuitka>=2.6; extra == "build"
 Provides-Extra: analysis
 Requires-Dist: pandas>=1.5; extra == "analysis"
 Requires-Dist: numpy>=1.23; extra == "analysis"
@@ -45,7 +50,7 @@ Requires-Dist: ruff>=0.1; extra == "dev"
 Requires-Dist: sphinx>=7.0; extra == "dev"
 Requires-Dist: sphinx-rtd-theme>=2.0; extra == "dev"
 Provides-Extra: all
-Requires-Dist: pyontrust[analysis,aoi,dev,gui,power,sdr,thermal]; extra == "all"
+Requires-Dist: pyontrust[analysis,aoi,build,dev,gui,power,sdr,thermal]; extra == "all"
 
 # pyontrust
 
@@ -220,6 +225,17 @@ Interactive time-series viewer for power measurement CSV data:
 ```powershell
 python gui_app\csv_plotter\csv_plotter.py
 ```
+
+## MCP server
+
+This repository includes a local MCP server for LM Studio and other tool-using agents. Install the optional dependency and run it from the repository root:
+
+```powershell
+python -m pip install -e .[mcp]
+python mcp_server.py
+```
+
+Setup details and example LM Studio configuration are in [docs/LM_STUDIO_MCP.md](docs/LM_STUDIO_MCP.md).
 
 ## Project structure
 

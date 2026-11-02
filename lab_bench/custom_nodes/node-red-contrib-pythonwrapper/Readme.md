@@ -1,0 +1,1 @@
+npm install /path/to/node-red-contrib-pythonwrapper

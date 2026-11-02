@@ -9,9 +9,9 @@ docopt>=0.6.2             # CLI parsing for profile runner
 
 # CSV PLOTTER (gui_app/csv_plotter)
 # ---------------------------------------------------------------------------
-pandas>=1.5               # Data manipulation
-numpy>=1.23               # Numeric computation
-matplotlib>=3.6           # Plotting engine
+pandas>=2.2               # Data manipulation
+numpy>=2.0                # Numeric core (2.x line)
+matplotlib>=3.9           # Plotting engine
 
 # CSV PLOTTER — optional high-performance backends
 # ---------------------------------------------------------------------------
@@ -22,8 +22,11 @@ matplotlib>=3.6           # Plotting engine
 
 # DEVELOPMENT / TESTING
 # ---------------------------------------------------------------------------
-pytest>=7.0
-pytest-cov>=4.0
+pytest>=8.2
+pytest-cov>=5.0
 
 # NOTE: The NiceGUI web GUI has its own dependency set.
 # Install from gui_app/nicegui_control/ via pip install -e .[dev]
+
+# NOTE: the canonical dependency set now lives at the repo root:
+#       requirements.txt / requirements-dev.txt

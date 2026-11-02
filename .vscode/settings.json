@@ -2,7 +2,7 @@
     "iis.configDir": "",
     "python.defaultInterpreterPath": "${workspaceFolder}\\.venv-nicegui\\Scripts\\python.exe",
     "python.analysis.extraPaths": [
-        "./pyontrust_packages",
+        "./lab_bench",
         "./scripts",
         "./gui_app/nicegui_control/src"
     ]

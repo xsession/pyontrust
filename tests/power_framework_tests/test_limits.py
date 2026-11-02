@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from pyontrust_packages.power_test_framework.limits import (
+from lab_bench.power_test_framework.limits import (
     Limit,
     LimitResult,
     StepLimits,
@@ -13,7 +13,7 @@ from pyontrust_packages.power_test_framework.limits import (
     Verdict,
     evaluate,
 )
-from pyontrust_packages.power_test_framework.core import PowerSummary
+from lab_bench.power_test_framework.core import PowerSummary
 
 
 class TestVerdictEnum(unittest.TestCase):

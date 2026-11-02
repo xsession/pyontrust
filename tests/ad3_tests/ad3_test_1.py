@@ -1,6 +1,6 @@
 import sys
 import pathlib
-pyontrust_path = pathlib.Path(__file__).parent.parent.parent /"pyontrust_packages"
+pyontrust_path = pathlib.Path(__file__).parent.parent.parent /"lab_bench"
 sys.path.append(str(pyontrust_path))
 
 from drivers.ad3.mock_dwf import MockDwf

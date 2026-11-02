@@ -7,7 +7,7 @@ from typing import Any
 
 def create(config: dict[str, Any]) -> Any:
     """Entry-point factory for HackRF IQ recorder."""
-    from pyontrust_packages.power_test_framework.recorders.hackrf_iq import HackRfIqRecorder
+    from lab_bench.power_test_framework.recorders.hackrf_iq import HackRfIqRecorder
 
     params = {k: v for k, v in config.items() if k != "type"}
     return HackRfIqRecorder(**params)

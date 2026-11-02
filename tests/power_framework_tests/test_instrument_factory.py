@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import unittest
 
-from pyontrust_packages.power_test_framework.profiles import _build_instruments, _create_instrument
-from pyontrust_packages.power_test_framework.instruments.simulated import SimulatedPowerMeter
+from lab_bench.power_test_framework.profiles import _build_instruments, _create_instrument
+from lab_bench.power_test_framework.instruments.simulated import SimulatedPowerMeter
 
 
 class TestBuildInstruments(unittest.TestCase):
@@ -45,14 +45,14 @@ class TestCreateInstrument(unittest.TestCase):
         self.assertIsInstance(inst, SimulatedPowerMeter)
 
     def test_ad3_dwf(self):
-        from pyontrust_packages.power_test_framework.instruments.ad3_dwf import Ad3DwfPowerMeter
+        from lab_bench.power_test_framework.instruments.ad3_dwf import Ad3DwfPowerMeter
 
         inst = _create_instrument("ad3_dwf", {"sample_rate_hz": 5000, "device_index": 0})
         self.assertIsInstance(inst, Ad3DwfPowerMeter)
         self.assertEqual(inst.sample_rate_hz, 5000.0)
 
     def test_ad3_cluster(self):
-        from pyontrust_packages.power_test_framework.instruments.ad3_cluster import Ad3ClusterPowerMeter
+        from lab_bench.power_test_framework.instruments.ad3_cluster import Ad3ClusterPowerMeter
 
         inst = _create_instrument("ad3_cluster", {
             "devices": [
@@ -66,35 +66,35 @@ class TestCreateInstrument(unittest.TestCase):
         self.assertEqual(inst.buffer_size, 4096)
 
     def test_ppk2(self):
-        from pyontrust_packages.power_test_framework.instruments.ppk2 import Ppk2PowerMeter
+        from lab_bench.power_test_framework.instruments.ppk2 import Ppk2PowerMeter
 
         inst = _create_instrument("ppk2", {"serial_port": "auto", "mode": "source"})
         self.assertIsInstance(inst, Ppk2PowerMeter)
         self.assertEqual(inst.mode, "source")
 
     def test_sk120(self):
-        from pyontrust_packages.power_test_framework.instruments.sk120_psu import Sk120PowerSupply
+        from lab_bench.power_test_framework.instruments.sk120_psu import Sk120PowerSupply
 
         inst = _create_instrument("sk120", {"port": "COM3", "voltage_v": 5.0})
         self.assertIsInstance(inst, Sk120PowerSupply)
         self.assertEqual(inst.voltage_v, 5.0)
 
     def test_jlink(self):
-        from pyontrust_packages.power_test_framework.instruments.jlink_ctrl import JLinkController
+        from lab_bench.power_test_framework.instruments.jlink_ctrl import JLinkController
 
         inst = _create_instrument("jlink", {"device": "nRF52840_xxAA"})
         self.assertIsInstance(inst, JLinkController)
         self.assertEqual(inst.device, "nRF52840_xxAA")
 
     def test_hackrf(self):
-        from pyontrust_packages.power_test_framework.instruments.hackrf_instrument import HackRfInstrument
+        from lab_bench.power_test_framework.instruments.hackrf_instrument import HackRfInstrument
 
         inst = _create_instrument("hackrf", {"freq_hz": 915000000, "lna_gain_db": 24})
         self.assertIsInstance(inst, HackRfInstrument)
         self.assertEqual(inst.freq_hz, 915000000)
 
     def test_webcam(self):
-        from pyontrust_packages.power_test_framework.instruments.webcam_instrument import WebcamInstrument
+        from lab_bench.power_test_framework.instruments.webcam_instrument import WebcamInstrument
 
         inst = _create_instrument("webcam", {"input_device": "test cam"})
         self.assertIsInstance(inst, WebcamInstrument)

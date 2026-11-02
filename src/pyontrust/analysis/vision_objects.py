@@ -1,6 +1,6 @@
 """YOLO-based object detection for webcam recordings.
 
-Migrated from pyontrust_packages/power_test_framework/vision_object_detector.py.
+Migrated from lab_bench/power_test_framework/vision_object_detector.py.
 Ultralytics is optional — skips gracefully when unavailable.
 """
 

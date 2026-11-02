@@ -1,6 +1,6 @@
 """Vision change detection — LED blink / display change analysis.
 
-Migrated from pyontrust_packages/power_test_framework/vision_change_logger.py.
+Migrated from lab_bench/power_test_framework/vision_change_logger.py.
 Uses only stdlib (ffmpeg subprocess + raw PGM parsing).
 """
 

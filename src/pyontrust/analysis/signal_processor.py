@@ -1,6 +1,6 @@
 """Signal processor — time/frequency domain analysis.
 
-Migrated from pyontrust_packages/utils/signal_processor/signal_processor.py.
+Migrated from lab_bench/utils/signal_processor/signal_processor.py.
 Wraps numpy/scipy/pandas for CSV-based signal analysis.
 """
 

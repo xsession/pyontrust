@@ -4,7 +4,7 @@ import tempfile
 import unittest
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
-sys.path.append(str(REPO_ROOT / "pyontrust_packages"))
+sys.path.append(str(REPO_ROOT / "lab_bench"))
 
 from power_test_framework.core import PowerTest, PowerTestRunner, TestStep  # noqa: E402
 from power_test_framework.instruments.simulated import SimulatedPowerMeter  # noqa: E402

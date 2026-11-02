@@ -5,7 +5,7 @@ dist/
 
 **/__pycache__/**
 
-pyontrust_packages/greeting/__pycache__/
+lab_bench/greeting/__pycache__/
 
 .venv-gui/
 
@@ -26,3 +26,12 @@ externals/pin_configurator/vscode-extension/node_modules/
 externals/pin_configurator/.tmp/
 
 externals/pin_configurator/electron/node_modules/
+
+# ── Runtime artifacts (generated at run time — never commit) ──
+/aoi_results.db
+/layout.json.tmp
+/test_result.json
+/sim_output/
+/aoi_images/
+*.egg-info/
+.pytest_cache/

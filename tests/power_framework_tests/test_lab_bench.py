@@ -7,7 +7,7 @@ import os
 import tempfile
 import unittest
 
-from pyontrust_packages.power_test_framework.lab_bench import (
+from lab_bench.power_test_framework.lab_bench import (
     CalibrationData,
     InstrumentConfig,
     LabBench,

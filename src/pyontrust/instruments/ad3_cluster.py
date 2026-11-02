@@ -12,7 +12,7 @@ from typing import Any
 
 # --- AD3 Cluster ---
 def _create_ad3_cluster(config: dict[str, Any]) -> Any:
-    from pyontrust_packages.power_test_framework.instruments.ad3_cluster import (
+    from lab_bench.power_test_framework.instruments.ad3_cluster import (
         Ad3ClusterPowerMeter,
         Ad3DeviceConfig,
     )
@@ -27,7 +27,7 @@ def _create_ad3_cluster(config: dict[str, Any]) -> Any:
 
 # --- PPK2 ---
 def _create_ppk2(config: dict[str, Any]) -> Any:
-    from pyontrust_packages.power_test_framework.instruments.ppk2 import Ppk2PowerMeter
+    from lab_bench.power_test_framework.instruments.ppk2 import Ppk2PowerMeter
 
     return Ppk2PowerMeter(
         serial_port=config.get("serial_port", config.get("port", "auto")),
@@ -39,7 +39,7 @@ def _create_ppk2(config: dict[str, Any]) -> Any:
 
 # --- SK120 PSU ---
 def _create_sk120(config: dict[str, Any]) -> Any:
-    from pyontrust_packages.power_test_framework.instruments.sk120_psu import Sk120PowerSupply
+    from lab_bench.power_test_framework.instruments.sk120_psu import Sk120PowerSupply
 
     return Sk120PowerSupply(
         port=config.get("port", ""),
@@ -53,7 +53,7 @@ def _create_sk120(config: dict[str, Any]) -> Any:
 
 # --- J-Link ---
 def _create_jlink(config: dict[str, Any]) -> Any:
-    from pyontrust_packages.power_test_framework.instruments.jlink_ctrl import JLinkController
+    from lab_bench.power_test_framework.instruments.jlink_ctrl import JLinkController
 
     return JLinkController(
         device=config.get("device", ""),
@@ -66,7 +66,7 @@ def _create_jlink(config: dict[str, Any]) -> Any:
 
 # --- HackRF ---
 def _create_hackrf(config: dict[str, Any]) -> Any:
-    from pyontrust_packages.power_test_framework.instruments.hackrf_instrument import HackRfInstrument
+    from lab_bench.power_test_framework.instruments.hackrf_instrument import HackRfInstrument
 
     return HackRfInstrument(
         freq_hz=int(config.get("freq_hz", 2_402_000_000)),
@@ -80,7 +80,7 @@ def _create_hackrf(config: dict[str, Any]) -> Any:
 
 # --- Webcam ---
 def _create_webcam(config: dict[str, Any]) -> Any:
-    from pyontrust_packages.power_test_framework.instruments.webcam_instrument import WebcamInstrument
+    from lab_bench.power_test_framework.instruments.webcam_instrument import WebcamInstrument
 
     return WebcamInstrument(
         input_device=config.get("input_device", ""),
@@ -116,7 +116,7 @@ def _create_csv_replay(config: dict[str, Any]) -> Any:
 
 # --- nRF52840 Dongle ---
 def _create_nrf52840_dongle(config: dict[str, Any]) -> Any:
-    from pyontrust_packages.drivers.nrf52840_dongle import Nrf52840Dongle
+    from lab_bench.drivers.nrf52840_dongle import Nrf52840Dongle
 
     return Nrf52840Dongle(
         port=config.get("port"),

@@ -2,7 +2,7 @@ import pathlib
 import tempfile
 import unittest
 
-from pyontrust_packages.power_test_framework.vision_object_detector import ObjectDetectConfig, analyze_video_objects
+from lab_bench.power_test_framework.vision_object_detector import ObjectDetectConfig, analyze_video_objects
 
 
 class TestObjectDetectionSkip(unittest.TestCase):

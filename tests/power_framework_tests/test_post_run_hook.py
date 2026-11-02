@@ -2,8 +2,8 @@ import pathlib
 import tempfile
 import unittest
 
-from pyontrust_packages.power_test_framework.core import PowerTest, PowerTestRunner, TestStep
-from pyontrust_packages.power_test_framework.instruments.simulated import SimulatedPowerMeter
+from lab_bench.power_test_framework.core import PowerTest, PowerTestRunner, TestStep
+from lab_bench.power_test_framework.instruments.simulated import SimulatedPowerMeter
 
 
 class TestPostRunHook(unittest.TestCase):
