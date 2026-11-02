@@ -277,7 +277,8 @@ def _gen_android_accel(bid, params, inputs, outs):
         f"    _data = _android.read_accelerometer({_py(dur)})",
         f"    {outs['accel']} = _data",
         f"    {outs['trace']} = {{'time_s': _data.get('time_s', []), 'current_a': _data.get('magnitude', []), 'sample_rate_hz': {_py(rate)}, 'n_samples': _data.get('n_samples', 0)}}",
-        "    print(f\"[android_accel] x={_data.get('x',0):.3f} y={_data.get('y',0):.3f} z={_data.get('z',0):.3f} m/s²\")",
+        "    _last = lambda v: float(v[-1]) if isinstance(v, (list, tuple)) and len(v) else float(v or 0.0)",
+        "    print(f\"[android_accel] x={_last(_data.get('x', 0)):.3f} y={_last(_data.get('y', 0)):.3f} z={_last(_data.get('z', 0)):.3f} m/s²\")",
         f"finally:",
         f"    _android.close()",
     ]
@@ -293,7 +294,8 @@ def _gen_android_gyro(bid, params, inputs, outs):
         f"    _data = _android.read_gyroscope({_py(dur)})",
         f"    {outs['gyro']} = _data",
         f"    {outs['trace']} = {{'time_s': _data.get('time_s', []), 'current_a': _data.get('magnitude', []), 'sample_rate_hz': {_py(rate)}, 'n_samples': _data.get('n_samples', 0)}}",
-        "    print(f\"[android_gyro] x={_data.get('x',0):.3f} y={_data.get('y',0):.3f} z={_data.get('z',0):.3f} rad/s\")",
+        "    _last = lambda v: float(v[-1]) if isinstance(v, (list, tuple)) and len(v) else float(v or 0.0)",
+        "    print(f\"[android_gyro] x={_last(_data.get('x', 0)):.3f} y={_last(_data.get('y', 0)):.3f} z={_last(_data.get('z', 0)):.3f} rad/s\")",
         f"finally:",
         f"    _android.close()",
     ]
@@ -309,7 +311,8 @@ def _gen_android_mag(bid, params, inputs, outs):
         f"    _data = _android.read_magnetometer({_py(dur)})",
         f"    {outs['mag']} = _data",
         f"    {outs['trace']} = {{'time_s': _data.get('time_s', []), 'current_a': _data.get('magnitude', []), 'sample_rate_hz': {_py(rate)}, 'n_samples': _data.get('n_samples', 0)}}",
-        "    print(f\"[android_mag] x={_data.get('x',0):.1f} y={_data.get('y',0):.1f} z={_data.get('z',0):.1f} µT\")",
+        "    _last = lambda v: float(v[-1]) if isinstance(v, (list, tuple)) and len(v) else float(v or 0.0)",
+        "    print(f\"[android_mag] x={_last(_data.get('x', 0)):.1f} y={_last(_data.get('y', 0)):.1f} z={_last(_data.get('z', 0)):.1f} µT\")",
         f"finally:",
         f"    _android.close()",
     ]
@@ -340,7 +343,8 @@ def _gen_android_proximity(bid, params, inputs, outs):
     lines = _gen_android_sensor_setup(mode) + [
         f"try:",
         f"    _data = _android.read_proximity(0.5)",
-        f"    {dv} = _data.get('distance', 5.0)",
+        "    _last = lambda v: float(v[-1]) if isinstance(v, (list, tuple)) and len(v) else float(v or 0.0)",
+        f"    {dv} = _last(_data.get('distance', 5.0))",
         f"    {nv} = {dv} < 1.0",
         "    print(f\"[android_proximity] {" + dv + ":.1f} cm ({'NEAR' if " + nv + " else 'FAR'})\")",
         f"finally:",
@@ -356,7 +360,8 @@ def _gen_android_light(bid, params, inputs, outs):
     lines = _gen_android_sensor_setup(mode) + [
         f"try:",
         f"    _data = _android.read_light({_py(dur)})",
-        f"    {lv} = float(_data.get('lux', _data.get('mean', 0)))",
+        "    _last = lambda v: float(v[-1]) if isinstance(v, (list, tuple)) and len(v) else float(v or 0.0)",
+        f"    {lv} = _last(_data.get('lux', _data.get('mean', 0.0)))",
         "    print(f\"[android_light] {" + lv + ":.0f} lux\")",
         f"finally:",
         f"    _android.close()",
@@ -414,7 +419,8 @@ def _gen_android_gravity(bid, params, inputs, outs):
         f"    _data = _android.read_gravity({_py(dur)})",
         f"    {outs['gravity']} = _data",
         f"    {outs['trace']} = {{'time_s': _data.get('time_s', []), 'current_a': _data.get('magnitude', []), 'sample_rate_hz': {_py(rate)}, 'n_samples': _data.get('n_samples', 0)}}",
-        "    print(f\"[android_gravity] x={_data.get('x',0):.3f} y={_data.get('y',0):.3f} z={_data.get('z',0):.3f} m/s²\")",
+        "    _last = lambda v: float(v[-1]) if isinstance(v, (list, tuple)) and len(v) else float(v or 0.0)",
+        "    print(f\"[android_gravity] x={_last(_data.get('x', 0)):.3f} y={_last(_data.get('y', 0)):.3f} z={_last(_data.get('z', 0)):.3f} m/s²\")",
         f"finally:",
         f"    _android.close()",
     ]
@@ -430,7 +436,8 @@ def _gen_android_rotation(bid, params, inputs, outs):
         f"    _data = _android.read_rotation({_py(dur)})",
         f"    {outs['rotation']} = _data",
         f"    {outs['trace']} = {{'time_s': _data.get('time_s', []), 'current_a': _data.get('magnitude', []), 'sample_rate_hz': {_py(rate)}, 'n_samples': _data.get('n_samples', 0)}}",
-        "    print(f\"[android_rotation] x={_data.get('x',0):.3f} y={_data.get('y',0):.3f} z={_data.get('z',0):.3f} w={_data.get('w',0):.3f}\")",
+        "    _last = lambda v: float(v[-1]) if isinstance(v, (list, tuple)) and len(v) else float(v or 0.0)",
+        "    print(f\"[android_rotation] x={_last(_data.get('x', 0)):.3f} y={_last(_data.get('y', 0)):.3f} z={_last(_data.get('z', 0)):.3f} w={_last(_data.get('w', 0)):.3f}\")",
         f"finally:",
         f"    _android.close()",
     ]
@@ -848,18 +855,15 @@ def _gen_color_detect(bid, params, inputs, outs):
         f"_frame_in = {inputs.get('frame', '{}')}",
         f"_img = _frame_in.get('data', _frame_in) if isinstance(_frame_in, dict) else _frame_in",
         f"if hasattr(_img, 'shape') and len(_img.shape) >= 2:",
-        f"    if {_py(cs)} == 'hsv':",
-        f"        _conv = _cv2.cvtColor(_img, _cv2.COLOR_BGR2HSV) if len(_img.shape) == 3 else _img",
-        f"        _lower = np.array([{_py(low_h)}, {_py(low_s)}, {_py(low_v)}])",
-        f"        _upper = np.array([{_py(high_h)}, {_py(high_s)}, {_py(high_v)}])",
-        f"    elif {_py(cs)} == 'lab':",
-        f"        _conv = _cv2.cvtColor(_img, _cv2.COLOR_BGR2LAB) if len(_img.shape) == 3 else _img",
+        f"    if len(_img.shape) == 3:",
+        f"        _conv = _cv2.cvtColor(_img, _cv2.COLOR_BGR2HSV) if {_py(cs)} == 'hsv' else (_cv2.cvtColor(_img, _cv2.COLOR_BGR2LAB) if {_py(cs)} == 'lab' else _img)",
         f"        _lower = np.array([{_py(low_h)}, {_py(low_s)}, {_py(low_v)}])",
         f"        _upper = np.array([{_py(high_h)}, {_py(high_s)}, {_py(high_v)}])",
         f"    else:",
+        f"        # single-channel image: use intensity (V) bounds as a 1-element range",
         f"        _conv = _img",
-        f"        _lower = np.array([{_py(low_h)}, {_py(low_s)}, {_py(low_v)}])",
-        f"        _upper = np.array([{_py(high_h)}, {_py(high_s)}, {_py(high_v)}])",
+        f"        _lower = np.array([{_py(low_v)}])",
+        f"        _upper = np.array([{_py(high_v)}])",
         f"    _mask_arr = _cv2.inRange(_conv, _lower, _upper)",
         f"    _px_matched = int(np.count_nonzero(_mask_arr))",
         f"    _total_px = _mask_arr.shape[0] * _mask_arr.shape[1]",
@@ -1180,7 +1184,10 @@ def _gen_compare(bid, params, inputs, outs):
         f"    _a, _b = float(_a), float(_b)",
         f"except (TypeError, ValueError):",
         f"    pass",
-        f"{outs['result']} = _a {op} _b",
+        f"try:",
+        f"    {outs['result']} = _a {op} _b",
+        f"except TypeError:",
+        f"    {outs['result']} = False  # incomparable types → no match",
     ], set()
 
 
@@ -1251,7 +1258,8 @@ def _gen_json_parse(bid, params, inputs, outs):
     _default_text = '"{}"'
     _src = inputs.get('text', _default_text)
     return [
-        f"{outs['data']} = json.loads({_src})  # JSON Parse",
+        f"_jp_src = {_src}",
+        f"{outs['data']} = json.loads(_jp_src) if isinstance(_jp_src, (str, bytes)) else _jp_src  # JSON Parse",
     ], {"json"}
 
 
@@ -1941,6 +1949,8 @@ def diagram_to_python(diagram: dict[str, Any], *, script_name: str = "flowlab_ex
             "sleep_test": ["trace", "verdict"], "tx_burst_test": ["trace", "verdict"],
             "gpio_toggle": ["state"], "serial_send": ["response"],
             "load_profile": ["profile"], "benchmark_timer": ["elapsed_s"],
+            "android_torch": ["ok", "state"],
+            "lux_measure": ["result", "webcam_lux", "android_lux", "correlation"],
         }
         ports = _OUTPUTS.get(btype, [])
         return {p: out_var(bid, p) for p in ports}

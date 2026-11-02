@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>FlowLab Test Report 20261102_161335</title>
+<style>
+body { font-family: -apple-system, 'Segoe UI', sans-serif; margin: 2em auto; max-width: 900px; color: #1a1a2e; }
+h1 { border-bottom: 3px solid #4a6cf7; padding-bottom: .3em; }
+.summary { background: #f0f4ff; border-left: 4px solid #4a6cf7; padding: 1em; margin: 1em 0; font-size: 1.05em; }
+table { border-collapse: collapse; width: 100%; font-size: .92em; }
+th, td { text-align: left; padding: 4px 10px; border-bottom: 1px solid #e3e6f0; }
+th { background: #f7f8fc; position: sticky; top: 0; }
+.detail { color: #667; font-size: .85em; }
+.line { font-family: ui-monospace, monospace; padding: 2px 0; }
+.ok { color: #1a7f37; font-weight: 600; } .bad { color: #cf222e; font-weight: 600; }
+code { background: #f2f3f8; padding: 1px 5px; border-radius: 4px; }
+</style></head><body>
+<h1>FlowLab Codegen Test Report</h1>
+<p>Generated 2026-11-02 16:13:35 · Python <code>/home/riko/.hermes/cache/scratch/flowlab_test_venv/bin/python</code> (clean venv: numpy/scipy/cv2/matplotlib)</p>
+
+<div class="summary">
+<b>Suite 1 — Component coverage</b> (92 block types): EXECUTED=81  COMPILED-ONLY=11  FAILED=0 → <span class="ok">exit 0</span><br>
+<b>Suite 2 — Functional workflows</b>: WORKFLOPS: 9  PASS=9  PARTIAL=0  FAILED=0 ASSERTIONS: 31 passed / 0 failed → <span class="ok">exit 0</span>
+</div>
+
+<h2>Bugs found &amp; fixed in this session (src/pyontrust/gateway/flowlab_codegen.py)</h2>
+<ol>
+<li><b>Missing output-port declarations</b>: <code>lux_measure</code> and <code>android_torch</code> absent from the static <code>_OUTPUTS</code> map → generation-time <code>KeyError: 'result'</code>. Added both entries.</li>
+<li><b>Android sensor prints crashed on simulated data</b>: <code>accel/gyro/mag/gravity/rotation/light/proximity</code> formatted time-series lists with <code>:.3f</code> / compared them to floats → <code>TypeError</code>. Added a list-safe <code>_last()</code> scalar extractor before each print/comparison.</li>
+<li><b>compare crashed on incomparable types</b>: dict-vs-dict inputs raised uncaught <code>TypeError</code>. Now falls back to <code>False</code>.</li>
+<li><b>json_parse crashed on non-string input</b>: <code>json.loads(dict)</code> → TypeError. Non-str/bytes inputs now pass through unchanged.</li>
+<li><b>color_detect crashed on grayscale frames</b>: 3-element HSV range applied to single-channel image → OpenCV <code>-209 Sizes of input arguments do not match</code>. Single-channel images now use a 1-element intensity (V) range.</li>
+</ol>
+
+<h2>Suite 1 — per-block results</h2>
+<table><tr><th></th><th>block type</th><th>status</th><th>detail</th></tr>
+<tr><td>✅</td><td><code>abs_val</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>🔶</td><td><code>ad3_dwf_meter</code></td><td>COMPILED-ONLY</td><td class='detail'>hw/network/optional-dep (by design)</td></tr>
+<tr><td>✅</td><td><code>add</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>android_accel</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>android_battery</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>android_gps</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>android_gravity</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>android_gyro</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>android_light</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>android_mag</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>android_mic</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>android_pressure</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>android_proximity</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>android_rotation</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>android_sensor_setup</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>android_torch</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>aoi_camera</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>aoi_inspect</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>assert_check</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>bandpass_filter</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>benchmark_timer</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>blob_detect</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>clamp</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>color_detect</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>compare</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>constant</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>🔶</td><td><code>correlate</code></td><td>COMPILED-ONLY</td><td class='detail'>AttributeError: &#x27;float&#x27; object has no attribute &#x27;get&#x27;</td></tr>
+<tr><td>🔶</td><td><code>csv_file</code></td><td>COMPILED-ONLY</td><td class='detail'>FileNotFoundError: [Errno 2] No such file or directory: &#x27;artifacts/trace.csv&#x27;</td></tr>
+<tr><td>🔶</td><td><code>csv_replay</code></td><td>COMPILED-ONLY</td><td class='detail'>FileNotFoundError: [Errno 2] No such file or directory: &#x27;artifacts/trace.csv&#x27;</td></tr>
+<tr><td>✅</td><td><code>delay</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>derivative</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>dict_build</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>🔶</td><td><code>dict_get</code></td><td>COMPILED-ONLY</td><td class='detail'>AttributeError: &#x27;float&#x27; object has no attribute &#x27;get&#x27;</td></tr>
+<tr><td>✅</td><td><code>dict_set</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>display</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>divide</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>edge_detect</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>expression</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>fft_spectrum</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>filter</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>format_string</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>gate</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>gauge_display</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>🔶</td><td><code>gpio_toggle</code></td><td>COMPILED-ONLY</td><td class='detail'>hw/network/optional-dep (by design)</td></tr>
+<tr><td>✅</td><td><code>highpass_filter</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>histogram</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>🔶</td><td><code>http_request</code></td><td>COMPILED-ONLY</td><td class='detail'>hw/network/optional-dep (by design)</td></tr>
+<tr><td>✅</td><td><code>image_crop</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>image_resize</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>image_threshold</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>integral</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>json_parse</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>list_build</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>load_profile</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>log_math</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>log_message</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>lux_measure</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>map_range</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>merge</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>moving_average</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>multiply</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>null_check</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>🔶</td><td><code>pick_field</code></td><td>COMPILED-ONLY</td><td class='detail'>TypeError: argument of type &#x27;float&#x27; is not iterable</td></tr>
+<tr><td>🔶</td><td><code>plot_heatmap</code></td><td>COMPILED-ONLY</td><td class='detail'>TypeError: Invalid shape () for image data</td></tr>
+<tr><td>✅</td><td><code>plot_histogram</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>plot_trace</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>plot_xy</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>power</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>🔶</td><td><code>ppk2_meter</code></td><td>COMPILED-ONLY</td><td class='detail'>hw/network/optional-dep (by design)</td></tr>
+<tr><td>✅</td><td><code>random_data</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>repeat</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>resample</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>save_file</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>seek_thermal</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>sequence</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>🔶</td><td><code>serial_send</code></td><td>COMPILED-ONLY</td><td class='detail'>hw/network/optional-dep (by design)</td></tr>
+<tr><td>✅</td><td><code>shell_cmd</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>simulated_power</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>sleep_test</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>stats</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>subtract</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>table_display</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>template_match</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>thermal_analyze</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>threshold</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>trig</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>try_catch</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>tx_burst_test</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>type_cast</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>unit_convert</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>waveform_gen</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+<tr><td>✅</td><td><code>window_slice</code></td><td>EXECUTED</td><td class='detail'></td></tr>
+</table>
+
+<h2>Suite 2 — workflow summary</h2>
+<div class='line'>[aoi_inspect] 0 defects — PASS</div>
+<div class='line'>  ✓ wf6_vision_pipeline :: AOI inspection produced result  {&#x27;tolerance&#x27;: 30, &#x27;defects&#x27;: 0, &#x27;status&#x27;: &#x27;PASS&#x27;}</div>
+<div class='line'>WORKFLOPS: 9  PASS=9  PARTIAL=0  FAILED=0</div>
+<div class='line'>ASSERTIONS: 31 passed / 0 failed</div>
+<p class="detail">Workflows: wf1 signal chain · wf2 FFT pipeline · wf3 power analysis · wf4 Android sensor fusion (sim) · wf5 thermal inspection · wf6 vision/AOI pipeline · wf7 data plumbing · wf8 control flow · wf9 repo autosave diagram.</p>
+
+<h2>Environment notes</h2>
+<ul class="detail">
+<li>Kernel Python 3.14 (<code>~/.hermes/tools</code>) has no numpy/scipy/cv2 — tests must run in a full env.</li>
+<li>System <code>/usr/bin/python3</code> (3.12) has numpy+scipy but no cv2/matplotlib deps complete.</li>
+<li>Clean venv used: <code>/home/riko/.hermes/cache/scratch/flowlab_test_venv/bin/python</code> with numpy 2.2.6, scipy 1.18.1, opencv-python-headless 5.0.0, matplotlib 3.11.2 (+ Pillow, pyparsing, python-dateutil).</li>
+<li><b>PYTHONPATH must be cleared</b> when running the venv — inherited paths pull a broken PIL from another environment.</li>
+</ul>
+</body></html>

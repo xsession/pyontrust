@@ -10,7 +10,7 @@ from pyontrust.gateway.flowlab_codegen import diagram_to_python
 PASS = 0
 FAIL = 0
 
-def test(name, diagram, *, execute=False):
+def run_case(name, diagram, *, execute=False):
     """Generate, compile, and optionally execute a diagram."""
     global PASS, FAIL
     try:
@@ -30,7 +30,7 @@ print("FlowLab Codegen - End-to-End Tests")
 print("=" * 60)
 
 # 1. Single constant
-test("single_constant", {
+run_case("single_constant", {
     "version": 1,
     "blocks": [
         {"id": "b1", "type": "constant", "x": 0, "y": 0,
@@ -40,7 +40,7 @@ test("single_constant", {
 }, execute=True)
 
 # 2. Constant -> Threshold
-test("const_threshold", {
+run_case("const_threshold", {
     "version": 1,
     "blocks": [
         {"id": "b1", "type": "constant", "x": 0, "y": 0,
@@ -56,7 +56,7 @@ test("const_threshold", {
 }, execute=True)
 
 # 3. Two constants -> multiply -> display
-test("math_chain", {
+run_case("math_chain", {
     "version": 1,
     "blocks": [
         {"id": "a", "type": "constant", "x": 0, "y": 0,
@@ -78,7 +78,7 @@ test("math_chain", {
 }, execute=True)
 
 # 4. Expression block
-test("expression", {
+run_case("expression", {
     "version": 1,
     "blocks": [
         {"id": "c1", "type": "constant", "x": 0, "y": 0,
@@ -93,7 +93,7 @@ test("expression", {
 }, execute=True)
 
 # 5. Delay block
-test("delay_block", {
+run_case("delay_block", {
     "version": 1,
     "blocks": [
         {"id": "d1", "type": "delay", "x": 0, "y": 0,
@@ -103,7 +103,7 @@ test("delay_block", {
 }, execute=True)
 
 # 6. Add / Subtract / Divide / Abs / Power
-test("math_ops", {
+run_case("math_ops", {
     "version": 1,
     "blocks": [
         {"id": "c1", "type": "constant", "x": 0, "y": 0,
@@ -130,7 +130,7 @@ test("math_ops", {
 }, execute=True)
 
 # 7. Log, Trig, Clamp, MapRange, Compare, UnitConvert
-test("math_funcs", {
+run_case("math_funcs", {
     "version": 1,
     "blocks": [
         {"id": "c1", "type": "constant", "x": 0, "y": 0,
@@ -159,7 +159,7 @@ test("math_funcs", {
 }, execute=True)
 
 # 8. Data blocks
-test("data_blocks", {
+run_case("data_blocks", {
     "version": 1,
     "blocks": [
         {"id": "db", "type": "dict_build", "x": 0, "y": 0,
@@ -182,7 +182,7 @@ test("data_blocks", {
 }, execute=True)
 
 # 9. I/O blocks (compile only)
-test("io_blocks", {
+run_case("io_blocks", {
     "version": 1,
     "blocks": [
         {"id": "d1", "type": "display", "x": 0, "y": 0,
@@ -200,7 +200,7 @@ test("io_blocks", {
 })
 
 # 10. Flow blocks
-test("flow_blocks", {
+run_case("flow_blocks", {
     "version": 1,
     "blocks": [
         {"id": "r1", "type": "repeat", "x": 0, "y": 0,
@@ -217,7 +217,7 @@ test("flow_blocks", {
 })
 
 # 11. Simulated power -> stats -> threshold -> display chain
-test("power_pipeline", {
+run_case("power_pipeline", {
     "version": 1,
     "blocks": [
         {"id": "src", "type": "simulated_power", "x": 0, "y": 0,
@@ -240,7 +240,7 @@ test("power_pipeline", {
 })
 
 # 12. Waveform gen
-test("waveform", {
+run_case("waveform", {
     "version": 1,
     "blocks": [
         {"id": "wg", "type": "waveform_gen", "x": 0, "y": 0,
@@ -252,7 +252,7 @@ test("waveform", {
 })
 
 # 13. Random data -> histogram
-test("random_hist", {
+run_case("random_hist", {
     "version": 1,
     "blocks": [
         {"id": "rd", "type": "random_data", "x": 0, "y": 0,
@@ -267,7 +267,7 @@ test("random_hist", {
 })
 
 # 14. Shell command + HTTP request
-test("actions", {
+run_case("actions", {
     "version": 1,
     "blocks": [
         {"id": "sh", "type": "shell_cmd", "x": 0, "y": 0,
@@ -279,7 +279,7 @@ test("actions", {
 })
 
 # 15. Sleep test + tx_burst_test
-test("hw_tests", {
+run_case("hw_tests", {
     "version": 1,
     "blocks": [
         {"id": "s1", "type": "sleep_test", "x": 0, "y": 0,
@@ -292,7 +292,7 @@ test("hw_tests", {
 })
 
 # 16. Load profile + benchmark timer
-test("profile_bench", {
+run_case("profile_bench", {
     "version": 1,
     "blocks": [
         {"id": "lp", "type": "load_profile", "x": 0, "y": 0,
@@ -304,7 +304,7 @@ test("profile_bench", {
 })
 
 # 17. GPIO toggle + serial send
-test("gpio_serial", {
+run_case("gpio_serial", {
     "version": 1,
     "blocks": [
         {"id": "g1", "type": "gpio_toggle", "x": 0, "y": 0,
@@ -317,7 +317,7 @@ test("gpio_serial", {
 })
 
 # 18. All vision blocks
-test("vision_blocks", {
+run_case("vision_blocks", {
     "version": 1,
     "blocks": [
         {"id": "cam", "type": "aoi_camera", "x": 0, "y": 0,
@@ -335,7 +335,7 @@ test("vision_blocks", {
 })
 
 # 19. Filter chain
-test("filter_chain", {
+run_case("filter_chain", {
     "version": 1,
     "blocks": [
         {"id": "src", "type": "simulated_power", "x": 0, "y": 0, "params": {}},
@@ -370,7 +370,7 @@ test("filter_chain", {
 })
 
 # 20. Plot blocks
-test("plot_blocks", {
+run_case("plot_blocks", {
     "version": 1,
     "blocks": [
         {"id": "pt", "type": "plot_trace", "x": 0, "y": 0,
@@ -396,7 +396,7 @@ print("=" * 60)
 from pyontrust.gateway.flowlab_codegen import extract_diagram_from_python
 
 # 21. Round-trip: export → extract
-def test_roundtrip(name, diagram):
+def check_roundtrip(name, diagram):
     global PASS, FAIL
     try:
         source = diagram_to_python(diagram, script_name=name)
@@ -413,13 +413,13 @@ def test_roundtrip(name, diagram):
         FAIL += 1
 
 
-test_roundtrip("rt_single_block", {
+check_roundtrip("rt_single_block", {
     "version": 1,
     "blocks": [{"id": "b1", "type": "constant", "x": 0, "y": 0, "params": {"value": "42"}}],
     "wires": [],
 })
 
-test_roundtrip("rt_complex_pipeline", {
+check_roundtrip("rt_complex_pipeline", {
     "version": 1,
     "blocks": [
         {"id": "b1", "type": "waveform_gen", "x": 0, "y": 0,
@@ -436,7 +436,7 @@ test_roundtrip("rt_complex_pipeline", {
 })
 
 # 22. No marker → returns None
-def test_no_marker():
+def check_no_marker():
     global PASS, FAIL
     result = extract_diagram_from_python("# just a regular script\nprint('hello')")
     if result is None:
@@ -446,10 +446,10 @@ def test_no_marker():
         print("  ✗ no_marker  ── expected None, got dict")
         FAIL += 1
 
-test_no_marker()
+check_no_marker()
 
 # 23. Display block accepts 'value' port (wire to 'value' instead of 'data')
-test("display_value_port", {
+run_case("display_value_port", {
     "version": 1,
     "blocks": [
         {"id": "c1", "type": "constant", "x": 0, "y": 0,
@@ -464,7 +464,7 @@ test("display_value_port", {
 }, execute=True)
 
 # 24. Vision blocks produce real code (compile check with all params)
-test("vision_full_params", {
+run_case("vision_full_params", {
     "version": 1,
     "blocks": [
         {"id": "cam", "type": "aoi_camera", "x": 0, "y": 0,
@@ -501,7 +501,7 @@ test("vision_full_params", {
 })
 
 # 25. Thermal analysis with zones
-test("thermal_full", {
+run_case("thermal_full", {
     "version": 1,
     "blocks": [
         {"id": "st", "type": "seek_thermal", "x": 0, "y": 0,
@@ -516,7 +516,7 @@ test("thermal_full", {
 })
 
 # 26. Math blocks print output
-test("math_verbose", {
+run_case("math_verbose", {
     "version": 1,
     "blocks": [
         {"id": "c1", "type": "constant", "x": 0, "y": 0,
@@ -543,7 +543,7 @@ test("math_verbose", {
 # ── Android Phone Sensor Tests ───────────────────────────────
 
 # 27. Android Accelerometer → Stats
-test("android_accel_stats", {
+run_case("android_accel_stats", {
     "version": 1,
     "blocks": [
         {"id": "acc", "type": "android_accel", "x": 0, "y": 0,
@@ -561,7 +561,7 @@ test("android_accel_stats", {
 })
 
 # 28. Android Gyroscope standalone
-test("android_gyro", {
+run_case("android_gyro", {
     "version": 1,
     "blocks": [
         {"id": "gy", "type": "android_gyro", "x": 0, "y": 0,
@@ -571,7 +571,7 @@ test("android_gyro", {
 })
 
 # 29. Android Magnetometer standalone
-test("android_mag", {
+run_case("android_mag", {
     "version": 1,
     "blocks": [
         {"id": "mg", "type": "android_mag", "x": 0, "y": 0,
@@ -581,7 +581,7 @@ test("android_mag", {
 })
 
 # 30. Android Microphone → Display
-test("android_mic", {
+run_case("android_mic", {
     "version": 1,
     "blocks": [
         {"id": "mic", "type": "android_mic", "x": 0, "y": 0,
@@ -596,7 +596,7 @@ test("android_mic", {
 })
 
 # 31. Android Proximity + Light + Pressure
-test("android_env_sensors", {
+run_case("android_env_sensors", {
     "version": 1,
     "blocks": [
         {"id": "px", "type": "android_proximity", "x": 0, "y": 0,
@@ -610,7 +610,7 @@ test("android_env_sensors", {
 })
 
 # 32. Android GPS + Battery
-test("android_gps_battery", {
+run_case("android_gps_battery", {
     "version": 1,
     "blocks": [
         {"id": "gps", "type": "android_gps", "x": 0, "y": 0,
@@ -622,7 +622,7 @@ test("android_gps_battery", {
 })
 
 # 33. Android Gravity + Rotation
-test("android_gravity_rotation", {
+run_case("android_gravity_rotation", {
     "version": 1,
     "blocks": [
         {"id": "gv", "type": "android_gravity", "x": 0, "y": 0,
@@ -634,7 +634,7 @@ test("android_gravity_rotation", {
 })
 
 # 34. Full Android multi-sensor pipeline: Accel → Filter → Stats → Threshold → Display
-test("android_full_pipeline", {
+run_case("android_full_pipeline", {
     "version": 1,
     "blocks": [
         {"id": "acc", "type": "android_accel", "x": 0, "y": 0,
