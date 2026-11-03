@@ -132,4 +132,4 @@ These formats treat the job `output` as a directory root. Set `overwrite_if_exis
 
 ## Pin Reference (MCU → AD3)
 
-See `docs/AD3_WIRING_GUIDE.md` for the complete mapping.
+See `docs/hardware/ad3-wiring-guide.md` for the complete mapping.

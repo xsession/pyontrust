@@ -1,0 +1,52 @@
+# ═══════════════════════════════════════════════════════════════
+# pyontrust — MkDocs site configuration
+# Build:  pip install mkdocs && mkdocs build   (or: mkdocs serve)
+# ═══════════════════════════════════════════════════════════════
+
+site_name: pyontrust
+site_description: >-
+  Enterprise embedded test & measurement platform — HIL, SDR, AOI,
+  spectroscopy, stereo3D and multi-phone acoustic arrays.
+site_url: https://pyontrust.local/
+docs_dir: docs
+
+theme:
+  name: mkdocs
+  locale: en
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+
+use_directory_urls: true
+strict: false          # warnings (e.g. legacy pages) don't fail the build
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - Architecture:
+      - Enterprise Architecture: architecture/ENTERPRISE_ARCHITECTURE.md
+  - Modules:
+      - Mobile Spectroscopy: modules/mobile-spectroscopy.md
+      - Mobile Stereo3D Tracking: modules/mobile-stereo3d-tracking.md
+      - Acoustic Noise Localization: modules/mobile-acoustics-noise-localization.md
+      - AOI Machine Vision: modules/aoi-machine-vision.md
+      - LM Studio MCP Bridge: modules/lm-studio-mcp.md
+  - Hardware:
+      - AD3 Wiring Guide: hardware/ad3-wiring-guide.md
+      - Seek Thermal Integration: hardware/seek-thermal-integration.md
+  - Plans & Notes:
+      - Driver Generator Upgrade Plan: plans/driver-generator-upgrade-plan.md
+      - Chat Summary — Locator Base HIL: plans/chat-summary-locator-base-hil.md
+      - Chat Summary — Pin Configurator: plans/chat-summary-pin-configurator.md
+  - Reviews:
+      - Review & Fixes: reviews/REVIEW_AND_FIXES.md
+      - UI/UX Review & Fixes: reviews/UI_UX_REVIEW_AND_FIXES.md
+
+markdown_extensions:
+  - toc:
+      permalink: true
+  - admonition
+  - codehilite
+  - tables
+  - attr_list

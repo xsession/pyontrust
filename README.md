@@ -108,7 +108,7 @@ Add limits to your profile to get automatic PASS/FAIL/WARN verdicts:
 ## Automated Optical Inspection (AOI)
 
 Full machine vision pipeline documentation for PCB inspection is available in
-[`docs/AOI_MACHINE_VISION.md`](docs/AOI_MACHINE_VISION.md), covering:
+[`docs/modules/aoi-machine-vision.md`](docs/modules/aoi-machine-vision.md), covering:
 
 - **Pipeline architecture** — camera → frame grabber → image processing → decision engine
 - **Hardware** — camera interface comparison (GigE / USB3 / CoaXPress), lighting systems (ring, dome, dark field, backlight, structured light)
@@ -181,7 +181,7 @@ python -m pip install -e .[mcp]
 python scripts/mcp_server.py
 ```
 
-Setup details and example LM Studio configuration are in [docs/LM_STUDIO_MCP.md](docs/LM_STUDIO_MCP.md).
+Setup details and example LM Studio configuration are in [docs/modules/lm-studio-mcp.md](docs/modules/lm-studio-mcp.md).
 
 ## Project structure
 

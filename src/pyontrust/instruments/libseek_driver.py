@@ -333,24 +333,6 @@ def _init_compact(dev: _SeekUSBDevice) -> bool:
         return False
     logger.debug("Compact chip ID: %s", chip.hex())
 
-    # SET_FACTORY_SETTINGS_FEATURES / GET_FACTORY_SETTINGS — sequence of reads
-    for set_data, get_len in [
-        (bytes([0x06, 0x00, 0x08, 0x00, 0x00, 0x00]), 12),
-        (bytes([0x17, 0x00]), 0),  # SET_FIRMWARE_INFO_FEATURES
-    ]:
-        cmd = DC.SET_FIRMWARE_INFO_FEATURES if get_len == 0 else DC.SET_FACTORY_SETTINGS_FEATURES
-        if not dev.request_set(cmd, set_data):
-            return False
-        if get_len > 0:
-            resp = dev.request_get(DC.GET_FACTORY_SETTINGS, get_len)
-            if resp is None:
-                return False
-
-    # GET_FIRMWARE_INFO (64 bytes)
-    fw64 = dev.request_get(DC.GET_FIRMWARE_INFO, 64)
-    if fw64 is None:
-        return False
-
     # Additional factory settings reads
     factory_reads = [
         (bytes([0x20, 0x00, 0x30, 0x00, 0x00, 0x00]), 64),

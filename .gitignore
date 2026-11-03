@@ -35,3 +35,6 @@ externals/pin_configurator/electron/node_modules/
 /aoi_images/
 *.egg-info/
 .pytest_cache/
+
+# mkdocs build output + runtime artifacts
+site/

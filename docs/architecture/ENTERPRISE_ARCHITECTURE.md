@@ -18,10 +18,10 @@
 8. [Multi-Channel Real-Time Logging Architecture](#8-multi-channel-real-time-logging-architecture)
 9. [Hardware-in-the-Loop (HIL) Framework](#9-hardware-in-the-loop-hil-framework)
 10. [GUI Unification Strategy](#10-gui-unification-strategy)
-11. [Plugin / Extension System](#11-plugin--extension-system)
+11. [Plugin / Extension System](#11-plugin-extension-system)
 12. [Configuration Management](#12-configuration-management)
 13. [Testing Strategy](#13-testing-strategy)
-14. [CI/CD & Release Pipeline](#14-cicd--release-pipeline)
+14. [CI/CD & Release Pipeline](#14-cicd-release-pipeline)
 15. [Migration Roadmap](#15-migration-roadmap)
 16. [Appendices](#appendices)
 

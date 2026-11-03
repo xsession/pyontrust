@@ -1,0 +1,36 @@
+# ═══════════════════════════════════════════════════════════════
+# pyontrust Lab Bench — docker compose stack
+#   docker compose up --build          # start (port 5200)
+#   docker compose logs -f lab-bench   # follow gateway logs
+# ═══════════════════════════════════════════════════════════════
+
+services:
+  lab-bench:
+    build:
+      context: .
+      args:
+        PYONTRUST_EXTRAS: gui,analysis     # add thermal/aoi/sdr as needed
+    image: pyontrust/lab-bench:latest
+    container_name: pyontrust-lab-bench
+    ports:
+      - "5200:5200"
+    environment:
+      PYONTRUST_HOST: 0.0.0.0
+      PYONTRUST_PORT: "5200"
+      PYONTRUST_ARTIFACTS: /app/artifacts
+      PYONTRUST_LOG_LEVEL: INFO
+    volumes:
+      - ./artifacts:/app/artifacts          # test artifacts persist on host
+      - ./configs:/app/configs:ro           # bench/scenario configs (if present)
+    # ── Hardware passthrough ────────────────────────────────────
+    # USB instruments (Seek Thermal, Digilent, PCAN, HackRF, phones):
+    devices:
+      - /dev/bus/usb:/dev/bus/usb
+    # Cameras (spectroscope webcam etc.):
+    #   - /dev/video4:/dev/video4
+    group_add:
+      - video        # V4L2 camera access
+      - dialout      # serial instruments, if present
+    # NOTE: host-side udev rules must allow the container user to open
+    # /dev/bus/usb nodes (see docs/hardware/seek-thermal-integration.md).
+    restart: unless-stopped
