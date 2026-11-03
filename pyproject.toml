@@ -59,6 +59,16 @@ thermal = [
 sdr = [
     "numpy>=2.0",
 ]
+stereo3d = [
+    "numpy>=2.0",
+    "opencv-python-headless>=4.10",
+]
+acoustics = [
+    "numpy>=2.0",
+]
+spectroscopy = [
+    "numpy>=2.0",
+]
 power = [
     "docopt>=0.6.2",
 ]

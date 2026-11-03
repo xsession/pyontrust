@@ -192,64 +192,115 @@ def _run_adb_cmd(*args: str, timeout: float = 5.0) -> str:
         return ""
 
 
+def _adb_rc(*args: str, timeout: float = 10.0) -> tuple[int, str]:
+    """Run an ADB command; return ``(returncode, combined_output)``."""
+    try:
+        result = subprocess.run(
+            [_ADB, *args], capture_output=True, text=True, timeout=timeout,
+        )
+        out = (result.stdout or "") + (result.stderr or "")
+        return result.returncode, out.strip()
+    except FileNotFoundError:
+        raise RuntimeError("adb not found — install Android SDK Platform-Tools") from None
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"adb {' '.join(args)} timed out after {timeout}s") from exc
+
+
+def _termux_torch_available() -> bool:
+    """True if Termux + Termux:API (``termux-torch``) are installed on device."""
+    try:
+        rc, out = _adb_rc(
+            "shell", "run-as com.termux ls /data/data/com.termux/files/usr/bin/termux-torch",
+            timeout=5,
+        )
+        return rc == 0 and "No such file" not in out
+    except Exception:
+        return False
+
+
+def _torch_termux(state: str) -> None:
+    """Toggle the torch via ``termux-torch`` (raises on failure)."""
+    prefix_bin = "/data/data/com.termux/files/usr/bin"
+    inner = f"export PATH={prefix_bin}:$PATH; {prefix_bin}/termux-torch {state}"
+    rc, out = _adb_rc(
+        "shell", "run-as com.termux sh -c '" + inner.replace("'", "'\\''") + "'",
+        timeout=10,
+    )
+    if rc != 0 or '"error"' in out:
+        raise RuntimeError(f"termux-torch {state} failed: {out[:200] or 'no output'}")
+
+
 def torch_on() -> bool:
     """Turn on the Android phone's flashlight (torch) via ADB.
 
-    Tries multiple methods for compatibility across Android versions:
-    1. ``cmd statusbar expand-notifications`` + keyevent (Android 6+)
-    2. ``svc power`` camera flashlight API via shell
-    3. Direct camera2 API via am broadcast
+    Backends tried in order:
+    1. ``termux-torch`` — Termux + Termux:API app installed on device
+       (most reliable; no helper APK required).
+    2. ``com.pyontrust.TORCH`` broadcast — requires the pyontrust helper
+       APK to be present and running on the phone.
 
-    Returns True if the command completed without error.
+    Returns True only if a backend executed successfully.
     """
+    errors: list[str] = []
+
     try:
-        # Method 1: am broadcast to custom receiver (most reliable with helper APK)
-        _run_adb_cmd(
-            "shell", "cmd", "statusbar", "expand-notifications",
-            timeout=3,
-        )
-        # Method 2: Use settings/content provider (Android 7+)
-        out = _run_adb_cmd(
-            "shell",
-            "am", "broadcast",
-            "-a", "com.pyontrust.TORCH",
-            "--ez", "state", "true",
-            timeout=3,
-        )
-        if "error" in out.lower():
-            # Fallback: use svc power via shell (needs root on some devices)
-            _run_adb_cmd(
-                "shell",
-                "settings", "put", "system", "torch_state", "1",
-                timeout=3,
-            )
-        logger.info("Torch ON command sent")
-        return True
+        if _termux_torch_available():
+            _torch_termux("on")
+            logger.info("Torch ON via termux-torch")
+            return True
+        errors.append("termux-torch not available (install Termux + Termux:API)")
     except Exception as exc:
-        logger.warning("torch_on failed: %s", exc)
-        return False
+        errors.append(f"termux-torch: {exc}")
+
+    try:
+        out = _run_adb_cmd(
+            "shell", "am", "broadcast", "-a", "com.pyontrust.TORCH",
+            "--ez", "state", "true", timeout=3,
+        )
+        if "error" not in out.lower():
+            logger.info("Torch ON via com.pyontrust.TORCH broadcast")
+            return True
+        errors.append(f"broadcast: {out[:120]}")
+    except Exception as exc:
+        errors.append(f"broadcast: {exc}")
+
+    for err in errors:
+        logger.warning("torch_on backend failed — %s", err)
+    return False
 
 
 def torch_off() -> bool:
-    """Turn off the Android phone's flashlight via ADB."""
+    """Turn off the Android phone's flashlight (torch) via ADB.
+
+    Same backend order as :func:`torch_on`. Returns True only on success.
+    """
+    errors: list[str] = []
+
     try:
-        _run_adb_cmd(
-            "shell",
-            "am", "broadcast",
-            "-a", "com.pyontrust.TORCH",
-            "--ez", "state", "false",
-            timeout=3,
-        )
-        _run_adb_cmd(
-            "shell",
-            "settings", "put", "system", "torch_state", "0",
-            timeout=3,
-        )
-        logger.info("Torch OFF command sent")
-        return True
+        if _termux_torch_available():
+            _torch_termux("off")
+            logger.info("Torch OFF via termux-torch")
+            return True
+        errors.append("termux-torch not available (install Termux + Termux:API)")
     except Exception as exc:
-        logger.warning("torch_off failed: %s", exc)
-        return False
+        errors.append(f"termux-torch: {exc}")
+
+    try:
+        out = _run_adb_cmd(
+            "shell", "am", "broadcast", "-a", "com.pyontrust.TORCH",
+            "--ez", "state", "false", timeout=3,
+        )
+        if "error" not in out.lower():
+            logger.info("Torch OFF via com.pyontrust.TORCH broadcast")
+            return True
+        errors.append(f"broadcast: {out[:120]}")
+    except Exception as exc:
+        errors.append(f"broadcast: {exc}")
+
+    for err in errors:
+        logger.warning("torch_off backend failed — %s", err)
+    return False
+
 
 
 class SimulatedTorch:

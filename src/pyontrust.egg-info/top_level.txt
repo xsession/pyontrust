@@ -1,1 +1,4 @@
+mobile_acoustics
+mobile_spectroscopy
+mobile_stereo3d
 pyontrust

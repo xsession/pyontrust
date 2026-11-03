@@ -17,37 +17,45 @@ Classifier: Topic :: Scientific/Engineering
 Requires-Python: >=3.10
 Description-Content-Type: text/markdown
 Provides-Extra: gui
-Requires-Dist: flask>=3.0; extra == "gui"
+Requires-Dist: flask>=3.1; extra == "gui"
 Requires-Dist: flask-sock>=0.7; extra == "gui"
 Provides-Extra: mcp
 Requires-Dist: mcp>=1.9.0; extra == "mcp"
 Provides-Extra: build
-Requires-Dist: pyinstaller>=6.0; extra == "build"
+Requires-Dist: pyinstaller>=6.5; extra == "build"
 Requires-Dist: nuitka>=2.6; extra == "build"
 Provides-Extra: analysis
-Requires-Dist: pandas>=1.5; extra == "analysis"
-Requires-Dist: numpy>=1.23; extra == "analysis"
-Requires-Dist: matplotlib>=3.6; extra == "analysis"
+Requires-Dist: pandas>=2.2; extra == "analysis"
+Requires-Dist: numpy>=2.0; extra == "analysis"
+Requires-Dist: scipy>=1.13; extra == "analysis"
+Requires-Dist: matplotlib>=3.9; extra == "analysis"
 Provides-Extra: aoi
-Requires-Dist: opencv-python>=4.8; extra == "aoi"
-Requires-Dist: scikit-image>=0.21; extra == "aoi"
-Requires-Dist: scipy>=1.10; extra == "aoi"
-Requires-Dist: numpy>=1.23; extra == "aoi"
+Requires-Dist: opencv-python-headless>=4.10; extra == "aoi"
+Requires-Dist: scikit-image>=0.24; extra == "aoi"
+Requires-Dist: scipy>=1.13; extra == "aoi"
+Requires-Dist: numpy>=2.0; extra == "aoi"
 Requires-Dist: harvesters>=1.4; extra == "aoi"
 Provides-Extra: thermal
-Requires-Dist: numpy>=1.23; extra == "thermal"
-Requires-Dist: opencv-python>=4.8; extra == "thermal"
+Requires-Dist: numpy>=2.0; extra == "thermal"
+Requires-Dist: opencv-python-headless>=4.10; extra == "thermal"
 Requires-Dist: seekcamera-python>=1.1; sys_platform == "linux" and extra == "thermal"
 Provides-Extra: sdr
-Requires-Dist: numpy>=1.23; extra == "sdr"
+Requires-Dist: numpy>=2.0; extra == "sdr"
+Provides-Extra: stereo3d
+Requires-Dist: numpy>=2.0; extra == "stereo3d"
+Requires-Dist: opencv-python-headless>=4.10; extra == "stereo3d"
+Provides-Extra: acoustics
+Requires-Dist: numpy>=2.0; extra == "acoustics"
+Provides-Extra: spectroscopy
+Requires-Dist: numpy>=2.0; extra == "spectroscopy"
 Provides-Extra: power
 Requires-Dist: docopt>=0.6.2; extra == "power"
 Provides-Extra: dev
-Requires-Dist: pytest>=7.0; extra == "dev"
-Requires-Dist: pytest-cov>=4.0; extra == "dev"
-Requires-Dist: mypy>=1.0; extra == "dev"
-Requires-Dist: ruff>=0.1; extra == "dev"
-Requires-Dist: sphinx>=7.0; extra == "dev"
+Requires-Dist: pytest>=8.2; extra == "dev"
+Requires-Dist: pytest-cov>=5.0; extra == "dev"
+Requires-Dist: mypy>=1.10; extra == "dev"
+Requires-Dist: ruff>=0.6; extra == "dev"
+Requires-Dist: sphinx>=7.4; extra == "dev"
 Requires-Dist: sphinx-rtd-theme>=2.0; extra == "dev"
 Provides-Extra: all
 Requires-Dist: pyontrust[analysis,aoi,build,dev,gui,power,sdr,thermal]; extra == "all"
@@ -59,7 +67,7 @@ A flexible, hardware-agnostic **embedded test & measurement system** for automat
 ## Architecture
 
 ```
-pyontrust_packages/power_test_framework/
+lab_bench/power_test_framework/
 ├── core.py              # PowerSample, PowerTrace, PowerTestRunner
 ├── profiles.py          # JSON-driven test profiles + instrument factory
 ├── lab_bench.py         # Lab bench hardware inventory (JSON)
@@ -232,14 +240,14 @@ This repository includes a local MCP server for LM Studio and other tool-using a
 
 ```powershell
 python -m pip install -e .[mcp]
-python mcp_server.py
+python scripts/mcp_server.py
 ```
 
 Setup details and example LM Studio configuration are in [docs/LM_STUDIO_MCP.md](docs/LM_STUDIO_MCP.md).
 
 ## Project structure
 
-The framework lives in `pyontrust_packages/power_test_framework/`.
+The framework lives in `lab_bench/power_test_framework/`.
 
 Core design principles:
 - **Stdlib-only core** — no mandatory third-party dependencies

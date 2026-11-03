@@ -498,54 +498,110 @@ class AdbAndroidSensors:
             ]
         return result
 
+    # Sensor-name fallbacks: some devices name sensors with chip suffixes
+    # (e.g. Huawei EVA-L09: "gyroscope-lsm6ds3", "mag-akm09911").
+    _SENSOR_NAME_FALLBACKS = {
+        "accelerometer": ["accelerometer", "accel"],
+        "gyroscope":     ["gyroscope", "gyro"],
+        "magnetometer":  ["magnetometer", "mag"],
+        "gravity":       ["gravity"],
+        "rotation":      ["rotation Vector", "rotation vector", "rotation"],
+    }
+
+    def _termux_sensor_cmd(self, sensor_name: str, n_samples: int) -> str:
+        """Build the remote shell command that runs ``termux-sensor``.
+
+        The tool lives in /data/data/com.termux (mode 700), so it cannot be
+        executed by adb's plain ``shell`` user — we go through
+        ``run-as com.termux`` instead.
+        """
+        prefix_bin = "/data/data/com.termux/files/usr/bin"
+        inner = (
+            f"export PATH={prefix_bin}:$PATH "
+            f"HOME=/data/data/com.termux/files/home; "
+            f"termux-sensor -s {sensor_name} -n {n_samples} -d 20"
+        )
+        return "run-as com.termux sh -c '" + inner.replace("'", "'\\''") + "'"
+
+    def _parse_termux_sensor_stream(
+        self, raw: str, preferred_name: str = "",
+    ) -> list[list[float]]:
+        """Parse ``termux-sensor`` output (one JSON object per sample line)."""
+        samples: list[list[float]] = []
+        decoder = json.JSONDecoder()
+        text = raw.strip()
+        idx = 0
+        while idx < len(text):
+            while idx < len(text) and text[idx].isspace():
+                idx += 1
+            if idx >= len(text):
+                break
+            obj, end = decoder.raw_decode(text, idx)
+            idx = end
+            chosen: list | None = None
+            # Prefer a key that matches the requested sensor name.
+            for key, val in obj.items():
+                if (isinstance(val, dict) and "values" in val
+                        and isinstance(val["values"], list)
+                        and all(isinstance(x, (int, float)) for x in val["values"])):
+                    if preferred_name.lower() in str(key).lower():
+                        chosen = val["values"]
+                        break
+            if chosen is None:
+                for _key, val in obj.items():
+                    if (isinstance(val, dict) and "values" in val
+                            and isinstance(val["values"], list)
+                            and all(isinstance(x, (int, float)) for x in val["values"])):
+                        chosen = val["values"]
+                        break
+            if chosen is not None:
+                samples.append([float(x) for x in chosen])
+        return samples
+
     def _read_sensor_termux(
         self, sensor_type: str, duration_s: float,
     ) -> dict[str, Any]:
-        """Read sensor via ``adb shell`` + termux-sensor or dumpsys."""
-        # Try termux-sensor first (requires Termux + termux-api package)
-        try:
-            n_samples = max(1, int(duration_s * 50))
-            cmd = (
-                f"termux-sensor -s {sensor_type} -n {n_samples} -d 20"
-            )
-            raw = _run_adb("shell", cmd, timeout=duration_s + 10)
-            data = json.loads(raw)
+        """Read a sensor via ``adb shell`` + termux-sensor (Termux:API app)."""
+        info = SENSOR_TYPES.get(sensor_type, {"axes": ["value"], "unit": ""})
+        n_samples = max(1, int(duration_s * 50))
 
-            # termux-sensor returns: {"values": [[x,y,z], ...]}
-            values = data.get("values", data.get(sensor_type, []))
-            info = SENSOR_TYPES.get(sensor_type, {"axes": ["value"], "unit": ""})
+        last_err: Exception | None = None
+        for name in self._SENSOR_NAME_FALLBACKS.get(sensor_type, [sensor_type]):
+            try:
+                cmd = self._termux_sensor_cmd(name, n_samples)
+                raw = _run_adb("shell", cmd, timeout=duration_s + 15)
+                values = self._parse_termux_sensor_stream(raw, name)
+                if not values:
+                    continue  # this name matched no sensor on the device
+                result: dict[str, Any] = {
+                    "sensor": sensor_type,
+                    "unit": info["unit"],
+                    "n_samples": len(values),
+                    "sample_rate_hz": len(values) / duration_s if duration_s > 0 else 0,
+                    "duration_s": duration_s,
+                }
+                if values and isinstance(values[0], list):
+                    for i, axis in enumerate(info["axes"]):
+                        result[axis] = [v[i] if i < len(v) else 0.0 for v in values]
+                else:
+                    result[info["axes"][0]] = values
+                return result
+            except Exception as exc:
+                last_err = exc
 
-            result: dict[str, Any] = {
-                "sensor": sensor_type,
-                "unit": info["unit"],
-                "n_samples": len(values),
-                "sample_rate_hz": len(values) / duration_s if duration_s > 0 else 0,
-                "duration_s": duration_s,
-            }
-
-            if values and isinstance(values[0], list):
-                for i, axis in enumerate(info["axes"]):
-                    result[axis] = [v[i] if i < len(v) else 0 for v in values]
-            else:
-                result[info["axes"][0]] = values
-
-            return result
-
-        except Exception as exc:
-            logger.warning("termux-sensor failed: %s — trying dumpsys", exc)
-
-        # Fallback: dumpsys sensorservice (limited, single reading)
+        # Fallback: dumpsys sensorservice (metadata only, no sample data)
         try:
             raw = _run_adb("shell", "dumpsys", "sensorservice", timeout=5)
-            # Parse is very device-specific — return raw dump
             return {
                 "sensor": sensor_type,
                 "raw_dump": raw[:2000],
                 "n_samples": 0,
-                "error": "dumpsys fallback — install Termux + termux-api for full sensor access",
+                "error": (f"termux-sensor unavailable ({last_err}) — dumpsys metadata only; "
+                          "install Termux + termux-api for full sensor access"),
             }
         except Exception as exc2:
             return {"sensor": sensor_type, "error": str(exc2), "n_samples": 0}
+
 
     def read_microphone(
         self, duration_s: float = 2.0, sample_rate: int = 16000,
