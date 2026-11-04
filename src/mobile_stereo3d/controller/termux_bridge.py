@@ -30,7 +30,9 @@ from .adb_manager import ADBManager, DeviceInfo
 
 HELPER_PKG = "com.pyontrust.camera"
 HELPER_CAPDIR = f"/sdcard/Android/data/{HELPER_PKG}/files/captures"
-TERMUX_BIN_DIR = "/data/data/com.termux/files/usr/bin"
+TERMUX_PKG = "com.termux"                      # package owning the binaries (run-as target)
+TERMUX_BIN_DIR = f"/data/data/{TERMUX_PKG}/files/usr/bin"
+TERMUX_SH = "/system/bin/sh"                    # universal shell, works under run-as
 
 
 def _require_cv2() -> None:
@@ -94,8 +96,9 @@ class TermuxBridge:
 
     def termux_available(self) -> bool:
         try:
-            return os.path.basename(TERMUX_BIN_DIR + "/termux-camera-photo") in self._s(
-                "run-as", "com.termux.api", "ls", TERMUX_BIN_DIR)
+            listing = self._s("run-as", TERMUX_PKG, "ls", TERMUX_BIN_DIR)
+            return ("termux-camera-photo" in listing and
+                    "termux-microphone-record" in listing)
         except Exception:
             return False
 
@@ -145,13 +148,13 @@ class TermuxBridge:
                 subprocess.run(f'adb {"-s " + self.device.serial if self.device else ""} '
                                f'shell cat {remote}', shell=True, stdout=fh, timeout=60)
         else:
-            remote = f"/data/data/com.termux/files/home/stereo3d/{local.name}"
-            self._s("run-as", "com.termux.api", "sh", "-c",
-                    f"mkdir -p /data/data/com.termux/files/home/stereo3d && "
+            remote = f"/data/data/{TERMUX_PKG}/files/home/stereo3d/{local.name}"
+            self._s("run-as", TERMUX_PKG, TERMUX_SH, "-c",
+                    f"mkdir -p /data/data/{TERMUX_PKG}/files/home/stereo3d && "
                     f"{TERMUX_BIN_DIR}/termux-camera-photo {remote}", timeout=90)
             with open(local, "wb") as fh:
                 subprocess.run(f'adb {"-s " + self.device.serial if self.device else ""} '
-                               f'shell run-as com.termux.api cat {remote}', shell=True, stdout=fh, timeout=60)
+                               f'shell run-as {TERMUX_PKG} cat {remote}', shell=True, stdout=fh, timeout=60)
 
         if not local.exists() or local.stat().st_size == 0:
             raise RuntimeError(f"capture failed on {self.device.serial}")
@@ -163,18 +166,47 @@ class TermuxBridge:
     # ── microphone (for the beamforming matrix) ──────────────────
     def record_audio(self, seconds: float = 5.0, out_dir: str | Path = "/tmp/mobile_stereo3d",
                      sample_rate: int = 48000) -> Path:
-        """Record raw microphone audio via termux-microphone-record (WAV)."""
+        """Record microphone audio via termux-microphone-record (Termux:API ≥ 0.5x).
+
+        The v0.53+ client speaks the app's local-socket protocol and starts an
+        *asynchronous* background recording, so we must start → wait → stop(-q)
+        explicitly; cat-ing the file right after start would grab a partial file.
+        Output is AAC-in-MP4 regardless of extension — when ffmpeg is available it
+        is decoded to 16-bit PCM WAV for the beamforming pipeline (raw .m4a kept).
+        """
         out = Path(out_dir)
         out.mkdir(parents=True, exist_ok=True)
-        local = out / f"mic_{self.device.serial if self.device else 'dev'}_{int(time.time())}.wav"
-        remote = f"/data/data/com.termux/files/home/stereo3d/{local.name}"
-        self._s("run-as", "com.termux.api", "sh", "-c",
-                f"mkdir -p /data/data/com.termux/files/home/stereo3d && "
-                f"{TERMUX_BIN_DIR}/termux-microphone-record {remote}", timeout=int(seconds * 1000) + 20000)
-        with open(local, "wb") as fh:
-            subprocess.run(f'adb {"-s " + self.device.serial if self.device else ""} '
-                           f'shell run-as com.termux.api cat {remote}', shell=True, stdout=fh, timeout=60)
-        return local
+        tag = self.device.serial if self.device else "dev"
+        ts = int(time.time())
+        raw_local = out / f"mic_{tag}_{ts}.m4a"
+        remote_dir = f"/data/data/{TERMUX_PKG}/files/home/stereo3d"
+        remote = f"{remote_dir}/{raw_local.name}"
+        bin_rec = f"{TERMUX_BIN_DIR}/termux-microphone-record"
+
+        self._s("run-as", TERMUX_PKG, "mkdir", "-p", remote_dir)
+        # start — returns immediately; capture runs in the Termux:API service
+        self._s("run-as", TERMUX_PKG, bin_rec, "-f", remote,
+                "-l", str(max(1, int(seconds))), "-r", str(sample_rate), timeout=30)
+        time.sleep(seconds + 1.5)          # let the service capture the full window
+        self._s("run-as", TERMUX_PKG, bin_rec, "-q", timeout=30)   # stop & finalize
+
+        with open(raw_local, "wb") as fh:
+            subprocess.run(f'adb {"-s " + tag if self.device else ""} '
+                           f'shell run-as {TERMUX_PKG} cat {remote}', shell=True, stdout=fh, timeout=60)
+        if not raw_local.exists() or raw_local.stat().st_size == 0:
+            raise RuntimeError(f"recording failed on {tag}")
+
+        # decode AAC → PCM WAV when ffmpeg is present (pipeline expects linear PCM)
+        wav = out / f"mic_{tag}_{ts}.wav"
+        try:
+            subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(raw_local),
+                            "-acodec", "pcm_s16le", "-ar", str(sample_rate), str(wav)],
+                           check=True, capture_output=True, timeout=60)
+            if wav.exists() and wav.stat().st_size > 44:
+                return wav
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            pass
+        return raw_local
 
 
 __all__ = ["TermuxBridge", "CameraConfig"]
