@@ -150,7 +150,8 @@
               <div id="signal-panel-summary" class="panel-summary">0 selected</div>
             </div>
             <div class="signal-toolbar">
-              <label class="sr-only" for="signal-filter-input">Filter signal roster</label><input id="signal-filter-input" type="search" placeholder="Filter signals">
+              <label class="ui-search is-block" for="signal-filter-input"><span class="sr-only">Filter signal roster</span><input id="signal-filter-input" type="search" placeholder="Filter signals…"></label>
+              <span class="ui-search-meta" data-ui-count="#signal-list" aria-live="polite"></span>
               <div class="inline-actions signal-actions">
                 <button id="signal-select-visible-btn" class="btn" type="button">Include visible</button>
                 <button id="signal-clear-visible-btn" class="btn" type="button">Clear visible</button>

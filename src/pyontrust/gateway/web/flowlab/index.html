@@ -45,8 +45,8 @@
   <!-- ── Block palette (left sidebar) ────────────────────────── -->
   <aside id="palette" aria-labelledby="palette-title">
     <h2 id="palette-title" class="sr-only">Block palette</h2>
-    <label class="sr-only" for="palette-search">Search blocks</label>
-    <input type="text" id="palette-search" placeholder="Search blocks…">
+    <label class="ui-search is-block" for="palette-search"><span class="sr-only">Search blocks</span><input type="search" id="palette-search" placeholder="Search blocks…"></label>
+    <span class="ui-search-meta" data-ui-count="#palette-list" aria-live="polite"></span>
     <div id="palette-list"></div>
   </aside>
 
@@ -163,8 +163,8 @@
   <div class="modal-box tutorial-box">
     <div class="tutorial-header">
       <h3>❓ FlowLab Component Reference</h3>
-      <label class="sr-only" for="tutorial-search">Search component reference</label>
-      <input type="search" id="tutorial-search" placeholder="Search components...">
+      <label class="ui-search is-block" for="tutorial-search"><span class="sr-only">Search component reference</span><input type="search" id="tutorial-search" placeholder="Search components…"></label>
+      <span class="ui-search-meta" data-ui-count="#tutorial-nav" aria-live="polite"></span>
     </div>
     <div class="tutorial-layout">
       <nav id="tutorial-nav" class="tutorial-nav"></nav>

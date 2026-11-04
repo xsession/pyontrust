@@ -38,10 +38,10 @@
     <section class="config-workspace">
       <aside class="config-list-pane" aria-label="Configuration files">
         <div class="list-toolbar">
-          <label class="search-field" for="config-search">
-            <span aria-hidden="true">⌕</span>
-            <input id="config-search" type="search" placeholder="Filter files" autocomplete="off">
+          <label class="ui-search is-block" for="config-search">
+            <input id="config-search" type="search" placeholder="Filter profiles, benches and limits…" autocomplete="off">
           </label>
+          <span class="ui-search-meta" data-ui-count="#config-list" aria-live="polite"></span>
         </div>
         <div id="config-list" class="config-list" aria-busy="true"></div>
       </aside>

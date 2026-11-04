@@ -162,8 +162,66 @@
     });
   }
 
+  const SEARCH_ICON_SVG = '<svg class="ui-search-icon" aria-hidden="true" viewBox="0 0 16 16" width="14" height="14"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="m13.5 13.5-3.2-3.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+
+  function enhanceSearches(root = document) {
+    root.querySelectorAll('input[type="search"]').forEach(input => {
+      if (input.dataset.uiSearchEnhanced === 'true') return;
+      input.dataset.uiSearchEnhanced = 'true';
+
+      let label = input.closest('label');
+      if (!label || !label.classList.contains('ui-search')) {
+        const created = document.createElement('label');
+        created.className = 'ui-search' + (input.classList.contains('is-block') ? ' is-block' : '');
+        input.parentNode.insertBefore(created, input);
+        created.appendChild(input);
+        label = created;
+      }
+      if (!label.querySelector('.ui-search-icon')) {
+        const holder = document.createElement('span');
+        holder.innerHTML = SEARCH_ICON_SVG;
+        label.prepend(holder.firstElementChild);
+      }
+
+      input.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && input.value) {
+          input.value = '';
+          input.dispatchEvent(new Event('input', {bubbles: true}));
+        }
+      });
+    });
+
+    // Result counts for client-side filtered lists: <span data-ui-count="#list">
+    const updateCounts = () => {
+      document.querySelectorAll('[data-ui-count]').forEach(out => {
+        const list = document.querySelector(out.dataset.uiCount);
+        if (!list) return;
+        const n = Array.from(list.children).filter(el => el.offsetParent !== null || getComputedStyle(el).display !== 'none').length;
+        out.textContent = n === 1 ? '1 result' : n + ' results';
+      });
+    };
+    document.addEventListener('input', updateCounts, {passive: true});
+    updateCounts();
+
+    // Global "/" shortcut → focus first visible search field (once per page)
+    if (!document.__uiSearchShortcutBound) {
+      document.__uiSearchShortcutBound = true;
+      document.addEventListener('keydown', event => {
+        if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey) return;
+        const active = document.activeElement;
+        if (active && /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName) && active.type !== 'search') return;
+        const target = Array.from(document.querySelectorAll('input[type="search"]'))
+          .find(el => !el.disabled && el.offsetParent !== null);
+        if (!target) return;
+        event.preventDefault();
+        target.focus();
+      });
+    }
+  }
+
   function enhance(root = document) {
     labelControls(root);
+    enhanceSearches(root);
     enhanceTabs(root);
     enhanceDialogs(root);
     enhanceStatus(root);

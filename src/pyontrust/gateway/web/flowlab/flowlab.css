@@ -44,8 +44,8 @@
   display: flex; flex-direction: column;
   overflow: hidden;
 }
-#palette-search {
-  margin: 8px; width: calc(100% - 16px);
+#palette .ui-search {
+  margin: 8px; width: calc(100% - 16px); min-height: 32px;
 }
 #palette-list {
   flex: 1; overflow-y: auto; padding: 0 8px 8px;
@@ -390,13 +390,7 @@
   padding-bottom: 12px; margin-bottom: 0;
 }
 .tutorial-header h3 { margin: 0; flex-shrink: 0; border: none; padding: 0; }
-#tutorial-search {
-  flex: 1; font-size: 12px;
-  background: var(--bg, #1e1e2e);
-  color: var(--fg, #cdd6f4);
-  border: 1px solid var(--border, #45475a);
-  border-radius: 6px; padding: 6px 10px;
-}
+.tutorial-header .ui-search { flex: 1; min-height: 30px; }
 .tutorial-layout {
   display: flex; flex: 1;
   overflow: hidden; margin: 12px 0;

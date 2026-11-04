@@ -21,9 +21,7 @@ h1 { margin-bottom: 3px; font-size: 23px; line-height: 1.2; }
 .config-workspace { display: grid; grid-template-columns: minmax(260px, 330px) minmax(0,1fr); min-height: 500px; height: calc(100vh - 186px); overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg2); }
 .config-list-pane { min-width: 0; min-height: 0; display: grid; grid-template-rows: auto minmax(0,1fr); border-right: 1px solid var(--border); }
 .list-toolbar { padding: 9px; border-bottom: 1px solid var(--border); background: rgba(45,45,68,.65); }
-.search-field { display: flex; align-items: center; gap: 7px; min-height: 34px; padding: 0 9px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg3); color: var(--fg-dim); }
-.search-field:focus-within { border-color: var(--accent); }
-.search-field input { width: 100%; min-height: 34px !important; padding: 0; border: 0; background: transparent; outline: 0; }
+/* Search field styling now comes from the shared .ui-search component (shell/ui-foundation.css). */
 .config-list { min-height: 0; overflow: auto; padding: 6px; }
 .config-item { width: 100%; display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; min-height: 51px; margin-bottom: 4px; padding: 8px 9px; border: 1px solid transparent; border-radius: var(--radius); background: transparent; color: var(--fg); text-align: left; cursor: pointer; }
 .config-item:hover { background: var(--bg3); }

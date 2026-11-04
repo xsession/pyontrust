@@ -2,6 +2,8 @@
  * Accessibility, interaction and responsive primitives shared by all web tools.
  */
 :root {
+  --bg2: #252538;
+  --radius: 7px;
   --fg-dim: #a6adc8;
   --border: #585b70;
   --focus-ring: #f9e2af;
@@ -183,3 +185,16 @@ label:has(input[type="radio"]) {
     border: 1px solid CanvasText;
   }
 }
+
+/* ── Search field — shared component ─────────────────────────────── */
+.ui-search { position: relative; display: inline-flex; align-items: center; gap: 8px; min-height: var(--control-h, 36px); padding: 0 10px; border: 1px solid var(--border); border-radius: var(--radius, 6px); background: var(--bg2, rgba(255,255,255,.04)); color: var(--fg-dim); transition: border-color .15s ease, box-shadow .15s ease; }
+.ui-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(137,180,250,.16); color: var(--fg); }
+.ui-search.is-block { display: flex; width: 100%; }
+.ui-search-icon { flex: 0 0 auto; width: 14px; height: 14px; color: var(--fg-dim); pointer-events: none; transition: color .15s ease; }
+.ui-search:focus-within .ui-search-icon { color: var(--accent); }
+.ui-search input { flex: 1 1 auto; width: 0; min-width: 0; min-height: 32px; padding: 0; border: 0; background: transparent; outline: none; color: var(--fg); font-size: .85rem; }
+.ui-search input::placeholder { color: var(--fg-dim); opacity: .75; }
+.ui-search-kbd { flex: 0 0 auto; min-width: 20px; padding: 1px 6px; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; background: rgba(255,255,255,.05); color: var(--fg-dim); font-size: .7rem; line-height: 1.4; text-align: center; opacity: .85; pointer-events: none; }
+.ui-search:focus-within .ui-search-kbd { opacity: .4; }
+@media (max-width: 640px) { .ui-search-kbd { display: none; } }
+.ui-search-meta { flex: 0 0 auto; font-size: .78rem; color: var(--fg-dim); white-space: nowrap; font-variant-numeric: tabular-nums; min-width: 4em; text-align: right; }
