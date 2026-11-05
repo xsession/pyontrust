@@ -5,6 +5,10 @@
         android:name="android.hardware.usb.host"
         android:required="true" />
 
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+
     <application
         android:allowBackup="true"
         android:label="@string/app_name"
@@ -26,6 +30,19 @@
                 android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
                 android:resource="@xml/device_filter" />
         </activity>
+
+        <service
+            android:name=".fast.FastTelemetryService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.pyontrust.android.FAST_TELEMETRY" />
+            </intent-filter>
+        </service>
+
+        <activity
+            android:name=".fast.TouchPadActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
     </application>
 
 </manifest>

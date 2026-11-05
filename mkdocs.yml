@@ -33,6 +33,7 @@ nav:
       - AOI Machine Vision: modules/aoi-machine-vision.md
       - Focus Stacking & Depth (native): modules/focus-stacking-depth.md
       - Phone Subsystems & Automation: modules/phone-subsystems.md
+      - Fast Telemetry (low-latency): modules/fast-telemetry.md
       - LM Studio MCP Bridge: modules/lm-studio-mcp.md
   - Hardware:
       - AD3 Wiring Guide: hardware/ad3-wiring-guide.md
