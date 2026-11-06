@@ -3,9 +3,9 @@ import sys
 import unittest
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
-sys.path.append(str(REPO_ROOT / "lab_bench"))
-
-from power_test_framework.instruments.ad3_dwf import Ad3DwfPowerMeter  # noqa: E402
+from lab_bench.power_test_framework.instruments.ad3_dwf import (  # noqa: E402
+    Ad3DwfPowerMeter,
+)
 
 
 class _FakeDwf:

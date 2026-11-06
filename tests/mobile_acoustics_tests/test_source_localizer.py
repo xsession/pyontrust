@@ -1,6 +1,6 @@
 """TDOA hyperbola localization + bearing."""
 import numpy as np
-from mobile_acoustics import TDOAEstimator, SourceLocalizer
+from pyontrust.mobile.acoustics import TDOAEstimator, SourceLocalizer
 
 
 def test_localize_within_tolerance(rig, waveforms):

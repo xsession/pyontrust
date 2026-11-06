@@ -1,40 +1,43 @@
+# ═══════════════════════════════════════════════════════════
+# pyontrust — .gitignore (single source of truth)
+# Convention: generated/runtime output lives under data/, dist/,
+# site/ and tools/*/generated/ — never commit it.
+# ═══════════════════════════════════════════════════════════
 
+# ── Python ────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
 build/
-
 dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv*/
 
-**/__pycache__/**
-
-lab_bench/greeting/__pycache__/
-
-.venv-gui/
-
-.venv-nicegui/
-
-.venv-sdr/
-
-artifacts/
-
+# ── Virtual environments (legacy locations) ───────────────
 gui_app/pin_configurator/.venv/
-
-gui_app/baram/baram-web/Project(1)/
-
 externals/pin_configurator/.venv/
-
 externals/pin_configurator/vscode-extension/node_modules/
-
+externals/pin_configurator/electron/node_modules/
 externals/pin_configurator/.tmp/
 
-externals/pin_configurator/electron/node_modules/
-
-# ── Runtime artifacts (generated at run time — never commit) ──
-/aoi_results.db
+# ── Runtime data & generated output (regenerable) ─────────
+/data/aoi_images/
+/data/sim_output/
+/test_reports/
+/artifacts/
 /layout.json.tmp
 /test_result.json
-/sim_output/
-/aoi_images/
-*.egg-info/
-.pytest_cache/
+/aoi_results.db
+tools/interface-generator/generated/
 
-# mkdocs build output + runtime artifacts
-site/
+# ── Documentation build output ────────────────────────────
+/site/
+
+# ── OS / editor noise ─────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json

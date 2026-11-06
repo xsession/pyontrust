@@ -20,9 +20,7 @@ import numpy as np
 import pandas as pd
 
 # Ensure the csv_plotter package is on the path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "gui_app", "csv_plotter"))
-
-from metrics import (  # noqa: E402
+from pyontrust.analysis.metrics import (
     MetricsTuple,
     _NA_10,
     _estimate_frequency_fft,

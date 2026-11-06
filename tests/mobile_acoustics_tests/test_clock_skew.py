@@ -1,6 +1,6 @@
 """Clock-skew calibration with a shared beep."""
 import numpy as np
-from mobile_acoustics import ClockSkewCalibrator, apply_skew_correction, beep_template
+from pyontrust.mobile.acoustics import ClockSkewCalibrator, apply_skew_correction, beep_template
 
 
 def test_beep_template_shape_and_energy():
@@ -15,7 +15,7 @@ def test_beep_template_shape_and_energy():
 
 
 def test_lag_sign_convention():
-    from mobile_acoustics.calibration.clock_skew import _cross_lag_samples
+    from pyontrust.mobile.acoustics.calibration.clock_skew import _cross_lag_samples
 
     x = beep_template(sample_rate=48000)
     L = 37

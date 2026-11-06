@@ -1,6 +1,6 @@
 """Spectral processing pipeline (port of Module_Spectrometer.vb)."""
 import numpy as np
-from mobile_spectroscopy import (SpectrometerPipeline, WavelengthCalibration,
+from pyontrust.mobile.spectroscopy import (SpectrometerPipeline, WavelengthCalibration,
                                  correct_for_irradiance, extract_column_samples,
                                  resample_to_nm_grid, spatial_filter, subtract_background)
 

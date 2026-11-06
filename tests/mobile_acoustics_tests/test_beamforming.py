@@ -1,6 +1,6 @@
 """Delay-and-sum beamforming power map."""
 import numpy as np
-from mobile_acoustics import AcousticGrid, DelayAndSumBeamformer
+from pyontrust.mobile.acoustics import AcousticGrid, DelayAndSumBeamformer
 
 
 def test_peak_near_source(rig, waveforms):

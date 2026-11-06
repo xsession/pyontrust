@@ -57,7 +57,7 @@ class AOIInspector:
         alignment_checker: Any | None = None,
         via_inspector: Any | None = None,
         db_path: Path = Path("aoi_results.db"),
-        image_archive: Path = Path("aoi_images"),
+        image_archive: Path = Path("data/aoi_images"),
     ) -> None:
         self._grabber = grabber
         self._preprocessor = preprocessor
@@ -100,7 +100,7 @@ class AOIInspector:
               },
               "storage": {
                 "db_path": "aoi_results.db",
-                "image_archive": "aoi_images"
+                "image_archive": "data/aoi_images"
               }
             }
         """
@@ -171,7 +171,7 @@ class AOIInspector:
             alignment_checker=alignment_checker,
             via_inspector=via_inspector,
             db_path=Path(store_cfg.get("db_path", "aoi_results.db")),
-            image_archive=Path(store_cfg.get("image_archive", "aoi_images")),
+            image_archive=Path(store_cfg.get("image_archive", "data/aoi_images")),
         )
 
     # ── Lifecycle ────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 """Wavelength calibration (port of Module_Calibrations.vb)."""
 import numpy as np
 import pytest
-from mobile_spectroscopy import WavelengthCalibration, interpolate
+from pyontrust.mobile.spectroscopy import WavelengthCalibration, interpolate
 
 
 def test_interpolate_linear_and_clamped():

@@ -113,7 +113,7 @@ def create_app(
     app.extensions["log_service"] = LogService()
     app.extensions["artifact_service"] = ArtifactService(root=artifacts_root)
     app.extensions["bench_service"] = BenchService(bench_path=bench_path)
-    app.extensions["config_service"] = ConfigService(base_dir=".")
+    app.extensions["config_service"] = ConfigService(base_dir="data")
 
     # Ensure default event channels exist
     app.extensions["log_service"].ensure_channels()

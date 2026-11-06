@@ -17,7 +17,7 @@ from pyontrust.instruments import create_instrument, discover_instruments
 logger = logging.getLogger("pyontrust.services.bench_service")
 
 _ENV_BENCH = "PYONTRUST_BENCH"
-_DEFAULT_BENCH_PATH = "benches/default.json"
+_DEFAULT_BENCH_PATH = "data/benches/default.json"
 
 
 class BenchService:
@@ -53,7 +53,7 @@ class BenchService:
         1. Explicit *path* argument
         2. ``self._bench_path`` (constructor)
         3. ``PYONTRUST_BENCH`` environment variable
-        4. ``benches/default.json``
+        4. ``data/benches/default.json``
         """
         if path:
             p = pathlib.Path(path)

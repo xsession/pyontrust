@@ -4,12 +4,11 @@ import tempfile
 import unittest
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
-sys.path.append(str(REPO_ROOT / "lab_bench"))
 
-from power_test_framework.core import PowerTestRunner, TestStep, PowerTest  # noqa: E402
-from power_test_framework.instruments.simulated import SimulatedPowerMeter  # noqa: E402
-from power_test_framework.recorders.hackrf_iq import HackRfIqRecorder  # noqa: E402
-from power_test_framework.recorders.ffmpeg_webcam import FfmpegWebcamRecorder  # noqa: E402
+from lab_bench.power_test_framework.core import PowerTestRunner, TestStep, PowerTest  # noqa: E402
+from lab_bench.power_test_framework.instruments.simulated import SimulatedPowerMeter  # noqa: E402
+from lab_bench.power_test_framework.recorders.hackrf_iq import HackRfIqRecorder  # noqa: E402
+from lab_bench.power_test_framework.recorders.ffmpeg_webcam import FfmpegWebcamRecorder  # noqa: E402
 
 
 class TestOptionalRecordersSkip(unittest.TestCase):

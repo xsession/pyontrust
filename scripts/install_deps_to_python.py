@@ -50,7 +50,7 @@ def install_requirements():
     current_script_path = pathlib.Path(__file__).parent
 
     # Define the path to requirements.txt
-    requirements_path = current_script_path / "requirements.txt"
+    requirements_path = current_script_path.parent / "requirements.txt"  # canonical file at repo root
 
     # Install the requirements using pip
     subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", str(requirements_path)])

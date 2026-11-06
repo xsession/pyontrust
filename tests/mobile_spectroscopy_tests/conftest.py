@@ -31,6 +31,6 @@ def slit_image():
 @pytest.fixture
 def linear_calib():
     """Linear bin->nm calibration: bin 0 -> 400 nm, bin 511 -> 720 nm."""
-    from mobile_spectroscopy import WavelengthCalibration
+    from pyontrust.mobile.spectroscopy import WavelengthCalibration
 
     return WavelengthCalibration(bins=[0.0, 511.0], nms=[400.0, 720.0])

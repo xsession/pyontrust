@@ -224,9 +224,14 @@ class DiscretePID:
     def to_z(self, dt_s: float) -> tuple[tuple[float, ...], tuple[float, ...]]:
         """z-domain transfer function of this PID (ideal derivative).
 
-        C(z) = [kp·z² + (ki·dt + kd − kp)·z − kd] / [z² − z]
+        C(z) = [a·z² + b·z + c] / [z² − z] with
+            a = kp + ki·dt + kd/dt,  b = −kp − 2kd/dt,  c = kd/dt
+        (parallel form: P + forward-Euler integrator + backward-difference
+        derivative; pure-P reduces exactly to C(z) = kp).
         """
-        num = (self.kp, self.ki * dt_s + self.kd - self.kp, -self.kd)
+        num = (self.kp + self.ki * dt_s + self.kd / dt_s,
+               -self.kp - 2.0 * self.kd / dt_s,
+               self.kd / dt_s)
         den = (1.0, -1.0, 0.0)
         return num, den
 
@@ -285,7 +290,7 @@ def bode_response(A_d: np.ndarray, B_d: np.ndarray, C_d: np.ndarray, D_d: np.nda
     wrapped = np.mod(phase_deg + 180.0, 360.0) - 180.0
     dphi = np.diff(wrapped, prepend=wrapped[0])
     dphi[np.abs(dphi) > 180.0] += (np.sign(-dphi[np.abs(dphi) > 180.0])) * 360.0
-    phase_deg = np.cumsum(dphi)
+    phase_deg = wrapped[0] + np.concatenate(([0.0], np.cumsum(dphi[1:])))
     return freqs, mag_db, phase_deg
 
 
@@ -363,7 +368,7 @@ def simulate_closed_loop(A_d: np.ndarray, B_d: np.ndarray, C_d: np.ndarray, D_d:
         e_k = r_k - (float(y_out[k - 1]) if k > 0 else 0.0)
         u_k = pid.step(e_k, dt_s)
         x = A_d @ x + B_d[:, 0] * u_k
-        y_k = float((C_d @ x)[0, 0] + D_d[0, 0] * u_k)
+        y_k = float(np.ravel(C_d @ x)[0] + np.ravel(D_d)[0] * u_k)
         if disturbance is not None:
             d_seq = np.asarray(disturbance, dtype=float)
             if len(d_seq) == n_steps:

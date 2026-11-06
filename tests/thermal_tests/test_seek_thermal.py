@@ -125,6 +125,11 @@ class TestSeekThermalCamera(unittest.TestCase):
         self.assertAlmostEqual(cam.emissivity, 0.95)
 
     def test_open_without_library_raises(self):
+        import usb.core  # noqa: F401
+
+        from pyontrust.instruments.libseek_driver import SEEK_VENDOR_ID
+        if usb.core.find(idVendor=SEEK_VENDOR_ID) is not None:
+            self.skipTest("Seek thermal hardware attached — raw-USB fallback path active")
         cam = SeekThermalCamera()
         # Should raise ImportError if neither seekcamera nor seek_thermal installed
         with self.assertRaises(ImportError):

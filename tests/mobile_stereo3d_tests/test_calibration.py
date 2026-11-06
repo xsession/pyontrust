@@ -1,7 +1,7 @@
 """Stereo calibration: baseline rig + JSON round-trip + checkerboard fallback."""
 import numpy as np
 import pytest
-from mobile_stereo3d import StereoCalibration, StereoCalibrator
+from pyontrust.mobile.stereo3d import StereoCalibration, StereoCalibrator
 
 
 def test_from_baseline(rig):

@@ -4,7 +4,7 @@ Executes test scenarios defined in YAML format using the UnifiedHIL
 bridge, supporting both real hardware and simulation.
 
 Example usage:
-    python -m pyontrust.simulation.scenario_runner scenarios/locator_base_blink_test.yaml
+    python -m pyontrust.simulation.scenario_runner data/scenarios/locator_base_blink_test.yaml
 """
 
 from __future__ import annotations

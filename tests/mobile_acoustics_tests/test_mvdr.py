@@ -1,6 +1,6 @@
 """MVDR (Capon) adaptive beamforming."""
 import numpy as np
-from mobile_acoustics import AcousticGrid, DelayAndSumBeamformer, MVDRBeamformer
+from pyontrust.mobile.acoustics import AcousticGrid, DelayAndSumBeamformer, MVDRBeamformer
 
 
 def _tone_rig(seed=11):

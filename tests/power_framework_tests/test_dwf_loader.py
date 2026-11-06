@@ -4,9 +4,7 @@ import tempfile
 import unittest
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
-sys.path.append(str(REPO_ROOT / "lab_bench"))
-
-from power_test_framework.instruments import dwf_loader  # noqa: E402
+from lab_bench.power_test_framework.instruments import dwf_loader  # noqa: E402
 
 
 class TestDwfLoader(unittest.TestCase):

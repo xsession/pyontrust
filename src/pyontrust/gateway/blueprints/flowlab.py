@@ -25,7 +25,7 @@ from pyontrust.gateway.flowlab_codegen import diagram_to_python, extract_diagram
 logger = logging.getLogger("pyontrust.gateway.flowlab")
 
 _WEB_DIR = pathlib.Path(__file__).resolve().parent.parent / "web" / "flowlab"
-_SAVE_DIR = pathlib.Path(".") / "flowlab_diagrams"
+_SAVE_DIR = pathlib.Path("data") / "flowlab_diagrams"
 _HIL_DIR = pathlib.Path(".") / "profiles"
 
 bp = Blueprint(

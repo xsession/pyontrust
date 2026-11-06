@@ -1,6 +1,6 @@
 """Multi-phone capture orchestration."""
 import numpy as np
-from mobile_acoustics import MicStream, MultiMicCapture
+from pyontrust.mobile.acoustics import MicStream, MultiMicCapture
 
 
 def test_capture_returns_all_channels(rig):

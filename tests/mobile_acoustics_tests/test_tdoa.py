@@ -1,6 +1,6 @@
 """GCC-PHAT TDOA: sign, magnitude, matrix symmetry."""
 import numpy as np
-from mobile_acoustics import TDOAEstimator
+from pyontrust.mobile.acoustics import TDOAEstimator
 
 
 def test_sign_and_magnitude():

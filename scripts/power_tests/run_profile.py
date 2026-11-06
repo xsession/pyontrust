@@ -18,7 +18,7 @@ def main() -> int:
     repo_root = pathlib.Path(args["--repo-root"]).resolve()
 
     # Run from repo root without installing.
-    sys.path.append(str(repo_root / "lab_bench"))
+    sys.path.append(str(repo_root / "tools" / "lab-bench"))
 
     from power_test_framework.profiles import load_profile, run_profile  # noqa: E402
 

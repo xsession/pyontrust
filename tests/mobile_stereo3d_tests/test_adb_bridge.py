@@ -1,11 +1,14 @@
 """ADB/Termux bridge against the real connected device (MWS7N17623000254)."""
 import pytest
-from mobile_stereo3d import ADBManager, TermuxBridge
+from pyontrust.mobile.stereo3d import ADBManager, TermuxBridge
 
 
 @pytest.fixture(scope="module")
 def adb():
-    return ADBManager()
+    mgr = ADBManager()
+    if not mgr.serial:
+        pytest.skip("multiple ADB devices attached — set PYONTRUST_ADB_SERIAL to pick one")
+    return mgr
 
 
 def test_device_discovery(adb):

@@ -1,7 +1,7 @@
 """Triangulation round-trip: project known 3-D points, recover them."""
 import numpy as np
 import pytest
-from mobile_stereo3d import Triangulator
+from pyontrust.mobile.stereo3d import Triangulator
 
 
 def test_single_point_recovery(rig):

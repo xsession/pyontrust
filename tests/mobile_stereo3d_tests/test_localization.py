@@ -1,6 +1,6 @@
 """Feature localization: ORB extraction + matching on synthetic patterns."""
 import numpy as np
-from mobile_stereo3d import FeatureLocalizer
+from pyontrust.mobile.stereo3d import FeatureLocalizer
 
 
 def _pattern_image(shift=0):

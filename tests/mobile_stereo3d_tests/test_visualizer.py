@@ -1,6 +1,6 @@
 """Headless 3-D visualization (PNG output)."""
 import numpy as np
-from mobile_stereo3d import Tracker3D, Visualizer3D
+from pyontrust.mobile.stereo3d import Tracker3D, Visualizer3D
 
 
 def test_plot_trajectories(tmp_path):

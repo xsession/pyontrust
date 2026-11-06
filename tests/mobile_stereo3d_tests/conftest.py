@@ -14,7 +14,7 @@ if str(SRC) not in sys.path:
 def rig():
     """Synthetic calibrated stereo pair (left camera frame is world)."""
     K = np.array([[600.0, 0.0, 320.0], [0.0, 600.0, 240.0], [0.0, 0.0, 1.0]])
-    from mobile_stereo3d import StereoCalibrator
+    from pyontrust.mobile.stereo3d import StereoCalibrator
     calib = StereoCalibrator().from_baseline(
         K, np.zeros(4), K.copy(), np.zeros(4), baseline_px=120.0, image_size=(640, 480))
     return {"K": K, "R": calib.R, "T": calib.T.reshape(3), "calib": calib}

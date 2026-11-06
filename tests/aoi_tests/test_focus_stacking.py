@@ -166,12 +166,18 @@ class TestAOISyntheticFeed:
 # ──────────────────────────────────────────────────────────────────────
 
 def _adb_available() -> bool:
+    """True only when the ADB target is unambiguous (one device, or an explicit serial)."""
+    import os
+
+    if os.environ.get("PYONTRUST_ADB_SERIAL"):
+        return True
     adb = shutil.which("adb")
     if not adb:
         return False
     try:
         out = subprocess.run([adb, "devices"], capture_output=True, text=True, timeout=10).stdout
-        return any(line.split("	")[1] == "device" for line in out.splitlines()[1:] if "	" in line)
+        online = [line for line in out.splitlines()[1:] if "\t" in line and line.split("\t")[1] == "device"]
+        return len(online) == 1
     except Exception:
         return False
 

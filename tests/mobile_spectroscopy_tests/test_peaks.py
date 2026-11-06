@@ -1,6 +1,6 @@
 """Peak/dip detection (port of MarkAllPeaks)."""
 import numpy as np
-from mobile_spectroscopy import find_dips, find_peaks
+from pyontrust.mobile.spectroscopy import find_dips, find_peaks
 
 
 def test_find_peaks_recovers_bumps():

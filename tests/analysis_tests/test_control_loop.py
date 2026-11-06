@@ -70,14 +70,37 @@ def test_pid_anti_windup_keeps_integral_bounded():
     assert abs(pid._i) < 10.0           # bounded (would be ~100 without AW)
 
 
+def _tf_impulse_response(num, den, n):
+    """Impulse response of N(z)/D(z) (descending coeffs) via series in q=z^-1."""
+    # rewrite both as polynomials in q = z^-1 (ascending), cancelling the common z^2 factor
+    # multiply N and D by q^2 to get polynomials in q, then long-divide.
+    # Descending-z coefficients are already ascending-q coefficients.
+    nq = list(num)
+    dq = list(den)
+    h = []
+    for m in range(n):
+        s = (nq[m] if m < len(nq) else 0.0)
+        for k in range(1, min(m, len(dq) - 1) + 1):
+            s -= dq[k] * h[m - k]
+        h.append(s / dq[0])
+    return h
+
+
 def test_pid_to_z_transfer():
     pid = DiscretePID(kp=2.0, ki=4.0, kd=0.5)
     num, den = pid.to_z(DT)
+    # C(z) = kp + ki·dt·z/(z-1) + (kd/dt)(z-1)/z over common denominator z(z-1):
+    #   num = (kp + ki·dt + kd/dt, -(kp + 2kd/dt), kd/dt);  den = (1, -1, 0)
     assert list(den) == [1.0, -1.0, 0.0]
-    # num = kp z^2 + (ki*T + kd - kp) z - kd
-    assert float(num[0]) == pytest.approx(2.0)
-    assert float(num[1]) == pytest.approx(4.0 * DT + 0.5 - 2.0)
-    assert float(num[2]) == pytest.approx(-0.5)
+    assert float(num[0]) == pytest.approx(2.0 + 4.0 * DT + 0.5 / DT)
+    assert float(num[1]) == pytest.approx(-(2.0 + 2.0 * 0.5 / DT))
+    assert float(num[2]) == pytest.approx(0.5 / DT)
+
+    # ground truth: z-domain model must reproduce step()'s impulse response exactly
+    h_tf = _tf_impulse_response(num, den, 12)
+    pid.reset()
+    h_sim = [pid.step(1.0 if k == 0 else 0.0, DT) for k in range(12)]
+    assert h_sim == pytest.approx(h_tf, rel=1e-9)
 
 
 # ── closed-loop simulation ──────────────────────────────────────────────────
@@ -109,46 +132,20 @@ def test_step_metrics_on_analytic_first_order():
 
 # ── Bode + margins ─────────────────────────────────────────────────────────
 
-def _ss_to_poly(A_d: np.ndarray, B_d: np.ndarray, C_d: np.ndarray, D_d: np.ndarray):
-    """z-polys (ascending) of G(z)=C(zI-A)^{-1}B+D for controllable canonical form."""
-    n = A_d.shape[0]
-    if n == 0:
-        return np.array([float(D_d[0, 0])]), np.array([1.0])
-    den_asc = np.append(-A_d[n - 1, :][::-1], 1.0)          # z^n + d1 z^{n-1}+...+dn
-    b = float(B_d[-1, 0])
-    num_asc = C_d[0, :] * b + float(D_d[0, 0]) * den_asc     # strictly proper part + D·den
-    return num_asc, den_asc
-
-
 def test_bode_margins_match_analytic_triple_lag():
-    """L(s)=2/(s+1)^3: PM≈67.5° @ 0.122 Hz, GM=12.04 dB @ 0.276 Hz."""
+    """L(s)=2/(s+1)^3 with pure-P loop: PM≈67.5° @ 0.122 Hz; no gain margin
+    (phase lag saturates at −90°, so the −180° crossing never occurs)."""
     plant = TransferFunction(num=(1.0,), den=(1.0, 3.0, 3.0, 1.0))
     A_d, B_d, C_d, D_d = zoh_discretize(plant, DT)
     pid = DiscretePID(kp=2.0)
 
-    cnum, cden = pid.to_z(DT)
-    # loop L(z) = C(z)*P_d(z): multiply polynomials (numpy conv), evaluate on jw
-    num_l = np.convolve(cnum, _ss_to_poly(A_d, B_d, C_d, D_d)[0])
-    den_l = np.convolve(cden, _ss_to_poly(A_d, B_d, C_d, D_d)[1])
-
-    freqs_hz = np.logspace(-2, 1.0, 600)
-    mag_db, phase_deg = [], []
-    for f in freqs_hz:
-        z = complex(math.cos(2 * math.pi * f * DT), math.sin(2 * math.pi * f * DT))
-        g = np.polyval(num_l, z) / np.polyval(den_l, z)
-        mag_db.append(20.0 * math.log10(max(abs(g), 1e-300)))
-        phase_deg.append(math.degrees(math.atan2(g.imag, g.real)))
-    mag_db = np.asarray(mag_db)
-    # unwrap around the low-frequency branch
-    wrapped = np.mod(np.asarray(phase_deg) + 180.0, 360.0) - 180.0
-    dphi = np.diff(wrapped, prepend=wrapped[0])
-    big = np.abs(dphi) > 180.0
-    dphi[big] += np.sign(-dphi[big]) * 360.0
-    phase_deg = np.cumsum(dphi)
+    # loop L(z) = C_PID(z)·P_d(z), swept on the unit circle by the library API
+    freqs_hz, mag_db, phase_deg = bode_response(A_d, B_d, C_d, D_d, DT,
+                                                f_min_hz=0.01, f_max_hz=2.0, n_points=800, pid=pid)
 
     m = gain_phase_margin(freqs_hz, mag_db, phase_deg)
     assert m["phase_margin_deg"] == pytest.approx(67.5, abs=2.5)
-    assert m["gain_margin_db"] == pytest.approx(12.04, abs=0.35)
+    assert m["gain_margin_db"] is None          # no −180° crossing for this loop
     assert 0.1 < m["crossover_freq_hz"] < 0.2
 
 

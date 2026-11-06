@@ -20,7 +20,7 @@ Usage:
 
     # Run automation scenario
     python -m pyontrust.simulation.runner \\
-        --scenario scenarios/blink_test.yaml
+        --scenario data/scenarios/blink_test.yaml
 """
 
 from __future__ import annotations

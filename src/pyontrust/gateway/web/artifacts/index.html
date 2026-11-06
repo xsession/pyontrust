@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>pyontrust Artifacts</title>
+  <link rel="stylesheet" href="/static/shell/shell.css">
+  <link rel="stylesheet" href="/static/shell/ui-foundation.css">
+  <link rel="stylesheet" href="/artifacts/static/app.css">
+</head>
+<body>
+  <a class="skip-link" href="#artifact-list">Skip to artifact list</a>
+  <main class="art-page">
+    <header class="page-header">
+      <div>
+        <p class="eyebrow">Test runs</p>
+        <h1>Artifacts</h1>
+        <p class="page-subtitle">Search, inspect and manage the artifacts produced by pyontrust test runs.</p>
+      </div>
+      <div class="header-actions">
+        <button class="btn" id="refresh-button" type="button">Refresh</button>
+        <button class="btn btn-primary" id="scan-button" type="button">Scan directory</button>
+      </div>
+    </header>
+
+    <section class="toolbar card" aria-label="Artifact search">
+      <label class="ui-search is-block" for="artifact-search">
+        <input id="artifact-search" type="search" placeholder="Search artifacts by test name or run ID…" autocomplete="off">
+      </label>
+      <span class="ui-search-meta" data-ui-count="#artifact-list" aria-live="polite"></span>
+    </section>
+
+    <p class="ui-message" id="status-line" role="status" hidden></p>
+
+    <section class="card list-card" aria-label="Artifact results">
+      <div id="artifact-list" class="artifact-list" aria-busy="true"></div>
+    </section>
+  </main>
+  <script src="/static/shell/ui-foundation.js"></script>
+  <script src="/artifacts/static/app.js"></script>
+</body>
+</html>

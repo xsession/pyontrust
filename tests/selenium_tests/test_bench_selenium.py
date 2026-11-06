@@ -24,6 +24,8 @@ import unittest
 _REPO = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_REPO / "src"))
 
+import pytest  # noqa: E402
+pytest.importorskip("selenium", reason="optional E2E suite — install selenium to run")
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.action_chains import ActionChains

@@ -9,6 +9,8 @@ import json
 import time
 import unittest
 
+import pytest  # noqa: E402
+pytest.importorskip("selenium", reason="optional E2E suite — install selenium to run")
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC

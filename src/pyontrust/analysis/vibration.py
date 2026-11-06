@@ -179,6 +179,11 @@ def psd_welch(x: Sequence[float] | np.ndarray, fs: float,
             break
         sp = np.fft.rfft(chunk)
         Pxx += (sp * np.conj(sp)).real / (fs * wsum)
+    Pxx /= n_seg                                   # Welch: average over segments
+    if seg % 2 == 0:                               # one-sided PSD: double interior bins
+        Pxx[1:-1] *= 2.0
+    else:
+        Pxx[1:] *= 2.0
     freqs = np.fft.rfftfreq(n_seg and seg, d=1.0 / fs)
     return freqs, Pxx
 
@@ -248,20 +253,52 @@ def detect_bearing_faults(x: Sequence[float] | np.ndarray, fs: float,
 
     Returns per-line dicts plus an overall ``suspected_faults`` list.
     """
-    f, pxx = psd_welch(x, fs)
     lines = bearing_defect_lines(geo, shaft_rpm)
     result: dict[str, Any] = {}
     suspected: list[str] = []
 
     defect_labels = [k for k in lines if not k.endswith("_hz")]
+    f_min_line = min((float(lines[k]) for k in defect_labels), default=fs / 2.0)
+
+    # Resolution: keep the bin width well below the lowest defect line so each
+    # candidate gets its own search window (>= 4 bins per line).
+    nperseg = int(min(len(x), max(256, math.ceil(4.0 * fs / max(f_min_line, 1e-9)))))
+    f, pxx = psd_welch(x, fs, nperseg=nperseg)
+    binw = float(f[1] - f[0]) if len(f) > 1 else 0.0
+    tol = max(rel_tol_hz, 0.5 * binw + 1e-9)
+
+    # Defect harmonics that alias a shaft-order component (k·shaft_freq) are
+    # indistinguishable from normal machine tones — exclude them.  The exclusion
+    # band is one Hann main-lobe half-width (2 bins): closer components cannot be
+    # resolved apart, so the candidate carries no independent fault evidence.
+    shaft_hz = float(lines.get("shaft_hz") or shaft_rpm / 60.0)
+    collision_tol = max(rel_tol_hz, 2.0 * binw + 1e-9)
+
+    def _collides_with_shaft_order(freq: float) -> bool:
+        if shaft_hz <= 0:
+            return False
+        for k in range(1, int(fs // shaft_hz) + 2):
+            if abs(k * shaft_hz - freq) < collision_tol:
+                return True
+        return False
+
+    # A flagged line must be an independent spectral component: at least this
+    # fraction of the strongest line in the spectrum (sidelobe leakage from a
+    # strong neighbour never reaches it).
+    min_peak_frac = 0.01
+    max_pxx = float(pxx.max()) if pxx.size else 0.0
+
     for label, f0 in ((k, lines[k]) for k in defect_labels):
         best_score, best_k, best_f = 0.0, 1, float(f0)
+        best_significant = False
         for k in range(1, harmonics + 1):
             target = k * f0
             if target >= fs / 2:
                 break
-            lo = max(0, int(np.searchsorted(f, target - rel_tol_hz)))
-            hi = min(len(pxx) - 1, int(np.searchsorted(f, target + rel_tol_hz)) + 1)
+            if _collides_with_shaft_order(target):
+                continue
+            lo = max(0, int(np.searchsorted(f, target - tol)))
+            hi = min(len(pxx) - 1, int(np.searchsorted(f, target + tol)) + 1)
             if hi <= lo or hi >= len(pxx):
                 continue
             window = pxx[lo:hi]
@@ -273,9 +310,10 @@ def detect_bearing_faults(x: Sequence[float] | np.ndarray, fs: float,
             side = np.concatenate([pxx[fl_lo:lo], pxx[hi:fl_hi]]) if (hi > lo) else window
             floor_local = float(np.median(side)) if side.size else floor
             score = float(window.max()) / max(floor_local, 1e-30)
+            significant = float(window.max()) >= min_peak_frac * max_pxx
             if score > best_score:
-                best_score, best_k, best_f = score, k, target
-        flagged = best_score >= 6.0
+                best_score, best_k, best_f, best_significant = score, k, target, significant
+        flagged = best_score >= 6.0 and best_significant
         result[label] = {
             "freq_hz": round(float(f0), 2),
             "best_harmonic": int(best_k),

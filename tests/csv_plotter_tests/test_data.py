@@ -21,10 +21,8 @@ import numpy as np
 import pandas as pd
 
 # Ensure the csv_plotter package is on the path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "gui_app", "csv_plotter"))
-
-from data import (  # noqa: E402
-    compute_timestamp_scale_for_df,
+from pyontrust.analysis.csv_reader import (  # noqa: E402
+    compute_timestamp_scale as compute_timestamp_scale_for_df,
     find_newest_csv,
     read_any_csv,
     read_any_csv_arrow,

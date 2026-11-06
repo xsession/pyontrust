@@ -26,30 +26,10 @@ import types
 
 
 def _import_custom_code_module():
-    """Import plot_custom_code bypassing the relative import."""
-    import pandas as pd
+    """Import the custom-code plotting module from the pyontrust package."""
+    import pyontrust.csv_plotter.plot_custom_code as mod
 
-    # Create a minimal mock for the relative import
-    mock_common = types.ModuleType("plot_checks_common")
-    mock_common.numeric_series_for_col = lambda *a, **kw: pd.Series()  # type: ignore
-    mock_common.selected_data_columns = lambda *a, **kw: []  # type: ignore
-    mock_common.selection_mask = lambda *a, **kw: None  # type: ignore
-    mock_common.x_series_for_df = lambda *a, **kw: pd.Series()  # type: ignore
-
-    sys.modules["plot_checks_common"] = mock_common
-
-    # Read and exec the module source, replacing relative imports
-    mod_path = os.path.join(
-        os.path.dirname(__file__), "..", "..", "gui_app", "csv_plotter", "plots", "plot_custom_code.py"
-    )
-    source = open(mod_path, encoding="utf-8").read()
-    source = source.replace("from .plot_checks_common", "from plot_checks_common")
-
-    mod = types.ModuleType("plot_custom_code")
-    mod.__file__ = mod_path
-    exec(compile(source, mod_path, "exec"), mod.__dict__)
     return mod
-
 
 _mod = _import_custom_code_module()
 _safe_exec = _mod._safe_exec

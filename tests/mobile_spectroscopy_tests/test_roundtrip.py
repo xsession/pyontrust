@@ -1,6 +1,6 @@
 """End-to-end round trip: slit image -> pipeline -> peak wavelengths."""
 import numpy as np
-from mobile_spectroscopy import SpectrometerPipeline, find_peaks, nearest_line
+from pyontrust.mobile.spectroscopy import SpectrometerPipeline, find_peaks, nearest_line
 
 
 def test_lines_detected_near_true_wavelengths(linear_calib, slit_image):

@@ -1,6 +1,6 @@
 """Epipolar rectification + disparity→depth (synthetic rig)."""
 import numpy as np
-from mobile_stereo3d import StereoRectifier
+from pyontrust.mobile.stereo3d import StereoRectifier
 
 
 def test_rectify_shapes(rig):

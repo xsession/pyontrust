@@ -1,6 +1,6 @@
 """3-D trajectory tracking + CSV/JSON/PLY export."""
 import numpy as np
-from mobile_stereo3d import Tracker3D
+from pyontrust.mobile.stereo3d import Tracker3D
 
 
 def test_single_track_continuity():

@@ -1,7 +1,7 @@
 """Timestamp alignment of two frame streams (synthetic, no device needed)."""
 import numpy as np
-from mobile_stereo3d import StreamSynchronizer
-from mobile_stereo3d.sync.frame_stream import Frame
+from pyontrust.mobile.stereo3d import StreamSynchronizer
+from pyontrust.mobile.stereo3d.sync.frame_stream import Frame
 
 
 def _frames(ts_list, src):
@@ -10,7 +10,7 @@ def _frames(ts_list, src):
 
 def _sync(tolerance_ms: float) -> StreamSynchronizer:
     """Synchronizer with two dummy streams (constructor requires >= 2)."""
-    from mobile_stereo3d import FrameStream
+    from pyontrust.mobile.stereo3d import FrameStream
     return StreamSynchronizer(
         streams=[FrameStream(lambda: None, source_id="L"),
                  FrameStream(lambda: None, source_id="R")],

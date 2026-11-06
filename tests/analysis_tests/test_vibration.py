@@ -92,10 +92,12 @@ def test_psd_welch_peak_location_and_power():
 def test_dominant_peaks_sorted():
     t = _t(4 * FS)
     x = np.sin(2 * math.pi * 100.0 * t) + 0.5 * np.sin(2 * math.pi * 300.0 * t)
-    peaks = dominant_peaks(*psd_welch(x, FS), max_peaks=4)
+    peaks = dominant_peaks(*psd_welch(x, FS), top_n=4)
+    densities = [p[1] for p in peaks]
+    assert densities == sorted(densities, reverse=True)   # strongest first (documented order)
     freqs = [p[0] for p in peaks]
-    assert freqs == sorted(freqs, reverse=True)
     assert any(abs(f - 100.0) < 25 for f in freqs)
+    assert any(abs(f - 300.0) < 40 for f in freqs)
 
 
 # ── bearing fault detection ─────────────────────────────────────────────────
