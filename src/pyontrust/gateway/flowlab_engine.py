@@ -115,7 +115,7 @@ def _blk_aoi_camera(params: dict, inputs: dict, ctx: ExecContext) -> dict:
     try:
         frame = cam.grab_frame()
         info = cam.info()
-        ctx.log(f"📷 AOI frame: {frame.shape} via {info.get('transport','?')}")
+        ctx.log(f"📷 AOI frame: {frame.shape} via {getattr(info, 'transport', '?')} ({getattr(info, 'model', '?')})")
         return {"frame": {"shape": list(frame.shape), "dtype": str(frame.dtype),
                           "data_summary": f"{frame.shape[1]}x{frame.shape[0]}"}}
     finally:
@@ -186,12 +186,27 @@ def _android_sensor_instance(params: dict, ctx: ExecContext):
     """Helper: create, open and return an AndroidSensorInstrument."""
     from pyontrust.instruments.android_sensors import create as create_android
     cfg = {
-        "mode": str(params.get("mode", "simulated")),
+        "mode": str(params.get("mode", "adb")),
         "sample_rate_hz": float(params.get("sample_rate_hz", 50)),
     }
     inst = create_android(cfg)
     inst.open()
     return inst
+
+
+def _require_live_read(data: dict, label: str) -> None:
+    """Fail the block when an instrument returned no real samples.
+
+    A HIL gateway must never present fabricated defaults (0.0 lux,
+    1013.25 hPa, lat/lon 0.0) as live measurements. If the read produced
+    zero samples or carried an error, raise so the engine marks the block
+    failed instead of emitting synthetic numbers downstream.
+    """
+    if "error" in data:
+        raise RuntimeError(f"{label}: {data['error']}")
+    n = data.get("n_samples", None)
+    if isinstance(n, (int, float)) and int(n) == 0:
+        raise RuntimeError(f"{label}: no live samples received from device")
 
 
 def _blk_android_accel(params: dict, inputs: dict, ctx: ExecContext) -> dict:
@@ -200,6 +215,7 @@ def _blk_android_accel(params: dict, inputs: dict, ctx: ExecContext) -> dict:
     try:
         dur = float(params.get("duration_s", 1))
         data = inst.read_accelerometer(dur)
+        _require_live_read(data, "Android Accel")
         ctx.log(f"📱 Accel: x={_scalar(data.get('x')):.3f} y={_scalar(data.get('y')):.3f} z={_scalar(data.get('z')):.3f} m/s² ({data.get('n_samples',0)} samples)")
         trace = {"time_s": data.get("time_s", []), "current_a": data.get("magnitude", []),
                  "sample_rate_hz": float(params.get("sample_rate_hz", 50)),
@@ -215,6 +231,7 @@ def _blk_android_gyro(params: dict, inputs: dict, ctx: ExecContext) -> dict:
     try:
         dur = float(params.get("duration_s", 1))
         data = inst.read_gyroscope(dur)
+        _require_live_read(data, "Android Gyro")
         ctx.log(f"🌀 Gyro: x={_scalar(data.get('x')):.3f} y={_scalar(data.get('y')):.3f} z={_scalar(data.get('z')):.3f} rad/s ({data.get('n_samples',0)} samples)")
         trace = {"time_s": data.get("time_s", []), "current_a": data.get("magnitude", []),
                  "sample_rate_hz": float(params.get("sample_rate_hz", 50)),
@@ -230,6 +247,7 @@ def _blk_android_mag(params: dict, inputs: dict, ctx: ExecContext) -> dict:
     try:
         dur = float(params.get("duration_s", 1))
         data = inst.read_magnetometer(dur)
+        _require_live_read(data, "Android Mag")
         ctx.log(f"🧭 Mag: x={_scalar(data.get('x')):.1f} y={_scalar(data.get('y')):.1f} z={_scalar(data.get('z')):.1f} µT ({data.get('n_samples',0)} samples)")
         trace = {"time_s": data.get("time_s", []), "current_a": data.get("magnitude", []),
                  "sample_rate_hz": float(params.get("sample_rate_hz", 50)),
@@ -246,6 +264,7 @@ def _blk_android_mic(params: dict, inputs: dict, ctx: ExecContext) -> dict:
         dur = float(params.get("duration_s", 2))
         sr = int(params.get("sample_rate", 16000))
         data = inst.read_microphone(dur, sr)
+        _require_live_read(data, "Android Mic")
         level = data.get("level_db", -60)
         ctx.log(f"🎤 Mic: {data.get('n_samples',0)} samples, {dur}s @ {sr} Hz, level={level:.1f} dB")
         audio_trace = {"time_s": data.get("time_s", []), "current_a": data.get("samples", []),
@@ -260,6 +279,7 @@ def _blk_android_proximity(params: dict, inputs: dict, ctx: ExecContext) -> dict
     inst = _android_sensor_instance(params, ctx)
     try:
         data = inst.read_proximity(0.5)
+        _require_live_read(data, "Android Proximity")
         dist = _scalar(data.get("distance", 5.0), 5.0)
         near = dist < 1.0
         ctx.log(f"👋 Proximity: {dist:.1f} cm ({'NEAR' if near else 'FAR'})")
@@ -274,6 +294,7 @@ def _blk_android_light(params: dict, inputs: dict, ctx: ExecContext) -> dict:
     try:
         dur = float(params.get("duration_s", 1))
         data = inst.read_light(dur)
+        _require_live_read(data, "Android Light")
         lux = _scalar(data.get("lux", data.get("mean", 0)))
         ctx.log(f"☀️ Light: {lux:.0f} lux ({data.get('n_samples',0)} samples)")
         return {"lux": lux}
@@ -287,6 +308,7 @@ def _blk_android_pressure(params: dict, inputs: dict, ctx: ExecContext) -> dict:
     try:
         dur = float(params.get("duration_s", 1))
         data = inst.read_barometer(dur)
+        _require_live_read(data, "Android Barometer")
         hpa = _scalar(data.get("pressure", data.get("hpa", data.get("mean", 1013.25))), 1013.25)
         ctx.log(f"🌤️ Pressure: {hpa:.1f} hPa ({data.get('n_samples',0)} samples)")
         return {"hpa": hpa}
@@ -299,6 +321,7 @@ def _blk_android_gps(params: dict, inputs: dict, ctx: ExecContext) -> dict:
     inst = _android_sensor_instance(params, ctx)
     try:
         data = inst.read_gps()
+        _require_live_read(data, "Android GPS")
         ctx.log(f"📍 GPS: lat={_scalar(data.get('latitude')):.5f} lon={_scalar(data.get('longitude')):.5f} alt={_scalar(data.get('altitude_m', data.get('altitude', 0))):.1f}m")
         return {"location": data}
     finally:
@@ -310,6 +333,7 @@ def _blk_android_battery(params: dict, inputs: dict, ctx: ExecContext) -> dict:
     inst = _android_sensor_instance(params, ctx)
     try:
         data = inst.read_battery()
+        _require_live_read(data, "Android Battery")
         level = _scalar(data.get('level_pct', data.get('level', 0)))
         temp = _scalar(data.get('temperature_c', data.get('temp_c', 0)))
         status = data.get('status', '?')
@@ -325,6 +349,7 @@ def _blk_android_gravity(params: dict, inputs: dict, ctx: ExecContext) -> dict:
     try:
         dur = float(params.get("duration_s", 1))
         data = inst.read_gravity(dur)
+        _require_live_read(data, "Android Gravity")
         ctx.log(f"⬇️ Gravity: x={_scalar(data.get('x')):.3f} y={_scalar(data.get('y')):.3f} z={_scalar(data.get('z')):.3f} m/s² ({data.get('n_samples',0)} samples)")
         trace = {"time_s": data.get("time_s", []), "current_a": data.get("magnitude", []),
                  "sample_rate_hz": float(params.get("sample_rate_hz", 50)),
@@ -340,6 +365,7 @@ def _blk_android_rotation(params: dict, inputs: dict, ctx: ExecContext) -> dict:
     try:
         dur = float(params.get("duration_s", 1))
         data = inst.read_rotation(dur)
+        _require_live_read(data, "Android Rotation")
         ctx.log(f"🔄 Rotation: x={_scalar(data.get('x')):.3f} y={_scalar(data.get('y')):.3f} z={_scalar(data.get('z')):.3f} w={_scalar(data.get('w')):.3f} ({data.get('n_samples',0)} samples)")
         trace = {"time_s": data.get("time_s", []), "current_a": data.get("magnitude", []),
                  "sample_rate_hz": float(params.get("sample_rate_hz", 50)),
@@ -1879,6 +1905,26 @@ def _blk_sleep_test(params: dict, inputs: dict, ctx: ExecContext) -> dict:
 
 # ── CAN bus blocks ────────────────────────────────────────────────
 
+def _can_start(svc, interface: str, channel: str, bitrate: int) -> None:
+    """Start CAN capture; raise with the service's error if it fails."""
+    res = svc.start(interface=interface, channel=channel, bitrate=bitrate)
+    if not res.get("ok"):
+        raise RuntimeError(f"CAN start failed ({interface}/{channel}): {res.get('error', 'unknown')}")
+    # SocketCAN: an interface that is administratively DOWN will never deliver
+    # frames — surface it instead of reporting a silent 0-frame capture.
+    if interface == "socketcan":
+        try:
+            import pathlib as _pl
+            state = _pl.Path(f"/sys/class/net/{channel}/operstate").read_text().strip()
+            if state.lower() in ("down", "notpresent"):
+                raise RuntimeError(
+                    f"CAN interface {channel} is {state.upper()} — no frames can be sent or received. "
+                    f"Bring it up first: sudo ip link set {channel} up"
+                )
+        except FileNotFoundError:
+            raise RuntimeError(f"CAN interface {channel} not found on this host")
+
+
 def _blk_can_send(params: dict, inputs: dict, ctx: ExecContext) -> dict:
     """Send a CAN frame via the CAN diagnostic service."""
     try:
@@ -1892,9 +1938,13 @@ def _blk_can_send(params: dict, inputs: dict, ctx: ExecContext) -> dict:
         data_bytes = bytes.fromhex(data_hex.replace(" ", "").replace("0x", ""))
         extended = bool(params.get("extended", False))
 
-        svc.start(interface=interface, channel=channel, bitrate=bitrate)
-        svc.send_frame(arb_id, data_bytes, extended=extended)
-        svc.stop()
+        _can_start(svc, interface, channel, bitrate)
+        try:
+            sres = svc.send_frame(arb_id, data_bytes, is_extended=extended)
+        finally:
+            svc.stop()
+        if not sres.get("ok"):
+            raise RuntimeError(sres.get("error", "send failed"))
         ctx.log(f"🔌 CAN TX: ID=0x{arb_id:03X} data={data_hex} on {interface}/{channel}")
         return {"sent": True, "arb_id": arb_id, "data": data_hex}
     except Exception as exc:
@@ -1915,7 +1965,7 @@ def _blk_can_receive(params: dict, inputs: dict, ctx: ExecContext) -> dict:
         duration = float(params.get("duration_s", 2.0))
         id_filter = params.get("id_filter", None)
 
-        svc.start(interface=interface, channel=channel, bitrate=bitrate)
+        _can_start(svc, interface, channel, bitrate)
         if id_filter is not None:
             svc.set_id_filter({int(str(i), 0) for i in id_filter}
                               if isinstance(id_filter, list) else {int(str(id_filter), 0)})
@@ -1977,7 +2027,7 @@ def _blk_can_analyze(params: dict, inputs: dict, ctx: ExecContext) -> dict:
         target_id = int(str(params.get("arb_id", inputs.get("arb_id", "0x100"))), 0)
         duration = float(params.get("duration_s", 5.0))
 
-        svc.start(interface=interface, channel=channel, bitrate=bitrate)
+        _can_start(svc, interface, channel, bitrate)
         svc.set_id_filter({target_id})
         _time.sleep(duration)
         analysis = svc.analyze_message(target_id)
@@ -2009,7 +2059,7 @@ def _blk_can_replay(params: dict, inputs: dict, ctx: ExecContext) -> dict:
             ctx.log("🔌 CAN replay: no messages to replay")
             return {"replayed": 0}
 
-        svc.start(interface=interface, channel=channel, bitrate=bitrate)
+        _can_start(svc, interface, channel, bitrate)
         replayed = 0
         prev_ts = None
         for msg in messages:

@@ -32,6 +32,32 @@
         <input id="folder-path-input" type="text" placeholder="C:\\data\\runs">
       </label>
       <button id="load-folder-btn" class="btn" type="button">Load newest</button>
+      <span style="width:1px; align-self:stretch; background:#45475a; margin:0 8px;" aria-hidden="true"></span>
+      <label>
+        <span>Live source</span>
+        <select id="live-hwtype">
+          <option value="android_sensors" selected>Android sensors</option>
+          <option value="webcam">Webcam</option>
+        </select>
+      </label>
+      <label>
+        <span>Sensor</span>
+        <select id="live-sensor">
+          <option value="accelerometer" selected>Accelerometer</option>
+          <option value="gyroscope">Gyroscope</option>
+          <option value="magnetometer">Magnetometer</option>
+          <option value="light">Light</option>
+          <option value="proximity">Proximity</option>
+          <option value="barometer">Barometer</option>
+          <option value="battery">Battery</option>
+          <option value="gps">GPS</option>
+        </select>
+      </label>
+      <label>
+        <span>Rate (ms)</span>
+        <input id="live-rate" type="number" min="100" step="50" value="500" style="width:72px">
+      </label>
+      <button id="live-toggle-btn" class="btn btn-accent" type="button">⏹ Stop live</button>
       <div class="status-pill" id="dataset-pill">No file loaded</div>
     </section>
 

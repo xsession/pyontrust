@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🌈 Spectroscopy — pyontrust</title>
+<style>
+:root {
+  --bg: #1e1e2e; --bg2: #252538; --bg3: #2d2d44; --bg4: #353550;
+  --fg: #cdd6f4; --fg-dim: #6c7086;
+  --accent: #89b4fa; --green: #a6e3a1; --red: #f38ba8;
+  --yellow: #f9e2af; --peach: #fab387; --mauve: #cba6f7;
+  --teal: #94e2d5; --border: #45475a; --radius: 6px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--fg); overflow-x: hidden; }
+
+.container { max-width: 1400px; margin: 0 auto; padding: 16px 20px; }
+header { display: flex; align-items: center; gap: 16px; padding-bottom: 14px; border-bottom: 2px solid var(--accent); margin-bottom: 16px; flex-wrap: wrap; }
+header h1 { color: var(--accent); font-size: 22px; }
+header .sub { color: var(--fg-dim); font-size: 12px; }
+.status-pill { padding: 3px 12px; border-radius: 12px; font-size: 11px; font-weight: 600; margin-left: auto; }
+.status-pill.idle { background: rgba(108,112,134,.15); color: var(--fg-dim); }
+.status-pill.running { background: rgba(249,226,175,.15); color: var(--yellow); }
+.status-pill.done { background: rgba(166,227,161,.15); color: var(--green); }
+.status-pill.error { background: rgba(243,139,168,.15); color: var(--red); }
+
+.card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 14px; }
+.card h3 { color: var(--mauve); font-size: 14px; margin-bottom: 10px; }
+
+.form-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-bottom: 10px; }
+.form-group { display: flex; flex-direction: column; gap: 3px; }
+.form-group label { font-size: 11px; color: var(--fg-dim); font-weight: 600; }
+.form-group input, .form-group select { background: var(--bg3); border: 1px solid var(--border); color: var(--fg); padding: 6px 10px; border-radius: 4px; font-size: 12px; font-family: monospace; }
+.form-group input:focus, .form-group select:focus { outline: none; border-color: var(--accent); }
+
+.btn { padding: 8px 20px; border: none; border-radius: var(--radius); font-weight: 600; font-size: 13px; cursor: pointer; transition: .15s; }
+.btn-primary { background: var(--accent); color: var(--bg); }
+.btn-primary:hover { filter: brightness(1.15); }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+.btn-bar { display: flex; gap: 8px; margin-top: 12px; align-items: center; flex-wrap: wrap; }
+
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; margin: 12px 0; }
+.stat-box { background: var(--bg3); border-radius: var(--radius); padding: 12px; text-align: center; }
+.stat-box .val { font-size: 20px; font-weight: 700; color: var(--accent); font-family: monospace; word-break: break-all; }
+.stat-box .lbl { font-size: 10px; color: var(--fg-dim); margin-top: 2px; }
+
+.plot-wrap { background: #11111b; border-radius: var(--radius); padding: 8px; overflow-x: auto; }
+.plot-wrap svg { display: block; width: 100%; min-width: 640px; height: auto; }
+
+table.lines { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 10px; }
+table.lines th, table.lines td { padding: 5px 8px; text-align: left; border-bottom: 1px solid var(--border); font-family: monospace; }
+table.lines th { color: var(--fg-dim); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
+table.lines td.nm { color: var(--teal); }
+
+.progress-bar { height: 6px; background: var(--bg3); border-radius: 3px; margin: 12px 0; overflow: hidden; }
+.progress-bar .fill { height: 100%; width: 40%; background: var(--accent); border-radius: 3px; animation: slide 1.2s ease-in-out infinite alternate; }
+@keyframes slide { from { margin-left: 0; } to { margin-left: 60%; } }
+
+.msg { font-size: 12px; color: var(--fg-dim); min-height: 16px; }
+.msg.error { color: var(--red); }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div>
+      <h1>🌈 Spectroscopy — Slit-Image Spectrometer</h1>
+      <p class="sub">Slit image → column extraction → smoothing → nm calibration → peak detection with reference lines (Theremino V5 chain)</p>
+    </div>
+    <span class="status-pill idle" id="run-status">Idle</span>
+  </header>
+
+  <section class="card">
+    <h3>Source &amp; processing parameters</h3>
+    <div class="form-row">
+      <div class="form-group"><label>Lamp (simulated)</label>
+        <select id="sp-lamp">
+          <option value="mercury" selected>Mercury</option>
+          <option value="sodium">Sodium</option>
+          <option value="helium">Helium</option>
+          <option value="neon">Neon</option>
+          <option value="argon">Argon</option>
+        </select>
+      </div>
+      <div class="form-group"><label>λ min (nm)</label><input id="sp-nm-min" type="number" min="200" max="750" step="10" value="380"></div>
+      <div class="form-group"><label>λ max (nm)</label><input id="sp-nm-max" type="number" min="400" max="1100" step="10" value="750"></div>
+      <div class="form-group"><label>Spectrum bins</label><input id="sp-bins" type="number" min="64" max="1024" step="32" value="256"></div>
+      <div class="form-group"><label>Smoothing k (0.05–1)</label><input id="sp-kfilter" type="number" min="0.05" max="1" step="0.05" value="0.5"></div>
+      <div class="form-group"><label>Average frames</label><input id="sp-avg-n" type="number" min="1" max="32" step="1" value="1"></div>
+      <div class="form-group"><label>Noise seed</label><input id="sp-seed" type="number" step="1" value="7"></div>
+    </div>
+    <div class="btn-bar">
+      <button class="btn btn-primary" id="run-btn" type="button">▶ Acquire spectrum</button>
+      <span class="msg" id="run-msg">Simulated slit image — emission lines of the selected lamp.</span>
+    </div>
+  </section>
+
+  <div class="progress-bar" id="progress" hidden><div class="fill"></div></div>
+
+  <section class="card" id="results-card" hidden>
+    <h3>Spectrum</h3>
+    <div class="plot-wrap"><svg id="spec-plot" viewBox="0 0 820 340" role="img" aria-label="Spectral intensity vs wavelength"></svg></div>
+    <div class="stats-grid" id="stats-grid"></div>
+
+    <h3 style="margin-top:14px;">Detected lines</h3>
+    <table class="lines">
+      <thead><tr><th>#</th><th>λ (nm)</th><th>Intensity</th><th>Nearest ref. line (nm)</th><th>Δ (nm)</th></tr></thead>
+      <tbody id="lines-body"></tbody>
+    </table>
+  </section>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+function setPill(state, text) {
+  const el = $('run-status');
+  el.className = 'status-pill ' + state;
+  el.textContent = text;
+}
+
+// ── SVG spectrum plot ────────────────────────────────────────────────
+function drawSpectrum(gridNm, spec, peaks) {
+  const W = 820, H = 340, mL = 56, mR = 16, mT = 26, mB = 40;
+  const x0 = gridNm[0], x1 = gridNm[gridNm.length - 1];
+  const yMax = Math.max(1e-9, ...spec);
+  const X = (nm) => mL + (W - mL - mR) * (nm - x0) / (x1 - x0);
+  const Y = (v) => H - mB - (H - mT - mB) * (v / yMax);
+
+  let s = '';
+  // gridlines + x ticks every 50 nm
+  for (let nm = Math.ceil(x0 / 50) * 50; nm <= x1; nm += 50) {
+    const px = X(nm).toFixed(1);
+    s += `<line x1="${px}" y1="${mT}" x2="${px}" y2="${H - mB}" stroke="#313244" stroke-width="1"/>`;
+    s += `<text x="${px}" y="${H - mB + 16}" fill="#6c7086" font-size="10" text-anchor="middle">${nm}</text>`;
+  }
+  // y ticks (5)
+  for (let i = 0; i <= 4; i++) {
+    const v = yMax * i / 4, py = Y(v).toFixed(1);
+    s += `<line x1="${mL}" y1="${py}" x2="${W - mR}" y2="${py}" stroke="#313244" stroke-width="1"/>`;
+    s += `<text x="${mL - 6}" y="${+py + 3}" fill="#6c7086" font-size="9" text-anchor="end">${Math.round(v)}</text>`;
+  }
+  // axes labels
+  s += `<text x="${(W) / 2}" y="${H - 4}" fill="#6c7086" font-size="11" text-anchor="middle">wavelength (nm)</text>`;
+
+  // spectrum polyline
+  let pts = '';
+  for (let i = 0; i < gridNm.length; i++) {
+    pts += X(gridNm[i]).toFixed(1) + ',' + Y(spec[i]).toFixed(1) + ' ';
+  }
+  s += `<polyline points="${pts}" fill="none" stroke="#89b4fa" stroke-width="1.6"/>`;
+
+  // peak markers + labels (stagger to avoid overlap)
+  peaks.forEach((p, i) => {
+    const px = X(p.nm), py = Y(p.intensity);
+    s += `<line x1="${px.toFixed(1)}" y1="${py.toFixed(1)}" x2="${px.toFixed(1)}" y2="${H - mB}" stroke="#a6e3a1" stroke-width="0.8" stroke-dasharray="3 3"/>`;
+    s += `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="3.5" fill="#a6e3a1"/>`;
+    const ly = mT + (i % 2) * 14;
+    s += `<text x="${px.toFixed(1)}" y="${ly}" fill="#a6e3a1" font-size="9.5" text-anchor="middle">${p.nm.toFixed(1)}</text>`;
+  });
+
+  $('spec-plot').innerHTML = s;
+}
+
+// ── Run pipeline ─────────────────────────────────────────────────────
+async function runSpectrum() {
+  const btn = $('run-btn');
+  btn.disabled = true;
+  $('progress').hidden = false;
+  setPill('running', 'Acquiring…');
+  $('run-msg').textContent = '';
+  $('run-msg').className = 'msg';
+  try {
+    const body = {
+      mode: 'simulated',
+      lamp: $('sp-lamp').value,
+      nm_min: +$('sp-nm-min').value,
+      nm_max: +$('sp-nm-max').value,
+      n_bins: +$('sp-bins').value,
+      kfilter: +$('sp-kfilter').value,
+      average_n: +$('sp-avg-n').value,
+      seed: +$('sp-seed').value,
+    };
+    const r = await fetch('/spec/api/run', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
+    const d = await r.json();
+    if (!r.ok || d.error) throw new Error(d.error || ('HTTP ' + r.status));
+
+    $('results-card').hidden = false;
+    drawSpectrum(d.grid_nm, d.spectrum, d.peaks);
+
+    const st = d.stats || {};
+    const stats = [
+      ['Peaks found', st.n_peaks],
+      ['Strongest line (nm)', st.strongest_nm ?? '—'],
+      ['Max intensity', st.max_intensity],
+      ['Median intensity', st.median_intensity],
+      ['Bins', st.n_bins],
+      ['Range (nm)', `${st.nm_min}–${st.nm_max}`],
+      ['Elapsed (s)', st.elapsed_s],
+    ];
+    $('stats-grid').innerHTML = stats.map(([l, v]) =>
+      `<div class="stat-box"><div class="val">${v ?? '—'}</div><div class="lbl">${l}</div></div>`).join('');
+
+    const rows = (d.peaks || []).map((p, i) =>
+      `<tr><td>${i + 1}</td><td class="nm">${p.nm.toFixed(2)}</td><td>${p.intensity}</td><td>${p.nearest_nm.toFixed(2)}</td><td>${p.delta_nm >= 0 ? '+' : ''}${p.delta_nm.toFixed(3)}</td></tr>`).join('');
+    $('lines-body').innerHTML = rows || '<tr><td colspan="5" style="color:var(--fg-dim)">no peaks detected</td></tr>';
+
+    setPill('done', 'Done');
+    $('run-msg').textContent = `${st.n_peaks} emission line(s) detected for ${body.lamp.toUpperCase()} in ${st.elapsed_s}s`;
+  } catch (e) {
+    setPill('error', 'Failed');
+    const m = $('run-msg');
+    m.textContent = String(e.message || e);
+    m.className = 'msg error';
+  } finally {
+    btn.disabled = false;
+    $('progress').hidden = true;
+  }
+}
+
+$('run-btn').addEventListener('click', runSpectrum);
+// Live by default: acquire a spectrum immediately on load.
+runSpectrum();
+</script>
+</body>
+</html>

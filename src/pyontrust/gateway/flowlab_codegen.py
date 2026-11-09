@@ -1054,21 +1054,25 @@ def _gen_expression(bid, params, inputs, outs):
 
 def _gen_constant(bid, params, inputs, outs):
     val = params.get("value", "0")
-    dtype = params.get("dtype", "float")
+    out = outs["value"]
+    # Numeric strings (common in diagram JSON) become numeric literals;
+    # everything else is emitted verbatim via repr. This keeps the old
+    # float('3.3') → 3.3 behaviour while letting string constants survive.
+    if isinstance(val, str):
+        s = val.strip()
+        try:
+            literal = repr(int(s))
+        except ValueError:
+            try:
+                literal = repr(float(s))
+            except ValueError:
+                literal = repr(val)
+    else:
+        literal = repr(val)
     return [
-        f"# ── Constant ──",
-        f"if {_py(dtype)} == 'float':",
-        f"    {outs['value']} = float({_py(val)})",
-        f"elif {_py(dtype)} == 'int':",
-        f"    {outs['value']} = int(float({_py(val)}))",
-        f"elif {_py(dtype)} == 'bool':",
-        f"    {outs['value']} = {_py(val)}.lower() in ('true', '1', 'yes')" if isinstance(val, str) else f"    {outs['value']} = bool({_py(val)})",
-        f"elif {_py(dtype)} in ('list', 'dict'):",
-        f"    import json as _json",
-        f"    {outs['value']} = _json.loads({_py(val)})",
-        f"else:",
-        f"    {outs['value']} = {_py(val)}",
-        f'print(f"[constant] {val} ({dtype})")',
+        "# ── Constant ──",
+        f"{out} = {literal}",
+        f'print(f"[constant] {{repr({out})}}")',
     ], set()
 
 

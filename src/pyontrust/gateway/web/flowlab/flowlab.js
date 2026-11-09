@@ -40,7 +40,7 @@
 
     { cat: 'Instruments', type: 'aoi_camera', label: 'AOI Camera', icon: '📷', colour: '#89b4fa',
       inputs: [], outputs: [{name:'frame', dtype:'image'}],
-      params: {mode:{type:'select',default:'simulated',options:['simulated','webcam','harvesters']}, width:{type:'number',default:640}, height:{type:'number',default:480}},
+      params: {mode:{type:'select',default:'webcam',options:['webcam','harvesters']}, width:{type:'number',default:640}, height:{type:'number',default:480}},
       hint: 'Grab AOI / webcam frame' },
 
     { cat: 'Instruments', type: 'seek_thermal', label: 'Thermal Camera', icon: '🌡️', colour: '#89b4fa',
@@ -71,67 +71,67 @@
     // ── Android Phone Sensors (USB / ADB) ────────────────────
     { cat: 'Instruments', type: 'android_accel', label: 'Android Accel', icon: '📱', colour: '#89b4fa',
       inputs: [], outputs: [{name:'accel', dtype:'dict'},{name:'trace', dtype:'power_trace'}],
-      params: {mode:{type:'select',default:'simulated',options:['simulated','adb','adb_bridge']}, duration_s:{type:'slider',default:1,min:0.1,max:30,step:0.1}, sample_rate_hz:{type:'slider',default:50,min:1,max:500,step:1}},
+      params: {mode:{type:'select',default:'adb',options:['simulated','adb','adb_bridge']}, duration_s:{type:'slider',default:1,min:0.1,max:30,step:0.1}, sample_rate_hz:{type:'slider',default:50,min:1,max:500,step:1}},
       hint: 'Android accelerometer — 3-axis m/s² via USB' },
 
     { cat: 'Instruments', type: 'android_gyro', label: 'Android Gyro', icon: '🌀', colour: '#89b4fa',
       inputs: [], outputs: [{name:'gyro', dtype:'dict'},{name:'trace', dtype:'power_trace'}],
-      params: {mode:{type:'select',default:'simulated',options:['simulated','adb','adb_bridge']}, duration_s:{type:'slider',default:1,min:0.1,max:30,step:0.1}, sample_rate_hz:{type:'slider',default:50,min:1,max:500,step:1}},
+      params: {mode:{type:'select',default:'adb',options:['simulated','adb','adb_bridge']}, duration_s:{type:'slider',default:1,min:0.1,max:30,step:0.1}, sample_rate_hz:{type:'slider',default:50,min:1,max:500,step:1}},
       hint: 'Android gyroscope — 3-axis rad/s via USB' },
 
     { cat: 'Instruments', type: 'android_mag', label: 'Android Magnetometer', icon: '🧭', colour: '#89b4fa',
       inputs: [], outputs: [{name:'mag', dtype:'dict'},{name:'trace', dtype:'power_trace'}],
-      params: {mode:{type:'select',default:'simulated',options:['simulated','adb','adb_bridge']}, duration_s:{type:'slider',default:1,min:0.1,max:30,step:0.1}, sample_rate_hz:{type:'slider',default:50,min:1,max:500,step:1}},
+      params: {mode:{type:'select',default:'adb',options:['simulated','adb','adb_bridge']}, duration_s:{type:'slider',default:1,min:0.1,max:30,step:0.1}, sample_rate_hz:{type:'slider',default:50,min:1,max:500,step:1}},
       hint: 'Android magnetometer — 3-axis µT via USB' },
 
     { cat: 'Instruments', type: 'android_mic', label: 'Android Mic', icon: '🎤', colour: '#89b4fa',
       inputs: [], outputs: [{name:'audio', dtype:'power_trace'},{name:'level_db', dtype:'number'}],
-      params: {mode:{type:'select',default:'simulated',options:['simulated','adb','adb_bridge']}, duration_s:{type:'slider',default:2,min:0.1,max:60,step:0.1}, sample_rate:{type:'select',default:'16000',options:['8000','16000','22050','44100','48000']}},
+      params: {mode:{type:'select',default:'adb',options:['simulated','adb','adb_bridge']}, duration_s:{type:'slider',default:2,min:0.1,max:60,step:0.1}, sample_rate:{type:'select',default:'16000',options:['8000','16000','22050','44100','48000']}},
       hint: 'Android microphone — audio capture via USB' },
 
     { cat: 'Instruments', type: 'android_proximity', label: 'Android Proximity', icon: '👋', colour: '#89b4fa',
       inputs: [], outputs: [{name:'distance', dtype:'number'},{name:'near', dtype:'bool'}],
-      params: {mode:{type:'select',default:'simulated',options:['simulated','adb','adb_bridge']}},
+      params: {mode:{type:'select',default:'adb',options:['simulated','adb','adb_bridge']}},
       hint: 'Android proximity sensor — distance in cm' },
 
     { cat: 'Instruments', type: 'android_light', label: 'Android Light', icon: '☀️', colour: '#89b4fa',
       inputs: [], outputs: [{name:'lux', dtype:'number'}],
-      params: {mode:{type:'select',default:'simulated',options:['simulated','adb','adb_bridge']}, duration_s:{type:'slider',default:1,min:0.1,max:30,step:0.1}},
+      params: {mode:{type:'select',default:'adb',options:['simulated','adb','adb_bridge']}, duration_s:{type:'slider',default:1,min:0.1,max:30,step:0.1}},
       hint: 'Android ambient light sensor — lux' },
 
     { cat: 'Instruments', type: 'android_pressure', label: 'Android Barometer', icon: '🌤️', colour: '#89b4fa',
       inputs: [], outputs: [{name:'hpa', dtype:'number'}],
-      params: {mode:{type:'select',default:'simulated',options:['simulated','adb','adb_bridge']}, duration_s:{type:'slider',default:1,min:0.1,max:30,step:0.1}},
+      params: {mode:{type:'select',default:'adb',options:['simulated','adb','adb_bridge']}, duration_s:{type:'slider',default:1,min:0.1,max:30,step:0.1}},
       hint: 'Android barometric pressure — hPa' },
 
     { cat: 'Instruments', type: 'android_gps', label: 'Android GPS', icon: '📍', colour: '#89b4fa',
       inputs: [], outputs: [{name:'location', dtype:'dict'}],
-      params: {mode:{type:'select',default:'simulated',options:['simulated','adb','adb_bridge']}},
+      params: {mode:{type:'select',default:'adb',options:['simulated','adb','adb_bridge']}},
       hint: 'Android GPS — lat, lon, alt, speed' },
 
     { cat: 'Instruments', type: 'android_battery', label: 'Android Battery', icon: '🔋', colour: '#89b4fa',
       inputs: [], outputs: [{name:'battery', dtype:'dict'}],
-      params: {mode:{type:'select',default:'simulated',options:['simulated','adb','adb_bridge']}},
+      params: {mode:{type:'select',default:'adb',options:['simulated','adb','adb_bridge']}},
       hint: 'Android battery — level, voltage, temp, status' },
 
     { cat: 'Instruments', type: 'android_gravity', label: 'Android Gravity', icon: '⬇️', colour: '#89b4fa',
       inputs: [], outputs: [{name:'gravity', dtype:'dict'},{name:'trace', dtype:'power_trace'}],
-      params: {mode:{type:'select',default:'simulated',options:['simulated','adb','adb_bridge']}, duration_s:{type:'slider',default:1,min:0.1,max:30,step:0.1}, sample_rate_hz:{type:'slider',default:50,min:1,max:500,step:1}},
+      params: {mode:{type:'select',default:'adb',options:['simulated','adb','adb_bridge']}, duration_s:{type:'slider',default:1,min:0.1,max:30,step:0.1}, sample_rate_hz:{type:'slider',default:50,min:1,max:500,step:1}},
       hint: 'Android gravity sensor — 3-axis m/s²' },
 
     { cat: 'Instruments', type: 'android_rotation', label: 'Android Rotation', icon: '🔄', colour: '#89b4fa',
       inputs: [], outputs: [{name:'rotation', dtype:'dict'},{name:'trace', dtype:'power_trace'}],
-      params: {mode:{type:'select',default:'simulated',options:['simulated','adb','adb_bridge']}, duration_s:{type:'slider',default:1,min:0.1,max:30,step:0.1}, sample_rate_hz:{type:'slider',default:50,min:1,max:500,step:1}},
+      params: {mode:{type:'select',default:'adb',options:['simulated','adb','adb_bridge']}, duration_s:{type:'slider',default:1,min:0.1,max:30,step:0.1}, sample_rate_hz:{type:'slider',default:50,min:1,max:500,step:1}},
       hint: 'Android rotation vector — quaternion orientation' },
 
     { cat: 'Instruments', type: 'android_torch', label: 'Android Torch', icon: '🔦', colour: '#f9e2af',
       inputs: [], outputs: [{name:'ok', dtype:'bool'},{name:'state', dtype:'string'}],
-      params: {mode:{type:'select',default:'simulated',options:['simulated','adb','adb_bridge']}, state:{type:'select',default:'on',options:['on','off']}},
+      params: {mode:{type:'select',default:'adb',options:['simulated','adb','adb_bridge']}, state:{type:'select',default:'on',options:['on','off']}},
       hint: 'Toggle Android flashlight (torch) on/off via ADB' },
 
     { cat: 'Instruments', type: 'lux_measure', label: 'Lux Measure', icon: '💡', colour: '#f9e2af',
       inputs: [], outputs: [{name:'result', dtype:'dict'},{name:'webcam_lux', dtype:'list'},{name:'android_lux', dtype:'list'},{name:'correlation', dtype:'number'}],
-      params: {android_mode:{type:'select',default:'simulated',options:['simulated','adb','adb_bridge']}, n_cycles:{type:'slider',default:3,min:1,max:10,step:1}, torch_on_s:{type:'slider',default:3,min:0.5,max:15,step:0.5}, torch_off_s:{type:'slider',default:3,min:0.5,max:15,step:0.5}},
+      params: {android_mode:{type:'select',default:'adb',options:['simulated','adb','adb_bridge']}, n_cycles:{type:'slider',default:3,min:1,max:10,step:1}, torch_on_s:{type:'slider',default:3,min:0.5,max:15,step:0.5}, torch_off_s:{type:'slider',default:3,min:0.5,max:15,step:0.5}},
       hint: 'Parallel lux measurement — webcam + Android light sensor with torch cycling' },
 
     // ═══════════════════════════════════════════════════════════
@@ -521,13 +521,13 @@
     { cat: 'CAN Bus', type: 'can_send', label: 'CAN Send', icon: '🔌', colour: '#a6e3a1',
       inputs: [{name:'arb_id', dtype:'number'}, {name:'data', dtype:'string'}],
       outputs: [{name:'sent', dtype:'bool'}],
-      params: {interface:{type:'select',default:'virtual',options:['pcan','socketcan','vector','kvaser','ixxat','virtual']}, channel:{type:'text',default:'PCAN_USBBUS1'}, bitrate:{type:'select',default:'500000',options:['125000','250000','500000','1000000']}, arb_id:{type:'text',default:'0x100'}, data:{type:'text',default:'DEADBEEF'}, extended:{type:'checkbox',default:false}},
+      params: {interface:{type:'select',default:'socketcan',options:['pcan','socketcan','vector','kvaser','ixxat','virtual']}, channel:{type:'text',default:'can0'}, bitrate:{type:'select',default:'500000',options:['125000','250000','500000','1000000']}, arb_id:{type:'text',default:'0x100'}, data:{type:'text',default:'DEADBEEF'}, extended:{type:'checkbox',default:false}},
       hint: 'Send a CAN frame' },
 
     { cat: 'CAN Bus', type: 'can_receive', label: 'CAN Receive', icon: '📡', colour: '#a6e3a1',
       inputs: [],
       outputs: [{name:'messages', dtype:'array'}, {name:'stats', dtype:'array'}, {name:'n_frames', dtype:'number'}],
-      params: {interface:{type:'select',default:'virtual',options:['pcan','socketcan','vector','kvaser','ixxat','virtual']}, channel:{type:'text',default:'PCAN_USBBUS1'}, bitrate:{type:'select',default:'500000',options:['125000','250000','500000','1000000']}, duration_s:{type:'slider',default:2,min:0.5,max:30,step:0.5}, id_filter:{type:'text',default:''}},
+      params: {interface:{type:'select',default:'socketcan',options:['pcan','socketcan','vector','kvaser','ixxat','virtual']}, channel:{type:'text',default:'can0'}, bitrate:{type:'select',default:'500000',options:['125000','250000','500000','1000000']}, duration_s:{type:'slider',default:2,min:0.5,max:30,step:0.5}, id_filter:{type:'text',default:''}},
       hint: 'Capture CAN frames for a duration' },
 
     { cat: 'CAN Bus', type: 'can_decode', label: 'CAN Decode', icon: '🔍', colour: '#a6e3a1',
@@ -539,13 +539,13 @@
     { cat: 'CAN Bus', type: 'can_analyze', label: 'CAN Analyze', icon: '🧪', colour: '#a6e3a1',
       inputs: [{name:'arb_id', dtype:'number'}],
       outputs: [{name:'analysis', dtype:'object'}],
-      params: {interface:{type:'select',default:'virtual',options:['pcan','socketcan','vector','kvaser','ixxat','virtual']}, channel:{type:'text',default:'PCAN_USBBUS1'}, bitrate:{type:'select',default:'500000',options:['125000','250000','500000','1000000']}, arb_id:{type:'text',default:'0x100'}, duration_s:{type:'slider',default:5,min:1,max:60,step:1}},
+      params: {interface:{type:'select',default:'socketcan',options:['pcan','socketcan','vector','kvaser','ixxat','virtual']}, channel:{type:'text',default:'can0'}, bitrate:{type:'select',default:'500000',options:['125000','250000','500000','1000000']}, arb_id:{type:'text',default:'0x100'}, duration_s:{type:'slider',default:5,min:1,max:60,step:1}},
       hint: 'Deep RE analysis: counters, CRCs, bit transitions, signals' },
 
     { cat: 'CAN Bus', type: 'can_replay', label: 'CAN Replay', icon: '⏪', colour: '#a6e3a1',
       inputs: [{name:'messages', dtype:'array'}],
       outputs: [{name:'replayed', dtype:'number'}],
-      params: {interface:{type:'select',default:'virtual',options:['pcan','socketcan','vector','kvaser','ixxat','virtual']}, channel:{type:'text',default:'PCAN_USBBUS1'}, bitrate:{type:'select',default:'500000',options:['125000','250000','500000','1000000']}, speed_factor:{type:'slider',default:1,min:0.1,max:10,step:0.1}},
+      params: {interface:{type:'select',default:'socketcan',options:['pcan','socketcan','vector','kvaser','ixxat','virtual']}, channel:{type:'text',default:'can0'}, bitrate:{type:'select',default:'500000',options:['125000','250000','500000','1000000']}, speed_factor:{type:'slider',default:1,min:0.1,max:10,step:0.1}},
       hint: 'Replay captured CAN traffic back onto the bus' },
   ];
 

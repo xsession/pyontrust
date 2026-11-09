@@ -49,8 +49,13 @@ _ADB = os.environ.get("ADB_PATH", "adb")
 
 
 def _run_adb(*args: str, timeout: float = 10.0) -> str:
-    """Run an ADB command and return stdout."""
-    cmd = [_ADB] + list(args)
+    """Run an ADB command (targeting the resolved serial) and return stdout."""
+    cmd = [_ADB]
+    if args[0] != "devices":  # -s is meaningless for `adb devices` itself
+        serial = _adb_resolve_serial()
+        if serial:
+            cmd += ["-s", serial]
+    cmd += list(args)
     try:
         result = subprocess.run(
             cmd, capture_output=True, text=True, timeout=timeout,
@@ -65,12 +70,36 @@ def _run_adb(*args: str, timeout: float = 10.0) -> str:
         )
 
 
-def _adb_available() -> bool:
-    """Check whether ADB is available and at least one device is connected."""
+_ADB_SERIAL: str | None = os.environ.get("PYONTRUST_ADB_SERIAL") or os.environ.get("ADB_SERIAL")
+
+
+def _adb_resolve_serial() -> str | None:
+    """Pick an ADB target serial.
+
+    Priority: explicit ``PYONTRUST_ADB_SERIAL``/``ADB_SERIAL`` env var, then the
+    first online device (sorted by serial — deterministic across calls).  With
+    several devices connected the first one is used; set the env var to force a
+    specific phone.
+    """
+    global _ADB_SERIAL
+    if _ADB_SERIAL:
+        return _ADB_SERIAL
     try:
-        out = _run_adb("devices", timeout=5.0)
-        lines = [l.strip() for l in out.splitlines() if "\tdevice" in l]
-        return len(lines) > 0
+        out = subprocess.run([_ADB, "devices"], capture_output=True, text=True, timeout=5).stdout
+        devs = sorted(l.split("\t")[0] for l in out.splitlines()[1:] if "\tdevice" in l)
+        if devs:
+            _ADB_SERIAL = devs[0]
+    except Exception:
+        pass
+    return _ADB_SERIAL
+
+
+def _adb_available() -> bool:
+    """True when ADB works AND at least one device is online."""
+    try:
+        out = subprocess.run([_ADB, "devices"], capture_output=True, text=True, timeout=5).stdout
+        devs = [l for l in out.splitlines()[1:] if "\tdevice" in l]
+        return len(devs) >= 1 or _adb_resolve_serial() is not None
     except Exception:
         return False
 
@@ -421,10 +450,11 @@ class AdbAndroidSensors:
             )
         self._device_info = _adb_device_info()
         logger.info(
-            "ADB Android Sensors: %s %s (SDK %s)",
+            "ADB Android Sensors: %s %s (SDK %s) [serial=%s]",
             self._device_info.get("brand", "?"),
             self._device_info.get("model", "?"),
             self._device_info.get("sdk_version", "?"),
+            _adb_resolve_serial() or "?",
         )
 
         if self.backend == "bridge":

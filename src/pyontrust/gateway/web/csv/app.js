@@ -1058,6 +1058,10 @@ async function loadRoots() {
 }
 
 async function loadFile(path) {
+  try { await api("/csv/api/live/stop", { method: "POST" }); } catch (_) { /* no live feed */ }
+  if (liveTimer) { clearInterval(liveTimer); liveTimer = null; }
+  const btn = document.getElementById("live-toggle-btn");
+  if (btn) btn.textContent = "▶ Start live";
   await api("/csv/api/csv/load", { method: "POST", body: { path } });
   await refreshAppState();
   setMessage(`Loaded ${path}`);
@@ -1605,15 +1609,46 @@ function bindEvents() {
   });
 }
 
+let liveTimer = null;
+
+async function startLiveFeed() {
+  const hw_type = document.getElementById("live-hwtype").value;
+  const sensor = document.getElementById("live-sensor").value;
+  const rate_ms = +document.getElementById("live-rate").value || 500;
+  await api("/csv/api/live/start", { method: "POST", body: { hw_type, sensor, rate_ms } });
+  document.getElementById("live-toggle-btn").textContent = "⏹ Stop live";
+  setMessage(`Live feed started (${hw_type}/${sensor} @ ${rate_ms} ms)`);
+  if (!liveTimer) {
+    liveTimer = setInterval(() => refreshAppState().catch(() => {}), 1000);
+  }
+  await refreshAppState();
+}
+
+async function stopLiveFeed() {
+  await api("/csv/api/live/stop", { method: "POST" });
+  document.getElementById("live-toggle-btn").textContent = "▶ Start live";
+  if (liveTimer) { clearInterval(liveTimer); liveTimer = null; }
+  setMessage("Live feed stopped — dataset kept for inspection");
+}
+
+async function toggleLiveFeed() {
+  try {
+    const st = await api("/csv/api/live/status");
+    if (st && st.running) await stopLiveFeed(); else await startLiveFeed();
+  } catch (error) {
+    setMessage(error.message, true);
+  }
+}
+
 async function init() {
   bindEvents();
   ensureMtimePolling();
+  const liveBtn = document.getElementById("live-toggle-btn");
+  if (liveBtn) liveBtn.addEventListener("click", toggleLiveFeed);
   try {
     await loadRoots();
-    await refreshAppState();
-    if (state.roots[0]) {
-      await browsePath(state.roots[0].path);
-    }
+    // Live sensor data is the default source: start streaming immediately.
+    await startLiveFeed();
   } catch (error) {
     setMessage(error.message, true);
   }

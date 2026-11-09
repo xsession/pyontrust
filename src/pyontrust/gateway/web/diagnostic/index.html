@@ -944,8 +944,9 @@ document.getElementById('live-overlay').addEventListener('click', (e) => {
   if (e.target.id === 'live-overlay') closeLivePanel();
 });
 
-// Auto-scan on load
+// Auto-scan on load + stream live sensor data by default
 scanHardware();
+startStream();
 </script>
   <script src="/static/shell/ui-foundation.js"></script>
 </body>

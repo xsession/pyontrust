@@ -10,6 +10,8 @@ import json
 import logging
 import math
 import os
+import threading
+import time
 import pathlib
 import platform
 import string
@@ -1223,3 +1225,95 @@ def folder_browse() -> Response:
         return jsonify({"error": str(exc)}), 500
 
     return jsonify({"path": str(folder_path), "parent": parent, "files": files, "folders": folders})
+
+
+# ═══════════════════════════════════════════════════════════════
+# Live sensor feed — stream real/simulated sensor samples into the
+# plotter dataset so every element works on live data by default.
+# ═══════════════════════════════════════════════════════════════
+
+#: Single active live feed (thread + stop event)
+_live_feed: dict[str, Any] = {"thread": None, "stop_evt": None}
+_LIVE_MAX_ROWS = 20_000
+
+
+def _live_worker(hw_type: str, sensor: str, rate_ms: int, stop_evt: threading.Event) -> None:
+    """Append live sensor samples to the plotter dataset until stopped.
+
+    Non-numeric fields are dropped; each sample becomes one row with a
+    relative time column ``t`` (seconds since feed start).  The dataset is
+    capped at ``_LIVE_MAX_ROWS`` (rolling window).
+    """
+    from pyontrust.gateway.blueprints.diagnostic import _read_sensor_once
+
+    t_start = time.time()
+    while not stop_evt.is_set():
+        try:
+            data = _read_sensor_once(hw_type, sensor) or {}
+        except Exception as exc:  # keep the feed alive across transient errors
+            data = {"error": str(exc)}
+        row: dict[str, float] = {}
+        for key, value in data.items():
+            if isinstance(value, bool):
+                continue
+            # Per-sample arrays (e.g. accelerometer x/y/z lists) → latest reading
+            if isinstance(value, (list, tuple)) and len(value) > 0:
+                try:
+                    value = float(value[-1])
+                except (TypeError, ValueError):
+                    continue
+            try:
+                numeric = float(value)
+            except (TypeError, ValueError):
+                continue
+            if math.isfinite(numeric):
+                row[key] = numeric
+        if row:
+            row["t"] = round(time.time() - t_start, 6)
+            new_df = pd.concat([_state["df"], pd.DataFrame([row])], ignore_index=True)
+            if len(new_df) > _LIVE_MAX_ROWS:
+                new_df = new_df.iloc[-_LIVE_MAX_ROWS:]
+            _state["df"] = new_df
+            _state["columns"] = [str(col) for col in new_df.columns]
+            _state["rows"] = int(len(new_df))
+            _state["mtime"] = time.time()
+        stop_evt.wait(rate_ms / 1000.0)
+
+
+@bp.route("/api/live/start", methods=["POST"])
+def live_start():
+    """Start streaming sensor samples into the plotter dataset."""
+    body = _json_body()
+    hw_type = str(body.get("hw_type") or "android_sensors")
+    sensor = str(body.get("sensor") or "accelerometer")
+    rate_ms = max(100, int(body.get("rate_ms", 500)))
+    if _live_feed["thread"] is not None and _live_feed["thread"].is_alive():
+        return jsonify({"ok": False, "error": "A live feed is already running"}), 409
+
+    # Fresh dataset for the live session (subplot layout is preserved).
+    # A "live:..." pseudo-path lets the frontend render/health gates treat the
+    # feed as an active dataset (they key off appState.path being non-null).
+    _state.update(file_path=f"live:{hw_type}/{sensor}", folder_path=None, df=pd.DataFrame(), columns=[], rows=0, mtime=None)
+    stop_evt = threading.Event()
+    thread = threading.Thread(
+        target=_live_worker, args=(hw_type, sensor, rate_ms, stop_evt), daemon=True,
+    )
+    _live_feed["thread"], _live_feed["stop_evt"] = thread, stop_evt
+    thread.start()
+    return jsonify({"ok": True, "hw_type": hw_type, "sensor": sensor, "rate_ms": rate_ms})
+
+
+@bp.route("/api/live/stop", methods=["POST"])
+def live_stop():
+    """Stop the active live feed (dataset is kept for inspection)."""
+    if _live_feed["stop_evt"] is not None:
+        _live_feed["stop_evt"].set()
+    _live_feed.update(thread=None, stop_evt=None)
+    return jsonify({"ok": True})
+
+
+@bp.route("/api/live/status")
+def live_status():
+    """Live feed state for the UI status pill."""
+    running = _live_feed["thread"] is not None and _live_feed["thread"].is_alive()
+    return jsonify({"running": bool(running), "rows": int(_state.get("rows", 0))})

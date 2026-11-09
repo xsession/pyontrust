@@ -312,6 +312,61 @@
     <strong style="color:var(--accent);">Node Map:</strong>
     <div id="node-map" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;"></div>
   </div>
+
+  <!-- ── Simulation control ─────────────────────────────────── -->
+  <div id="co-sim" style="margin-top:10px;padding:8px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+    <strong style="color:var(--accent);">🧪 Simulation</strong>
+    <label for="co-sim-nodes">Nodes</label>
+    <input type="text" id="co-sim-nodes" value="1" style="width:90px;" placeholder="1,2,3">
+    <button class="btn btn-primary" id="btn-co-start">▶ Start simulation</button>
+    <button class="btn btn-danger" id="btn-co-stop" disabled>■ Stop</button>
+    <span id="co-sim-status" style="color:var(--fg-dim);font-size:11px;"></span>
+  </div>
+
+  <!-- ── Node status + NMT control ──────────────────────────── -->
+  <div id="co-nodes-wrap" style="margin-top:8px;">
+    <table id="co-nodes-table">
+      <thead><tr>
+        <th scope="col">Node</th><th scope="col">NMT state</th>
+        <th scope="col">Heartbeat</th><th scope="col">Last seen</th>
+        <th scope="col">Controls (NMT)</th>
+      </tr></thead>
+      <tbody id="co-nodes-body"></tbody>
+    </table>
+  </div>
+
+  <!-- ── SDO read / write ───────────────────────────────────── -->
+  <div id="co-sdo" style="margin-top:8px;padding:8px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);">
+    <strong style="color:var(--accent);">📡 SDO</strong>
+    <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center;">
+      <label for="sdo-node">Node</label><input id="sdo-node" value="1" style="width:50px;">
+      <label for="sdo-index">Index</label><input id="sdo-index" value="0x2000" style="width:80px;">
+      <label for="sdo-sub">Sub</label><input id="sdo-sub" value="0" style="width:50px;">
+      <label for="sdo-value">Value</label><input id="sdo-value" value="1500" style="width:90px;">
+      <button class="btn btn-primary" id="btn-sdo-read">⬆ Read</button>
+      <button class="btn" id="btn-sdo-write">⬇ Write</button>
+    </div>
+    <pre id="sdo-result" style="margin:6px 0 0;font-size:11px;color:var(--fg-dim);min-height:16px;white-space:pre-wrap;"></pre>
+  </div>
+
+  <!-- ── Object dictionary + EDS ────────────────────────────── -->
+  <div id="co-od" style="margin-top:8px;padding:8px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      <strong style="color:var(--accent);">📖 Object Dictionary</strong>
+      <span id="od-source" style="font-size:11px;color:var(--fg-dim);"></span>
+      <button class="btn" id="btn-od-refresh">⟳ Refresh</button>
+      <label class="btn" for="eds-file-input" style="cursor:pointer;">📥 Import EDS…</label>
+      <input type="file" id="eds-file-input" accept=".eds,.xml,text/plain" hidden>
+      <a class="btn" href="/can/api/canopen/eds?download=1">💾 Export EDS</a>
+    </div>
+    <div style="max-height:260px;overflow:auto;margin-top:6px;">
+      <table id="od-table"><thead><tr>
+        <th scope="col">Index</th><th scope="col">Sub</th>
+        <th scope="col">Name</th><th scope="col">Type</th><th scope="col">Access</th>
+      </tr></thead>
+      <tbody id="od-body"></tbody></table>
+    </div>
+  </div>
 </div>
 
 <!-- ── Reverse Engineering ────────────────────────────────────── -->
@@ -945,13 +1000,133 @@ async function postJSON(url, body) {
   } catch(e) { return {ok:false,error:e.message}; }
 }
 
-// ── Init: check status on load ────────────────────────────────
+// ── CANopen: simulation / NMT / SDO / OD browser ───────────────
+const CO = `${API}/canopen`;
+let coPollTimer = null;
+
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function setCoSimRunning(on, msg) {
+  $('#btn-co-start').disabled = on;
+  $('#btn-co-stop').disabled = !on;
+  const el = $('#co-sim-status');
+  if (el) el.textContent = msg || (on ? 'running' : '');
+}
+
+async function coStartSim() {
+  const nodesRaw = ($('#co-sim-nodes')?.value || '1').split(/[\s,]+/).filter(Boolean);
+  let nodes;
+  try { nodes = nodesRaw.map(n => parseInt(n, n.toLowerCase().startsWith('0x') ? 16 : 10)); }
+  catch { setCoSimRunning(false, 'bad node list'); return; }
+  const r = await postJSON(`${CO}/start-sim`, {nodes});
+  if (r.ok) {
+    setCoSimRunning(true, `running — nodes ${(r.nodes||[]).join(', ')}`);
+    setConnected(true);   // monitor is up on the same virtual channel
+    startPolling();
+    coStartNodePolling();
+    loadOd();
+  } else {
+    setCoSimRunning(false, r.error || 'start failed');
+  }
+}
+
+async function coStopSim() {
+  await postJSON(`${CO}/stop-sim`, {});
+  setCoSimRunning(false, '');
+  stopNodePolling();
+  const body = $('#co-nodes-body'); if (body) body.innerHTML = '';
+}
+
+async function coSendNmt(nodeId, command) {
+  await postJSON(`${CO}/nmt`, {node_id: nodeId, command});
+  refreshNodes();
+}
+
+async function refreshNodes() {
+  const st = await getJSON(`${CO}/status`);
+  if (!st) return;
+  setCoSimRunning(Boolean(st.running), st.running ? 'running' : '');
+  const body = $('#co-nodes-body');
+  if (!body) return;
+  body.innerHTML = '';
+  for (const n of (st.nodes || [])) {
+    const tr = document.createElement('tr');
+    const age = n.last_seen_s != null ? `${n.last_seen_s}s ago` : '—';
+    const hbCls = /Operational/i.test(n.heartbeat_state||'') ? 'badge-ok' : '';
+    tr.innerHTML = `
+      <td>${n.node_id}</td>
+      <td><span class="badge ${hbCls}">${esc(n.nmt_state || '—')}</span></td>
+      <td>${esc(n.heartbeat_state || '—')}</td>
+      <td style="color:var(--fg-dim)">${age}</td>`;
+    const td = document.createElement('td');
+    for (const [cmd, label] of [[0x01,'Pre-Op'],[0x02,'Operational'],[0x03,'Stopped'],[0x81,'Reset']]) {
+      const b = document.createElement('button');
+      b.className = 'btn'; b.textContent = label; b.style.marginRight = '4px';
+      b.addEventListener('click', () => coSendNmt(n.node_id, cmd));
+      td.appendChild(b);
+    }
+    tr.appendChild(td);
+    body.appendChild(tr);
+  }
+}
+
+function coStartNodePolling() { if (!coPollTimer) { refreshNodes(); coPollTimer = setInterval(refreshNodes, 1000); } }
+function stopNodePolling() { if (coPollTimer) { clearInterval(coPollTimer); coPollTimer = null; } }
+
+async function sdoDo(op) {
+  const out = $('#sdo-result');
+  const body = {
+    node_id: parseInt($('#sdo-node').value, 10),
+    index: $('#sdo-index').value.trim(),
+    subindex: parseInt($('#sdo-sub').value, 10),
+  };
+  if (op === 'write') body.value = $('#sdo-value').value.trim();
+  out.textContent = op === 'read' ? 'reading…' : 'writing…';
+  const r = await postJSON(`${CO}/sdo/${op}`, body);
+  out.textContent = JSON.stringify(r, null, 1);
+}
+
+async function loadOd() {
+  const d = await getJSON(`${CO}/ods`);
+  if (!d) return;
+  $('#od-source').textContent = `source: ${d.source || '—'} · ${(d.entries||[]).length} rows`;
+  const body = $('#od-body'); body.innerHTML = '';
+  for (const e of d.entries || []) {
+    const tr = document.createElement('tr');
+    const sub = e.subindex < 0 ? '' : String(e.subindex);
+    tr.innerHTML = `<td>0x${(e.index>>>0).toString(16).padStart(4,'0').toUpperCase()}</td><td>${sub}</td>` +
+      `<td>${esc(e.name || '')}</td><td>0x${(e.type||0).toString(16)}</td><td>${esc(e.access||'')}</td>`;
+    body.appendChild(tr);
+  }
+}
+
+$('#btn-co-start').addEventListener('click', coStartSim);
+$('#btn-co-stop').addEventListener('click', coStopSim);
+$('#btn-sdo-read').addEventListener('click', () => sdoDo('read'));
+$('#btn-sdo-write').addEventListener('click', () => sdoDo('write'));
+if ($('#btn-od-refresh')) $('#btn-od-refresh').addEventListener('click', loadOd);
+if ($('#eds-file-input')) $('#eds-file-input').addEventListener('change', async (ev) => {
+  const f = ev.target.files[0]; if (!f) return;
+  const text = await f.text();
+  const r = await postJSON(`${CO}/eds`, {text});
+  $('#od-source').textContent = r.ok ? `imported ${r.entries} rows from ${f.name}` : (r.error || 'import failed');
+  if (r.ok) loadOd();
+  ev.target.value = '';
+});
+
+// ── Init: live status + traffic by default ────────────────────
 (async () => {
   const st = await getJSON(`${API}/status`);
-  if (st && st.running) {
-    setConnected(true);
-    startPolling();
+  if (st && st.running) setConnected(true);
+  startPolling(); // keep the view live even when no capture is running
+
+  // restore CANopen simulation state + show object dictionary
+  const co = await getJSON(`${CO}/status`);
+  if (co && co.running) {
+    setCoSimRunning(true, `running — nodes ${(co.nodes||[]).join(', ')}`);
+    coStartNodePolling();
   }
+  loadOd();
 })();
 
 })();
