@@ -200,6 +200,7 @@
   <div class="toolbar-group connection-group" aria-label="CAN connection settings">
     <label for="sel-interface">Interface</label>
     <select id="sel-interface">
+      <option value="auto" selected>Auto-detect</option>
       <option value="pcan">PCAN</option>
       <option value="socketcan">SocketCAN</option>
       <option value="vector">Vector</option>
@@ -208,7 +209,7 @@
       <option value="virtual">Virtual</option>
     </select>
     <label for="inp-channel">Channel</label>
-    <input type="text" id="inp-channel" value="PCAN_USBBUS1">
+    <input type="text" id="inp-channel" value="" placeholder="(auto)">
     <label for="sel-bitrate">Bitrate</label>
     <select id="sel-bitrate">
       <option value="125000">125 kbit/s</option>
@@ -565,7 +566,7 @@ $('#btn-filter-clear').addEventListener('click', async () => {
 
 // ── Interface change → auto-set channel ───────────────────────
 $('#sel-interface').addEventListener('change', () => {
-  const map = {pcan:'PCAN_USBBUS1', socketcan:'can0', vector:'0',
+  const map = {auto:'', pcan:'PCAN_USBBUS1', socketcan:'can0', vector:'0',
                kvaser:'0', ixxat:'0', virtual:'test'};
   $('#inp-channel').value = map[$('#sel-interface').value] || '';
 });

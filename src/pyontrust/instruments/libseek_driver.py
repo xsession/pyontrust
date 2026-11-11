@@ -146,8 +146,9 @@ FFC_OFFSET = 0x4000
 
 # Frame ID constants
 FRAME_ID_CALIBRATION = 1   # FFC / flat-field calibration
-FRAME_ID_IMAGE = 3         # Normal image data
+FRAME_ID_IMAGE = 3         # Normal image data (raw sensor)
 FRAME_ID_DEAD_PIXEL = 4    # First frame — used for dead pixel detection
+FRAME_ID_IMAGE_CALIBRATED = 6  # Image after the camera's internal FFC
 
 # Approximate raw → °C conversion
 # Empirical linear mapping: adjust for your specific camera
@@ -570,6 +571,9 @@ class LibSeekCamera:
     _dead_pixel_mask: np.ndarray | None = field(default=None, repr=False, init=False)
     _dead_pixel_list: list[tuple[int, int]] = field(default_factory=list, repr=False, init=False)
     _ffc_frame: np.ndarray | None = field(default=None, repr=False, init=False)
+    # True when the last grabbed image was already internally calibrated by
+    # the camera (frame id=6); False for raw sensor frames (id=3).
+    _last_calibrated: bool = field(default=False, repr=False, init=False)
     _additional_ffc: np.ndarray | None = field(default=None, repr=False, init=False)
     _chip_id: bytes = field(default=b"", repr=False, init=False)
     _firmware_info: bytes = field(default=b"", repr=False, init=False)
@@ -799,11 +803,21 @@ class LibSeekCamera:
         return arr
 
     def _do_grab(self) -> bool:
-        """Grab frames until we get an image frame (id=3).
+        """Grab frames until we get an image frame (id=3 or id=6).
 
-        FFC calibration frames (id=1) are captured for flat-field correction.
+        The Compact stream interleaves three kinds of frames:
+          * id=3 — raw sensor image
+          * id=6 — the same scene after the camera's internal flat-field
+                   correction has been applied (empirically ~450 raw units
+                   higher, i.e. the calibrated radiometric frame)
+          * id=1 — FFC reference capture
+
+        We prefer an id=6 frame when one arrives in this cycle because it is
+        already internally calibrated; otherwise we fall back to id=3 and let
+        _retrieve() apply our own (sanity-checked) correction.
         Tries up to 40 times (matching C++ logic).
         """
+        got_raw_image = False
         for _ in range(40):
             raw_data = self._get_frame()
             if raw_data is None:
@@ -811,16 +825,25 @@ class LibSeekCamera:
 
             fid = self._frame_id(raw_data)
 
-            if fid == FRAME_ID_IMAGE:
-                # Store cropped raw for retrieve()
+            if fid == FRAME_ID_IMAGE_CALIBRATED:
+                # Best case: internally calibrated image — use it directly.
                 self._last_raw = self._crop_roi(raw_data)
+                self._last_calibrated = True
                 return True
 
-            if fid == FRAME_ID_CALIBRATION:
-                # Update flat-field calibration
-                self._ffc_frame = self._crop_roi(raw_data)
+            if fid == FRAME_ID_IMAGE:
+                self._last_raw = self._crop_roi(raw_data)
+                self._last_calibrated = False
+                got_raw_image = True
+                # Keep scanning briefly for a calibrated twin of this frame.
+                continue
 
-        return False
+            if fid == FRAME_ID_CALIBRATION:
+                # Update flat-field calibration reference
+                self._ffc_frame = self._crop_roi(raw_data)
+                continue
+
+        return got_raw_image
 
     def _retrieve(self) -> np.ndarray:
         """Apply calibration and dead-pixel filter to the last grabbed frame.
@@ -832,9 +855,22 @@ class LibSeekCamera:
         """
         frame = self._last_raw.astype(np.int32)
 
-        # Flat-field calibration
-        if self._ffc_frame is not None:
-            frame = frame + FFC_OFFSET - self._ffc_frame.astype(np.int32)
+        # Flat-field calibration — only if we used a raw (id=3) image AND the
+        # reference frame actually looks like a shutter-closed reference.
+        # A "reference" captured while the lens was open is just another scene
+        # image; subtracting it produces a flat ~16k frame (≈200 °C everywhere)
+        # instead of a real picture, so we refuse to apply it in that case.
+        if self._ffc_frame is not None and not getattr(self, "_last_calibrated", False):
+            img_mean = float(self._last_raw.mean())
+            ffc_mean = float(self._ffc_frame.mean())
+            plausible = (img_mean > 0 and
+                         abs(ffc_mean - img_mean) > 0.15 * img_mean)
+            if plausible:
+                frame = frame + FFC_OFFSET - self._ffc_frame.astype(np.int32)
+            else:
+                logger.warning(
+                    "FFC reference looks like a scene image (img=%.0f ffc=%.0f); "
+                    "skipping flat-field correction", img_mean, ffc_mean)
 
         frame = np.clip(frame, 0, 65535).astype(np.uint16)
 

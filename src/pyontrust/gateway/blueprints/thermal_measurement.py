@@ -26,7 +26,7 @@ import threading
 import time
 from typing import Any
 
-from flask import Blueprint, jsonify, request, send_from_directory, current_app
+from flask import Blueprint, jsonify, request, send_from_directory, send_file, current_app
 
 logger = logging.getLogger("pyontrust.gateway.thermal_measurement")
 
@@ -51,6 +51,11 @@ _measurement_progress: dict[str, Any] = {
 }
 _last_result: dict[str, Any] | None = None
 _abort_event = threading.Event()
+
+# Long-term tracking session (click-selected points/patches over time).
+from pyontrust.services.thermal_tracking import TrackingSession  # noqa: E402
+
+_tracking = TrackingSession()
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -226,6 +231,186 @@ def result():
     if _last_result is None:
         return jsonify({"status": "no_result"}), 404
     return jsonify(_last_result)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  API: Calibration (one-point reference temperature)
+# ═══════════════════════════════════════════════════════════════════════
+
+
+@bp.route("/api/calibrate", methods=["POST"])
+def calibrate():
+    """Set a one-point calibration offset (persistent).
+
+    Body: {"ref_c": 24.0}   → aim the camera at something known to be
+                               ref_c °C; all future readings are shifted so
+                               the frame median equals ref_c.
+          {"clear": true}   → reset the offset to zero.
+
+    The offset is stored in ~/.pyontrust/thermal_calibration.json and applied
+    by the SeekThermalCamera instrument layer, so it affects every consumer
+    (FlowLab blocks, this dashboard, services) across restarts.
+    """
+    from pyontrust.instruments import thermal_calibration as tcal
+
+    body = request.get_json(silent=True) or {}
+
+    if body.get("clear"):
+        return jsonify({"ok": True, **tcal.clear()})
+
+    try:
+        ref_c = float(body.get("ref_c", body.get("reference_c")))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Provide ref_c (number) or clear=true"}), 400
+    if not (-60.0 <= ref_c <= 400.0):
+        return jsonify({"ok": False, "error": "ref_c out of range"}), 400
+
+    # Grab one frame to measure the current scene median (raw estimate).
+    from pyontrust.instruments.seek_thermal import create as create_thermal
+    cam = None
+    try:
+        cam = create_thermal({"mode": "seek"})
+        cam.open()
+        frame = cam.grab_temperature_frame()  # includes any existing offset
+    except Exception as exc:
+        logger.warning("Calibration grab failed: %s", exc)
+        return jsonify({"ok": False,
+                        "error": f"Cannot grab calibration frame (camera connected?): {exc}"}), 502
+    finally:
+        if cam is not None:
+            try:
+                cam.close()
+            except Exception:
+                pass
+
+    import numpy as np
+    current = tcal.load_offset_c()
+    raw_median = float(np.median(frame)) - current
+    offset = round(ref_c - raw_median, 3)
+    info = tcal.save_offset(offset, reference_c=ref_c, scene_median_c=raw_median)
+    return jsonify({"ok": True, **info})
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  API: Long-term tracking (click-selected points & patches over time)
+# ═══════════════════════════════════════════════════════════════════════
+
+
+@bp.route("/api/tracking/start", methods=["POST"])
+def tracking_start():
+    """Start a tracking session.
+
+    Body: {
+        "selections": [{"name": "U3", "type": "patch", "x": 40, "y": 20, "w": 18, "h": 12},
+                       {"name": "P1", "type": "point", "x": 100, "y": 60}],
+        "interval_s": 1.0
+    }
+    """
+    if _measurement_progress["running"]:
+        return jsonify({"ok": False, "error": "A measurement session is running — stop it first"}), 409
+
+    body = request.get_json(silent=True) or {}
+    selections = body.get("selections") or []
+    interval_s = float(body.get("interval_s", 1.0))
+
+    try:
+        res = _tracking.start(selections=selections, interval_s=interval_s)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except RuntimeError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 409
+    except Exception as exc:
+        logger.exception("tracking start failed")
+        return jsonify({"ok": False, "error": f"Cannot open camera for tracking: {exc}"}), 502
+
+    res["ok"] = True
+    return jsonify(res)
+
+
+@bp.route("/api/tracking/status")
+def tracking_status():
+    """Running state, latest per-selection values and (downsampled) series."""
+    return jsonify(_tracking.status())
+
+
+@bp.route("/api/tracking/stop", methods=["POST"])
+def tracking_stop():
+    """Stop the tracking session and release the camera."""
+    res = _tracking.stop()
+    res["ok"] = True
+    return jsonify(res)
+
+
+@bp.route("/api/tracking/export.csv")
+def tracking_export_csv():
+    """Download the CSV log of the current/last tracking session."""
+    path = _tracking.csv_path
+    if path is None or not pathlib.Path(path).exists():
+        return jsonify({"ok": False, "error": "No tracking CSV available"}), 404
+    return send_file(str(path), as_attachment=True, download_name=pathlib.Path(path).name)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  API: Live frame (colourised PNG for the interactive view)
+# ═══════════════════════════════════════════════════════════════════════
+
+
+@bp.route("/api/frame")
+def live_frame():
+    """Return one colourised thermal frame as a base64 PNG.
+
+    Used by the tracking tab's live image (click to select points/patches).
+    While a tracking session is running, grabs are serialized with its
+    sampling loop; otherwise a one-shot camera open/grab/close is used.
+    """
+    import base64
+
+    import cv2
+    import numpy as np
+
+    if _tracking.running:
+        try:
+            temp = _tracking.grab_for_display()
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 502
+    else:
+        from pyontrust.instruments.seek_thermal import create as create_thermal
+        cam = None
+        try:
+            cam = create_thermal({"mode": "seek"})
+            cam.open()
+            temp = cam.grab_temperature_frame()
+        except Exception as exc:
+            return jsonify({"ok": False,
+                            "error": f"Cannot grab frame (camera connected?): {exc}"}), 502
+        finally:
+            if cam is not None:
+                try:
+                    cam.close()
+                except Exception:
+                    pass
+
+    temp = np.asarray(temp, dtype=np.float32)
+    vmin, vmax = float(np.min(temp)), float(np.max(temp))
+    norm = ((temp - vmin) / max(vmax - vmin, 1e-3) * 255).clip(0, 255).astype(np.uint8)
+    color = cv2.applyColorMap(norm, cv2.COLORMAP_JET)
+
+    # Upscale for easier clicking (native frame is only ~207x154).
+    h, w = temp.shape[:2]
+    scale = max(1, int(round(640 / w)))
+    color_big = cv2.resize(color, (w * scale, h * scale), interpolation=cv2.INTER_NEAREST)
+
+    ok, png = cv2.imencode(".png", color_big)
+    if not ok:
+        return jsonify({"ok": False, "error": "PNG encoding failed"}), 500
+
+    return jsonify({
+        "ok": True,
+        "image_b64": base64.b64encode(png.tobytes()).decode("ascii"),
+        "width": int(w), "height": int(h),          # native resolution (selection coords)
+        "display_width": int(w * scale), "display_height": int(h * scale),
+        "min_c": round(vmin, 2), "max_c": round(vmax, 2),
+    })
 
 
 # ═══════════════════════════════════════════════════════════════════════

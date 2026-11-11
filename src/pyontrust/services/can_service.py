@@ -361,36 +361,138 @@ class CanDiagService:
     def is_running(self) -> bool:
         return self._running
 
-    def start(self, interface: str = "pcan",
-              channel: str = "PCAN_USBBUS1",
+    @staticmethod
+    def _linux_can_interfaces() -> list[str]:
+        """List kernel CAN netdevs (socketcan channels) on Linux."""
+        import pathlib
+        # ARPHRD_CAN == 280; /sys/class/net/<if>/type holds the numeric value.
+        out = []
+        for p in sorted(pathlib.Path("/sys/class/net").glob("can*")):
+            try:
+                t = p.joinpath("type").read_text().strip()
+            except OSError:
+                continue  # vanished mid-scan
+            if t == "280" or not t.isdigit():
+                out.append(p.name)
+        return out
+
+    @staticmethod
+    def _pcan_userspace_available() -> bool:
+        """True when PEAK userspace driver nodes exist (Windows / peak_usb userspace)."""
+        import pathlib
+        return any(pathlib.Path("/dev").glob("pcan*")) or \
+               any(pathlib.Path("/dev").glob("pcanusb*"))
+
+    @classmethod
+    def detect_default(cls) -> tuple[str, str]:
+        """Pick the best (interface, channel) for this machine.
+
+        Priority: PEAK userspace driver → kernel socketcan CAN netdevs → virtual.
+        """
+        if cls._pcan_userspace_available():
+            return "pcan", "PCAN_USBBUS1"
+        chans = cls._linux_can_interfaces()
+        if chans:
+            return "socketcan", chans[0]
+        return "virtual", "vcan0"
+
+    @staticmethod
+    def _friendly_open_error(exc: Exception, interface: str, channel: str) -> str:
+        """Turn low-level open failures into actionable hints."""
+        msg = str(exc)
+        if "Network is down" in msg or "ENETDOWN" in msg:
+            return (f"{msg} — bring the interface up first: "
+                    f"`sudo ip link set {channel} up`")
+        if "No such device" in msg or "ENODEV" in msg:
+            chans = CanDiagService._linux_can_interfaces()
+            hint = f" available CAN interfaces: {', '.join(chans)}" if chans else ""
+            return (f"{msg}{hint} — check the adapter is connected and its "
+                    f"driver loaded (`lsusb | grep -i peak`, `ip link`)")
+        if interface == "pcan":
+            return (f"{msg} — no PEAK userspace driver nodes (/dev/pcan*) found; "
+                    f"on Linux with the kernel peak_usb module use interface="
+                    f"'socketcan' with a can* channel instead")
+        return msg
+
+    def start(self, interface: str = "auto",
+              channel: str | None = None,
               bitrate: int = 500_000,
               fd: bool = False) -> dict:
         """Open CAN bus and start capture thread.
+
+        ``interface="auto"`` (default) detects the best backend for this
+        machine; an explicit interface/channel is honoured first, with a
+        one-shot fallback to socketcan when a PCAN open fails on Linux.
 
         Returns ``{"ok": True}`` or ``{"ok": False, "error": "..."}``
         """
         if self._running:
             return {"ok": False, "error": "Already running — stop first"}
 
+        # Resolve auto-detection up front so the UI can show what we'll try.
+        if interface == "auto" or not channel:
+            det_iface, det_chan = self.detect_default()
+            if interface == "auto":
+                interface = det_iface
+            if not channel:
+                channel = det_chan
+
         self._interface = interface
         self._channel = channel
         self._bitrate = bitrate
 
-        try:
-            import can
-            kwargs: dict[str, Any] = {
-                "interface": interface,
-                "channel": channel,
-                "bitrate": bitrate,
-            }
-            if fd:
-                kwargs["fd"] = True
-            self._bus = can.Bus(**kwargs)
-        except ImportError:
-            return {"ok": False,
-                    "error": "python-can not installed: pip install python-can"}
-        except Exception as exc:
-            return {"ok": False, "error": str(exc)}
+        attempts: list[tuple[str, str]] = [(interface, channel)]
+        # One fallback: PCAN userspace failed → try kernel socketcan.
+        if interface == "pcan" and self._linux_can_interfaces():
+            attempts.append(("socketcan", self._linux_can_interfaces()[0]))
+
+        last_exc: Exception | None = None
+        for iface, chan in attempts:
+            try:
+                import can
+                kwargs: dict[str, Any] = {
+                    "interface": iface,
+                    "channel": chan,
+                    "bitrate": bitrate,
+                }
+                if fd and iface == "socketcan":
+                    kwargs["fd"] = True
+                self._bus = can.Bus(**kwargs)
+                self._interface = iface
+                self._channel = chan
+                last_exc = None
+                break
+            except ImportError:
+                return {"ok": False,
+                        "error": "python-can not installed: pip install python-can"}
+            except Exception as exc:  # noqa: BLE001 — report to caller
+                last_exc = exc
+
+        if last_exc is not None:
+            logger.warning("CAN open failed (%s/%s): %s", interface, channel, last_exc)
+            return {"ok": False, "error": self._friendly_open_error(
+                last_exc, interface, channel)}
+
+        # socketcan opens fine even when the netdev is DOWN — but then every
+        # recv() fails with ENETDOWN. Detect that up front and tell the user
+        # exactly what to run instead of starting a dead capture loop.
+        if self._interface == "socketcan":
+            import pathlib
+            op = pathlib.Path(f"/sys/class/net/{self._channel}/operstate")
+            try:
+                state = op.read_text().strip()
+            except OSError:
+                state = ""
+            if state and state != "up":
+                try:
+                    self._bus.shutdown()
+                except Exception:  # noqa: BLE001
+                    pass
+                self._bus = None
+                return {"ok": False, "error": (
+                    f"CAN interface {self._channel} is down ({state}). "
+                    f"Run once as root: `sudo ip link set {self._channel} up` "
+                    f"(optionally `sudo ip link set {self._channel} type can bitrate 500000`)")}
 
         self._running = True
         self._start_ts = time.time()

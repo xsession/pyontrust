@@ -138,15 +138,16 @@ def _blk_seek_thermal(params: dict, inputs: dict, ctx: ExecContext) -> dict:
     if ffc:
         cfg["ffc_file"] = str(ffc)
 
-    # If user requested real hardware but the SDK is missing, give a clear
-    # error explaining what's needed — don't silently fall back.
+    # If real hardware is requested but unavailable (missing driver, or no
+    # camera connected), log clearly and fall back to simulated mode rather
+    # than crashing the whole flow run.
     try:
         cam = create_thermal(cfg)
         cam.open()
-    except ImportError as exc:
+    except Exception as exc:
         if mode != "simulated":
             ctx.log(f"⚠️ Seek Thermal hardware requested but unavailable: {exc}")
-            ctx.log("🌡️ Falling back to simulated mode — install pyusb for libseek driver")
+            ctx.log("🌡️ Falling back to simulated mode — connect the camera or install pyusb for the libseek driver")
             cfg["mode"] = "simulated"
             cam = create_thermal(cfg)
             cam.open()

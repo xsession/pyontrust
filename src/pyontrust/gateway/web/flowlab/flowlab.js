@@ -45,8 +45,8 @@
 
     { cat: 'Instruments', type: 'seek_thermal', label: 'Thermal Camera', icon: '🌡️', colour: '#89b4fa',
       inputs: [], outputs: [{name:'thermal', dtype:'thermal_frame'}, {name:'temp_c', dtype:'number'}],
-      params: {mode:{type:'select',default:'simulated',options:['simulated','seek']}, base_temp_c:{type:'number',default:25}, inject_hotspot:{type:'checkbox',default:false}},
-      hint: 'Seek Thermal radiometric frame' },
+      params: {mode:{type:'select',default:'seek',options:['seek','simulated']}, base_temp_c:{type:'number',default:25}, inject_hotspot:{type:'checkbox',default:false}},
+      hint: 'Seek Thermal radiometric frame (real camera by default; falls back to simulated if no hardware)' },
 
     { cat: 'Instruments', type: 'ppk2_meter', label: 'PPK2 Meter', icon: '⚡', colour: '#89b4fa',
       inputs: [], outputs: [{name:'trace', dtype:'power_trace'}],

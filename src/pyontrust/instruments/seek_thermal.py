@@ -409,19 +409,27 @@ class SeekThermalCamera:
         if self._backend == "libseek":
             if self._libseek_cam is None:
                 raise RuntimeError("Camera not open.")
-            return self._libseek_cam.grab_temperature_frame()
+            frame = self._libseek_cam.grab_temperature_frame()
+        else:
+            raw = self.grab_frame()
+            if self._backend == "seekcamera":
+                # Official SDK provides temperatures directly
+                frame = raw.astype(np.float32)
+            elif self._backend == "seek_thermal":
+                # Community lib raw values: approximate conversion
+                # T(°C) ≈ (raw - offset) / scale  (camera-specific)
+                frame = (raw.astype(np.float32) - 8000.0) / 100.0
+            else:
+                raise RuntimeError("Unknown backend.")
 
-        raw = self.grab_frame()
+        # Apply the user's one-point calibration offset, if set
+        # (see pyontrust.instruments.thermal_calibration).
+        from pyontrust.instruments import thermal_calibration as _tcal
+        off = _tcal.load_offset_c()
+        if off:
+            frame = np.asarray(frame, dtype=np.float32) + float(off)
 
-        if self._backend == "seekcamera":
-            # Official SDK provides temperatures directly
-            return raw.astype(np.float32)
-        elif self._backend == "seek_thermal":
-            # Community lib raw values: approximate conversion
-            # T(°C) ≈ (raw - offset) / scale  (camera-specific)
-            return (raw.astype(np.float32) - 8000.0) / 100.0
-
-        raise RuntimeError("Unknown backend.")
+        return frame
 
     def spot_temperature(self, x: int, y: int) -> float:
         frame = self.grab_temperature_frame()

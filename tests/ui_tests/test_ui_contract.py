@@ -40,6 +40,7 @@ EXPECTED_SHELL_ROUTES = {
     "micro": "/micro/",
     "scan3d": "/scan3d/",
     "spec": "/spec/",
+    "waveforms": "/waveforms/",
     "ifdoc": "/ifdoc/",
     "artifacts": "/artifacts/",
     "config": "/config/",

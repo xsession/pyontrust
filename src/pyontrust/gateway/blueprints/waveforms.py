@@ -230,7 +230,8 @@ def scope_capture() -> Response:
     body = _json_body()
     try:
         device_index = int(body.get("device_index", -1))
-        channels = [int(c) for c in (body.get("channels") or [0])]
+        raw_channels = body.get("channels")
+        channels = [int(c) for c in ([0] if raw_channels is None else raw_channels)]
         rate_hz = _clamp(float(body.get("rate_hz", 250_000.0)), 1e3, MAX_RATE_HZ)
         record_s = _clamp(float(body.get("record_s", 0.04)), MIN_RECORD_S, MAX_RECORD_S)
         range_v = {str(k): float(v) for k, v in (body.get("range_v") or {}).items()}
@@ -396,7 +397,7 @@ def gen_start() -> Response:
     body = _json_body()
     try:
         device_index = int(body.get("device_index", -1))
-        channels = [int(c) for c in (body.get("channels") or [0])]
+        channels = [int(c) for c in ([0] if body.get("channels") is None else body["channels"])]
     except (TypeError, ValueError) as exc:
         return jsonify({"ok": False, "error": f"bad request body: {exc}"}), 400
 
@@ -427,7 +428,7 @@ def gen_stop() -> Response:
     body = _json_body()
     try:
         device_index = int(body.get("device_index", -1))
-        channels = [int(c) for c in (body.get("channels") or [0])]
+        channels = [int(c) for c in ([0] if body.get("channels") is None else body["channels"])]
     except (TypeError, ValueError) as exc:
         return jsonify({"ok": False, "error": f"bad request body: {exc}"}), 400
 

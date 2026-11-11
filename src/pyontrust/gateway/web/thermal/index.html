@@ -194,6 +194,7 @@ header .status-pill.simulated    { background: rgba(249,226,175,.15); color: var
 <div class="tabs">
   <button class="tab-btn active" data-tab="measure">📐 Measure</button>
   <button class="tab-btn" data-tab="live">📡 Live View</button>
+  <button class="tab-btn" data-tab="track">📈 Tracking</button>
   <button class="tab-btn" data-tab="results">📊 Results</button>
   <button class="tab-btn" data-tab="reports">📄 Reports</button>
 </div>
@@ -219,8 +220,8 @@ header .status-pill.simulated    { background: rgba(249,226,175,.15); color: var
       <div class="form-group">
         <label>Camera</label>
         <select id="cfg-camera-mode">
+          <option value="seek" selected>🔴 Seek Thermal (Hardware)</option>
           <option value="simulated">🔵 Simulated</option>
-          <option value="seek">🔴 Seek Thermal (Hardware)</option>
         </select>
       </div>
       <div class="form-group">
@@ -367,6 +368,17 @@ header .status-pill.simulated    { background: rgba(249,226,175,.15); color: var
 <!-- ══════════════════════════════════════════════════════════════════ -->
 <div class="tab-panel" id="tab-live">
   <div class="card">
+    <h3>📺 Live Stream</h3>
+    <p style="font-size:12px; color:var(--fg-dim); margin-bottom:10px;">
+      Continuous view from the Seek Thermal camera — updates every ~3 s while this tab is open.
+    </p>
+    <div style="max-width:640px;">
+      <img id="live-stream-img" alt="live thermal stream" style="width:100%; display:block; border-radius:4px;">
+    </div>
+    <p id="live-stream-meta" style="font-size:11px; color:var(--fg-dim); margin-top:6px;"></p>
+  </div>
+
+  <div class="card">
     <h3>📡 Single Frame Capture</h3>
     <p style="font-size:12px; color:var(--fg-dim); margin-bottom:10px;">
       Capture a single thermal frame from the camera and view instant analysis.
@@ -375,12 +387,34 @@ header .status-pill.simulated    { background: rgba(249,226,175,.15); color: var
       <div class="form-group">
         <label>Camera</label>
         <select id="live-camera-mode">
+          <option value="seek" selected>🔴 Seek Thermal (real camera)</option>
           <option value="simulated">🔵 Simulated</option>
-          <option value="seek">🔴 Seek Thermal</option>
         </select>
       </div>
     </div>
     <button class="btn btn-primary" id="btn-capture" onclick="captureSingle()">📸 Capture Frame</button>
+  </div>
+
+  <div class="card">
+    <h3>🎯 Calibration (one-point reference)</h3>
+    <p style="font-size:12px; color:var(--fg-dim); margin-bottom:10px;">
+      The Seek Compact reports raw sensor counts, so absolute temperatures are estimates.
+      Aim the camera at something of known temperature (e.g. a wall you know is ~24&nbsp;°C),
+      enter that value below and press Calibrate — all readings are then shifted so the frame
+      median matches your reference. The offset persists across restarts and applies to every
+      consumer (this dashboard, FlowLab blocks).
+    </p>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Reference temperature (°C)</label>
+        <input type="number" id="cal-ref-c" value="24" step="0.1" min="-60" max="400">
+      </div>
+    </div>
+    <div class="btn-bar">
+      <button class="btn btn-primary" id="btn-calibrate" onclick="applyCalibration()">🎯 Calibrate</button>
+      <button class="btn btn-secondary" id="btn-cal-clear" onclick="clearCalibration()">↺ Reset offset</button>
+    </div>
+    <p id="cal-status" style="font-size:12px; margin-top:8px;"></p>
   </div>
 
   <div id="live-result" style="display:none;">
@@ -394,6 +428,57 @@ header .status-pill.simulated    { background: rgba(249,226,175,.15); color: var
         <div id="live-zone-readings"></div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<!--  TAB: Tracking (long-term change following)                        -->
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<div class="tab-panel" id="tab-track">
+  <div class="card">
+    <h3>📈 Long-Term Thermal Tracking</h3>
+    <p style="font-size:12px; color:var(--fg-dim); margin-bottom:10px;">
+      Inspect electronics prototypes over time: <strong>click</strong> the live image to add a point,
+      or <strong>drag</strong> to draw a patch around a component. Then start tracking — each selection's
+      temperature is recorded continuously (failure detection / thermal-fluctuation logging).
+      The CSV log is written incrementally, so nothing is lost if you stop early.
+    </p>
+    <div class="form-row" style="align-items:flex-end; gap:10px;">
+      <div class="form-group">
+        <label>Sampling interval (s)</label>
+        <input type="number" id="track-interval" value="1.0" step="0.5" min="0.5" max="30">
+      </div>
+      <button class="btn btn-primary" id="btn-track-start" onclick="trackingStart()">▶ Start Tracking</button>
+      <button class="btn btn-danger" id="btn-track-stop" onclick="trackingStop()" disabled>⏹ Stop</button>
+      <a class="btn btn-secondary" id="track-csv-link" href="/thermal/api/tracking/export.csv" target="_blank" style="display:none; text-decoration:none;">⬇ Download CSV</a>
+    </div>
+    <p id="track-status-line" style="font-size:12px; margin-top:8px;"></p>
+  </div>
+
+  <div class="snapshot-grid">
+    <div class="card">
+      <h3>🎯 Live Image — click = point, drag = patch</h3>
+      <div id="track-img-wrap" style="position:relative; width:100%; max-width:640px; cursor:crosshair;">
+        <img id="track-img" alt="live thermal frame" style="width:100%; display:block; border-radius:4px;">
+        <canvas id="track-overlay" style="position:absolute; left:0; top:0;"></canvas>
+      </div>
+      <p id="track-frame-meta" style="font-size:11px; color:var(--fg-dim); margin-top:6px;"></p>
+    </div>
+
+    <div class="card">
+      <h3>📌 Selections</h3>
+      <div id="track-sel-list"><p style="color:var(--fg-dim); font-size:12px;">No selections yet — click or drag on the image.</p></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>📊 Temperature vs Time</h3>
+    <canvas id="track-plot" width="1200" height="340" style="width:100%; height:auto;"></canvas>
+  </div>
+
+  <div class="card">
+    <h3>📶 Latest Values (bar view)</h3>
+    <div id="track-bars"><p style="color:var(--fg-dim); font-size:12px;">Start tracking to see live values.</p></div>
   </div>
 </div>
 
@@ -445,6 +530,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     activePanel.classList.add('active'); activePanel.hidden = false;
     if (btn.dataset.tab === 'reports') loadReports();
     if (btn.dataset.tab === 'results') loadResult();
+    onTrackTabChange(btn.dataset.tab);
   });
 });
 
@@ -695,6 +781,409 @@ async function captureSingle() {
   } finally {
     document.getElementById('btn-capture').disabled = false;
   }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ *  Calibration (one-point reference temperature)
+ * ═══════════════════════════════════════════════════════════════════ */
+function calStatus(msg, ok = true) {
+  const el = document.getElementById('cal-status');
+  el.textContent = msg;
+  el.style.color = ok ? 'var(--green)' : 'var(--red)';
+}
+
+async function applyCalibration() {
+  const btn = document.getElementById('btn-calibrate');
+  btn.disabled = true;
+  calStatus('Grabbing a frame and computing the offset…', true);
+  try {
+    const refC = parseFloat(document.getElementById('cal-ref-c').value);
+    if (!isFinite(refC)) { calStatus('Enter a valid reference temperature.', false); return; }
+    const r = await fetch('/thermal/api/calibrate', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ ref_c: refC }),
+    });
+    const d = await r.json();
+    if (!d.ok) { calStatus(d.error || 'Calibration failed.', false); return; }
+    calStatus(`✓ Calibrated: offset ${d.offset_c >= 0 ? '+' : ''}${Number(d.offset_c).toFixed(2)} °C ` +
+              `(raw median ${Number(d.scene_median_c).toFixed(1)} °C → reference ${refC} °C)`, true);
+    // Refresh the live frame so the user sees calibrated values immediately.
+    captureSingle();
+  } catch (e) {
+    calStatus('Calibration request failed: ' + e, false);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function clearCalibration() {
+  const btn = document.getElementById('btn-cal-clear');
+  btn.disabled = true;
+  try {
+    const r = await fetch('/thermal/api/calibrate', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ clear: true }),
+    });
+    const d = await r.json();
+    if (!d.ok) { calStatus(d.error || 'Reset failed.', false); return; }
+    calStatus('✓ Calibration offset reset to zero.', true);
+    captureSingle();
+  } catch (e) {
+    calStatus('Reset request failed: ' + e, false);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ *  Tracking tab (long-term change following)
+ * ═══════════════════════════════════════════════════════════════════ */
+const TRACK_PALETTE = ['#f38ba8', '#fab387', '#f9e2af', '#a6e3a1', '#94e2d5', '#89b4fa', '#cba6f7'];
+let trackSels = [];          // {name, type:'point'|'patch', x,y,w,h} in native frame coords
+let trackFrameMeta = null;   // {width, height} native resolution of last loaded image
+let trackPollTimer = null;   // status polling while running
+let trackFrameTimer = null;  // live-image polling while tab visible
+
+function onTrackTabChange(tab) {
+  if (tab === 'track' || tab === 'live') startTrackFramePolling();
+  else stopTrackFramePolling();
+}
+
+async function pollTrackFrame() {
+  try {
+    const r = await fetch('/thermal/api/frame');
+    const d = await r.json();
+    if (!d.ok) return; // keep last image on transient errors
+    const src = 'data:image/png;base64,' + d.image_b64;
+    const metaText = `native ${d.width}×${d.height}px · frame range ${d.min_c.toFixed(1)} °C … ${d.max_c.toFixed(1)} °C`;
+
+    // Tracking tab image (selection canvas)
+    const timg = document.getElementById('track-img');
+    if (timg) {
+      timg.src = src;
+      trackFrameMeta = { width: d.width, height: d.height };
+      const tm = document.getElementById('track-frame-meta');
+      if (tm) tm.textContent = metaText;
+      sizeTrackOverlay();
+      drawTrackOverlay();
+    }
+
+    // Live View tab stream panel
+    const limg = document.getElementById('live-stream-img');
+    if (limg) {
+      limg.src = src;
+      const lm = document.getElementById('live-stream-meta');
+      if (lm) lm.textContent = metaText + ' · updated ' + new Date().toLocaleTimeString();
+    }
+  } catch (e) { /* transient — ignore */ }
+}
+
+function startTrackFramePolling() {
+  if (trackFrameTimer) return;
+  pollTrackFrame();
+  trackFrameTimer = setInterval(pollTrackFrame, 2000);
+}
+function stopTrackFramePolling() {
+  if (trackFrameTimer) { clearInterval(trackFrameTimer); trackFrameTimer = null; }
+}
+
+/* ── selection interaction ─────────────────────────────────────────── */
+let trackDragStart = null, trackDragging = false;
+
+function sizeTrackOverlay() {
+  const wrap = document.getElementById('track-img-wrap');
+  const cv = document.getElementById('track-overlay');
+  if (wrap.clientWidth > 0) { cv.width = wrap.clientWidth; cv.height = wrap.clientHeight; }
+}
+
+function nativeToPx(nx, ny) {
+  const wrap = document.getElementById('track-img-wrap');
+  const m = trackFrameMeta || { width: 1, height: 1 };
+  return [nx / m.width * wrap.clientWidth, ny / m.height * wrap.clientHeight];
+}
+function pxToNative(px, py) {
+  const wrap = document.getElementById('track-img-wrap');
+  const m = trackFrameMeta || { width: 1, height: 1 };
+  return [Math.round(px / wrap.clientWidth * m.width), Math.round(py / wrap.clientHeight * m.height)];
+}
+
+function eventPos(e) {
+  const rect = document.getElementById('track-img-wrap').getBoundingClientRect();
+  return [e.clientX - rect.left, e.clientY - rect.top];
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const wrap = document.getElementById('track-img-wrap');
+  if (!wrap) return;
+  wrap.addEventListener('mousedown', (e) => {
+    trackDragStart = eventPos(e);
+    trackDragging = false;
+  });
+  wrap.addEventListener('mousemove', (e) => {
+    if (!trackDragStart) return;
+    const [px, py] = eventPos(e);
+    if (Math.hypot(px - trackDragStart[0], py - trackDragStart[1]) > 6) trackDragging = true;
+    drawTrackOverlay(); // shows the in-progress rectangle when dragging
+  });
+  wrap.addEventListener('mouseup', (e) => {
+    if (!trackDragStart) return;
+    const [px, py] = eventPos(e);
+    const [sx, sy] = trackDragStart;
+    trackDragStart = null;
+    if (trackDragging && Math.hypot(px - sx, py - sy) > 6) {
+      // patch selection
+      const [nx0, ny0] = pxToNative(Math.min(sx, px), Math.min(sy, py));
+      const [nx1, ny1] = pxToNative(Math.max(sx, px), Math.max(sy, py));
+      addTrackSel({ type: 'patch', x: nx0, y: ny0, w: Math.max(2, nx1 - nx0), h: Math.max(2, ny1 - ny0) });
+    } else {
+      // point selection
+      const [nx, ny] = pxToNative(px, py);
+      addTrackSel({ type: 'point', x: nx, y: ny, w: 1, h: 1 });
+    }
+    trackDragging = false;
+    drawTrackOverlay();
+    renderTrackSelList();
+  });
+});
+
+function nextSelName(type) {
+  const prefix = type === 'patch' ? 'R' : 'P';
+  let i = trackSels.filter(s => s.type === type).length + 1;
+  while (trackSels.some(s => s.name === prefix + i)) i++;
+  return prefix + i;
+}
+
+function addTrackSel(sel) {
+  sel.name = nextSelName(sel.type);
+  trackSels.push(sel);
+}
+
+function removeTrackSel(idx) {
+  trackSels.splice(idx, 1);
+  drawTrackOverlay();
+  renderTrackSelList();
+}
+
+function drawTrackOverlay() {
+  const cv = document.getElementById('track-overlay');
+  if (!cv.width || !cv.height) return;
+  const ctx = cv.getContext('2d');
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  trackSels.forEach((s, i) => {
+    const col = TRACK_PALETTE[i % TRACK_PALETTE.length];
+    if (s.type === 'patch') {
+      const [x0, y0] = nativeToPx(s.x, s.y);
+      const [x1, y1] = nativeToPx(s.x + s.w, s.y + s.h);
+      ctx.strokeStyle = col; ctx.lineWidth = 2;
+      ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+      ctx.fillStyle = col + '33';
+      ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+    } else {
+      const [cx, cy] = nativeToPx(s.x, s.y);
+      ctx.strokeStyle = col; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(cx, cy, 7, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx - 10, cy); ctx.lineTo(cx + 10, cy);
+      ctx.moveTo(cx, cy - 10); ctx.lineTo(cx, cy + 10); ctx.stroke();
+    }
+    // label
+    const [lx, ly] = s.type === 'patch' ? nativeToPx(s.x, s.y) : nativeToPx(s.x, s.y);
+    ctx.fillStyle = col; ctx.font = 'bold 12px monospace';
+    ctx.fillText(s.name, lx + (s.type === 'patch' ? 0 : 10), ly - 4);
+  });
+  // in-progress drag rectangle
+  if (trackDragging && trackDragStart) {
+    const wrap = document.getElementById('track-img-wrap');
+    const rect = wrap.getBoundingClientRect();
+    const [px, py] = eventPos({ clientX: lastMouse.x, clientY: lastMouse.y });
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]);
+    ctx.strokeRect(Math.min(trackDragStart[0], px), Math.min(trackDragStart[1], py),
+                   Math.abs(px - trackDragStart[0]), Math.abs(py - trackDragStart[1]));
+    ctx.setLineDash([]);
+  }
+}
+
+let lastMouse = { x: 0, y: 0 };
+document.addEventListener('mousemove', (e) => { lastMouse = { x: e.clientX, y: e.clientY }; });
+
+function renderTrackSelList() {
+  const el = document.getElementById('track-sel-list');
+  if (!trackSels.length) {
+    el.innerHTML = '<p style="color:var(--fg-dim); font-size:12px;">No selections yet — click or drag on the image.</p>';
+    return;
+  }
+  let html = '<table><thead><tr><th>#</th><th>Name</th><th>Type</th><th>Coords (native px)</th><th></th></tr></thead><tbody>';
+  trackSels.forEach((s, i) => {
+    const col = TRACK_PALETTE[i % TRACK_PALETTE.length];
+    const coords = s.type === 'patch' ? `${s.x},${s.y} ${s.w}×${s.h}` : `${s.x},${s.y}`;
+    html += `<tr><td><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${col};"></span></td>
+      <td>${s.name}</td><td>${s.type}</td><td>${coords}</td>
+      <td><button class="del-btn" onclick="removeTrackSel(${i})">✕</button></td></tr>`;
+  });
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
+
+/* ── start / stop ──────────────────────────────────────────────────── */
+async function trackingStart() {
+  if (!trackSels.length) { alert('Add at least one selection on the image first (click or drag).'); return; }
+  const interval = parseFloat(document.getElementById('track-interval').value) || 1.0;
+  document.getElementById('btn-track-start').disabled = true;
+  try {
+    const r = await fetch('/thermal/api/tracking/start', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ selections: trackSels, interval_s: interval }),
+    });
+    const d = await r.json();
+    if (!d.ok) { alert(d.error || 'Failed to start tracking'); return; }
+    document.getElementById('btn-track-stop').disabled = false;
+    document.getElementById('track-csv-link').style.display = '';
+    pollTrackStatus();
+    trackPollTimer = setInterval(pollTrackStatus, 1000);
+  } catch (e) {
+    alert('Tracking start failed: ' + e);
+  } finally {
+    document.getElementById('btn-track-start').disabled = false;
+  }
+}
+
+async function trackingStop() {
+  try {
+    const r = await fetch('/thermal/api/tracking/stop', { method: 'POST' });
+    const d = await r.json();
+    if (trackPollTimer) { clearInterval(trackPollTimer); trackPollTimer = null; }
+    document.getElementById('btn-track-stop').disabled = true;
+    document.getElementById('track-status-line').textContent =
+      `Session complete — ${d.samples} samples saved to ${d.csv_path || ''}`;
+  } catch (e) { alert('Stop failed: ' + e); }
+}
+
+/* ── status polling → plots, bars, latest values ───────────────────── */
+function fmtElapsed(s) {
+  if (s == null) return '';
+  const m = Math.floor(s / 60), sec = Math.round(s % 60);
+  return m > 0 ? `${m}m ${sec}s` : `${sec}s`;
+}
+
+async function pollTrackStatus() {
+  let d;
+  try {
+    const r = await fetch('/thermal/api/tracking/status');
+    d = await r.json();
+  } catch (e) { return; }
+
+  const line = document.getElementById('track-status-line');
+  if (d.running) {
+    line.textContent = `● REC — ${d.samples} samples · elapsed ${fmtElapsed(d.elapsed_s)} · CSV: ${d.csv_path || ''}`;
+    line.style.color = 'var(--red)';
+  } else if (d.samples > 0) {
+    line.textContent = `Last session: ${d.samples} samples · CSV: ${d.csv_path || ''}`;
+    line.style.color = 'var(--fg-dim)';
+  }
+
+  drawTrackPlot(d.series || [], trackSels);
+  renderTrackBars(d.latest || {}, trackSels);
+}
+
+function drawTrackPlot(series, sels) {
+  const cv = document.getElementById('track-plot');
+  const ctx = cv.getContext('2d');
+  const W = cv.width, H = cv.height;
+  ctx.clearRect(0, 0, W, H);
+  if (!series.length || !sels.length) {
+    ctx.fillStyle = '#6c7086'; ctx.font = '14px sans-serif';
+    ctx.fillText('No data yet — start tracking to record temperatures over time.', 20, H / 2);
+    return;
+  }
+
+  const mL = 56, mR = 16, mT = 30, mB = 28; // margins
+  let tmin = Infinity, tmax = -Infinity, vmin = Infinity, vmax = -Infinity;
+  for (const row of series) {
+    if (row[0] < tmin) tmin = row[0];
+    if (row[0] > tmax) tmax = row[0];
+    for (let i = 1; i < row.length; i++) {
+      const v = row[i];
+      if (!isFinite(v)) continue;
+      if (v < vmin) vmin = v;
+      if (v > vmax) vmax = v;
+    }
+  }
+  if (!isFinite(tmin)) return;
+  if (tmax - tmin < 1e-6) tmax = tmin + 1;
+  const pad = Math.max((vmax - vmin) * 0.1, 0.5);
+  vmin -= pad; vmax += pad;
+
+  const X = t => mL + (t - tmin) / (tmax - tmin) * (W - mL - mR);
+  const Y = v => H - mB - (v - vmin) / (vmax - vmin) * (H - mT - mB);
+
+  // gridlines + y labels
+  ctx.strokeStyle = '#313244'; ctx.fillStyle = '#6c7086'; ctx.font = '11px monospace';
+  for (let g = 0; g <= 5; g++) {
+    const v = vmin + (vmax - vmin) * g / 5;
+    const y = Y(v);
+    ctx.beginPath(); ctx.moveTo(mL, y); ctx.lineTo(W - mR, y); ctx.stroke();
+    ctx.fillText(v.toFixed(1) + '°', 6, y + 4);
+  }
+  // x labels (time)
+  for (let g = 0; g <= 5; g++) {
+    const t = tmin + (tmax - tmin) * g / 5;
+    ctx.fillText(fmtElapsed(t), X(t) - 12, H - 8);
+  }
+
+  // one line per selection
+  sels.forEach((s, i) => {
+    const col = TRACK_PALETTE[i % TRACK_PALETTE.length];
+    ctx.strokeStyle = col; ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    let started = false;
+    for (const row of series) {
+      const v = row[i + 1];
+      if (!isFinite(v)) continue;
+      if (!started) { ctx.moveTo(X(row[0]), Y(v)); started = true; }
+      else ctx.lineTo(X(row[0]), Y(v));
+    }
+    ctx.stroke();
+  });
+
+  // legend
+  let lx = mL;
+  sels.forEach((s, i) => {
+    const col = TRACK_PALETTE[i % TRACK_PALETTE.length];
+    ctx.fillStyle = col;
+    ctx.fillRect(lx, 10, 12, 12);
+    ctx.fillStyle = '#cdd6f4'; ctx.font = '12px sans-serif';
+    ctx.fillText(s.name, lx + 16, 20);
+    lx += 16 + ctx.measureText(s.name).width + 18;
+  });
+}
+
+function renderTrackBars(latest, sels) {
+  const el = document.getElementById('track-bars');
+  if (!sels.length || !Object.keys(latest).length) return; // keep placeholder
+  let maxV = -Infinity;
+  for (const s of sels) {
+    const v = latest[s.name];
+    const val = v ? (v.mean_c != null ? v.mean_c : v.c) : null;
+    if (val != null && isFinite(val) && val > maxV) maxV = val;
+  }
+  let html = '';
+  sels.forEach((s, i) => {
+    const col = TRACK_PALETTE[i % TRACK_PALETTE.length];
+    const v = latest[s.name] || {};
+    const val = v.mean_c != null ? v.mean_c : (v.c != null ? v.c : null);
+    if (val == null) return;
+    const pct = Math.max(2, (val / maxV) * 100);
+    const range = v.min_c != null && v.max_c != null ? ` <span style="color:var(--fg-dim)">(${v.min_c.toFixed(1)}…${v.max_c.toFixed(1)})</span>` : '';
+    html += `<div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+      <span style="width:34px; font-size:12px; color:${col}; font-weight:700;">${s.name}</span>
+      <div style="flex:1; background:var(--bg3); border-radius:3px; height:16px;">
+        <div style="width:${pct}%; height:100%; background:${col}; border-radius:3px;"></div>
+      </div>
+      <span style="width:150px; text-align:right; font-family:monospace; font-size:12px;">${val.toFixed(1)} °C${range}</span>
+    </div>`;
+  });
+  el.innerHTML = html;
 }
 
 /* ═══════════════════════════════════════════════════════════════════
