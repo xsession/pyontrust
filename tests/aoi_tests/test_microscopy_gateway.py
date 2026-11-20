@@ -52,7 +52,7 @@ def test_capture_stack_with_fake_camera(client, monkeypatch):
 
     frames, _ = generate_synthetic_stack(n_frames=4, size=(120, 160), seed=3)
     it = iter(frames)
-    monkeypatch.setattr(mb._camera, "grab", lambda dev: next(it))
+    monkeypatch.setattr(mb._camera, "grab", lambda dev, fresh=True: next(it))
 
     for i in range(4):
         d = client.post("/micro/api/capture", json={"device": 0}).get_json()
@@ -68,7 +68,7 @@ def test_capture_stack_with_fake_camera(client, monkeypatch):
     assert d["stats"]["n_frames"] == 3 and d["stats"]["source"] == "captured"
 
     # A frame of a different size is rejected instead of breaking the stack.
-    monkeypatch.setattr(mb._camera, "grab", lambda dev: np.zeros((50, 50, 3), np.uint8))
+    monkeypatch.setattr(mb._camera, "grab", lambda dev, fresh=True: np.zeros((50, 50, 3), np.uint8))
     assert client.post("/micro/api/capture", json={"device": 0}).status_code == 409
 
     assert client.post("/micro/api/stack/clear").get_json()["count"] == 0
@@ -92,3 +92,55 @@ def test_stream_with_fake_camera(client, monkeypatch):
     assert part.startswith(b"--frame") and b"\xff\xd8" in part
     st = client.get("/micro/api/live_stats").get_json()
     assert st["active"] and st["width"] == 160 and st["sharpness"] > 0
+
+
+# ── camera sources: USB index and Android phone back cameras ─────────────
+
+def test_source_parsing_and_legacy_device():
+    import pyontrust.gateway.blueprints.microscopy as mb
+
+    assert mb._source_arg(None, 3) == ("usb", 3)
+    assert mb._source_arg("usb:2") == ("usb", 2)
+    assert mb._source_arg("phone:MWS7N17623000254:2") == ("phone", "MWS7N17623000254", "2")
+    for bad in ("phone::0", "phone:abc", "phone:a b:0", "phone:x;rm:0", "cam:1", "usb:x"):
+        with pytest.raises(ValueError):
+            mb._source_arg(bad)
+
+
+def test_prepare_rotates_and_caps_size():
+    import pyontrust.gateway.blueprints.microscopy as mb
+
+    f = np.zeros((300, 400, 3), np.uint8)
+    assert mb._prepare(f, 90).shape[:2] == (400, 300)
+    assert mb._prepare(f, 0, 200).shape[:2] == (150, 200)
+    assert mb._prepare(f, 270, 0).shape[:2] == (400, 300)
+    with pytest.raises(ValueError):
+        mb._prepare(f, 45)
+
+
+def test_cameras_lists_phone_back_cameras(client, monkeypatch):
+    import pyontrust.gateway.blueprints.microscopy as mb
+    from pyontrust.instruments import phone_camera as pc
+
+    monkeypatch.setattr(mb, "_probe_cameras", lambda: [{"index": 2, "name": "USB 2.0 Camera"}])
+    monkeypatch.setattr(pc, "list_phones", lambda: [
+        pc.Phone("SER1", "device", "EVA_L09"), pc.Phone("SER2", "unauthorized")])
+    monkeypatch.setattr(pc, "cameras", lambda serial: [
+        {"id": "0", "facing": "back", "focal_mm": 4.5, "max_size": [3968, 2976]},
+        {"id": "1", "facing": "front", "focal_mm": 3.0, "max_size": [3264, 2448]},
+        {"id": "2", "facing": "back", "focal_mm": 2.2, "max_size": [4000, 3000]}])
+    cams = client.get("/micro/api/cameras").get_json()["cameras"]
+    sources = [c["source"] for c in cams]
+    assert sources == ["usb:2", "phone:SER1:0", "phone:SER1:2", None], "front camera excluded"
+    assert "Allow USB debugging" in cams[-1]["label"]
+
+
+def test_capture_from_phone_source(client, monkeypatch):
+    import pyontrust.gateway.blueprints.microscopy as mb
+    from pyontrust.instruments import phone_camera as pc
+
+    seen = []
+    monkeypatch.setattr(pc, "capture", lambda serial, cam: seen.append((serial, cam)) or np.zeros((3968, 2976, 3), np.uint8))
+    d = client.post("/micro/api/capture", json={"source": "phone:SER1:2", "rotate": 90, "max_px": 2000}).get_json()
+    assert d["ok"] and seen == [("SER1", "2")]
+    assert mb._STACK[-1].shape[:2] == (1500, 2000), "rotated to landscape and capped at 2000 px"

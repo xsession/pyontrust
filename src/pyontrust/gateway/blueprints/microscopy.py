@@ -6,7 +6,10 @@ page.  Two frame sources are supported:
 
 * ``synthetic`` — a multi-depth PCB scene (``generate_synthetic_stack``), so
   the tool works without any hardware;
-* ``captured``  — frames grabbed from a USB microscope / UVC camera (OpenCV).
+* ``captured``  — frames grabbed from a camera *source*:
+  ``usb:<index>`` (USB microscope / UVC, OpenCV) or
+  ``phone:<adb serial>:<camera id>`` (any camera of an ADB-connected Android
+  phone via Termux:API — e.g. any of its back cameras).
   The user steps the focus knob between captures (one click per plane, or a
   timed burst while sweeping focus); frame *i* is assigned height
   ``z0 + i * step``.
@@ -14,8 +17,9 @@ page.  Two frame sources are supported:
 Routes (under ``/micro``)
 -------------------------
 GET  /                       — page
-GET  /api/cameras            — probe local video devices
-GET  /api/preview?device=N   — one JPEG frame + focus sharpness score
+GET  /api/cameras            — available sources (USB cameras + phone back cameras)
+GET  /api/stream?source=…    — live MJPEG preview (phones: refreshed stills)
+GET  /api/preview?source=…   — one JPEG frame + focus sharpness score
 POST /api/capture            — append one frame to the capture stack
 GET  /api/stack              — capture-stack summary (count + thumbnails)
 POST /api/stack/clear        — drop all captured frames
@@ -202,6 +206,77 @@ def _device_arg(value: Any) -> int:
     return dev
 
 
+def _source_arg(source: Any, device: Any = None) -> tuple:
+    """``"usb:2"`` -> ("usb", 2); ``"phone:SERIAL:0"`` -> ("phone", SERIAL, "0").
+
+    ``device=N`` (older clients) means ``usb:N``.
+    """
+    if source in (None, ""):
+        return ("usb", _device_arg(0 if device is None else device))
+    kind, _, rest = str(source).partition(":")
+    if kind == "usb":
+        return ("usb", _device_arg(rest))
+    if kind == "phone":
+        serial, _, cam = rest.rpartition(":")
+        if not serial or not cam or not all(c.isalnum() or c in "._-" for c in serial) or not cam.isdigit():
+            raise ValueError("phone source must be phone:<serial>:<camera id>")
+        return ("phone", serial, cam)
+    raise ValueError(f"Unknown source {source!r}")
+
+
+def _grab(src: tuple, fresh: bool = True) -> np.ndarray:
+    if src[0] == "usb":
+        return _camera.grab(src[1], fresh=fresh)
+    from pyontrust.instruments.phone_camera import capture as phone_capture
+    return phone_capture(src[1], src[2])
+
+
+def _prepare(frame: np.ndarray, rotate: Any = 0, max_px: Any = 0) -> np.ndarray:
+    """Rotate (0/90/180/270, clockwise) and cap the long edge at ``max_px`` (0 = full)."""
+    import cv2
+
+    try:
+        rot = int(rotate) % 360
+        cap = int(max_px or 0)
+    except (TypeError, ValueError):
+        raise ValueError("rotate / max_px must be integers") from None
+    if rot == 90:
+        frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+    elif rot == 180:
+        frame = cv2.rotate(frame, cv2.ROTATE_180)
+    elif rot == 270:
+        frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+    elif rot:
+        raise ValueError("rotate must be 0, 90, 180 or 270")
+    if cap > 0 and max(frame.shape[:2]) > cap:
+        k = cap / max(frame.shape[:2])
+        frame = cv2.resize(frame, (int(frame.shape[1] * k), int(frame.shape[0] * k)), interpolation=cv2.INTER_AREA)
+    return frame
+
+
+def _probe_phones() -> list[dict[str, Any]]:
+    """Back cameras of every ADB phone; unusable phones listed with a hint."""
+    from pyontrust.instruments import phone_camera as pc
+
+    out: list[dict[str, Any]] = []
+    for ph in pc.list_phones():
+        if not ph.ready:
+            out.append({"source": None, "kind": "phone", "label": f"📱 {ph.label} — {ph.hint}", "hint": ph.hint})
+            continue
+        try:
+            cams = [c for c in pc.cameras(ph.serial) if c["facing"] in ("back", "external")]
+        except Exception as exc:
+            out.append({"source": None, "kind": "phone", "label": f"📱 {ph.label} — {exc}", "hint": str(exc)})
+            continue
+        for c in cams:
+            size = "×".join(str(v) for v in c["max_size"] if v)
+            focal = f" · {c['focal_mm']:.1f} mm" if c.get("focal_mm") else ""
+            out.append({"source": f"phone:{ph.serial}:{c['id']}", "kind": "phone",
+                        "label": f"📱 {ph.label} · back camera {c['id']}{focal}" + (f" · {size}" if size else ""),
+                        "facing": c["facing"]})
+    return out
+
+
 def _probe_cameras() -> list[dict[str, Any]]:
     """List video devices that actually deliver frames (cached for 15 s)."""
     if time.time() - _CAMERA_CACHE["t"] < 15.0:
@@ -256,17 +331,21 @@ def cameras() -> Response:
     if request.args.get("refresh"):
         _CAMERA_CACHE["t"] = 0.0
     try:
-        cams = _probe_cameras()
+        usb = _probe_cameras()
     except ImportError:
         return jsonify({"ok": False, "error": "OpenCV (cv2) is not installed", "cameras": []}), 500
-    return jsonify({"ok": True, "cameras": cams})
+    sources = [{"source": f"usb:{c['index']}", "kind": "usb",
+                "label": f"🔌 #{c['index']} {c['name']}" + (f" ({c['resolution']})" if c.get("resolution") else ""),
+                "name": c["name"], **c} for c in usb]
+    sources += _probe_phones()
+    return jsonify({"ok": True, "cameras": sources})
 
 
 @bp.route("/api/preview")
 def preview() -> Response:
     try:
-        dev = _device_arg(request.args.get("device", 0))
-        frame = _camera.grab(dev)
+        src = _source_arg(request.args.get("source"), request.args.get("device"))
+        frame = _prepare(_grab(src), request.args.get("rotate", 0), request.args.get("max_px", 1280))
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     except Exception as exc:
@@ -302,13 +381,20 @@ def _mjpeg_part(jpeg: bytes) -> bytes:
 
 @bp.route("/api/stream")
 def stream() -> Response:
-    """Live MJPEG video from a USB microscope / camera (use as <img src>)."""
+    """Live MJPEG preview (use as <img src>).
+
+    USB cameras stream continuously; phone cameras have no video API over
+    Termux, so the preview is a sequence of stills (~1/s, downscaled).
+    """
     import cv2
 
     try:
-        dev = _device_arg(request.args.get("device", 0))
+        src = _source_arg(request.args.get("source"), request.args.get("device"))
+        rotate = int(request.args.get("rotate", 0))
+        _prepare(np.zeros((2, 2, 3), np.uint8), rotate)       # validate early
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
+    label = f"camera {src[2]} on {src[1]}" if src[0] == "phone" else f"camera #{src[1]}"
     max_fps = max(1.0, min(30.0, float(request.args.get("fps", 15))))
 
     def gen():
@@ -317,11 +403,12 @@ def stream() -> Response:
         while True:
             t0 = time.time()
             try:
-                frame = _camera.grab(dev, fresh=False)
+                frame = _prepare(_grab(src, fresh=False), rotate, 1280)
             except Exception as exc:
                 _LIVE.update(t=time.time(), error=str(exc))
-                yield _mjpeg_part(_error_jpeg(f"Camera #{dev} unavailable:\n{exc}\nretrying..."))
-                time.sleep(1.0)
+                msg = str(exc)[:70]
+                yield _mjpeg_part(_error_jpeg(f"{label} unavailable:\n{msg}\nretrying..."))
+                time.sleep(2.0)
                 continue
             ok, buf = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
             if not ok:
@@ -332,7 +419,7 @@ def stream() -> Response:
                 _LIVE["fps"] = round(n / (now - t_fps), 1)
                 n, t_fps = 0, now
             h, w = frame.shape[:2]
-            _LIVE.update(t=now, error=None, device=dev, width=int(w), height=int(h),
+            _LIVE.update(t=now, error=None, source=":".join(map(str, src)), width=int(w), height=int(h),
                          sharpness=round(_sharpness(frame), 1))
             yield _mjpeg_part(buf.tobytes())
             time.sleep(max(0.0, period - (time.time() - t0)))
@@ -369,8 +456,8 @@ def _stack_summary(with_thumbs: bool = True) -> dict[str, Any]:
 def capture() -> Response:
     body = _json_body()
     try:
-        dev = _device_arg(body.get("device", 0))
-        frame = _camera.grab(dev)
+        src = _source_arg(body.get("source"), body.get("device"))
+        frame = _prepare(_grab(src), body.get("rotate", 0), body.get("max_px", 0))
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     except Exception as exc:
