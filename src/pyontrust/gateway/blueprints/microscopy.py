@@ -589,6 +589,13 @@ def run_stack() -> Response:
     )
 
     stats = {**rep.stats, "source": source}
+    from pyontrust.gateway import context
+    from pyontrust.gateway.blueprints.station import runs
+
+    runs().record("micro", f"stack:{source}", "done", context.actor(),
+                  {k: stats.get(k) for k in ("n_frames", "height_min_um", "height_max_um",
+                                             "confidence_mean", "elapsed_s", "source")},
+                  list(exports.values()))
     _LAST.clear()
     _LAST.update(stats=stats, exports=exports,
                  report_path=str(rep.report_path) if rep.report_path else None)

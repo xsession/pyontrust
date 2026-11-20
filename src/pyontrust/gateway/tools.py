@@ -33,6 +33,7 @@ class Tool:
     blueprint: str          # "module:attr"
     web_dir: str            # folder under gateway/web holding index.html
     activity: str | None = None   # "module:function" -> {"state", "label"} | None
+    selftest: str | None = None   # "module:function" -> [{"name", "status", "detail"}]
 
     @property
     def url(self) -> str:
@@ -40,7 +41,8 @@ class Tool:
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
-        d.pop("blueprint"); d.pop("activity")
+        d.pop("blueprint"); d.pop("activity"); d.pop("selftest")
+        d["has_selftest"] = self.selftest is not None
         d["url"] = self.url
         return d
 
@@ -59,20 +61,24 @@ TOOLS: list[Tool] = [
          "operate", f"{_BP}.diagnostic:bp", "diagnostic"),
     Tool("hil", "HIL Dashboard", "HIL Dashboard", "◉",
          "Run and monitor hardware-in-the-loop profiles",
-         "operate", f"{_BP}.hil:bp", "hil", activity="pyontrust.gateway.tools:hil_activity"),
+         "operate", f"{_BP}.hil:bp", "hil", activity="pyontrust.gateway.tools:hil_activity",
+         selftest="pyontrust.gateway.selftests:hil"),
     Tool("bench", "Lab Bench", "Lab Bench", "▦",
          "Configure and operate connected lab equipment",
          "operate", f"{_BP}.bench:bp", "bench"),
     Tool("can", "CAN Bus", "CAN Bus", "⇄",
          "Capture, transmit, decode, and replay CAN traffic",
-         "operate", f"{_BP}.can_diag:bp", "can", activity="pyontrust.gateway.tools:can_activity"),
+         "operate", f"{_BP}.can_diag:bp", "can", activity="pyontrust.gateway.tools:can_activity",
+         selftest="pyontrust.gateway.selftests:can"),
     Tool("thermal", "Thermal", "Thermal", "♨",
          "Live thermal image, regions, measurements and long-term tracking",
          "operate", f"{_BP}.thermal_measurement:bp", "thermal",
-         activity="pyontrust.gateway.tools:thermal_activity"),
+         activity="pyontrust.gateway.tools:thermal_activity",
+         selftest="pyontrust.gateway.selftests:thermal"),
     Tool("micro", "Microscopy", "Microscopy", "🔬",
          "Focus stacking, depth-from-focus, and surface height maps",
-         "operate", f"{_BP}.microscopy:bp", "micro"),
+         "operate", f"{_BP}.microscopy:bp", "micro",
+         selftest="pyontrust.gateway.selftests:micro"),
     Tool("scan3d", "3D Scan", "3D Scan", "⬡",
          "Stereo depth, disparity, and point-cloud analysis",
          "operate", f"{_BP}.scan3d:bp", "scan3d"),
@@ -81,13 +87,15 @@ TOOLS: list[Tool] = [
          "operate", f"{_BP}.spectroscopy:bp", "spec"),
     Tool("waveforms", "Waveforms", "Waveforms", "∿",
          "Oscilloscope, spectrum analyzer and signal generator over Digilent WaveForms hardware",
-         "operate", f"{_BP}.waveforms:bp", "waveforms"),
+         "operate", f"{_BP}.waveforms:bp", "waveforms",
+         selftest="pyontrust.gateway.selftests:waveforms"),
     Tool("csv", "CSV Plotter", "CSV Plotter", "📈",
          "Explore, compare, and export recorded signals",
          "analyse", f"{_BP}.csv_plotter:bp", "csv"),
     Tool("flowlab", "FlowLab", "FlowLab", "◇",
          "Build executable test workflows as connected blocks",
-         "analyse", f"{_BP}.flowlab:bp", "flowlab"),
+         "analyse", f"{_BP}.flowlab:bp", "flowlab",
+         selftest="pyontrust.gateway.selftests:flowlab"),
     Tool("ifdoc", "Interface Documentation", "Interfaces", "≡",
          "Browse registers, messages, and interface contracts",
          "analyse", f"{_BP}.ifdoc:bp", "ifdoc"),
@@ -97,6 +105,10 @@ TOOLS: list[Tool] = [
     Tool("config", "Configuration", "Configuration", "⚙",
          "Manage profiles, benches, and reusable limit sets",
          "manage", f"{_BP}.config:bp", "config"),
+    Tool("station", "Station", "Station", "🛡",
+         "Station health, operator & DUT, instrument calibration, run history, audit trail",
+         "manage", f"{_BP}.station:bp", "station",
+         activity="pyontrust.gateway.tools:station_activity"),
 ]
 
 DEFAULT_TOOL = "diag"
@@ -165,6 +177,16 @@ def thermal_activity() -> dict[str, str] | None:
         return {"state": "running", "label": "Thermal measurement"}
     if tm._tracking.running:
         return {"state": "running", "label": f"Thermal tracking · {tm._tracking.samples} samples"}
+    return None
+
+
+def station_activity() -> dict[str, str] | None:
+    """Overdue calibration is a station-level problem: flag it in the nav."""
+    from pyontrust.gateway.blueprints.station import instruments
+
+    overdue = instruments().summary()["overdue"]
+    if overdue:
+        return {"state": "error", "label": f"{overdue} instrument(s) overdue calibration"}
     return None
 
 

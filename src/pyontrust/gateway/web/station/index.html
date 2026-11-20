@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🛡 Station — pyontrust</title>
+<link rel="stylesheet" href="/static/shell/tokens.css">
+<link rel="stylesheet" href="/static/shell/components.css">
+<link rel="stylesheet" href="/station/static/station.css">
+<link rel="stylesheet" href="/static/shell/ui-foundation.css">
+</head>
+<body>
+<main class="container">
+
+<header class="page-head">
+  <h1 data-page-title>🛡 Station</h1>
+  <div id="ready-banner" class="ready-banner" role="status" aria-live="polite">Checking station…</div>
+  <div class="tabs">
+    <button class="tab-btn active" type="button" data-tab="overview">Overview</button>
+    <button class="tab-btn" type="button" data-tab="runs">Runs</button>
+    <button class="tab-btn" type="button" data-tab="instruments">Instruments</button>
+    <button class="tab-btn" type="button" data-tab="audit">Audit trail</button>
+  </div>
+</header>
+
+<!-- ═══ Overview ═══ -->
+<section class="tab-panel" id="tab-overview">
+  <div class="grid-2">
+    <div class="panel">
+      <div class="panel-head"><h2>Session</h2><span class="muted">recorded with every action and run</span></div>
+      <form id="session-form" class="form-grid" autocomplete="off">
+        <label>Operator<input name="operator" maxlength="64" placeholder="your name / badge"></label>
+        <label>Device under test (serial)<input name="dut" maxlength="64" placeholder="e.g. PCB-0042"></label>
+      </form>
+      <p id="session-msg" class="status-line"></p>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>Station</h2></div>
+      <form id="station-form" class="form-grid" autocomplete="off">
+        <label>Name<input name="name" maxlength="80"></label>
+        <label>Location<input name="location" maxlength="80" placeholder="lab / line / bench"></label>
+      </form>
+      <p id="station-msg" class="status-line"></p>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h2>Self-test</h2><span id="selftest-meta" class="muted"></span>
+      <button class="btn btn-secondary" type="button" data-action="selftest">↻ Run self-test</button></div>
+    <div id="selftest" class="selftest-grid"><p class="muted">Running…</p></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h2>Yield — last 30 days</h2><span class="muted">first-pass yield = pass ÷ (pass + fail)</span></div>
+    <div id="yield"></div>
+  </div>
+</section>
+
+<!-- ═══ Runs ═══ -->
+<section class="tab-panel" id="tab-runs" hidden>
+  <div class="panel">
+    <form id="runs-filter" class="filter-bar" autocomplete="off">
+      <label>Tool<select name="tool"><option value="">all</option></select></label>
+      <label>Outcome<select name="outcome"><option value="">all</option><option>pass</option><option>fail</option><option>error</option><option>aborted</option><option>done</option><option>running</option></select></label>
+      <label>DUT<input name="dut" placeholder="serial contains…"></label>
+      <label>Period<select name="days"><option value="1">24 h</option><option value="7">7 days</option><option value="30" selected>30 days</option><option value="0">all</option></select></label>
+      <a class="btn btn-secondary" id="runs-csv" href="/station/api/runs/export.csv">⬇ CSV</a>
+    </form>
+    <div id="runs-table"></div>
+  </div>
+  <div class="panel" id="run-detail" hidden></div>
+</section>
+
+<!-- ═══ Instruments ═══ -->
+<section class="tab-panel" id="tab-instruments" hidden>
+  <div class="panel">
+    <div class="panel-head"><h2>Instrument register</h2><span id="inst-summary" class="muted"></span>
+      <button class="btn btn-primary" type="button" data-action="inst-new">+ Add instrument</button></div>
+    <div id="inst-table"></div>
+  </div>
+  <div class="panel" id="inst-editor" hidden>
+    <div class="panel-head"><h2 id="inst-editor-title">Instrument</h2></div>
+    <form id="inst-form" class="form-grid" autocomplete="off">
+      <label>Name *<input name="name" required maxlength="200"></label>
+      <label>Kind<input name="kind" placeholder="PSU, DMM, scope, camera…"></label>
+      <label>Model<input name="model"></label>
+      <label>Serial<input name="serial"></label>
+      <label>Location<input name="location"></label>
+      <label>Calibration due<input name="cal_due" type="date"></label>
+      <label>Certificate<input name="cal_cert" placeholder="certificate no. / link"></label>
+      <label class="span-2">Notes<input name="notes"></label>
+    </form>
+    <div class="run-bar">
+      <button class="btn btn-primary" type="button" data-action="inst-save">Save</button>
+      <button class="btn btn-secondary" type="button" data-action="inst-cancel">Cancel</button>
+      <button class="btn btn-ghost" type="button" data-action="inst-delete">Delete</button>
+    </div>
+    <p id="inst-msg" class="status-line"></p>
+  </div>
+</section>
+
+<!-- ═══ Audit ═══ -->
+<section class="tab-panel" id="tab-audit" hidden>
+  <div class="panel">
+    <div class="panel-head"><h2>Audit trail</h2><span id="audit-verify" class="chip">integrity: …</span>
+      <button class="btn btn-secondary" type="button" data-action="audit-verify">Verify chain</button>
+      <a class="btn btn-secondary" href="/station/api/audit/export.jsonl">⬇ Export</a></div>
+    <form id="audit-filter" class="filter-bar" autocomplete="off">
+      <label>Tool<select name="tool"><option value="">all</option></select></label>
+      <label class="grow">Search<input name="q" placeholder="operator, DUT, path, value…"></label>
+    </form>
+    <div id="audit-table"></div>
+  </div>
+</section>
+
+</main>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<script type="module" src="/station/static/station.js"></script>
+<script src="/static/shell/ui-foundation.js"></script>
+</body>
+</html>

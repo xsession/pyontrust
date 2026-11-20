@@ -32,7 +32,8 @@ class MeasurementJob:
     # ── control ─────────────────────────────────────────────────────────
 
     def start(self, config: dict[str, Any],
-              before_launch: Callable[[], None] | None = None) -> None:
+              before_launch: Callable[[], None] | None = None,
+              on_done: Callable[[dict[str, Any]], None] | None = None) -> None:
         """Start a measurement in the background.
 
         ``running`` flips to True *before* ``before_launch`` runs (e.g. to
@@ -49,6 +50,7 @@ class MeasurementJob:
             self.result = None
             if before_launch is not None:
                 before_launch()
+            self._on_done = on_done
             self._thread = threading.Thread(target=self._run, args=(config,),
                                             name="thermal-measurement", daemon=True)
             self._thread.start()
@@ -100,3 +102,9 @@ class MeasurementJob:
             self.result = {"error": str(exc)}
         finally:
             self.running = False
+            cb, self._on_done = getattr(self, "_on_done", None), None
+            if cb is not None:
+                try:
+                    cb(self.result or {})
+                except Exception:  # pragma: no cover - reporting must not crash the job
+                    logger.exception("measurement on_done callback failed")

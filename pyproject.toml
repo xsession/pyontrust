@@ -30,6 +30,7 @@ dependencies = []  # Core has ZERO mandatory dependencies
 gui = [
     "flask>=3.1",
     "flask-sock>=0.7",
+    "waitress>=3.0",          # production WSGI server (gateway default)
 ]
 mcp = [
     "mcp>=1.9.0",

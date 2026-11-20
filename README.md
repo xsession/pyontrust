@@ -152,17 +152,58 @@ for visual inspection without a GenICam industrial camera.
 | Thermal Recorder | Background thermal logging | `thermal` recorder | `numpy`, `opencv-python` (optional) |
 | Simulated | CI testing | `simulated` | — (stdlib only) |
 
-## GUI
+## Lab Bench gateway (web UI)
 
-Recommended (NiceGUI):
+All tools (Diagnostic, HIL, Lab Bench, CAN, Thermal, Microscopy, 3D Scan,
+Spectroscopy, Waveforms, CSV Plotter, FlowLab, Interfaces, Artifacts,
+Configuration, Station) run in one web app:
 
-```powershell
-python -m venv .venv-nicegui
-.\.venv-nicegui\Scripts\python -m pip install -U pip
-.\.venv-nicegui\Scripts\python -m pip install -r scripts\requirements.txt
-.\.venv-nicegui\Scripts\python -m pip install -e gui_app\nicegui_control
-.\.venv-nicegui\Scripts\python -m pyontrust_gui
+```bash
+pip install -e ".[gui]"
+./start_lab_bench.sh            # or: python -m pyontrust.gateway.app --port 5200
 ```
+
+Open <http://127.0.0.1:5200>.  The gateway is served by **waitress**
+(production WSGI server); `--debug` uses Flask's development server.
+
+### Security model
+
+The gateway drives real hardware, so every request is a physical action.
+
+| Protection | Behaviour |
+|---|---|
+| Cross-site requests | Refused (`Sec-Fetch-Site` / `Origin` checks). A web page on another site cannot trigger or read anything. Extra origins: `PYONTRUST_ALLOWED_ORIGINS=https://a,https://b`. |
+| Remote clients | Loopback is trusted. Any other client needs the **station token** — `Authorization: Bearer <token>`, or open `http://<pc>:5200/?token=<token>` once (sets an HttpOnly cookie). Token: `PYONTRUST_TOKEN` or `~/.pyontrust/gateway_token` (created on first non-loopback start and logged). |
+| FlowLab | Expressions use an AST-checked evaluator (no `eval`). **Shell** and **HTTP** blocks are disabled unless `PYONTRUST_FLOWLAB_UNSAFE=1`. Diagram / profile names cannot contain paths. |
+| Headers | `nosniff`, `SAMEORIGIN` framing, same-origin referrer. |
+| Errors | One JSON envelope `{ok:false, error, status, request_id}`; `X-Request-ID` on every response. |
+
+Binding to the network (`--host 0.0.0.0`, the Docker image) therefore
+requires the token; read it from the container log or set `PYONTRUST_TOKEN`.
+
+### Station: traceability and readiness
+
+The **Station** tool (and the shell header chip) holds the session:
+**operator** and **device under test**.  Every state-changing request is
+appended to a **hash-chained audit log** (`~/.pyontrust/audit/`; any edit or
+deletion is detected by *Verify chain*), and every run — thermal measurement
+and tracking, microscopy stack, FlowLab diagram, HIL profile — is recorded in
+the **run registry** (`~/.pyontrust/runs.sqlite`) with operator, DUT,
+station, outcome, summary and artifacts, exportable as CSV, with first-pass
+yield per tool.
+
+Station also keeps the **instrument register** with calibration due dates
+(overdue → station *not ready*, red dot in the navigation) and runs the
+**self-tests** of every tool (drivers, attached hardware, configuration
+risks).  Data location: `PYONTRUST_DATA_DIR` (default `~/.pyontrust`).
+
+### Adding a tool
+
+Tools are declared once in `src/pyontrust/gateway/tools.py` (title, icon,
+group, blueprint, page folder, optional activity and self-test providers).
+The app registers the blueprint, the shell renders the navigation, and the UI
+contract tests check the page from that single entry.  Pages use the shared
+design system: `/static/shell/tokens.css` + `components.css`.
 
 ## CSV Plotter
 

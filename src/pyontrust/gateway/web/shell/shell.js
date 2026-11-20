@@ -118,7 +118,17 @@
     try {
       const response = await fetch('/api/activity', {headers: {'Accept': 'application/json'}, signal: controller.signal});
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const busy = (await response.json()).activity || {};
+      const payload = await response.json();
+      const busy = payload.activity || {};
+      const session = payload.session || {};
+      const chip = document.getElementById('session-chip');
+      if (chip) {
+        const parts = [session.operator ? `👤 ${session.operator}` : '👤 Set operator',
+                       session.dut ? `🔖 ${session.dut}` : ''].filter(Boolean);
+        chip.textContent = parts.join('  ·  ');
+        chip.classList.toggle('unset', !session.operator);
+        chip.title = `Station ${session.station || ''} — operator and DUT are recorded with every action. Click to change.`;
+      }
       links.forEach(link => {
         const entry = busy[link.dataset.tool];
         if (entry) { link.dataset.activity = entry.state; link.title = entry.label; }

@@ -371,10 +371,28 @@ def start_measurement() -> Response:
         body["camera"] = {"mode": "seek"}
     elif _wants_sim(cam_cfg) and not _sim_allowed():
         return jsonify({"error": _SIM_DISABLED_MSG}), 400
+    from pyontrust.gateway import context
+    from pyontrust.gateway.blueprints.station import runs
+
+    actor = context.actor()
+    actor["dut"] = actor["dut"] or context.clean(body.get("board_id"))
+    run_id = runs().start("thermal", f"measurement:{body.get('mode', 'continuous')}", actor,
+                          {"mode": body.get("mode", "continuous"), "duration_s": body.get("duration_s"),
+                           "regions": [z.get("name") for z in body.get("zones", [])]})
+
+    def _finished(result: dict[str, Any]) -> None:
+        outcome = ("aborted" if result.get("aborted") else "error" if result.get("error")
+                   else "pass" if result.get("passed") else "fail")
+        runs().finish(run_id, outcome,
+                      {k: result.get(k) for k in ("error", "global_max_c", "global_mean_c", "total_frames",
+                                                  "fail_reasons") if result.get(k) is not None},
+                      [result["report_path"]] if result.get("report_path") else [])
+
     try:
         # The job opens its own camera instance — free the shared one first.
-        _job.start(body, before_launch=_live.release)  # job.running already blocks re-opens
+        _job.start(body, before_launch=_live.release, on_done=_finished)  # job.running blocks re-opens
     except RuntimeError as exc:
+        runs().finish(run_id, "error", {"error": str(exc)})
         return jsonify({"error": str(exc)}), 409
     return jsonify({"status": "started", "mode": body.get("mode", "continuous")})
 
@@ -443,6 +461,12 @@ def tracking_start() -> Response:
     except Exception as exc:
         logger.exception("tracking start failed")
         return _error(f"Cannot open camera for tracking: {exc}", 502)
+    from pyontrust.gateway import context
+    from pyontrust.gateway.blueprints.station import runs
+
+    _TRACK_RUN["id"] = runs().start("thermal", "tracking", context.actor(),
+                                    {"interval_s": interval_s,
+                                     "regions": [s_.get("name") for s_ in selections or []]})
     return jsonify({**res, "ok": True, "camera_mode": mode})
 
 
@@ -451,9 +475,19 @@ def tracking_status() -> Response:
     return jsonify(_tracking.status())
 
 
+_TRACK_RUN: dict[str, str | None] = {"id": None}   # run-registry id of the live session
+
+
 @bp.route("/api/tracking/stop", methods=["POST"])
 def tracking_stop() -> Response:
-    return jsonify({**_tracking.stop(), "ok": True})
+    res = _tracking.stop()
+    run_id, _TRACK_RUN["id"] = _TRACK_RUN["id"], None
+    if run_id:
+        from pyontrust.gateway.blueprints.station import runs
+
+        runs().finish(run_id, "done", {"samples": res.get("samples")},
+                      [res["csv_path"]] if res.get("csv_path") else [])
+    return jsonify({**res, "ok": True})
 
 
 @bp.route("/api/tracking/export.csv")

@@ -2,6 +2,8 @@
 # pyontrust Lab Bench — container image
 # Build:   docker build -t pyontrust/lab-bench .
 # Run:     docker compose up --build        (see docker-compose.yml)
+# Remote access requires the station token: set PYONTRUST_TOKEN, or read the
+# generated token / login link from the container log on first start.
 # ═══════════════════════════════════════════════════════════════
 FROM python:3.12-slim
 

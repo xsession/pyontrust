@@ -52,7 +52,36 @@ def start_test():
         meta=body.get("meta"),
     )
     status_code = 409 if "error" in result else 200
+    if status_code == 200:
+        _track_run(test_svc, result.get("run_id", ""), profile_path)
     return jsonify(result), status_code
+
+
+# ── run registry: HIL runs finish on the service's thread ───────────────
+_PENDING: dict[str, str] = {}          # HIL run id -> run-registry id
+_LISTENING: set[int] = set()
+
+
+def _track_run(test_svc, hil_run_id: str, profile_path: str) -> None:
+    from pyontrust.gateway import context
+    from pyontrust.gateway.blueprints.station import runs
+
+    reg = runs()
+    _PENDING[hil_run_id] = reg.start("hil", "profile", context.actor(),
+                                     {"profile": profile_path, "hil_run_id": hil_run_id})
+    if id(test_svc) in _LISTENING:
+        return
+    _LISTENING.add(id(test_svc))
+
+    def _on_change(state, info) -> None:
+        value = getattr(state, "value", str(state)).lower()
+        if value not in ("finished", "error"):
+            return
+        run_id = _PENDING.pop(str(info.get("run_id", "")), None)
+        if run_id:
+            reg.finish(run_id, "done" if value == "finished" else "error")
+
+    test_svc.on_state_change(_on_change)
 
 
 @bp.route("/api/stop", methods=["POST"])

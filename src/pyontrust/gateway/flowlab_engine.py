@@ -638,16 +638,10 @@ def _blk_expression(params: dict, inputs: dict, ctx: ExecContext) -> dict:
     expr = str(params.get("expr", "a + b"))
 
     try:
-        # Safe eval with limited builtins
-        allowed = {"__builtins__": {"abs": abs, "min": min, "max": max,
-                                     "round": round, "len": len, "sum": sum,
-                                     "int": int, "float": float, "str": str,
-                                     "bool": bool, "list": list, "dict": dict,
-                                     "True": True, "False": False, "None": None,
-                                     "math": math}}
-        allowed["a"] = a
-        allowed["b"] = b
-        result = eval(expr, allowed)  # noqa: S307
+        # AST-walking evaluator — eval() with trimmed builtins is escapable.
+        from pyontrust.gateway.safe_expr import safe_eval
+
+        result = safe_eval(expr, {"a": a, "b": b})
         ctx.log(f"ƒ Expression: {expr} → {_summarise(result)}")
         return {"result": result}
     except Exception as exc:
@@ -1806,8 +1800,25 @@ def _blk_benchmark_timer(params: dict, inputs: dict, ctx: ExecContext) -> dict:
     return {"elapsed_s": round(elapsed, 6)}
 
 
+def unsafe_blocks_enabled() -> bool:
+    """Shell / HTTP blocks run arbitrary commands / requests from a diagram.
+
+    Off unless the lab PC opts in with ``PYONTRUST_FLOWLAB_UNSAFE=1``.
+    """
+    import os
+
+    return os.environ.get("PYONTRUST_FLOWLAB_UNSAFE") == "1"
+
+
+_UNSAFE_MSG = ("disabled — set PYONTRUST_FLOWLAB_UNSAFE=1 on the lab PC to allow "
+               "diagrams to run shell commands / HTTP requests")
+
+
 def _blk_shell_cmd(params: dict, inputs: dict, ctx: ExecContext) -> dict:
     cmd = str(params.get("command", "echo hello"))
+    if not unsafe_blocks_enabled():
+        ctx.log(f"⛔ Shell block {_UNSAFE_MSG}")
+        return {"stdout": "", "exit_code": -1}
     timeout = float(params.get("timeout_s", 30))
     ctx.log(f"⌨️ Shell: {cmd}")
     try:
@@ -1828,6 +1839,9 @@ def _blk_shell_cmd(params: dict, inputs: dict, ctx: ExecContext) -> dict:
 
 
 def _blk_http_request(params: dict, inputs: dict, ctx: ExecContext) -> dict:
+    if not unsafe_blocks_enabled():
+        ctx.log(f"⛔ HTTP block {_UNSAFE_MSG}")
+        return {"response": {"error": "HTTP block disabled"}, "status": 0}
     import urllib.request
     import urllib.error
 

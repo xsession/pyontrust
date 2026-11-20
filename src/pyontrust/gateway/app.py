@@ -158,7 +158,11 @@ def create_app(
     @app.route("/api/activity")
     def tools_activity():
         """Busy tools right now: ``{tool_id: {state, label}}`` (idle tools omitted)."""
-        return {"activity": tool_registry.activity(), "version": _get_version()}
+        from pyontrust.gateway import context
+
+        a = context.actor()
+        return {"activity": tool_registry.activity(), "version": _get_version(),
+                "session": {"operator": a["operator"], "dut": a["dut"], "station": a["station"]}}
 
     logger.info("Gateway app created — %d blueprints registered", len(app.blueprints))
     return app
@@ -195,7 +199,46 @@ def main() -> None:
         artifacts_root=args.artifacts,
         bench_path=args.bench,
     )
-    app.run(host=args.host, port=args.port, debug=args.debug)
+    serve(app, host=args.host, port=args.port, debug=args.debug)
+
+
+def serve(app: Flask, host: str = "127.0.0.1", port: int = 5200, debug: bool = False) -> None:
+    """Run the gateway: waitress (production) unless ``debug``.
+
+    Live MJPEG streams each hold a worker thread for their whole lifetime,
+    so the pool is sized well above the number of concurrent viewers
+    (``PYONTRUST_THREADS``, default 48).
+    """
+    import ipaddress
+
+    try:
+        loopback = ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        loopback = host == "localhost"
+    if not loopback:
+        from pyontrust.gateway.security import load_token, token_path
+
+        token = load_token()
+        logger.warning("Gateway reachable from the network on %s:%s — remote clients need the "
+                       "station token (%s). One-time login link: http://<this-pc>:%s/?token=%s",
+                       host, port, "PYONTRUST_TOKEN" if os.environ.get("PYONTRUST_TOKEN") else token_path(),
+                       port, token)
+
+    if debug:
+        logger.warning("Debug mode: Flask development server (not for production use)")
+        app.run(host=host, port=port, debug=True, threaded=True)
+        return
+    try:
+        from waitress import serve as waitress_serve
+    except ImportError:
+        logger.warning("waitress not installed — falling back to the Flask development server "
+                       "(pip install 'pyontrust[gui]')")
+        app.run(host=host, port=port, threaded=True)
+        return
+    threads = int(os.environ.get("PYONTRUST_THREADS", "48"))
+    logger.info("pyontrust gateway on http://%s:%s (waitress, %d threads)", host, port, threads)
+    waitress_serve(app, host=host, port=port, threads=threads, ident="pyontrust",
+                   channel_timeout=300, connection_limit=200, clear_untrusted_proxy_headers=True)
 
 
 if __name__ == "__main__":

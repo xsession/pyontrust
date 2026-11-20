@@ -12,6 +12,8 @@ Mounts at ``/flowlab/`` and provides:
 from __future__ import annotations
 
 import json
+import re
+from typing import Any
 import logging
 import pathlib
 import threading
@@ -24,6 +26,23 @@ from pyontrust.gateway.flowlab_codegen import diagram_to_python, extract_diagram
 
 logger = logging.getLogger("pyontrust.gateway.flowlab")
 
+
+_NAME_RE = re.compile(r"^[\w][\w .\-]{0,79}$")
+
+
+def _safe_json_path(base: pathlib.Path, name: Any) -> pathlib.Path:
+    """``base/<name>.json`` for a plain file name only (no paths, no '..').
+
+    Raises ValueError for anything that could escape ``base``.
+    """
+    name = str(name or "").strip()
+    if not _NAME_RE.match(name) or ".." in name:
+        raise ValueError("Invalid name — use letters, digits, space, '.', '-', '_' (max 80)")
+    path = (base / f"{name}.json").resolve()
+    if path.parent != base.resolve():
+        raise ValueError("Invalid name")
+    return path
+
 _WEB_DIR = pathlib.Path(__file__).resolve().parent.parent / "web" / "flowlab"
 _SAVE_DIR = pathlib.Path("data") / "flowlab_diagrams"
 _HIL_DIR = pathlib.Path(".") / "profiles"
@@ -34,6 +53,12 @@ bp = Blueprint(
     static_folder=str(_WEB_DIR),
     static_url_path="/static",
 )
+
+
+@bp.errorhandler(ValueError)
+def _bad_value(exc: ValueError):
+    """Invalid user input (e.g. an unsafe file name) is a 400, not a crash."""
+    return jsonify({"ok": False, "error": str(exc)}), 400
 
 # Shared engine instance per process
 _engine: FlowLabEngine | None = None
@@ -62,9 +87,26 @@ def execute():
     if not body or "blocks" not in body:
         return jsonify({"error": "Invalid diagram — missing 'blocks'"}), 400
 
+    from pyontrust.gateway import context
+    from pyontrust.gateway.blueprints.station import runs
+
     engine = _get_engine()
-    with _lock:
-        result = engine.execute(body)
+    actor = context.actor()
+    run_id = runs().start("flowlab", "diagram", actor,
+                          {"name": str(body.get("name", ""))[:80], "blocks": len(body.get("blocks", []))})
+    try:
+        with _lock:
+            result = engine.execute(body)
+    except Exception as exc:
+        runs().finish(run_id, "error", {"error": str(exc)})
+        raise
+    verdict = str(result.get("verdict") or "").upper()
+    errors = [bid for bid, r in (result.get("block_results") or {}).items()
+              if isinstance(r, dict) and r.get("error")]
+    outcome = "pass" if verdict == "PASS" else "fail" if verdict == "FAIL" else "error" if errors else "done"
+    runs().finish(run_id, outcome, {"verdict": verdict or None, "failed_blocks": errors[:20],
+                                    "elapsed_s": result.get("elapsed_s")})
+    result["run_id"] = run_id
     return jsonify(result)
 
 
@@ -84,7 +126,7 @@ def save():
     diagram = body.get("diagram", {})
 
     _SAVE_DIR.mkdir(parents=True, exist_ok=True)
-    path = _SAVE_DIR / f"{name}.json"
+    path = _safe_json_path(_SAVE_DIR, name)
     path.write_text(json.dumps(diagram, indent=2), encoding="utf-8")
     logger.info("FlowLab diagram saved: %s", path)
     return jsonify({"success": True, "path": str(path)})
@@ -93,7 +135,7 @@ def save():
 @bp.route("/api/load")
 def load():
     name = request.args.get("name", "autosave")
-    path = _SAVE_DIR / f"{name}.json"
+    path = _safe_json_path(_SAVE_DIR, name)
     if not path.exists():
         return jsonify({"diagram": None})
     try:
@@ -205,7 +247,7 @@ def import_diagram():
     # Load from saved diagrams by name
     name = body.get("name", "")
     if name:
-        path = _SAVE_DIR / f"{name}.json"
+        path = _safe_json_path(_SAVE_DIR, name)
         if path.exists():
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
@@ -267,7 +309,7 @@ def save_hil():
         profile = diagram_to_hil(diagram)
 
         _HIL_DIR.mkdir(parents=True, exist_ok=True)
-        path = _HIL_DIR / f"{name}.json"
+        path = _safe_json_path(_HIL_DIR, name)
         path.write_text(json.dumps(profile, indent=2), encoding="utf-8")
 
         logger.info("HIL profile saved: %s", path)
@@ -297,7 +339,7 @@ def import_hil():
         if not name:
             return jsonify({"error": "Provide 'profile' JSON or 'name' to load from disk"}), 400
 
-        path = _HIL_DIR / f"{name}.json"
+        path = _safe_json_path(_HIL_DIR, name)
         if not path.exists():
             return jsonify({"error": f"Profile not found: {path}"}), 404
         try:
