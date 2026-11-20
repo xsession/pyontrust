@@ -893,13 +893,13 @@ class TestBlueprintResult:
     def test_no_result_returns_404(self, thermal_client):
         # Reset module-level state
         import pyontrust.gateway.blueprints.thermal_measurement as tm
-        tm._last_result = None
+        tm._job.result = None
         resp = thermal_client.get("/thermal/api/result")
         assert resp.status_code == 404
 
     def test_result_available(self, thermal_client):
         import pyontrust.gateway.blueprints.thermal_measurement as tm
-        tm._last_result = {"mode": "continuous", "passed": True, "total_frames": 10}
+        tm._job.result = {"mode": "continuous", "passed": True, "total_frames": 10}
         resp = thermal_client.get("/thermal/api/result")
         assert resp.status_code == 200
         data = resp.get_json()
@@ -917,7 +917,7 @@ class TestBlueprintProgress:
 class TestBlueprintStop:
     def test_stop_when_not_running(self, thermal_client):
         import pyontrust.gateway.blueprints.thermal_measurement as tm
-        tm._measurement_progress["running"] = False
+        tm._job.running = False
         resp = thermal_client.post("/thermal/api/stop")
         assert resp.status_code == 200
         data = resp.get_json()
@@ -947,8 +947,8 @@ class TestBlueprintReports:
 class TestBlueprintStart:
     def test_start_measurement(self, thermal_client):
         import pyontrust.gateway.blueprints.thermal_measurement as tm
-        tm._measurement_progress["running"] = False
-        tm._last_result = None
+        tm._job.running = False
+        tm._job.result = None
 
         body = {
             "mode": "continuous",
@@ -971,14 +971,14 @@ class TestBlueprintStart:
         # Wait for measurement to complete
         for _ in range(30):
             time.sleep(0.2)
-            if not tm._measurement_progress["running"]:
+            if not tm._job.running:
                 break
 
-        assert tm._last_result is not None
+        assert tm._job.result is not None
 
     def test_start_conflict_when_running(self, thermal_client):
         import pyontrust.gateway.blueprints.thermal_measurement as tm
-        tm._measurement_progress["running"] = True
+        tm._job.running = True
         body = {"mode": "continuous", "duration_s": 1.0}
         resp = thermal_client.post(
             "/thermal/api/start",
@@ -987,7 +987,7 @@ class TestBlueprintStart:
         )
         assert resp.status_code == 409
         # Cleanup
-        tm._measurement_progress["running"] = False
+        tm._job.running = False
 
 
 # ═══════════════════════════════════════════════════════════════════════

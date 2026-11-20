@@ -12,9 +12,9 @@ Provides two ``ThermalCamera`` implementations:
 Both share the ``create()`` entry-point factory for the instrument registry.
 
 Hardware info:
-    Seek Thermal Compact      — 207×154 px, 36° FOV, USB-C, <100 mK NETD
+    Seek Thermal Compact      — 206×154 px, 36° FOV, USB-C, <100 mK NETD
     Seek Thermal CompactPRO   — 320×240 px, 32° FOV, USB-C, <70 mK NETD
-    Seek Thermal CompactXR    — 207×154 px, 20° FOV, USB-C, extended range
+    Seek Thermal CompactXR    — 206×154 px, 20° FOV, USB-C, extended range
 
 Temperature calibration:
     The libseek backend provides raw 14-bit data with an approximate
@@ -151,6 +151,15 @@ class SimulatedThermalCamera:
 # ═══════════════════════════════════════════════════════════════════════
 
 
+class SeekCameraNotFoundError(ImportError):
+    """Driver stack present but no Seek camera on USB.
+
+    Subclasses ImportError so existing ``except ImportError`` fallbacks
+    (simulated mode) keep working, while the message no longer tells the
+    user to install libraries they already have.
+    """
+
+
 @dataclass
 class SeekThermalCamera:
     """Seek Thermal USB camera (Compact / CompactPRO / CompactXR).
@@ -176,7 +185,7 @@ class SeekThermalCamera:
     """
 
     device_index: int = 0
-    camera_type: str = "compact"  # "compact" or "pro"
+    camera_type: str = "auto"  # "auto" (USB PID detection), "compact" or "pro"
     ffc_file: str | None = None
     emissivity: float = 0.95
     reflected_temp_c: float = 23.0
@@ -189,6 +198,7 @@ class SeekThermalCamera:
 
     def _detect_backend(self) -> str:
         """Detect which Seek Thermal library is available **and functional**."""
+        pyusb_ok = False
         # ── libseek: pure-Python pyusb driver (preferred) ────────────
         try:
             from pyontrust.instruments.libseek_driver import (
@@ -201,6 +211,7 @@ class SeekThermalCamera:
                 return "libseek"
             # pyusb available but no camera plugged in — fall through
             logger.debug("libseek: pyusb available but no camera detected on USB")
+            pyusb_ok = True
         except ImportError:
             logger.debug("libseek backend not available (pyusb not installed)")
 
@@ -228,6 +239,14 @@ class SeekThermalCamera:
         except ImportError:
             pass
 
+        if pyusb_ok:
+            # The driver stack is fine — the camera simply is not attached
+            # (or lacks USB permissions).  Don't send the user off installing
+            # libraries they already have.
+            raise SeekCameraNotFoundError(
+                "No Seek Thermal camera found on USB (VID 0x289D). Check the "
+                "cable and, on Linux, the udev rule granting access to the device."
+            )
         raise ImportError(
             "No Seek Thermal library found. Install ONE of:\n"
             "\n"
@@ -284,8 +303,11 @@ class SeekThermalCamera:
         self._frame_available = threading.Event()
 
         def _on_frame(camera, camera_frame, _user_data):
-            # Request the thermography float frame (°C per pixel)
-            thermo = camera_frame.data
+            # THERMOGRAPHY_FLOAT session: °C per pixel lives on the
+            # ``thermography_float`` sub-frame (SeekCameraFrame has no
+            # top-level ``.data``).
+            sub = getattr(camera_frame, "thermography_float", None)
+            thermo = getattr(sub, "data", None) if sub is not None else None
             if thermo is not None:
                 import numpy as np
                 self._last_frame = np.array(thermo, dtype=np.float32)
@@ -435,10 +457,21 @@ class SeekThermalCamera:
         frame = self.grab_temperature_frame()
         return float(frame[y, x])
 
+    def capture_flat_field(self, n_frames: int = 20) -> dict[str, Any]:
+        """Learn + save a flat-field map (libseek backend only)."""
+        if self._backend != "libseek" or self._libseek_cam is None:
+            raise RuntimeError("Flat-field capture needs the libseek (pyusb) backend")
+        return self._libseek_cam.capture_flat_field(n_frames)
+
+    def clear_flat_field(self) -> None:
+        if self._backend != "libseek" or self._libseek_cam is None:
+            raise RuntimeError("Flat-field needs the libseek (pyusb) backend")
+        self._libseek_cam.clear_flat_field()
+
     def info(self) -> ThermalCameraInfo:
         model = "Seek Thermal"
         serial = ""
-        resolution = (207, 154)
+        resolution = (206, 154)
 
         if self._backend == "libseek" and self._libseek_cam is not None:
             w, h = self._libseek_cam.resolution
@@ -488,7 +521,7 @@ def create(config: dict[str, Any]) -> SimulatedThermalCamera | SeekThermalCamera
     Config keys:
         mode: "simulated" (default) or "seek"
         device_index: Seek camera device index (default 0)
-        camera_type: "compact" (default) or "pro"
+        camera_type: "auto" (default — detect by USB PID), "compact" or "pro"
         ffc_file: Path to flat-field calibration PNG (default None)
         emissivity: Surface emissivity (default 0.95)
         reflected_temp_c: Reflected temperature for radiometric correction (default 23.0)
@@ -501,7 +534,7 @@ def create(config: dict[str, Any]) -> SimulatedThermalCamera | SeekThermalCamera
     if mode == "seek":
         return SeekThermalCamera(
             device_index=int(config.get("device_index", 0)),
-            camera_type=str(config.get("camera_type", "compact")),
+            camera_type=str(config.get("camera_type", "auto")),
             ffc_file=config.get("ffc_file"),
             emissivity=float(config.get("emissivity", 0.95)),
             reflected_temp_c=float(config.get("reflected_temp_c", 23.0)),

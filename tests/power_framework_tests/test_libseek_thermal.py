@@ -46,13 +46,13 @@ class TestConstants:
             COMPACT_RAW_WIDTH, COMPACT_RAW_HEIGHT,
             COMPACT_REQUEST_SIZE, COMPACT_RAW_SIZE, COMPACT_ROI,
         )
-        assert COMPACT_WIDTH == 207
+        assert COMPACT_WIDTH == 206
         assert COMPACT_HEIGHT == 154
         assert COMPACT_RAW_WIDTH == 208
         assert COMPACT_RAW_HEIGHT == 156
         assert COMPACT_REQUEST_SIZE == 16_224
         assert COMPACT_RAW_SIZE == 208 * 156
-        assert COMPACT_ROI == (0, 1, 207, 154)
+        assert COMPACT_ROI == (0, 1, 206, 154)
 
     def test_pro_geometry(self):
         from pyontrust.instruments.libseek_driver import (
@@ -123,10 +123,10 @@ class TestDeadPixelDetection:
     def test_no_dead_pixels(self):
         from pyontrust.instruments.libseek_driver import _create_dead_pixel_list
         # Uniform frame — no dead pixels
-        frame = np.full((154, 207), 8000, dtype=np.uint16)
+        frame = np.full((154, 206), 8000, dtype=np.uint16)
         mask, dead_list = _create_dead_pixel_list(frame)
         # All pixels should be alive (mask=255)
-        assert mask.shape == (154, 207)
+        assert mask.shape == (154, 206)
         assert np.all(mask == 255)
         assert len(dead_list) == 0
 
@@ -211,7 +211,7 @@ class TestLibSeekCamera:
     def test_compact_post_init(self):
         from pyontrust.instruments.libseek_driver import LibSeekCamera
         cam = LibSeekCamera(camera_type="compact")
-        assert cam.resolution == (207, 154)
+        assert cam.resolution == (206, 154)
         assert cam._raw_width == 208
         assert cam._raw_height == 156
 
@@ -255,7 +255,7 @@ class TestLibSeekCamera:
         cam = LibSeekCamera(camera_type="compact")
         raw = np.arange(208 * 156, dtype=np.uint16)
         cropped = cam._crop_roi(raw)
-        assert cropped.shape == (154, 207)
+        assert cropped.shape == (154, 206)
 
     def test_crop_roi_pro(self):
         from pyontrust.instruments.libseek_driver import LibSeekCamera
@@ -319,7 +319,7 @@ class TestLibSeekCameraFullLifecycle:
             # Manually simulate open_cam logic
             # We can't easily mock the full open() flow, so test the grab path
             cam._is_opened = True
-            cam._dead_pixel_mask = np.ones((154, 207), dtype=np.uint8) * 255
+            cam._dead_pixel_mask = np.ones((154, 206), dtype=np.uint8) * 255
             cam._dead_pixel_list = []
 
             # Prepare a frame for grab
@@ -329,7 +329,7 @@ class TestLibSeekCameraFullLifecycle:
             mock_dev.request_set.return_value = True
 
             frame = cam.grab()
-            assert frame.shape == (154, 207)
+            assert frame.shape == (154, 206)
             assert frame.dtype == np.uint16
 
     @patch("pyontrust.instruments.libseek_driver._SeekUSBDevice")
@@ -488,13 +488,13 @@ class TestSeekThermalCameraInfo:
         cam = SeekThermalCamera(camera_type="compact")
         cam._backend = "libseek"
         cam._libseek_cam = MagicMock()
-        cam._libseek_cam.resolution = (207, 154)
+        cam._libseek_cam.resolution = (206, 154)
         cam._libseek_cam.camera_type = "compact"
 
         info = cam.info()
         assert info.model == "Seek Thermal Compact (libseek)"
         assert info.serial == "libseek-usb"
-        assert info.resolution == (207, 154)
+        assert info.resolution == (206, 154)
         assert info.vendor == "Seek Thermal"
 
     def test_info_libseek_pro(self):
@@ -529,7 +529,7 @@ class TestHardwareDiscovery:
             "vid": "0x289D",
             "pid": "0x0010",
             "index": 0,
-            "resolution": "207x154",
+            "resolution": "206x154",
             "bus": 1,
             "address": 3,
         }]

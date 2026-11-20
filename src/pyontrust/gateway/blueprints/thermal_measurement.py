@@ -1,477 +1,556 @@
-"""Thermal measurement blueprint — Seek Thermal camera measurement dashboard.
+"""Thermal blueprint — Seek Thermal live view, zones, measurement, tracking.
 
-Provides REST API and single-page dashboard for running thermal
-measurement sessions (continuous, soak, delta, gradient) with the
-Seek Thermal camera (libseek / seekcamera / simulated).
+Thin HTTP layer; the logic lives in services:
 
-Routes
-------
-GET  /thermal/                    — Dashboard SPA
-GET  /thermal/api/status          — Camera and service status
-POST /thermal/api/start           — Start a measurement session
-GET  /thermal/api/progress        — Poll measurement progress
-POST /thermal/api/stop            — Abort running measurement
-GET  /thermal/api/result          — Latest result
-GET  /thermal/api/reports         — List saved HTML reports
-GET  /thermal/api/report/<name>   — Download a report
-POST /thermal/api/capture_single  — Single-frame capture
+* :mod:`pyontrust.services.thermal_live`     — shared camera, ownership
+  arbitration, rendering, latest-frame feed, zone statistics
+* :mod:`pyontrust.services.thermal_job`      — background measurement job
+* :mod:`pyontrust.services.thermal_tracking` — long-term point/patch logging
+
+Routes (under ``/thermal``)
+---------------------------
+Page / state
+    GET  /                       dashboard (static SPA in ``web/thermal``)
+    GET  /api/state              everything the dashboard renders, in one snapshot
+    GET  /api/status             camera, calibration, flat-field, job states
+Regions (single source of truth for zones *and* tracking selections)
+    GET  /api/regions | POST /api/regions
+    PATCH /api/regions/<id> | DELETE /api/regions/<id>
+Live view
+    GET  /api/stream             MJPEG live video (``<img src>``)
+    GET  /api/stream_meta        metadata of the latest streamed frame
+    GET  /api/frame              one frame as base64 PNG + metadata
+    POST /api/zone_readings      min/mean/max °C per rectangle (latest frame)
+Measurement
+    POST /api/start              start a measurement job
+    GET  /api/progress           job progress
+    POST /api/stop               abort the job
+    GET  /api/result             latest result
+    GET  /api/reports            saved HTML reports
+    GET  /api/report/<name>      download a report
+Tracking
+    POST /api/tracking/start | GET /api/tracking/status
+    POST /api/tracking/stop  | GET /api/tracking/export.csv
+Camera tools
+    POST /api/capture_single     one analysed frame (zones, verdict)
+    POST /api/calibrate          one-point reference offset (or clear)
+    POST /api/flat_field         learn / clear the flat-field map
+
+The GUI works with the real Seek camera only.  The simulated camera is
+available to automated tests (Flask ``TESTING``) or headless CI
+(``PYONTRUST_THERMAL_SIMULATOR=1``) and is refused otherwise.
 """
-
 from __future__ import annotations
 
-import json
 import logging
+import os
 import pathlib
-import threading
 import time
 from typing import Any
 
-from flask import Blueprint, jsonify, request, send_from_directory, send_file, current_app
+from flask import (Blueprint, Response, current_app, jsonify, request, send_file,
+                   send_from_directory, stream_with_context)
+
+from pyontrust.services.thermal_job import MeasurementJob
+from pyontrust.services.thermal_regions import RegionError, RegionStore, region_readings
+from pyontrust.services.thermal_live import (CameraArbiter, FrameError, LiveCamera, LiveFeed,
+                                             camera_config, mjpeg_part, render_frame,
+                                             status_jpeg, zone_stats)
+from pyontrust.services.thermal_tracking import TrackingSession
 
 logger = logging.getLogger("pyontrust.gateway.thermal_measurement")
 
 _WEB_DIR = pathlib.Path(__file__).resolve().parent.parent / "web" / "thermal"
+_REPORT_DIR = pathlib.Path("test_reports")  # relative to the server's working dir
 
-bp = Blueprint(
-    "thermal_measurement",
-    __name__,
-    static_folder=str(_WEB_DIR),
-    static_url_path="/thermal/static",
-)
+bp = Blueprint("thermal_measurement", __name__,
+               static_folder=str(_WEB_DIR), static_url_path="/static")
 
-# ── Module-level state ───────────────────────────────────────────────
-_measurement_thread: threading.Thread | None = None
-_measurement_lock = threading.Lock()
-_measurement_progress: dict[str, Any] = {
-    "running": False,
-    "frame": 0,
-    "total": 0,
-    "latest_snapshot": None,
-    "elapsed_s": 0.0,
-}
-_last_result: dict[str, Any] | None = None
-_abort_event = threading.Event()
-
-# Long-term tracking session (click-selected points/patches over time).
-from pyontrust.services.thermal_tracking import TrackingSession  # noqa: E402
-
+# ── Process-wide state (one camera per gateway) ─────────────────────────
+_job = MeasurementJob()
 _tracking = TrackingSession()
+_live = LiveCamera()
+_feed = LiveFeed()
+_arbiter = CameraArbiter(_live, _tracking, lambda: _job.running)
+_regions = RegionStore()
+
+_SIM_DISABLED_MSG = ("The simulated thermal camera has been removed — connect the "
+                     "Seek Thermal camera (USB 289D).")
+
+
+# ── helpers ─────────────────────────────────────────────────────────────
+
+def _body() -> dict[str, Any]:
+    data = request.get_json(force=True, silent=True)
+    return data if isinstance(data, dict) else {}
+
+
+def _error(message: str, status: int, **extra: Any) -> tuple[Response, int]:
+    return jsonify({"ok": False, "error": message, **extra}), status
+
+
+def _sim_allowed() -> bool:
+    if os.environ.get("PYONTRUST_THERMAL_SIMULATOR") == "1":
+        return True
+    try:
+        return bool(current_app.testing)
+    except RuntimeError:  # outside an app context
+        return False
+
+
+def _wants_sim(cam_cfg: Any) -> bool:
+    return isinstance(cam_cfg, dict) and str(cam_cfg.get("mode", "")).lower() == "simulated"
+
+
+def _resolve_mode(mode: str | None) -> str:
+    """Real Seek camera, unless the simulator is requested in test mode."""
+    return "simulated" if (mode or "").lower() == "simulated" and _sim_allowed() else "seek"
 
 
 # ═══════════════════════════════════════════════════════════════════════
-#  Dashboard
+#  Page / status
 # ═══════════════════════════════════════════════════════════════════════
 
 
 @bp.route("/")
-def index():
+def index() -> Response:
     return bp.send_static_file("index.html")
 
 
-# ═══════════════════════════════════════════════════════════════════════
-#  API: Status
-# ═══════════════════════════════════════════════════════════════════════
+_CAMERA_CACHE: dict[str, Any] = {"t": 0.0, "value": None}
 
 
-@bp.route("/api/status")
-def status():
-    """Return camera availability and current measurement state."""
-    camera_status = "unknown"
-    camera_info: dict[str, Any] = {}
-
-    # Try to detect camera
+def _camera_state() -> dict[str, Any]:
+    """USB detection (cached 2 s — it enumerates the bus)."""
+    if time.time() - _CAMERA_CACHE["t"] < 2.0 and _CAMERA_CACHE["value"] is not None:
+        return _CAMERA_CACHE["value"]
+    info: dict[str, Any] = {}
     try:
         from pyontrust.instruments.libseek_driver import detect_camera, list_cameras
         detected = detect_camera()
         if detected:
-            camera_status = "connected"
+            status_ = "connected"
             cams = list_cameras()
-            camera_info = cams[0] if cams else {"type": detected}
+            info = cams[0] if cams else {"type": detected}
         else:
-            camera_status = "not_connected"
+            status_ = "not_connected"
     except ImportError:
-        camera_status = "no_driver"
+        status_ = "no_driver"
+    value = {"status": status_, "info": info}
+    _CAMERA_CACHE.update(t=time.time(), value=value)
+    return value
 
+
+def _calibration_state() -> dict[str, Any]:
+    try:
+        from pyontrust.instruments import thermal_calibration as tcal
+        return tcal.load_info()
+    except Exception:
+        return {"calibrated": False, "offset_c": 0.0}
+
+
+def _flat_field_state(camera_type: str = "compact") -> dict[str, Any]:
+    try:
+        from pyontrust.instruments.libseek_driver import default_flat_field_path
+        ff = default_flat_field_path(camera_type)
+        if not ff.is_file():
+            return {"saved": False, "set_at": None}
+        return {"saved": True,
+                "set_at": time.strftime("%Y-%m-%d %H:%M", time.localtime(ff.stat().st_mtime))}
+    except Exception:
+        return {"saved": False, "set_at": None}
+
+
+def _result_summary() -> dict[str, Any] | None:
+    r = _job.result
+    if r is None:
+        return None
+    if r.get("aborted"):
+        return {"outcome": "aborted"}
+    if r.get("error"):
+        return {"outcome": "error", "error": r["error"]}
+    return {"outcome": "pass" if r.get("passed") else "fail", "mode": r.get("mode"),
+            "report": pathlib.Path(r["report_path"]).name if r.get("report_path") else None}
+
+
+@bp.route("/api/state")
+def state() -> Response:
+    """Everything the dashboard renders, in one snapshot (polled ~1/s).
+
+    ``regions`` carry their live readings (from the latest streamed frame)
+    so overlay, table and limit badges all show the same numbers.
+    """
+    cam = _camera_state()
+    regions = _regions.list()
+    frame = _feed.frame()
+    readings = region_readings(frame, regions) if frame is not None else {}
+    tracking = _tracking.status(include_series=False)
+    activity = "measuring" if _job.running else "tracking" if tracking["running"] else "idle"
     return jsonify({
-        "camera_status": camera_status,
-        "camera_info": camera_info,
-        "measurement_running": _measurement_progress["running"],
-        "simulated_available": True,
+        "camera": cam,
+        "calibration": _calibration_state(),
+        "flat_field": _flat_field_state(str(cam["info"].get("camera_type", "compact"))),
+        "live": _feed.meta(),
+        "regions": [{**r.to_dict(), "reading": readings.get(r.id)} for r in regions],
+        "activity": activity,
+        "measurement": {**_job.progress(), "result": _result_summary()},
+        "tracking": {k: tracking[k] for k in ("running", "samples", "elapsed_s", "csv_path", "latest")}
+                    | {"names": [s["name"] for s in tracking["selections"]]},
+    })
+
+
+@bp.route("/api/status")
+def status() -> Response:
+    """Camera availability, calibration / flat-field state, job states."""
+    cam = _camera_state()
+    return jsonify({
+        "camera_status": cam["status"],
+        "camera_info": cam["info"],
+        "calibration": _calibration_state(),
+        "flat_field": _flat_field_state(str(cam["info"].get("camera_type", "compact"))),
+        "measurement_running": _job.running,
+        "tracking_running": _tracking.running,
+        "simulated_available": _sim_allowed(),
     })
 
 
 # ═══════════════════════════════════════════════════════════════════════
-#  API: Start measurement
+#  Regions (zones + tracking selections — one list)
+# ═══════════════════════════════════════════════════════════════════════
+
+
+def _locked_regions() -> tuple[Response, int] | None:
+    """Regions are frozen while a session uses them (names = CSV columns)."""
+    if _tracking.running or _job.running:
+        return _error("Stop the running measurement / tracking before editing regions", 409)
+    return None
+
+
+@bp.route("/api/regions", methods=["GET"])
+def regions_list() -> Response:
+    return jsonify({"ok": True, "regions": [r.to_dict() for r in _regions.list()]})
+
+
+@bp.route("/api/regions", methods=["POST"])
+def regions_create() -> Response:
+    """Body: ``{"kind": "point"|"rect", "x", "y", "w", "h", "name"?, "warn_c"?, "max_c"?}``"""
+    if (locked := _locked_regions()) is not None:
+        return locked
+    try:
+        region = _regions.create(_body())
+    except RegionError as exc:
+        return _error(str(exc), 400)
+    return jsonify({"ok": True, "region": region.to_dict()}), 201
+
+
+@bp.route("/api/regions/<region_id>", methods=["PATCH"])
+def regions_update(region_id: str) -> Response:
+    if (locked := _locked_regions()) is not None:
+        return locked
+    try:
+        region = _regions.update(region_id, _body())
+    except KeyError:
+        return _error("No such region", 404)
+    except RegionError as exc:
+        return _error(str(exc), 400)
+    return jsonify({"ok": True, "region": region.to_dict()})
+
+
+@bp.route("/api/regions/<region_id>", methods=["DELETE"])
+def regions_delete(region_id: str) -> Response:
+    if (locked := _locked_regions()) is not None:
+        return locked
+    try:
+        _regions.delete(region_id)
+    except KeyError:
+        return _error("No such region", 404)
+    return jsonify({"ok": True})
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  Live view
+# ═══════════════════════════════════════════════════════════════════════
+
+
+@bp.route("/api/stream")
+def live_stream() -> Response:
+    """Live MJPEG thermal video (use as ``<img src>``).
+
+    ``annotate=0`` disables the burned-in max/centre markers (the page draws
+    its own overlays).  Without a camera the stream shows a status frame and
+    keeps retrying, so plugging the camera in starts the video by itself.
+    """
+    import cv2
+
+    mode = _resolve_mode(request.args.get("mode"))
+    annotate = request.args.get("annotate", "1") != "0"
+
+    def gen():
+        while True:
+            t0 = time.time()
+            try:
+                temp, source = _arbiter.display_frame(mode)
+            except FrameError as exc:
+                _feed.set_error(str(exc))
+                msg = str(exc).replace(": ", ":\n", 1)
+                yield mjpeg_part(status_jpeg(f"No thermal image\n{msg}\nretrying every 2 s ..."))
+                time.sleep(2.0)
+                continue
+            big, meta = render_frame(temp, annotate=annotate,
+                                     simulated=_arbiter.is_simulated(source))
+            ok, buf = cv2.imencode(".jpg", big, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+            if not ok:
+                continue
+            _feed.update(temp, {**meta, "mode": source})
+            yield mjpeg_part(buf.tobytes())
+            if source == "simulated":  # the real camera paces itself (~9 Hz)
+                time.sleep(max(0.0, 0.11 - (time.time() - t0)))
+
+    return Response(stream_with_context(gen()),
+                    mimetype="multipart/x-mixed-replace; boundary=frame",
+                    headers={"Cache-Control": "no-store"})
+
+
+@bp.route("/api/stream_meta")
+def stream_meta() -> Response:
+    """Metadata of the most recent live-stream frame (min/max/fps/error)."""
+    return jsonify(_feed.meta())
+
+
+@bp.route("/api/frame")
+def live_frame() -> Response:
+    """One colourised frame as base64 PNG + metadata (snapshot API)."""
+    import base64
+
+    import cv2
+
+    try:
+        temp, source = _arbiter.display_frame(_resolve_mode(request.args.get("mode")))
+    except FrameError as exc:
+        extra = {"busy": True} if exc.busy else {}
+        return _error(str(exc), exc.status, **extra)
+    big, meta = render_frame(temp, simulated=_arbiter.is_simulated(source))
+    ok, png = cv2.imencode(".png", big)
+    if not ok:
+        return _error("PNG encoding failed", 500)
+    return jsonify({"ok": True, "image_b64": base64.b64encode(png.tobytes()).decode("ascii"),
+                    **meta, "mode": source})
+
+
+@bp.route("/api/zone_readings", methods=["POST"])
+def zone_readings() -> Response:
+    """Min / mean / max °C inside each rectangle, from the latest live frame.
+
+    Body: ``{"zones": [{"name": "U3", "x": 40, "y": 20, "w": 18, "h": 12}, ...]}``
+    (``width``/``height`` accepted as aliases of ``w``/``h``).
+    """
+    frame = _feed.frame()
+    if frame is None:
+        return _error("No live frame yet — is the live feed running?", 409)
+    zones = _body().get("zones") or []
+    h, w = frame.shape[:2]
+    return jsonify({"ok": True, "width": int(w), "height": int(h),
+                    "zones": zone_stats(frame, zones if isinstance(zones, list) else [])})
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  Measurement
 # ═══════════════════════════════════════════════════════════════════════
 
 
 @bp.route("/api/start", methods=["POST"])
-def start_measurement():
-    """Start a thermal measurement session.
-
-    JSON body:
-        {
-            "mode": "continuous" | "soak" | "delta" | "gradient",
-            "duration_s": 30.0,
-            "capture_interval_s": 0.5,
-            "camera": {"mode": "simulated", ...},
-            "zones": [...],
-            "board_id": "PCB-001",
-            ...
-        }
-    """
-    global _measurement_thread, _last_result
-
-    with _measurement_lock:
-        if _measurement_progress["running"]:
-            return jsonify({"error": "Measurement already running"}), 409
-
-    body = request.get_json(force=True, silent=True) or {}
-
-    # Reset
-    _abort_event.clear()
-    _measurement_progress.update({
-        "running": True,
-        "frame": 0,
-        "total": 0,
-        "latest_snapshot": None,
-        "elapsed_s": 0.0,
-        "mode": body.get("mode", "continuous"),
-        "start_time": time.time(),
-    })
-    _last_result = None
-
-    _measurement_thread = threading.Thread(
-        target=_run_measurement_thread,
-        args=(body,),
-        name="thermal-measurement",
-        daemon=True,
-    )
-    _measurement_thread.start()
-
+def start_measurement() -> Response:
+    """Start a measurement (``mode``, ``duration_s``, ``zones``, limits …)."""
+    if _tracking.running:
+        return jsonify({"error": "A tracking session holds the camera — stop it first"}), 409
+    body = _body()
+    if "zones" not in body:
+        body["zones"] = _regions.measurement_zones()
+    cam_cfg = body.get("camera")
+    if cam_cfg is None:
+        body["camera"] = {"mode": "seek"}
+    elif _wants_sim(cam_cfg) and not _sim_allowed():
+        return jsonify({"error": _SIM_DISABLED_MSG}), 400
+    try:
+        # The job opens its own camera instance — free the shared one first.
+        _job.start(body, before_launch=_live.release)  # job.running already blocks re-opens
+    except RuntimeError as exc:
+        return jsonify({"error": str(exc)}), 409
     return jsonify({"status": "started", "mode": body.get("mode", "continuous")})
 
 
-def _run_measurement_thread(config_dict: dict[str, Any]) -> None:
-    """Background thread that runs the measurement."""
-    global _last_result
-
-    try:
-        from pyontrust.analysis.thermal.measurement import run_thermal_measurement
-
-        def _progress(frame_idx: int, total: int, snapshot: dict[str, Any]) -> None:
-            _measurement_progress["frame"] = frame_idx
-            _measurement_progress["total"] = total
-            _measurement_progress["latest_snapshot"] = snapshot
-            _measurement_progress["elapsed_s"] = time.time() - _measurement_progress.get("start_time", time.time())
-
-            if _abort_event.is_set():
-                raise KeyboardInterrupt("Measurement aborted by user")
-
-        result = run_thermal_measurement(config_dict, progress_cb=_progress)
-
-        # Save report
-        report_path = result.write_report()
-        result_dict = result.to_dict()
-        result_dict["report_path"] = str(report_path)
-        _last_result = result_dict
-
-        logger.info("Thermal measurement complete: %s", "PASS" if result.passed else "FAIL")
-
-    except KeyboardInterrupt:
-        logger.info("Thermal measurement aborted by user")
-        _last_result = {"aborted": True, "message": "Measurement aborted by user"}
-    except Exception as exc:
-        logger.exception("Thermal measurement failed")
-        _last_result = {"error": str(exc)}
-    finally:
-        _measurement_progress["running"] = False
-
-
-# ═══════════════════════════════════════════════════════════════════════
-#  API: Progress
-# ═══════════════════════════════════════════════════════════════════════
-
-
 @bp.route("/api/progress")
-def progress():
-    """Poll measurement progress."""
-    return jsonify({
-        "running": _measurement_progress["running"],
-        "frame": _measurement_progress["frame"],
-        "total": _measurement_progress["total"],
-        "elapsed_s": round(_measurement_progress.get("elapsed_s", 0.0), 1),
-        "latest_snapshot": _measurement_progress.get("latest_snapshot"),
-    })
-
-
-# ═══════════════════════════════════════════════════════════════════════
-#  API: Stop
-# ═══════════════════════════════════════════════════════════════════════
+def progress() -> Response:
+    return jsonify(_job.progress())
 
 
 @bp.route("/api/stop", methods=["POST"])
-def stop_measurement():
-    """Abort a running measurement."""
-    if not _measurement_progress["running"]:
-        return jsonify({"status": "not_running"})
-
-    _abort_event.set()
-    return jsonify({"status": "stopping"})
-
-
-# ═══════════════════════════════════════════════════════════════════════
-#  API: Result
-# ═══════════════════════════════════════════════════════════════════════
+def stop_measurement() -> Response:
+    return jsonify({"status": "stopping" if _job.stop() else "not_running"})
 
 
 @bp.route("/api/result")
-def result():
-    """Return the latest measurement result."""
-    if _last_result is None:
+def result() -> Response:
+    if _job.result is None:
         return jsonify({"status": "no_result"}), 404
-    return jsonify(_last_result)
+    return jsonify(_job.result)
+
+
+@bp.route("/api/reports")
+def list_reports() -> Response:
+    """Saved thermal measurement HTML reports, newest first."""
+    if not _REPORT_DIR.exists():
+        return jsonify({"reports": []})
+    reports = [{"name": f.name, "size_kb": round(f.stat().st_size / 1024, 1),
+                "modified": f.stat().st_mtime}
+               for f in sorted(_REPORT_DIR.glob("thermal_measurement_*.html"), reverse=True)]
+    return jsonify({"reports": reports})
+
+
+@bp.route("/api/report/<name>")
+def download_report(name: str) -> Response:
+    return send_from_directory(str(_REPORT_DIR.resolve()), name)
 
 
 # ═══════════════════════════════════════════════════════════════════════
-#  API: Calibration (one-point reference temperature)
-# ═══════════════════════════════════════════════════════════════════════
-
-
-@bp.route("/api/calibrate", methods=["POST"])
-def calibrate():
-    """Set a one-point calibration offset (persistent).
-
-    Body: {"ref_c": 24.0}   → aim the camera at something known to be
-                               ref_c °C; all future readings are shifted so
-                               the frame median equals ref_c.
-          {"clear": true}   → reset the offset to zero.
-
-    The offset is stored in ~/.pyontrust/thermal_calibration.json and applied
-    by the SeekThermalCamera instrument layer, so it affects every consumer
-    (FlowLab blocks, this dashboard, services) across restarts.
-    """
-    from pyontrust.instruments import thermal_calibration as tcal
-
-    body = request.get_json(silent=True) or {}
-
-    if body.get("clear"):
-        return jsonify({"ok": True, **tcal.clear()})
-
-    try:
-        ref_c = float(body.get("ref_c", body.get("reference_c")))
-    except (TypeError, ValueError):
-        return jsonify({"ok": False, "error": "Provide ref_c (number) or clear=true"}), 400
-    if not (-60.0 <= ref_c <= 400.0):
-        return jsonify({"ok": False, "error": "ref_c out of range"}), 400
-
-    # Grab one frame to measure the current scene median (raw estimate).
-    from pyontrust.instruments.seek_thermal import create as create_thermal
-    cam = None
-    try:
-        cam = create_thermal({"mode": "seek"})
-        cam.open()
-        frame = cam.grab_temperature_frame()  # includes any existing offset
-    except Exception as exc:
-        logger.warning("Calibration grab failed: %s", exc)
-        return jsonify({"ok": False,
-                        "error": f"Cannot grab calibration frame (camera connected?): {exc}"}), 502
-    finally:
-        if cam is not None:
-            try:
-                cam.close()
-            except Exception:
-                pass
-
-    import numpy as np
-    current = tcal.load_offset_c()
-    raw_median = float(np.median(frame)) - current
-    offset = round(ref_c - raw_median, 3)
-    info = tcal.save_offset(offset, reference_c=ref_c, scene_median_c=raw_median)
-    return jsonify({"ok": True, **info})
-
-
-# ═══════════════════════════════════════════════════════════════════════
-#  API: Long-term tracking (click-selected points & patches over time)
+#  Tracking (click-selected points & patches over time)
 # ═══════════════════════════════════════════════════════════════════════
 
 
 @bp.route("/api/tracking/start", methods=["POST"])
-def tracking_start():
-    """Start a tracking session.
-
-    Body: {
-        "selections": [{"name": "U3", "type": "patch", "x": 40, "y": 20, "w": 18, "h": 12},
-                       {"name": "P1", "type": "point", "x": 100, "y": 60}],
-        "interval_s": 1.0
-    }
-    """
-    if _measurement_progress["running"]:
-        return jsonify({"ok": False, "error": "A measurement session is running — stop it first"}), 409
-
-    body = request.get_json(silent=True) or {}
-    selections = body.get("selections") or []
-    interval_s = float(body.get("interval_s", 1.0))
-
+def tracking_start() -> Response:
+    """Body: ``{"selections": [{"name","type":"point|patch","x","y","w","h"}], "interval_s": 1}``"""
+    if _job.running:
+        return _error("A measurement session is running — stop it first", 409)
+    body = _body()
     try:
-        res = _tracking.start(selections=selections, interval_s=interval_s)
+        interval_s = float(body.get("interval_s", 1.0))
+    except (TypeError, ValueError):
+        return _error("interval_s must be a number", 400)
+    cam_body = body.get("camera")
+    mode = _resolve_mode(cam_body.get("mode") if isinstance(cam_body, dict) else None)
+
+    if _tracking.running:
+        return _error("Tracking is already running", 409)
+    selections = body["selections"] if "selections" in body else _regions.tracking_selections()
+    try:
+        # Tracking holds its own camera instance for the session.
+        with _arbiter.handover():
+            res = _tracking.start(selections=selections or [], interval_s=interval_s,
+                                  camera_cfg=camera_config(mode))
     except ValueError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
-    except RuntimeError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 409
+        return _error(str(exc), 400)
     except Exception as exc:
         logger.exception("tracking start failed")
-        return jsonify({"ok": False, "error": f"Cannot open camera for tracking: {exc}"}), 502
-
-    res["ok"] = True
-    return jsonify(res)
+        return _error(f"Cannot open camera for tracking: {exc}", 502)
+    return jsonify({**res, "ok": True, "camera_mode": mode})
 
 
 @bp.route("/api/tracking/status")
-def tracking_status():
-    """Running state, latest per-selection values and (downsampled) series."""
+def tracking_status() -> Response:
     return jsonify(_tracking.status())
 
 
 @bp.route("/api/tracking/stop", methods=["POST"])
-def tracking_stop():
-    """Stop the tracking session and release the camera."""
-    res = _tracking.stop()
-    res["ok"] = True
-    return jsonify(res)
+def tracking_stop() -> Response:
+    return jsonify({**_tracking.stop(), "ok": True})
 
 
 @bp.route("/api/tracking/export.csv")
-def tracking_export_csv():
-    """Download the CSV log of the current/last tracking session."""
+def tracking_export_csv() -> Response:
     path = _tracking.csv_path
     if path is None or not pathlib.Path(path).exists():
-        return jsonify({"ok": False, "error": "No tracking CSV available"}), 404
+        return _error("No tracking CSV available", 404)
     return send_file(str(path), as_attachment=True, download_name=pathlib.Path(path).name)
 
 
 # ═══════════════════════════════════════════════════════════════════════
-#  API: Live frame (colourised PNG for the interactive view)
-# ═══════════════════════════════════════════════════════════════════════
-
-
-@bp.route("/api/frame")
-def live_frame():
-    """Return one colourised thermal frame as a base64 PNG.
-
-    Used by the tracking tab's live image (click to select points/patches).
-    While a tracking session is running, grabs are serialized with its
-    sampling loop; otherwise a one-shot camera open/grab/close is used.
-    """
-    import base64
-
-    import cv2
-    import numpy as np
-
-    if _tracking.running:
-        try:
-            temp = _tracking.grab_for_display()
-        except Exception as exc:
-            return jsonify({"ok": False, "error": str(exc)}), 502
-    else:
-        from pyontrust.instruments.seek_thermal import create as create_thermal
-        cam = None
-        try:
-            cam = create_thermal({"mode": "seek"})
-            cam.open()
-            temp = cam.grab_temperature_frame()
-        except Exception as exc:
-            return jsonify({"ok": False,
-                            "error": f"Cannot grab frame (camera connected?): {exc}"}), 502
-        finally:
-            if cam is not None:
-                try:
-                    cam.close()
-                except Exception:
-                    pass
-
-    temp = np.asarray(temp, dtype=np.float32)
-    vmin, vmax = float(np.min(temp)), float(np.max(temp))
-    norm = ((temp - vmin) / max(vmax - vmin, 1e-3) * 255).clip(0, 255).astype(np.uint8)
-    color = cv2.applyColorMap(norm, cv2.COLORMAP_JET)
-
-    # Upscale for easier clicking (native frame is only ~207x154).
-    h, w = temp.shape[:2]
-    scale = max(1, int(round(640 / w)))
-    color_big = cv2.resize(color, (w * scale, h * scale), interpolation=cv2.INTER_NEAREST)
-
-    ok, png = cv2.imencode(".png", color_big)
-    if not ok:
-        return jsonify({"ok": False, "error": "PNG encoding failed"}), 500
-
-    return jsonify({
-        "ok": True,
-        "image_b64": base64.b64encode(png.tobytes()).decode("ascii"),
-        "width": int(w), "height": int(h),          # native resolution (selection coords)
-        "display_width": int(w * scale), "display_height": int(h * scale),
-        "min_c": round(vmin, 2), "max_c": round(vmax, 2),
-    })
-
-
-# ═══════════════════════════════════════════════════════════════════════
-#  API: Single capture
+#  Camera tools
 # ═══════════════════════════════════════════════════════════════════════
 
 
 @bp.route("/api/capture_single", methods=["POST"])
-def capture_single():
-    """Capture a single thermal frame and return analysis."""
-    body = request.get_json(force=True, silent=True) or {}
-
+def capture_single() -> Response:
+    """One analysed frame: global stats, hotspot, per-zone verdicts."""
     from pyontrust.services.thermal_service import ThermalService
 
-    cam_cfg = body.get("camera", {"mode": "simulated"})
-    zones_cfg = body.get("zones", [])
-
-    svc = ThermalService(config_dict={
-        "camera": cam_cfg,
-        "zones": zones_cfg,
-    })
-
+    body = _body()
+    cam_cfg = body.get("camera") or {"mode": "seek"}
+    if _wants_sim(cam_cfg) and not _sim_allowed():
+        return jsonify({"error": _SIM_DISABLED_MSG}), 400
+    zones = body["zones"] if "zones" in body else _regions.measurement_zones()
+    svc = ThermalService(config_dict={"camera": cam_cfg, "zones": zones})
     try:
-        svc.open()
-        snap = svc.capture()
-        info = svc.get_camera_info()
-        return jsonify({
-            "snapshot": snap.to_dict(),
-            "camera_info": info,
-        })
+        if _wants_sim(cam_cfg):
+            svc.open()  # tests / CI: private simulated instance
+            snap, info = svc.capture(), svc.get_camera_info()
+        else:
+            # Shared camera — a second USB open would race the live stream.
+            with _arbiter.exclusive("seek") as (cam, _source):
+                svc.open(camera=cam)
+                snap, info = svc.capture(), svc.get_camera_info()
+        return jsonify({"snapshot": snap.to_dict(), "camera_info": info})
+    except FrameError as exc:
+        return jsonify({"error": str(exc)}), exc.status
     except Exception as exc:
+        logger.exception("capture_single failed")
         return jsonify({"error": str(exc)}), 500
     finally:
         svc.close()
 
 
-# ═══════════════════════════════════════════════════════════════════════
-#  API: Reports
-# ═══════════════════════════════════════════════════════════════════════
+@bp.route("/api/calibrate", methods=["POST"])
+def calibrate() -> Response:
+    """One-point calibration.
+
+    ``{"ref_c": 24.0}`` — the camera sees something at ref_c °C: readings are
+    shifted so the frame median equals it (persistent, applies to every
+    consumer).  ``{"clear": true}`` resets the offset.
+    """
+    import numpy as np
+
+    from pyontrust.instruments import thermal_calibration as tcal
+
+    body = _body()
+    if body.get("clear"):
+        return jsonify({"ok": True, **tcal.clear()})
+    try:
+        ref_c = float(body.get("ref_c", body.get("reference_c")))
+    except (TypeError, ValueError):
+        return _error("Provide ref_c (number) or clear=true", 400)
+    if not -60.0 <= ref_c <= 400.0:
+        return _error("ref_c out of range", 400)
+    try:
+        frame, _source = _arbiter.display_frame("seek")  # includes any existing offset
+    except FrameError as exc:
+        logger.warning("Calibration grab failed: %s", exc)
+        return _error(f"Cannot grab calibration frame: {exc}", exc.status)
+    raw_median = float(np.median(frame)) - tcal.load_offset_c()
+    info = tcal.save_offset(round(ref_c - raw_median, 3), reference_c=ref_c,
+                            scene_median_c=raw_median)
+    return jsonify({"ok": True, **info})
 
 
-@bp.route("/api/reports")
-def list_reports():
-    """List saved thermal measurement HTML reports."""
-    report_dir = pathlib.Path("test_reports")
-    if not report_dir.exists():
-        return jsonify({"reports": []})
-
-    reports = []
-    for f in sorted(report_dir.glob("thermal_measurement_*.html"), reverse=True):
-        reports.append({
-            "name": f.name,
-            "size_kb": round(f.stat().st_size / 1024, 1),
-            "modified": f.stat().st_mtime,
-        })
-
-    return jsonify({"reports": reports})
-
-
-@bp.route("/api/report/<name>")
-def download_report(name: str):
-    """Download a specific report file."""
-    report_dir = pathlib.Path("test_reports").resolve()
-    return send_from_directory(str(report_dir), name)
+@bp.route("/api/flat_field", methods=["POST"])
+def flat_field() -> Response:
+    """``{"frames": 20}`` learns the flat-field map (aim at a uniform surface);
+    ``{"clear": true}`` removes it.  Saved and reused after restarts."""
+    if _tracking.running:
+        return _error("Stop the running tracking session first", 409)
+    body = _body()
+    try:
+        n_frames = int(body.get("frames", 20))
+    except (TypeError, ValueError):
+        return _error("frames must be an integer", 400)
+    try:
+        with _arbiter.exclusive("seek") as (cam, _source):
+            if body.get("clear"):
+                cam.clear_flat_field()
+                return jsonify({"ok": True, "cleared": True})
+            info = cam.capture_flat_field(n_frames)
+    except FrameError as exc:
+        return _error(str(exc), exc.status)
+    except Exception as exc:
+        logger.warning("Flat-field failed: %s", exc)
+        return _error(f"Flat-field failed: {exc}", 502)
+    return jsonify({"ok": True, **info})

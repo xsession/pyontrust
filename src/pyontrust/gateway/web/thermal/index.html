@@ -4,1279 +4,183 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>🌡️ Thermal Measurement — pyontrust</title>
-<style>
-:root {
-  --bg: #1e1e2e; --bg2: #252538; --bg3: #2d2d44; --bg4: #353550;
-  --fg: #cdd6f4; --fg-dim: #6c7086;
-  --accent: #89b4fa; --green: #a6e3a1; --red: #f38ba8;
-  --yellow: #f9e2af; --peach: #fab387; --mauve: #cba6f7;
-  --teal: #94e2d5; --border: #45475a; --radius: 6px;
-}
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-body {
-  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-  background: var(--bg); color: var(--fg); overflow-x: hidden;
-}
-
-/* ── Layout ── */
-.container { max-width: 1400px; margin: 0 auto; padding: 16px 20px; }
-header {
-  display: flex; align-items: center; gap: 16px;
-  padding-bottom: 14px; border-bottom: 2px solid var(--accent); margin-bottom: 16px;
-}
-header h1 { color: var(--accent); font-size: 22px; }
-header .status-pill {
-  padding: 3px 12px; border-radius: 12px; font-size: 11px; font-weight: 600;
-}
-header .status-pill.connected    { background: rgba(166,227,161,.15); color: var(--green); }
-header .status-pill.disconnected { background: rgba(243,139,168,.15); color: var(--red); }
-header .status-pill.simulated    { background: rgba(249,226,175,.15); color: var(--yellow); }
-
-/* ── Tabs ── */
-.tabs {
-  display: flex; gap: 0; border-bottom: 2px solid var(--border); margin-bottom: 16px;
-}
-.tab-btn {
-  padding: 8px 20px; background: none; color: var(--fg-dim); border: none;
-  cursor: pointer; font-size: 13px; font-weight: 600; border-bottom: 2px solid transparent;
-  transition: .15s;
-}
-.tab-btn:hover { color: var(--fg); }
-.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
-.tab-panel { display: none; }
-.tab-panel.active { display: block; }
-
-/* ── Cards ── */
-.card {
-  background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 16px; margin-bottom: 14px;
-}
-.card h3 { color: var(--mauve); font-size: 14px; margin-bottom: 10px; }
-
-/* ── Forms ── */
-.form-row {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 10px; margin-bottom: 10px;
-}
-.form-group { display: flex; flex-direction: column; gap: 3px; }
-.form-group label { font-size: 11px; color: var(--fg-dim); font-weight: 600; }
-.form-group input, .form-group select, .form-group textarea {
-  background: var(--bg3); border: 1px solid var(--border); color: var(--fg);
-  padding: 6px 10px; border-radius: 4px; font-size: 12px; font-family: monospace;
-}
-.form-group input:focus, .form-group select:focus {
-  outline: none; border-color: var(--accent);
-}
-
-/* ── Buttons ── */
-.btn {
-  padding: 8px 20px; border: none; border-radius: var(--radius);
-  font-weight: 600; font-size: 13px; cursor: pointer; transition: .15s;
-}
-.btn-primary { background: var(--accent); color: var(--bg); }
-.btn-primary:hover { filter: brightness(1.15); }
-.btn-danger  { background: var(--red); color: var(--bg); }
-.btn-danger:hover { filter: brightness(1.15); }
-.btn-secondary { background: var(--bg3); color: var(--fg); border: 1px solid var(--border); }
-.btn-secondary:hover { border-color: var(--accent); }
-.btn:disabled { opacity: .4; cursor: not-allowed; }
-.btn-bar { display: flex; gap: 8px; margin-top: 12px; }
-
-/* ── Stats grid ── */
-.stats-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 10px; margin: 12px 0;
-}
-.stat-box {
-  background: var(--bg3); border-radius: var(--radius); padding: 12px;
-  text-align: center;
-}
-.stat-box .val { font-size: 22px; font-weight: 700; color: var(--accent); font-family: monospace; }
-.stat-box .lbl { font-size: 10px; color: var(--fg-dim); margin-top: 2px; }
-
-/* ── Progress bar ── */
-.progress-bar {
-  height: 6px; background: var(--bg3); border-radius: 3px; margin: 12px 0; overflow: hidden;
-}
-.progress-bar .fill {
-  height: 100%; background: var(--accent); border-radius: 3px; transition: width .3s;
-}
-
-/* ── Zone editor ── */
-.zone-list { margin: 8px 0; }
-.zone-item {
-  display: grid; grid-template-columns: 120px repeat(6, 60px) 30px;
-  gap: 6px; align-items: center; margin-bottom: 6px;
-  background: var(--bg3); padding: 6px 8px; border-radius: 4px; font-size: 11px;
-}
-.zone-item input {
-  background: var(--bg); border: 1px solid var(--border); color: var(--fg);
-  padding: 3px 5px; border-radius: 3px; font-size: 11px; font-family: monospace;
-  width: 100%;
-}
-.zone-item .del-btn {
-  background: none; border: none; color: var(--red); cursor: pointer;
-  font-size: 16px; padding: 0;
-}
-.zone-item .del-btn:hover { color: var(--peach); }
-.zone-header {
-  display: grid; grid-template-columns: 120px repeat(6, 60px) 30px;
-  gap: 6px; font-size: 10px; color: var(--fg-dim); font-weight: 600;
-  padding: 0 8px; margin-bottom: 4px;
-}
-
-/* ── Live snapshot ── */
-.snapshot-grid {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
-}
-@media (max-width: 900px) { .snapshot-grid { grid-template-columns: 1fr; } }
-
-/* ── Reports list ── */
-.report-item {
-  display: flex; align-items: center; gap: 12px;
-  padding: 8px 12px; background: var(--bg3); border-radius: 4px; margin-bottom: 6px;
-}
-.report-item a { color: var(--accent); text-decoration: none; font-size: 13px; }
-.report-item a:hover { text-decoration: underline; }
-.report-item .meta { color: var(--fg-dim); font-size: 11px; }
-
-/* ── Verdict badge ── */
-.badge { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 700; }
-.badge.pass    { background: rgba(166,227,161,.15); color: var(--green); }
-.badge.fail    { background: rgba(243,139,168,.15); color: var(--red); }
-.badge.running { background: rgba(137,180,250,.15); color: var(--accent); }
-
-/* ── Log area ── */
-#live-log {
-  background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 10px; font-family: monospace; font-size: 11px; color: var(--teal);
-  max-height: 200px; overflow-y: auto; white-space: pre-wrap; margin-top: 8px;
-}
-
-.zone-scroll { max-width: 100%; overflow-x: auto; padding-bottom: 3px; }
-.zone-scroll .zone-header, .zone-scroll .zone-item { min-width: 585px; }
-.zone-item .del-btn { min-width: 34px; }
-@media (max-width: 720px) {
-  .container { padding: 10px; }
-  header { align-items: flex-start; flex-wrap: wrap; gap: 9px; }
-  header h1 { width: 100%; font-size: 19px; }
-  header > span[style] { display: none; }
-  header .btn { margin-left: auto; }
-  .tabs { max-width: 100%; overflow-x: auto; white-space: nowrap; scrollbar-width: thin; }
-  .tab-btn { flex: 0 0 auto; min-height: 40px; padding: 8px 13px; }
-  .form-row { grid-template-columns: 1fr; }
-  .btn-bar { display: grid; grid-template-columns: 1fr 1fr; }
-  .btn-bar .btn { width: 100%; }
-  .stats-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
-  .report-item { align-items: flex-start; flex-direction: column; }
-}
-@media (max-width: 420px) {
-  .card { padding: 12px; }
-  .stats-grid { grid-template-columns: 1fr 1fr; gap: 7px; }
-  .stat-box { padding: 9px; }
-  .stat-box .val { font-size: 18px; }
-}
-</style>
-  <link rel="stylesheet" href="/static/shell/ui-foundation.css">
+<link rel="stylesheet" href="/thermal/static/thermal.css">
+<link rel="stylesheet" href="/static/shell/ui-foundation.css">
 </head>
 <body>
 <main class="container">
 
-<!-- ═══ Header ═══ -->
-<header>
-  <h1>🌡️ Thermal Measurement</h1>
-  <span id="cam-status" class="status-pill disconnected">checking…</span>
-  <span style="flex:1"></span>
-  <button class="btn btn-secondary" type="button" onclick="refreshStatus()">↻ Refresh status</button>
+<header class="app-header">
+  <h1>🌡️ Thermal</h1>
+  <div class="chips" aria-live="polite">
+    <span id="chip-camera" class="chip">camera…</span>
+    <span id="chip-activity" class="chip">…</span>
+    <span id="chip-cal" class="chip" hidden></span>
+  </div>
+  <div class="tabs">
+    <button class="tab-btn active" type="button" data-tab="workspace">Workspace</button>
+    <button class="tab-btn" type="button" data-tab="history">History</button>
+  </div>
+  <button class="btn btn-secondary" type="button" data-action="camera-open" aria-haspopup="dialog">⚙ Camera</button>
 </header>
 
-<!-- ═══ Tabs ═══ -->
-<div class="tabs">
-  <button class="tab-btn active" data-tab="measure">📐 Measure</button>
-  <button class="tab-btn" data-tab="live">📡 Live View</button>
-  <button class="tab-btn" data-tab="track">📈 Tracking</button>
-  <button class="tab-btn" data-tab="results">📊 Results</button>
-  <button class="tab-btn" data-tab="reports">📄 Reports</button>
-</div>
+<!-- ═══ Workspace: image ▸ regions ▸ run ════════════════════════════ -->
+<section class="tab-panel" id="tab-workspace">
+  <div class="workspace">
 
-<!-- ══════════════════════════════════════════════════════════════════ -->
-<!--  TAB: Measure                                                      -->
-<!-- ══════════════════════════════════════════════════════════════════ -->
-<div class="tab-panel active" id="tab-measure">
-
-  <!-- Mode selection -->
-  <div class="card">
-    <h3>Measurement Mode</h3>
-    <div class="form-row">
-      <div class="form-group">
-        <label>Mode</label>
-        <select id="cfg-mode" onchange="updateModeUI()">
-          <option value="continuous">📈 Continuous Monitoring</option>
-          <option value="soak">🔥 Thermal Soak Test</option>
-          <option value="delta">Δ Delta Measurement</option>
-          <option value="gradient">🌊 Gradient Scan</option>
-        </select>
+    <!-- 1 · what the camera sees -->
+    <div class="panel image-panel">
+      <div class="live-wrap" id="live-wrap">
+        <img id="live-img" alt="Live thermal image" draggable="false">
+        <canvas id="live-overlay" aria-hidden="true"></canvas>
       </div>
-      <div class="form-group">
-        <label>Camera</label>
-        <select id="cfg-camera-mode">
-          <option value="seek" selected>🔴 Seek Thermal (Hardware)</option>
-          <option value="simulated">🔵 Simulated</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>Board ID</label>
-        <input id="cfg-board-id" value="DUT-001" placeholder="PCB identifier">
-      </div>
-    </div>
-  </div>
-
-  <!-- Timing -->
-  <div class="card">
-    <h3>⏱️ Timing</h3>
-    <div class="form-row">
-      <div class="form-group">
-        <label>Duration (s)</label>
-        <input id="cfg-duration" type="number" value="30" min="1" step="1">
-      </div>
-      <div class="form-group">
-        <label>Capture Interval (s)</label>
-        <input id="cfg-interval" type="number" value="0.5" min="0.1" step="0.1">
-      </div>
-      <div class="form-group">
-        <label>Warm-up Frames</label>
-        <input id="cfg-warmup" type="number" value="5" min="0" step="1">
+      <div class="image-foot">
+        <span id="live-meta" class="muted">Connecting to camera…</span>
+        <span class="muted kbd-hint">Click = point · Drag = rectangle · Click a region = select · Del = delete</span>
       </div>
     </div>
 
-    <!-- Soak-specific -->
-    <div id="soak-opts" style="display:none">
-      <div class="form-row" style="margin-top:8px">
-        <div class="form-group">
-          <label>Stable Window (s)</label>
-          <input id="cfg-soak-window" type="number" value="10" min="1">
+    <div class="side">
+      <!-- 2 · what to watch -->
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Regions</h2>
+          <span id="regions-lock" class="muted" hidden>🔒 locked while running</span>
         </div>
-        <div class="form-group">
-          <label>Stable Threshold (°C)</label>
-          <input id="cfg-soak-thresh" type="number" value="0.5" min="0.01" step="0.1">
+        <div id="regions-table"></div>
+        <form id="region-editor" class="editor" hidden autocomplete="off">
+          <div class="editor-grid">
+            <label>Name<input name="name" maxlength="24"></label>
+            <label>X<input name="x" type="number" min="0"></label>
+            <label>Y<input name="y" type="number" min="0"></label>
+            <label data-rect-only>W<input name="w" type="number" min="2"></label>
+            <label data-rect-only>H<input name="h" type="number" min="2"></label>
+            <label>Warn °C<input name="warn_c" type="number" step="0.5"></label>
+            <label>Max °C<input name="max_c" type="number" step="0.5"></label>
+          </div>
+          <div class="editor-foot">
+            <span id="editor-msg" class="status-line"></span>
+            <button class="btn btn-ghost" type="button" data-action="region-delete">Delete region</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- 3 · what to do with it -->
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Run</h2>
+          <div class="seg" role="group" aria-label="Run type">
+            <button type="button" data-run="measure">📐 Measure</button>
+            <button type="button" data-run="track">📈 Track</button>
+          </div>
         </div>
-        <div class="form-group">
-          <label>Timeout (s)</label>
-          <input id="cfg-soak-timeout" type="number" value="300" min="10">
+
+        <div data-run-panel="measure">
+          <p class="muted">A timed test of all regions against their limits → PASS / FAIL report.</p>
+          <div class="form-grid">
+            <label>Mode
+              <select id="cfg-mode">
+                <option value="continuous">Continuous</option>
+                <option value="soak">Thermal soak</option>
+                <option value="delta">Delta (baseline → stimulus)</option>
+                <option value="gradient">Gradient scan</option>
+              </select>
+            </label>
+            <label>Duration (s)<input id="cfg-duration" type="number" value="30" min="1"></label>
+            <label>Board ID<input id="cfg-board-id" value="DUT-001"></label>
+          </div>
+          <details class="more">
+            <summary>More settings</summary>
+            <div class="form-grid">
+              <label>Capture interval (s)<input id="cfg-interval" type="number" value="0.5" min="0.1" step="0.1"></label>
+              <label>Warm-up frames<input id="cfg-warmup" type="number" value="5" min="0"></label>
+              <label>Global max (°C)<input id="cfg-max-temp" type="number" value="85"></label>
+              <label>Max gradient (°C/mm, 0 = off)<input id="cfg-max-gradient" type="number" value="0" min="0" step="0.1"></label>
+              <label>Pixel pitch (mm)<input id="cfg-pixel-pitch" type="number" value="0.17" min="0.01" step="0.01"></label>
+              <label data-mode-only="soak">Stable window (s)<input id="cfg-soak-window" type="number" value="10" min="1"></label>
+              <label data-mode-only="soak">Stable threshold (°C)<input id="cfg-soak-thresh" type="number" value="0.5" min="0.01" step="0.1"></label>
+              <label data-mode-only="soak">Timeout (s)<input id="cfg-soak-timeout" type="number" value="300" min="10"></label>
+              <label data-mode-only="delta">Baseline frames<input id="cfg-delta-baseline" type="number" value="10" min="1"></label>
+              <label data-mode-only="delta">Stimulus frames<input id="cfg-delta-stimulus" type="number" value="10" min="1"></label>
+              <label data-mode-only="delta">Pause (s)<input id="cfg-delta-pause" type="number" value="5" min="0" step="0.5"></label>
+            </div>
+          </details>
+          <div class="run-bar">
+            <button class="btn btn-primary" type="button" data-action="measure-start">▶ Start measurement</button>
+            <button class="btn btn-danger" type="button" data-action="measure-stop">■ Stop</button>
+          </div>
+          <div id="measure-progress" hidden>
+            <div class="progress-bar"><div class="fill" id="prog-fill"></div></div>
+            <div class="muted" id="prog-text"></div>
+          </div>
+          <p id="measure-last" class="status-line"></p>
         </div>
-      </div>
-    </div>
 
-    <!-- Delta-specific -->
-    <div id="delta-opts" style="display:none">
-      <div class="form-row" style="margin-top:8px">
-        <div class="form-group">
-          <label>Baseline Frames</label>
-          <input id="cfg-delta-baseline" type="number" value="10" min="1">
+        <div data-run-panel="track" hidden>
+          <p class="muted">Logs every region over time to CSV (failure hunting, thermal drift). Runs until you stop it.</p>
+          <div class="form-grid">
+            <label>Sample every (s)<input id="track-interval" type="number" value="1" min="0.2" max="30" step="0.5"></label>
+          </div>
+          <div class="run-bar">
+            <button class="btn btn-primary" type="button" data-action="track-start">▶ Start tracking</button>
+            <button class="btn btn-danger" type="button" data-action="track-stop">■ Stop</button>
+            <a class="btn btn-secondary" id="track-csv" href="/thermal/api/tracking/export.csv" hidden>⬇ CSV</a>
+          </div>
+          <p id="track-text" class="status-line"></p>
         </div>
-        <div class="form-group">
-          <label>Stimulus Frames</label>
-          <input id="cfg-delta-stimulus" type="number" value="10" min="1">
-        </div>
-        <div class="form-group">
-          <label>Pause (s)</label>
-          <input id="cfg-delta-pause" type="number" value="5" min="0" step="0.5">
-        </div>
+
+        <p id="run-blocked" class="status-line info"></p>
       </div>
     </div>
   </div>
 
-  <!-- Simulated camera options -->
-  <div class="card" id="sim-opts-card">
-    <h3>🔵 Simulated Camera Settings</h3>
-    <div class="form-row">
-      <div class="form-group">
-        <label>Base Temp (°C)</label>
-        <input id="cfg-sim-base" type="number" value="25" step="0.5">
-      </div>
-      <div class="form-group">
-        <label>Noise σ (°C)</label>
-        <input id="cfg-sim-noise" type="number" value="0.3" step="0.1" min="0">
-      </div>
-      <div class="form-group">
-        <label>Inject Hotspot</label>
-        <select id="cfg-sim-hotspot">
-          <option value="false">No</option>
-          <option value="true">Yes</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>Hotspot Temp (°C)</label>
-        <input id="cfg-sim-hotspot-temp" type="number" value="85" step="1">
-      </div>
-    </div>
+  <!-- tracking chart: only when there is tracking data -->
+  <div class="panel" id="chart-panel" hidden>
+    <div class="panel-head"><h2>Temperature over time</h2><span class="muted" id="chart-sub"></span></div>
+    <canvas id="track-plot" class="track-plot" width="1200" height="300" role="img" aria-label="Tracked region temperatures over time"></canvas>
   </div>
+</section>
 
-  <!-- Limits -->
-  <div class="card">
-    <h3>🚧 Thermal Limits</h3>
-    <div class="form-row">
-      <div class="form-group">
-        <label>Global Max (°C)</label>
-        <input id="cfg-max-temp" type="number" value="85" step="1">
-      </div>
-      <div class="form-group">
-        <label>Max Gradient (°C/mm)</label>
-        <input id="cfg-max-gradient" type="number" value="0" step="0.1" min="0" title="0 = disabled">
-      </div>
-      <div class="form-group">
-        <label>Pixel Pitch (mm)</label>
-        <input id="cfg-pixel-pitch" type="number" value="0.17" step="0.01" min="0.01">
-      </div>
-    </div>
+<!-- ═══ History: last result + saved reports ═══════════════════════ -->
+<section class="tab-panel" id="tab-history" hidden>
+  <div class="panel">
+    <div class="panel-head"><h2>Last measurement</h2></div>
+    <div id="result-content"><p class="muted">No measurement yet — run one from Workspace ▸ Run ▸ 📐 Measure.</p></div>
   </div>
-
-  <!-- Zones -->
-  <div class="card">
-    <h3>🎯 Thermal Zones</h3>
-    <div class="zone-scroll" tabindex="0" aria-label="Thermal zone coordinate editor">
-      <div class="zone-header" aria-hidden="true">
-        <span>Name</span><span>X</span><span>Y</span><span>W</span><span>H</span>
-        <span>Warn°C</span><span>Max°C</span><span></span>
-      </div>
-      <div class="zone-list" id="zone-list"></div>
-    </div>
-    <button class="btn btn-secondary" onclick="addZone()" style="margin-top:6px">+ Add Zone</button>
+  <div class="panel">
+    <div class="panel-head"><h2>Saved reports</h2><button class="btn btn-secondary" type="button" data-action="reports-refresh">↻</button></div>
+    <div id="reports-list"></div>
   </div>
+</section>
 
-  <!-- Start / Stop -->
-  <div class="card" id="run-card">
-    <div class="btn-bar">
-      <button class="btn btn-primary" id="btn-start" onclick="startMeasurement()">▶ Start Measurement</button>
-      <button class="btn btn-danger"  id="btn-stop"  onclick="stopMeasurement()" disabled>■ Stop</button>
-    </div>
+</main>
 
-    <!-- Progress -->
-    <div id="progress-section" style="display:none; margin-top:14px;">
-      <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--fg-dim);">
-        <span id="prog-text">Frame 0 / 0</span>
-        <span id="prog-elapsed">0.0s</span>
-      </div>
-      <div class="progress-bar"><div class="fill" id="prog-fill" style="width:0%"></div></div>
-      <div class="stats-grid" id="live-stats"></div>
-    </div>
+<!-- ═══ Camera settings ═════════════════════════════════════════════ -->
+<dialog id="camera-dialog" aria-labelledby="camera-dialog-title">
+  <div class="panel-head"><h2 id="camera-dialog-title">⚙ Camera</h2><button class="btn btn-ghost" type="button" data-action="camera-close" aria-label="Close">✕</button></div>
+  <p id="cam-detail" class="muted"></p>
+
+  <h3>🎯 One-point calibration</h3>
+  <p class="muted">Aim at something of known temperature (e.g. a wall at ~24 °C). Readings are shifted so the frame median matches. Persistent; applies everywhere.</p>
+  <div class="row">
+    <label>Reference °C<input id="cal-ref-c" type="number" value="24" step="0.1" min="-60" max="400"></label>
+    <button class="btn btn-primary" type="button" data-action="calibrate">Calibrate</button>
+    <button class="btn btn-secondary" type="button" data-action="calibrate-clear">Reset</button>
   </div>
-</div>
+  <p id="cal-status" class="status-line"></p>
 
-<!-- ══════════════════════════════════════════════════════════════════ -->
-<!--  TAB: Live View                                                    -->
-<!-- ══════════════════════════════════════════════════════════════════ -->
-<div class="tab-panel" id="tab-live">
-  <div class="card">
-    <h3>📺 Live Stream</h3>
-    <p style="font-size:12px; color:var(--fg-dim); margin-bottom:10px;">
-      Continuous view from the Seek Thermal camera — updates every ~3 s while this tab is open.
-    </p>
-    <div style="max-width:640px;">
-      <img id="live-stream-img" alt="live thermal stream" style="width:100%; display:block; border-radius:4px;">
-    </div>
-    <p id="live-stream-meta" style="font-size:11px; color:var(--fg-dim); margin-top:6px;"></p>
+  <h3>🧱 Flat-field</h3>
+  <p class="muted">Removes warm edges and the residual dot pattern. Cover the lens with cardboard (or aim at a plain wall), then capture. Persistent.</p>
+  <div class="row">
+    <button class="btn btn-primary" type="button" data-action="ff-capture">Capture flat-field</button>
+    <button class="btn btn-secondary" type="button" data-action="ff-clear">Remove</button>
   </div>
+  <p id="ff-status" class="status-line"></p>
+</dialog>
 
-  <div class="card">
-    <h3>📡 Single Frame Capture</h3>
-    <p style="font-size:12px; color:var(--fg-dim); margin-bottom:10px;">
-      Capture a single thermal frame from the camera and view instant analysis.
-    </p>
-    <div class="form-row">
-      <div class="form-group">
-        <label>Camera</label>
-        <select id="live-camera-mode">
-          <option value="seek" selected>🔴 Seek Thermal (real camera)</option>
-          <option value="simulated">🔵 Simulated</option>
-        </select>
-      </div>
-    </div>
-    <button class="btn btn-primary" id="btn-capture" onclick="captureSingle()">📸 Capture Frame</button>
-  </div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
 
-  <div class="card">
-    <h3>🎯 Calibration (one-point reference)</h3>
-    <p style="font-size:12px; color:var(--fg-dim); margin-bottom:10px;">
-      The Seek Compact reports raw sensor counts, so absolute temperatures are estimates.
-      Aim the camera at something of known temperature (e.g. a wall you know is ~24&nbsp;°C),
-      enter that value below and press Calibrate — all readings are then shifted so the frame
-      median matches your reference. The offset persists across restarts and applies to every
-      consumer (this dashboard, FlowLab blocks).
-    </p>
-    <div class="form-row">
-      <div class="form-group">
-        <label>Reference temperature (°C)</label>
-        <input type="number" id="cal-ref-c" value="24" step="0.1" min="-60" max="400">
-      </div>
-    </div>
-    <div class="btn-bar">
-      <button class="btn btn-primary" id="btn-calibrate" onclick="applyCalibration()">🎯 Calibrate</button>
-      <button class="btn btn-secondary" id="btn-cal-clear" onclick="clearCalibration()">↺ Reset offset</button>
-    </div>
-    <p id="cal-status" style="font-size:12px; margin-top:8px;"></p>
-  </div>
-
-  <div id="live-result" style="display:none;">
-    <div class="snapshot-grid">
-      <div class="card">
-        <h3>Frame Data</h3>
-        <div class="stats-grid" id="live-frame-stats"></div>
-      </div>
-      <div class="card">
-        <h3>Zone Readings</h3>
-        <div id="live-zone-readings"></div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- ══════════════════════════════════════════════════════════════════ -->
-<!--  TAB: Tracking (long-term change following)                        -->
-<!-- ══════════════════════════════════════════════════════════════════ -->
-<div class="tab-panel" id="tab-track">
-  <div class="card">
-    <h3>📈 Long-Term Thermal Tracking</h3>
-    <p style="font-size:12px; color:var(--fg-dim); margin-bottom:10px;">
-      Inspect electronics prototypes over time: <strong>click</strong> the live image to add a point,
-      or <strong>drag</strong> to draw a patch around a component. Then start tracking — each selection's
-      temperature is recorded continuously (failure detection / thermal-fluctuation logging).
-      The CSV log is written incrementally, so nothing is lost if you stop early.
-    </p>
-    <div class="form-row" style="align-items:flex-end; gap:10px;">
-      <div class="form-group">
-        <label>Sampling interval (s)</label>
-        <input type="number" id="track-interval" value="1.0" step="0.5" min="0.5" max="30">
-      </div>
-      <button class="btn btn-primary" id="btn-track-start" onclick="trackingStart()">▶ Start Tracking</button>
-      <button class="btn btn-danger" id="btn-track-stop" onclick="trackingStop()" disabled>⏹ Stop</button>
-      <a class="btn btn-secondary" id="track-csv-link" href="/thermal/api/tracking/export.csv" target="_blank" style="display:none; text-decoration:none;">⬇ Download CSV</a>
-    </div>
-    <p id="track-status-line" style="font-size:12px; margin-top:8px;"></p>
-  </div>
-
-  <div class="snapshot-grid">
-    <div class="card">
-      <h3>🎯 Live Image — click = point, drag = patch</h3>
-      <div id="track-img-wrap" style="position:relative; width:100%; max-width:640px; cursor:crosshair;">
-        <img id="track-img" alt="live thermal frame" style="width:100%; display:block; border-radius:4px;">
-        <canvas id="track-overlay" style="position:absolute; left:0; top:0;"></canvas>
-      </div>
-      <p id="track-frame-meta" style="font-size:11px; color:var(--fg-dim); margin-top:6px;"></p>
-    </div>
-
-    <div class="card">
-      <h3>📌 Selections</h3>
-      <div id="track-sel-list"><p style="color:var(--fg-dim); font-size:12px;">No selections yet — click or drag on the image.</p></div>
-    </div>
-  </div>
-
-  <div class="card">
-    <h3>📊 Temperature vs Time</h3>
-    <canvas id="track-plot" width="1200" height="340" style="width:100%; height:auto;"></canvas>
-  </div>
-
-  <div class="card">
-    <h3>📶 Latest Values (bar view)</h3>
-    <div id="track-bars"><p style="color:var(--fg-dim); font-size:12px;">Start tracking to see live values.</p></div>
-  </div>
-</div>
-
-<!-- ══════════════════════════════════════════════════════════════════ -->
-<!--  TAB: Results                                                      -->
-<!-- ══════════════════════════════════════════════════════════════════ -->
-<div class="tab-panel" id="tab-results">
-  <div class="card" id="result-card">
-    <h3>📊 Latest Result</h3>
-    <p id="result-placeholder" style="color:var(--fg-dim); font-size:13px;">
-      No measurement result yet. Run a measurement from the Measure tab.
-    </p>
-    <div id="result-content" style="display:none;"></div>
-  </div>
-</div>
-
-<!-- ══════════════════════════════════════════════════════════════════ -->
-<!--  TAB: Reports                                                      -->
-<!-- ══════════════════════════════════════════════════════════════════ -->
-<div class="tab-panel" id="tab-reports">
-  <div class="card">
-    <h3>📄 Saved Reports</h3>
-    <button class="btn btn-secondary" onclick="loadReports()" style="margin-bottom:10px">↻ Refresh</button>
-    <div id="reports-list">
-      <p style="color:var(--fg-dim); font-size:13px;">Loading…</p>
-    </div>
-  </div>
-</div>
-
-</main><!-- /container -->
-
-<script>
-/* ═══════════════════════════════════════════════════════════════════
- *  Tab switching
- * ═══════════════════════════════════════════════════════════════════ */
-document.querySelectorAll('.tab-btn').forEach((btn, index) => {
-  btn.setAttribute('role', 'tab');
-  btn.setAttribute('aria-selected', index === 0 ? 'true' : 'false');
-  btn.tabIndex = index === 0 ? 0 : -1;
-});
-document.querySelectorAll('.tab-panel').forEach((panel, index) => { panel.setAttribute('role', 'tabpanel'); panel.hidden = index !== 0; });
-
-document.querySelectorAll('.tab-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab-btn').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-selected', 'false'); b.tabIndex = -1; });
-    document.querySelectorAll('.tab-panel').forEach(p => { p.classList.remove('active'); p.hidden = true; });
-    btn.classList.add('active'); btn.setAttribute('aria-selected', 'true'); btn.tabIndex = 0;
-    const activePanel = document.getElementById('tab-' + btn.dataset.tab);
-    activePanel.classList.add('active'); activePanel.hidden = false;
-    if (btn.dataset.tab === 'reports') loadReports();
-    if (btn.dataset.tab === 'results') loadResult();
-    onTrackTabChange(btn.dataset.tab);
-  });
-});
-
-/* ═══════════════════════════════════════════════════════════════════
- *  Mode-dependent UI
- * ═══════════════════════════════════════════════════════════════════ */
-function updateModeUI() {
-  const mode = document.getElementById('cfg-mode').value;
-  document.getElementById('soak-opts').style.display  = mode === 'soak'  ? 'block' : 'none';
-  document.getElementById('delta-opts').style.display  = mode === 'delta' ? 'block' : 'none';
-}
-
-/* ═══════════════════════════════════════════════════════════════════
- *  Zone editor
- * ═══════════════════════════════════════════════════════════════════ */
-let zones = [
-  { name: 'MCU', x: 40, y: 30, w: 30, h: 30, warn: 60, max: 85 },
-];
-
-function renderZones() {
-  const list = document.getElementById('zone-list');
-  list.innerHTML = zones.map((z, i) =>
-    `<div class="zone-item">
-      <input aria-label="Zone ${i + 1} name" value="${String(z.name).replace(/&/g, '&amp;').replace(/"/g, '&quot;')}" onchange="zones[${i}].name=this.value">
-      <input aria-label="Zone ${i + 1} X coordinate" type="number" value="${z.x}" onchange="zones[${i}].x=+this.value">
-      <input aria-label="Zone ${i + 1} Y coordinate" type="number" value="${z.y}" onchange="zones[${i}].y=+this.value">
-      <input aria-label="Zone ${i + 1} width" type="number" value="${z.w}" onchange="zones[${i}].w=+this.value">
-      <input aria-label="Zone ${i + 1} height" type="number" value="${z.h}" onchange="zones[${i}].h=+this.value">
-      <input aria-label="Zone ${i + 1} warning temperature" type="number" value="${z.warn}" onchange="zones[${i}].warn=+this.value">
-      <input aria-label="Zone ${i + 1} maximum temperature" type="number" value="${z.max}" onchange="zones[${i}].max=+this.value">
-      <button class="del-btn" type="button" aria-label="Delete zone ${i + 1}" onclick="zones.splice(${i},1);renderZones()">✕</button>
-    </div>`
-  ).join('');
-}
-
-function addZone() {
-  zones.push({ name: `Zone_${zones.length+1}`, x: 0, y: 0, w: 30, h: 30, warn: 60, max: 85 });
-  renderZones();
-}
-
-renderZones();
-
-/* ═══════════════════════════════════════════════════════════════════
- *  Build config dict from UI
- * ═══════════════════════════════════════════════════════════════════ */
-function buildConfig() {
-  const mode = document.getElementById('cfg-mode').value;
-  const camMode = document.getElementById('cfg-camera-mode').value;
-
-  const cam = { mode: camMode };
-  if (camMode === 'simulated') {
-    cam.base_temp_c = +document.getElementById('cfg-sim-base').value;
-    cam.noise_stddev_c = +document.getElementById('cfg-sim-noise').value;
-    cam.inject_hotspot = document.getElementById('cfg-sim-hotspot').value === 'true';
-    cam.hotspot_temp_c = +document.getElementById('cfg-sim-hotspot-temp').value;
-  }
-
-  const cfg = {
-    mode: mode,
-    duration_s: +document.getElementById('cfg-duration').value,
-    capture_interval_s: +document.getElementById('cfg-interval').value,
-    warmup_frames: +document.getElementById('cfg-warmup').value,
-    camera: cam,
-    board_id: document.getElementById('cfg-board-id').value,
-    global_max_temp_c: +document.getElementById('cfg-max-temp').value,
-    max_gradient_c_per_mm: +document.getElementById('cfg-max-gradient').value,
-    pixel_pitch_mm: +document.getElementById('cfg-pixel-pitch').value,
-    zones: zones.map(z => ({
-      name: z.name, x: z.x, y: z.y, width: z.w, height: z.h,
-      warn_temp_c: z.warn, max_temp_c: z.max,
-    })),
-  };
-
-  if (mode === 'soak') {
-    cfg.soak_stable_window_s  = +document.getElementById('cfg-soak-window').value;
-    cfg.soak_stable_threshold_c = +document.getElementById('cfg-soak-thresh').value;
-    cfg.soak_timeout_s = +document.getElementById('cfg-soak-timeout').value;
-  }
-  if (mode === 'delta') {
-    cfg.delta_baseline_frames = +document.getElementById('cfg-delta-baseline').value;
-    cfg.delta_stimulus_frames = +document.getElementById('cfg-delta-stimulus').value;
-    cfg.delta_pause_s = +document.getElementById('cfg-delta-pause').value;
-  }
-
-  return cfg;
-}
-
-/* ═══════════════════════════════════════════════════════════════════
- *  Camera status
- * ═══════════════════════════════════════════════════════════════════ */
-async function refreshStatus() {
-  try {
-    const r = await fetch('/thermal/api/status');
-    const d = await r.json();
-    const pill = document.getElementById('cam-status');
-
-    if (d.camera_status === 'connected') {
-      pill.className = 'status-pill connected';
-      pill.textContent = '● ' + (d.camera_info.type || 'Connected');
-    } else if (d.camera_status === 'not_connected') {
-      pill.className = 'status-pill disconnected';
-      pill.textContent = '○ No Camera';
-    } else {
-      pill.className = 'status-pill simulated';
-      pill.textContent = '◉ Simulated Only';
-    }
-
-    if (d.measurement_running) {
-      document.getElementById('btn-start').disabled = true;
-      document.getElementById('btn-stop').disabled = false;
-      startPolling();
-    }
-  } catch (e) {
-    document.getElementById('cam-status').textContent = '? Error';
-  }
-}
-
-/* ═══════════════════════════════════════════════════════════════════
- *  Start / Stop measurement
- * ═══════════════════════════════════════════════════════════════════ */
-let pollTimer = null;
-
-async function startMeasurement() {
-  const cfg = buildConfig();
-  document.getElementById('btn-start').disabled = true;
-  document.getElementById('btn-stop').disabled = false;
-  document.getElementById('progress-section').style.display = 'block';
-
-  try {
-    const r = await fetch('/thermal/api/start', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(cfg),
-    });
-    const d = await r.json();
-    if (d.error) {
-      alert('Error: ' + d.error);
-      resetUI();
-      return;
-    }
-    startPolling();
-  } catch (e) {
-    alert('Failed to start: ' + e);
-    resetUI();
-  }
-}
-
-async function stopMeasurement() {
-  try {
-    await fetch('/thermal/api/stop', { method: 'POST' });
-  } catch (e) {}
-}
-
-function startPolling() {
-  if (pollTimer) return;
-  pollTimer = setInterval(pollProgress, 500);
-}
-
-async function pollProgress() {
-  try {
-    const r = await fetch('/thermal/api/progress');
-    const d = await r.json();
-
-    const pct = d.total > 0 ? Math.min(100, d.frame / d.total * 100) : 0;
-    document.getElementById('prog-fill').style.width = pct.toFixed(1) + '%';
-    document.getElementById('prog-text').textContent = `Frame ${d.frame} / ${d.total || '?'}`;
-    document.getElementById('prog-elapsed').textContent = d.elapsed_s.toFixed(1) + 's';
-
-    if (d.latest_snapshot) {
-      const s = d.latest_snapshot;
-      document.getElementById('live-stats').innerHTML = `
-        <div class="stat-box"><div class="val">${s.global_min_c?.toFixed(1) || '—'}°C</div><div class="lbl">Min</div></div>
-        <div class="stat-box"><div class="val">${s.global_mean_c?.toFixed(1) || '—'}°C</div><div class="lbl">Mean</div></div>
-        <div class="stat-box"><div class="val">${s.global_max_c?.toFixed(1) || '—'}°C</div><div class="lbl">Max</div></div>
-        <div class="stat-box"><div class="val">${s.verdict || '—'}</div><div class="lbl">Verdict</div></div>
-      `;
-    }
-
-    if (!d.running) {
-      clearInterval(pollTimer);
-      pollTimer = null;
-      resetUI();
-      loadResult();
-      // Switch through the same accessible tab handler used for pointer and keyboard input.
-      document.querySelector('[data-tab="results"]').click();
-    }
-  } catch (e) {
-    // ignore transient fetch errors
-  }
-}
-
-function resetUI() {
-  document.getElementById('btn-start').disabled = false;
-  document.getElementById('btn-stop').disabled = true;
-}
-
-/* ═══════════════════════════════════════════════════════════════════
- *  Single capture (Live tab)
- * ═══════════════════════════════════════════════════════════════════ */
-async function captureSingle() {
-  document.getElementById('btn-capture').disabled = true;
-  try {
-    const cam = { mode: document.getElementById('live-camera-mode').value };
-    if (cam.mode === 'simulated') {
-      cam.base_temp_c = 25;
-      cam.inject_hotspot = true;
-      cam.hotspot_temp_c = 75;
-    }
-    const zonesData = zones.map(z => ({
-      name: z.name, x: z.x, y: z.y, width: z.w, height: z.h,
-      warn_temp_c: z.warn, max_temp_c: z.max,
-    }));
-
-    const r = await fetch('/thermal/api/capture_single', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ camera: cam, zones: zonesData }),
-    });
-    const d = await r.json();
-    if (d.error) { alert(d.error); return; }
-
-    document.getElementById('live-result').style.display = 'block';
-    const s = d.snapshot;
-    document.getElementById('live-frame-stats').innerHTML = `
-      <div class="stat-box"><div class="val">${s.global_min_c.toFixed(1)}°C</div><div class="lbl">Min</div></div>
-      <div class="stat-box"><div class="val">${s.global_mean_c.toFixed(1)}°C</div><div class="lbl">Mean</div></div>
-      <div class="stat-box"><div class="val">${s.global_max_c.toFixed(1)}°C</div><div class="lbl">Max</div></div>
-      <div class="stat-box"><div class="val">${s.verdict}</div><div class="lbl">Verdict</div></div>
-      <div class="stat-box"><div class="val">(${s.hotspot.x}, ${s.hotspot.y})</div><div class="lbl">Hotspot</div></div>
-    `;
-
-    let zoneHtml = '';
-    if (s.zones && s.zones.length > 0) {
-      zoneHtml = '<table><thead><tr><th>Zone</th><th>Mean</th><th>Max</th><th>Verdict</th></tr></thead><tbody>';
-      for (const z of s.zones) {
-        zoneHtml += `<tr><td>${z.zone_name}</td><td>${z.mean_temp_c.toFixed(1)}°C</td>
-          <td>${z.max_temp_c.toFixed(1)}°C</td>
-          <td><span class="badge ${z.verdict === 'NORMAL' ? 'pass' : 'fail'}">${z.verdict}</span></td></tr>`;
-      }
-      zoneHtml += '</tbody></table>';
-    } else {
-      zoneHtml = '<p style="color:var(--fg-dim); font-size:12px;">No zones defined</p>';
-    }
-    document.getElementById('live-zone-readings').innerHTML = zoneHtml;
-
-  } catch (e) {
-    alert('Capture failed: ' + e);
-  } finally {
-    document.getElementById('btn-capture').disabled = false;
-  }
-}
-
-/* ═══════════════════════════════════════════════════════════════════
- *  Calibration (one-point reference temperature)
- * ═══════════════════════════════════════════════════════════════════ */
-function calStatus(msg, ok = true) {
-  const el = document.getElementById('cal-status');
-  el.textContent = msg;
-  el.style.color = ok ? 'var(--green)' : 'var(--red)';
-}
-
-async function applyCalibration() {
-  const btn = document.getElementById('btn-calibrate');
-  btn.disabled = true;
-  calStatus('Grabbing a frame and computing the offset…', true);
-  try {
-    const refC = parseFloat(document.getElementById('cal-ref-c').value);
-    if (!isFinite(refC)) { calStatus('Enter a valid reference temperature.', false); return; }
-    const r = await fetch('/thermal/api/calibrate', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ ref_c: refC }),
-    });
-    const d = await r.json();
-    if (!d.ok) { calStatus(d.error || 'Calibration failed.', false); return; }
-    calStatus(`✓ Calibrated: offset ${d.offset_c >= 0 ? '+' : ''}${Number(d.offset_c).toFixed(2)} °C ` +
-              `(raw median ${Number(d.scene_median_c).toFixed(1)} °C → reference ${refC} °C)`, true);
-    // Refresh the live frame so the user sees calibrated values immediately.
-    captureSingle();
-  } catch (e) {
-    calStatus('Calibration request failed: ' + e, false);
-  } finally {
-    btn.disabled = false;
-  }
-}
-
-async function clearCalibration() {
-  const btn = document.getElementById('btn-cal-clear');
-  btn.disabled = true;
-  try {
-    const r = await fetch('/thermal/api/calibrate', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ clear: true }),
-    });
-    const d = await r.json();
-    if (!d.ok) { calStatus(d.error || 'Reset failed.', false); return; }
-    calStatus('✓ Calibration offset reset to zero.', true);
-    captureSingle();
-  } catch (e) {
-    calStatus('Reset request failed: ' + e, false);
-  } finally {
-    btn.disabled = false;
-  }
-}
-
-/* ═══════════════════════════════════════════════════════════════════
- *  Tracking tab (long-term change following)
- * ═══════════════════════════════════════════════════════════════════ */
-const TRACK_PALETTE = ['#f38ba8', '#fab387', '#f9e2af', '#a6e3a1', '#94e2d5', '#89b4fa', '#cba6f7'];
-let trackSels = [];          // {name, type:'point'|'patch', x,y,w,h} in native frame coords
-let trackFrameMeta = null;   // {width, height} native resolution of last loaded image
-let trackPollTimer = null;   // status polling while running
-let trackFrameTimer = null;  // live-image polling while tab visible
-
-function onTrackTabChange(tab) {
-  if (tab === 'track' || tab === 'live') startTrackFramePolling();
-  else stopTrackFramePolling();
-}
-
-async function pollTrackFrame() {
-  try {
-    const r = await fetch('/thermal/api/frame');
-    const d = await r.json();
-    if (!d.ok) return; // keep last image on transient errors
-    const src = 'data:image/png;base64,' + d.image_b64;
-    const metaText = `native ${d.width}×${d.height}px · frame range ${d.min_c.toFixed(1)} °C … ${d.max_c.toFixed(1)} °C`;
-
-    // Tracking tab image (selection canvas)
-    const timg = document.getElementById('track-img');
-    if (timg) {
-      timg.src = src;
-      trackFrameMeta = { width: d.width, height: d.height };
-      const tm = document.getElementById('track-frame-meta');
-      if (tm) tm.textContent = metaText;
-      sizeTrackOverlay();
-      drawTrackOverlay();
-    }
-
-    // Live View tab stream panel
-    const limg = document.getElementById('live-stream-img');
-    if (limg) {
-      limg.src = src;
-      const lm = document.getElementById('live-stream-meta');
-      if (lm) lm.textContent = metaText + ' · updated ' + new Date().toLocaleTimeString();
-    }
-  } catch (e) { /* transient — ignore */ }
-}
-
-function startTrackFramePolling() {
-  if (trackFrameTimer) return;
-  pollTrackFrame();
-  trackFrameTimer = setInterval(pollTrackFrame, 2000);
-}
-function stopTrackFramePolling() {
-  if (trackFrameTimer) { clearInterval(trackFrameTimer); trackFrameTimer = null; }
-}
-
-/* ── selection interaction ─────────────────────────────────────────── */
-let trackDragStart = null, trackDragging = false;
-
-function sizeTrackOverlay() {
-  const wrap = document.getElementById('track-img-wrap');
-  const cv = document.getElementById('track-overlay');
-  if (wrap.clientWidth > 0) { cv.width = wrap.clientWidth; cv.height = wrap.clientHeight; }
-}
-
-function nativeToPx(nx, ny) {
-  const wrap = document.getElementById('track-img-wrap');
-  const m = trackFrameMeta || { width: 1, height: 1 };
-  return [nx / m.width * wrap.clientWidth, ny / m.height * wrap.clientHeight];
-}
-function pxToNative(px, py) {
-  const wrap = document.getElementById('track-img-wrap');
-  const m = trackFrameMeta || { width: 1, height: 1 };
-  return [Math.round(px / wrap.clientWidth * m.width), Math.round(py / wrap.clientHeight * m.height)];
-}
-
-function eventPos(e) {
-  const rect = document.getElementById('track-img-wrap').getBoundingClientRect();
-  return [e.clientX - rect.left, e.clientY - rect.top];
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-  const wrap = document.getElementById('track-img-wrap');
-  if (!wrap) return;
-  wrap.addEventListener('mousedown', (e) => {
-    trackDragStart = eventPos(e);
-    trackDragging = false;
-  });
-  wrap.addEventListener('mousemove', (e) => {
-    if (!trackDragStart) return;
-    const [px, py] = eventPos(e);
-    if (Math.hypot(px - trackDragStart[0], py - trackDragStart[1]) > 6) trackDragging = true;
-    drawTrackOverlay(); // shows the in-progress rectangle when dragging
-  });
-  wrap.addEventListener('mouseup', (e) => {
-    if (!trackDragStart) return;
-    const [px, py] = eventPos(e);
-    const [sx, sy] = trackDragStart;
-    trackDragStart = null;
-    if (trackDragging && Math.hypot(px - sx, py - sy) > 6) {
-      // patch selection
-      const [nx0, ny0] = pxToNative(Math.min(sx, px), Math.min(sy, py));
-      const [nx1, ny1] = pxToNative(Math.max(sx, px), Math.max(sy, py));
-      addTrackSel({ type: 'patch', x: nx0, y: ny0, w: Math.max(2, nx1 - nx0), h: Math.max(2, ny1 - ny0) });
-    } else {
-      // point selection
-      const [nx, ny] = pxToNative(px, py);
-      addTrackSel({ type: 'point', x: nx, y: ny, w: 1, h: 1 });
-    }
-    trackDragging = false;
-    drawTrackOverlay();
-    renderTrackSelList();
-  });
-});
-
-function nextSelName(type) {
-  const prefix = type === 'patch' ? 'R' : 'P';
-  let i = trackSels.filter(s => s.type === type).length + 1;
-  while (trackSels.some(s => s.name === prefix + i)) i++;
-  return prefix + i;
-}
-
-function addTrackSel(sel) {
-  sel.name = nextSelName(sel.type);
-  trackSels.push(sel);
-}
-
-function removeTrackSel(idx) {
-  trackSels.splice(idx, 1);
-  drawTrackOverlay();
-  renderTrackSelList();
-}
-
-function drawTrackOverlay() {
-  const cv = document.getElementById('track-overlay');
-  if (!cv.width || !cv.height) return;
-  const ctx = cv.getContext('2d');
-  ctx.clearRect(0, 0, cv.width, cv.height);
-  trackSels.forEach((s, i) => {
-    const col = TRACK_PALETTE[i % TRACK_PALETTE.length];
-    if (s.type === 'patch') {
-      const [x0, y0] = nativeToPx(s.x, s.y);
-      const [x1, y1] = nativeToPx(s.x + s.w, s.y + s.h);
-      ctx.strokeStyle = col; ctx.lineWidth = 2;
-      ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
-      ctx.fillStyle = col + '33';
-      ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
-    } else {
-      const [cx, cy] = nativeToPx(s.x, s.y);
-      ctx.strokeStyle = col; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(cx, cy, 7, 0, Math.PI * 2); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(cx - 10, cy); ctx.lineTo(cx + 10, cy);
-      ctx.moveTo(cx, cy - 10); ctx.lineTo(cx, cy + 10); ctx.stroke();
-    }
-    // label
-    const [lx, ly] = s.type === 'patch' ? nativeToPx(s.x, s.y) : nativeToPx(s.x, s.y);
-    ctx.fillStyle = col; ctx.font = 'bold 12px monospace';
-    ctx.fillText(s.name, lx + (s.type === 'patch' ? 0 : 10), ly - 4);
-  });
-  // in-progress drag rectangle
-  if (trackDragging && trackDragStart) {
-    const wrap = document.getElementById('track-img-wrap');
-    const rect = wrap.getBoundingClientRect();
-    const [px, py] = eventPos({ clientX: lastMouse.x, clientY: lastMouse.y });
-    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]);
-    ctx.strokeRect(Math.min(trackDragStart[0], px), Math.min(trackDragStart[1], py),
-                   Math.abs(px - trackDragStart[0]), Math.abs(py - trackDragStart[1]));
-    ctx.setLineDash([]);
-  }
-}
-
-let lastMouse = { x: 0, y: 0 };
-document.addEventListener('mousemove', (e) => { lastMouse = { x: e.clientX, y: e.clientY }; });
-
-function renderTrackSelList() {
-  const el = document.getElementById('track-sel-list');
-  if (!trackSels.length) {
-    el.innerHTML = '<p style="color:var(--fg-dim); font-size:12px;">No selections yet — click or drag on the image.</p>';
-    return;
-  }
-  let html = '<table><thead><tr><th>#</th><th>Name</th><th>Type</th><th>Coords (native px)</th><th></th></tr></thead><tbody>';
-  trackSels.forEach((s, i) => {
-    const col = TRACK_PALETTE[i % TRACK_PALETTE.length];
-    const coords = s.type === 'patch' ? `${s.x},${s.y} ${s.w}×${s.h}` : `${s.x},${s.y}`;
-    html += `<tr><td><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${col};"></span></td>
-      <td>${s.name}</td><td>${s.type}</td><td>${coords}</td>
-      <td><button class="del-btn" onclick="removeTrackSel(${i})">✕</button></td></tr>`;
-  });
-  html += '</tbody></table>';
-  el.innerHTML = html;
-}
-
-/* ── start / stop ──────────────────────────────────────────────────── */
-async function trackingStart() {
-  if (!trackSels.length) { alert('Add at least one selection on the image first (click or drag).'); return; }
-  const interval = parseFloat(document.getElementById('track-interval').value) || 1.0;
-  document.getElementById('btn-track-start').disabled = true;
-  try {
-    const r = await fetch('/thermal/api/tracking/start', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ selections: trackSels, interval_s: interval }),
-    });
-    const d = await r.json();
-    if (!d.ok) { alert(d.error || 'Failed to start tracking'); return; }
-    document.getElementById('btn-track-stop').disabled = false;
-    document.getElementById('track-csv-link').style.display = '';
-    pollTrackStatus();
-    trackPollTimer = setInterval(pollTrackStatus, 1000);
-  } catch (e) {
-    alert('Tracking start failed: ' + e);
-  } finally {
-    document.getElementById('btn-track-start').disabled = false;
-  }
-}
-
-async function trackingStop() {
-  try {
-    const r = await fetch('/thermal/api/tracking/stop', { method: 'POST' });
-    const d = await r.json();
-    if (trackPollTimer) { clearInterval(trackPollTimer); trackPollTimer = null; }
-    document.getElementById('btn-track-stop').disabled = true;
-    document.getElementById('track-status-line').textContent =
-      `Session complete — ${d.samples} samples saved to ${d.csv_path || ''}`;
-  } catch (e) { alert('Stop failed: ' + e); }
-}
-
-/* ── status polling → plots, bars, latest values ───────────────────── */
-function fmtElapsed(s) {
-  if (s == null) return '';
-  const m = Math.floor(s / 60), sec = Math.round(s % 60);
-  return m > 0 ? `${m}m ${sec}s` : `${sec}s`;
-}
-
-async function pollTrackStatus() {
-  let d;
-  try {
-    const r = await fetch('/thermal/api/tracking/status');
-    d = await r.json();
-  } catch (e) { return; }
-
-  const line = document.getElementById('track-status-line');
-  if (d.running) {
-    line.textContent = `● REC — ${d.samples} samples · elapsed ${fmtElapsed(d.elapsed_s)} · CSV: ${d.csv_path || ''}`;
-    line.style.color = 'var(--red)';
-  } else if (d.samples > 0) {
-    line.textContent = `Last session: ${d.samples} samples · CSV: ${d.csv_path || ''}`;
-    line.style.color = 'var(--fg-dim)';
-  }
-
-  drawTrackPlot(d.series || [], trackSels);
-  renderTrackBars(d.latest || {}, trackSels);
-}
-
-function drawTrackPlot(series, sels) {
-  const cv = document.getElementById('track-plot');
-  const ctx = cv.getContext('2d');
-  const W = cv.width, H = cv.height;
-  ctx.clearRect(0, 0, W, H);
-  if (!series.length || !sels.length) {
-    ctx.fillStyle = '#6c7086'; ctx.font = '14px sans-serif';
-    ctx.fillText('No data yet — start tracking to record temperatures over time.', 20, H / 2);
-    return;
-  }
-
-  const mL = 56, mR = 16, mT = 30, mB = 28; // margins
-  let tmin = Infinity, tmax = -Infinity, vmin = Infinity, vmax = -Infinity;
-  for (const row of series) {
-    if (row[0] < tmin) tmin = row[0];
-    if (row[0] > tmax) tmax = row[0];
-    for (let i = 1; i < row.length; i++) {
-      const v = row[i];
-      if (!isFinite(v)) continue;
-      if (v < vmin) vmin = v;
-      if (v > vmax) vmax = v;
-    }
-  }
-  if (!isFinite(tmin)) return;
-  if (tmax - tmin < 1e-6) tmax = tmin + 1;
-  const pad = Math.max((vmax - vmin) * 0.1, 0.5);
-  vmin -= pad; vmax += pad;
-
-  const X = t => mL + (t - tmin) / (tmax - tmin) * (W - mL - mR);
-  const Y = v => H - mB - (v - vmin) / (vmax - vmin) * (H - mT - mB);
-
-  // gridlines + y labels
-  ctx.strokeStyle = '#313244'; ctx.fillStyle = '#6c7086'; ctx.font = '11px monospace';
-  for (let g = 0; g <= 5; g++) {
-    const v = vmin + (vmax - vmin) * g / 5;
-    const y = Y(v);
-    ctx.beginPath(); ctx.moveTo(mL, y); ctx.lineTo(W - mR, y); ctx.stroke();
-    ctx.fillText(v.toFixed(1) + '°', 6, y + 4);
-  }
-  // x labels (time)
-  for (let g = 0; g <= 5; g++) {
-    const t = tmin + (tmax - tmin) * g / 5;
-    ctx.fillText(fmtElapsed(t), X(t) - 12, H - 8);
-  }
-
-  // one line per selection
-  sels.forEach((s, i) => {
-    const col = TRACK_PALETTE[i % TRACK_PALETTE.length];
-    ctx.strokeStyle = col; ctx.lineWidth = 1.6;
-    ctx.beginPath();
-    let started = false;
-    for (const row of series) {
-      const v = row[i + 1];
-      if (!isFinite(v)) continue;
-      if (!started) { ctx.moveTo(X(row[0]), Y(v)); started = true; }
-      else ctx.lineTo(X(row[0]), Y(v));
-    }
-    ctx.stroke();
-  });
-
-  // legend
-  let lx = mL;
-  sels.forEach((s, i) => {
-    const col = TRACK_PALETTE[i % TRACK_PALETTE.length];
-    ctx.fillStyle = col;
-    ctx.fillRect(lx, 10, 12, 12);
-    ctx.fillStyle = '#cdd6f4'; ctx.font = '12px sans-serif';
-    ctx.fillText(s.name, lx + 16, 20);
-    lx += 16 + ctx.measureText(s.name).width + 18;
-  });
-}
-
-function renderTrackBars(latest, sels) {
-  const el = document.getElementById('track-bars');
-  if (!sels.length || !Object.keys(latest).length) return; // keep placeholder
-  let maxV = -Infinity;
-  for (const s of sels) {
-    const v = latest[s.name];
-    const val = v ? (v.mean_c != null ? v.mean_c : v.c) : null;
-    if (val != null && isFinite(val) && val > maxV) maxV = val;
-  }
-  let html = '';
-  sels.forEach((s, i) => {
-    const col = TRACK_PALETTE[i % TRACK_PALETTE.length];
-    const v = latest[s.name] || {};
-    const val = v.mean_c != null ? v.mean_c : (v.c != null ? v.c : null);
-    if (val == null) return;
-    const pct = Math.max(2, (val / maxV) * 100);
-    const range = v.min_c != null && v.max_c != null ? ` <span style="color:var(--fg-dim)">(${v.min_c.toFixed(1)}…${v.max_c.toFixed(1)})</span>` : '';
-    html += `<div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
-      <span style="width:34px; font-size:12px; color:${col}; font-weight:700;">${s.name}</span>
-      <div style="flex:1; background:var(--bg3); border-radius:3px; height:16px;">
-        <div style="width:${pct}%; height:100%; background:${col}; border-radius:3px;"></div>
-      </div>
-      <span style="width:150px; text-align:right; font-family:monospace; font-size:12px;">${val.toFixed(1)} °C${range}</span>
-    </div>`;
-  });
-  el.innerHTML = html;
-}
-
-/* ═══════════════════════════════════════════════════════════════════
- *  Results tab
- * ═══════════════════════════════════════════════════════════════════ */
-async function loadResult() {
-  try {
-    const r = await fetch('/thermal/api/result');
-    if (r.status === 404) return;
-    const d = await r.json();
-    if (d.status === 'no_result' || d.error) return;
-
-    document.getElementById('result-placeholder').style.display = 'none';
-    const el = document.getElementById('result-content');
-    el.style.display = 'block';
-
-    const passed = d.passed;
-    const vClass = passed ? 'pass' : 'fail';
-    const vText = passed ? '✓ PASS' : '✕ FAIL';
-    let failHtml = '';
-    if (d.fail_reasons && d.fail_reasons.length > 0) {
-      failHtml = '<ul style="margin-top:6px;padding-left:16px;">' +
-        d.fail_reasons.map(r => `<li style="color:var(--red);font-size:12px;">${r}</li>`).join('') +
-        '</ul>';
-    }
-
-    let zoneTable = '';
-    if (d.zone_stats && d.zone_stats.length) {
-      zoneTable = '<h3 style="color:var(--teal);margin:14px 0 8px;">Zone Statistics</h3>';
-      zoneTable += '<table><thead><tr><th>Zone</th><th>Mean</th><th>Max</th><th>Min</th><th>Rise</th><th>Verdict</th></tr></thead><tbody>';
-      for (const z of d.zone_stats) {
-        zoneTable += `<tr><td>${z.zone_name}</td><td>${z.mean_temp_c}°C</td>
-          <td>${z.max_temp_c}°C</td><td>${z.min_temp_c}°C</td>
-          <td>${z.temp_rise_c >= 0 ? '+' : ''}${z.temp_rise_c}°C</td>
-          <td><span class="badge ${z.worst_verdict === 'NORMAL' ? 'pass' : 'fail'}">${z.worst_verdict}</span></td></tr>`;
-      }
-      zoneTable += '</tbody></table>';
-    }
-
-    const reportLink = d.report_path
-      ? `<a href="/thermal/api/report/${d.report_path.split(/[\\/]/).pop()}" target="_blank" class="btn btn-secondary" style="margin-top:10px;">📄 Open HTML Report</a>`
-      : '';
-
-    el.innerHTML = `
-      <div class="badge ${vClass}" style="font-size:16px;padding:8px 20px;margin-bottom:14px;">${vText}</div>
-      ${failHtml}
-      <div class="stats-grid">
-        <div class="stat-box"><div class="val">${d.mode}</div><div class="lbl">Mode</div></div>
-        <div class="stat-box"><div class="val">${d.global_min_c}°C</div><div class="lbl">Min</div></div>
-        <div class="stat-box"><div class="val">${d.global_mean_c}°C</div><div class="lbl">Mean</div></div>
-        <div class="stat-box"><div class="val">${d.global_max_c}°C</div><div class="lbl">Max</div></div>
-        <div class="stat-box"><div class="val">${d.total_frames}</div><div class="lbl">Frames</div></div>
-        <div class="stat-box"><div class="val">${d.duration_s}s</div><div class="lbl">Duration</div></div>
-      </div>
-      ${zoneTable}
-      ${reportLink}
-    `;
-  } catch (e) {}
-}
-
-/* ═══════════════════════════════════════════════════════════════════
- *  Reports tab
- * ═══════════════════════════════════════════════════════════════════ */
-async function loadReports() {
-  try {
-    const r = await fetch('/thermal/api/reports');
-    const d = await r.json();
-    const el = document.getElementById('reports-list');
-
-    if (!d.reports || d.reports.length === 0) {
-      el.innerHTML = '<p style="color:var(--fg-dim); font-size:13px;">No reports saved yet.</p>';
-      return;
-    }
-
-    el.innerHTML = d.reports.map(rp => {
-      const date = new Date(rp.modified * 1000).toLocaleString();
-      return `<div class="report-item">
-        <a href="/thermal/api/report/${rp.name}" target="_blank">📄 ${rp.name}</a>
-        <span class="meta">${rp.size_kb} KB · ${date}</span>
-      </div>`;
-    }).join('');
-  } catch (e) {
-    document.getElementById('reports-list').innerHTML =
-      '<p style="color:var(--red);">Failed to load reports</p>';
-  }
-}
-
-/* ═══════════════════════════════════════════════════════════════════
- *  Init
- * ═══════════════════════════════════════════════════════════════════ */
-refreshStatus();
-captureSingle(); // live thermal frame by default
-</script>
-  <script src="/static/shell/ui-foundation.js"></script>
+<script type="module" src="/thermal/static/js/main.js"></script>
+<script src="/static/shell/ui-foundation.js"></script>
 </body>
 </html>

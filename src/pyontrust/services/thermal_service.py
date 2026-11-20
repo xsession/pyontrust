@@ -48,14 +48,24 @@ class ThermalService:
         self._analyzer: Any = None
         self._ready = False
 
-    def open(self) -> None:
-        """Initialise camera and analyser."""
+    def open(self, camera: Any = None) -> None:
+        """Initialise camera and analyser.
+
+        ``camera`` — an already-open camera object to use instead of opening
+        one from the config (the caller keeps ownership; :meth:`close` will
+        not close it).  Lets the gateway share its single held-open device
+        instead of racing a second USB open against it.
+        """
         from pyontrust.instruments.seek_thermal import create as create_thermal
         from pyontrust.analysis.thermal.analyzer import ThermalAnalyzer
 
-        cam_cfg = self._config.get("camera", {"mode": "simulated"})
-        self._camera = create_thermal(cam_cfg)
-        self._camera.open()
+        if camera is not None:
+            self._camera, self._owns_camera = camera, False
+        else:
+            cam_cfg = self._config.get("camera", {"mode": "simulated"})
+            self._camera = create_thermal(cam_cfg)
+            self._camera.open()
+            self._owns_camera = True
 
         zones: list[ThermalZone] = []
         for zc in self._config.get("zones", []):
@@ -81,7 +91,8 @@ class ThermalService:
 
     def close(self) -> None:
         if self._camera:
-            self._camera.close()
+            if getattr(self, "_owns_camera", True):
+                self._camera.close()
             self._camera = None
         self._analyzer = None
         self._ready = False

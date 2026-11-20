@@ -20,10 +20,11 @@ import csv
 import logging
 import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 logger = logging.getLogger("pyontrust.services.thermal_tracking")
 
@@ -151,15 +152,26 @@ class TrackingSession:
         return {"ok": True, "samples": self.samples,
                 "csv_path": str(self.csv_path) if self.csv_path else None}
 
-    def grab_for_display(self) -> Any:
-        """Grab one frame for the live view, serialized with sampling.
+    @property
+    def camera(self) -> Any:
+        """The camera held by the running session (None when stopped)."""
+        return self._camera
 
-        Only valid while a session is running (camera held open).
+    @contextmanager
+    def exclusive_camera(self) -> Iterator[Any]:
+        """Lend the session's camera, serialised with the sampling loop.
+
+        Raises RuntimeError when no session is running.
         """
         cam = self._camera
         if cam is None:
             raise RuntimeError("No tracking session active")
         with _CAMERA_LOCK:
+            yield cam
+
+    def grab_for_display(self) -> Any:
+        """Grab one frame for the live view, serialized with sampling."""
+        with self.exclusive_camera() as cam:
             return cam.grab_temperature_frame()
 
     # ── sampling loop ────────────────────────────────────────────────────
@@ -232,8 +244,11 @@ class TrackingSession:
 
     # ── queries ──────────────────────────────────────────────────────────
 
-    def status(self, max_points: int = 600) -> dict[str, Any]:
-        """Running state + latest values + (downsampled) series for plotting."""
+    def status(self, max_points: int = 600, include_series: bool = True) -> dict[str, Any]:
+        """Running state + latest values + (downsampled) series for plotting.
+
+        ``include_series=False`` skips the plot data (cheap summary polls).
+        """
         with self._lock:
             rows = list(self._rows)
             sels = [s.to_dict() for s in self.selections]
@@ -258,13 +273,15 @@ class TrackingSession:
                     col += 1
 
             # Downsample to max_points by stride (preserves order & endpoints).
+            # Uses the local snapshot only: self._rows may change meanwhile.
             if len(rows) > max_points:
                 stride = -(-len(rows) // max_points)  # ceil division
-                rows = rows[::stride]
-                if rows[-1] is not self._rows[-1]:
-                    rows.append(self._rows[-1])
+                sampled = rows[::stride]
+                if sampled[-1] is not last:
+                    sampled.append(last)
+                rows = sampled
 
-            for r in rows:
+            for r in (rows if include_series else []):
                 col = 1
                 point_row = [r[0]]
                 for s in sels:

@@ -49,12 +49,30 @@ def _read_raw() -> dict[str, Any]:
     return {}
 
 
+_OFFSET_CACHE: tuple[str, float | None, float] = ("", None, 0.0)  # (path, mtime, offset)
+
+
 def load_offset_c() -> float:
-    """Return the stored calibration offset in °C (0.0 if none)."""
+    """Return the stored calibration offset in °C (0.0 if none).
+
+    Called once per grabbed frame, so the parsed value is cached and only
+    re-read when the file's mtime changes (or it appears / disappears).
+    """
+    global _OFFSET_CACHE
+    path = calibration_file()
     try:
-        return float(_read_raw().get("offset_c", 0.0))
+        mtime: float | None = path.stat().st_mtime
+    except OSError:
+        mtime = None
+    cpath, cmtime, coff = _OFFSET_CACHE
+    if cpath == str(path) and cmtime == mtime:
+        return coff
+    try:
+        off = float(_read_raw().get("offset_c", 0.0)) if mtime is not None else 0.0
     except (TypeError, ValueError):
-        return 0.0
+        off = 0.0
+    _OFFSET_CACHE = (str(path), mtime, off)
+    return off
 
 
 def load_info() -> dict[str, Any]:

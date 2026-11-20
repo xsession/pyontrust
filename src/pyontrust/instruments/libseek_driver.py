@@ -9,7 +9,7 @@ Hardware:
     ┌───────────────────────┬────────┬───────────┬──────────────┬──────────────┐
     │ Camera                │ PID    │ Image     │ Raw buffer   │ Request size │
     ├───────────────────────┼────────┼───────────┼──────────────┼──────────────┤
-    │ Compact / CompactXR   │ 0x0010 │ 207 × 154 │ 208 × 156    │ 16 224 bytes │
+    │ Compact / CompactXR   │ 0x0010 │ 206 × 154 │ 208 × 156    │ 16 224 bytes │
     │ CompactPRO            │ 0x0011 │ 320 × 240 │ 342 × 260    │ 13 680 bytes │
     └───────────────────────┴────────┴───────────┴──────────────┴──────────────┘
 
@@ -45,7 +45,9 @@ References:
 from __future__ import annotations
 
 import logging
+import os
 import struct
+from pathlib import Path
 import sys
 import time
 from dataclasses import dataclass, field
@@ -122,13 +124,13 @@ class DeviceCommand:
 # ── Camera geometry ──────────────────────────────────────────────────
 
 # Compact / CompactXR
-COMPACT_WIDTH = 207
+COMPACT_WIDTH = 206  # raw col 206 is a constant reference column, 207 is padding (measured)
 COMPACT_HEIGHT = 154
 COMPACT_RAW_WIDTH = 208
 COMPACT_RAW_HEIGHT = 156
 COMPACT_REQUEST_SIZE = 16_224
 COMPACT_RAW_SIZE = COMPACT_RAW_WIDTH * COMPACT_RAW_HEIGHT
-# ROI: cv::Rect(0, 1, 207, 154)  →  x=0, y=1, w=207, h=154
+# ROI: cv::Rect(0, 1, 206, 154)  →  x=0, y=1, w=206, h=154 (as upstream libseek)
 COMPACT_ROI = (0, 1, COMPACT_WIDTH, COMPACT_HEIGHT)
 
 # CompactPRO
@@ -148,7 +150,18 @@ FFC_OFFSET = 0x4000
 FRAME_ID_CALIBRATION = 1   # FFC / flat-field calibration
 FRAME_ID_IMAGE = 3         # Normal image data (raw sensor)
 FRAME_ID_DEAD_PIXEL = 4    # First frame — used for dead pixel detection
-FRAME_ID_IMAGE_CALIBRATED = 6  # Image after the camera's internal FFC
+# id=6 arrives right before each shutter (id=1) frame and is statistically
+# identical to it (measured on a Compact: same mean, same ~1900-count fixed
+# pattern).  It is NOT a calibrated image — never display it.
+FRAME_ID_PRE_CALIBRATION = 6
+FRAME_ID_IMAGE_CALIBRATED = FRAME_ID_PRE_CALIBRATION  # deprecated alias
+
+# Bad-pixel detection on shutter-corrected frames: a pixel is bad when it is
+# a > BAD_PIXEL_SIGMA (robust sigma) outlier vs its 5x5 median in every one of
+# the first BAD_PIXEL_FRAMES corrected frames.  Persistence separates bad
+# pixels from real tiny hot spots, which move with the scene.
+BAD_PIXEL_SIGMA = 6.0
+BAD_PIXEL_FRAMES = 4
 
 # Approximate raw → °C conversion
 # Empirical linear mapping: adjust for your specific camera
@@ -286,6 +299,10 @@ class _SeekUSBDevice:
             try:
                 data = self._dev.read(EP_DATA_IN, chunk_size, self._timeout)
                 n = len(data)
+                if n == 0:
+                    # A zero-length packet would otherwise spin this loop forever.
+                    logger.error("Bulk read returned 0 bytes at offset %d", offset)
+                    return None
                 buf[offset:offset + n] = bytes(data)
                 offset += n
             except Exception as exc:
@@ -528,6 +545,79 @@ def _apply_dead_pixel_filter(
     return dst
 
 
+def default_flat_field_path(camera_type: str = "compact") -> Path:
+    """Where the user flat-field map is stored (per camera model)."""
+    env = os.environ.get("PYONTRUST_SEEK_FLAT_FIELD")
+    if env:
+        return Path(env)
+    kind = "pro" if camera_type.lower() in ("pro", "compactpro", "compact_pro") else "compact"
+    return Path.home() / ".pyontrust" / f"seek_flat_field_{kind}.npy"
+
+
+def _median_blur(img: np.ndarray, k: int) -> np.ndarray:
+    """k x k median (k = 3 or 5) of a float frame; cv2 fast path, scipy fallback."""
+    try:
+        import cv2
+
+        u16 = np.clip(img, 0, 65535).astype(np.uint16)
+        return cv2.medianBlur(u16, k).astype(np.float32)
+    except ImportError:  # pragma: no cover - cv2 is a hard dep of the GUI
+        from scipy.ndimage import median_filter
+
+        return median_filter(img, size=k).astype(np.float32)
+
+
+def _fill_bad(img: np.ndarray, bad: np.ndarray) -> np.ndarray:
+    """Replace bad pixels by the mean of their *good* neighbours.
+
+    Uses the 3x3 neighbourhood, widening to 5x5 / 7x7 where a 3x3 window
+    has no good pixel (bad clusters).  Unlike a plain median, clusters of bad
+    pixels (common at the sensor edge) can't leak into the fill value.
+    """
+    if not bad.any():
+        return img
+    good = (~bad).astype(np.float32)
+    val = img * good
+    try:
+        import cv2
+
+        def box(a: np.ndarray, k: int) -> np.ndarray:
+            return cv2.boxFilter(a, -1, (k, k), normalize=False, borderType=cv2.BORDER_REFLECT)
+    except ImportError:  # pragma: no cover
+        from scipy.ndimage import uniform_filter
+
+        def box(a: np.ndarray, k: int) -> np.ndarray:
+            return uniform_filter(a, size=k, mode="reflect") * (k * k)
+
+    out = img.copy()
+    todo = bad.copy()
+    for k in (3, 5, 7):
+        num, den = box(val, k), box(good, k)
+        ok = todo & (den > 0.5)
+        out[ok] = num[ok] / den[ok]
+        todo &= ~ok
+        if not todo.any():
+            break
+    return out
+
+
+def _outliers(img: np.ndarray, med: np.ndarray, n_sigma: float) -> np.ndarray:
+    """Pixels deviating > n_sigma robust sigmas from their local median."""
+    r = img - med
+    sigma = float(np.median(np.abs(r))) * 1.4826
+    return np.abs(r) > n_sigma * max(sigma, 1.0)
+
+
+def _destripe_columns(img: np.ndarray) -> np.ndarray:
+    """Remove per-column offset (read-out fixed pattern) without blurring.
+
+    The column offset is the median over rows of the high-pass residual, so
+    real scene content (which is not constant down a whole column) survives.
+    """
+    hp = img - _median_blur(img, 5)
+    return img - np.median(hp, axis=0, keepdims=True)
+
+
 # ═══════════════════════════════════════════════════════════════════════
 #  Main camera class
 # ═══════════════════════════════════════════════════════════════════════
@@ -574,6 +664,9 @@ class LibSeekCamera:
     # True when the last grabbed image was already internally calibrated by
     # the camera (frame id=6); False for raw sensor frames (id=3).
     _last_calibrated: bool = field(default=False, repr=False, init=False)
+    _last_raw: np.ndarray | None = field(default=None, repr=False, init=False)
+    _bad_mask: np.ndarray | None = field(default=None, repr=False, init=False)
+    _bad_votes: list[np.ndarray] = field(default_factory=list, repr=False, init=False)
     _additional_ffc: np.ndarray | None = field(default=None, repr=False, init=False)
     _chip_id: bytes = field(default=b"", repr=False, init=False)
     _firmware_info: bytes = field(default=b"", repr=False, init=False)
@@ -639,6 +732,18 @@ class LibSeekCamera:
         pid = PID_PRO if is_pro else PID_COMPACT
         self._dev = _SeekUSBDevice(SEEK_VENDOR_ID, pid)
         self._dev.open()
+        try:
+            self._open_initialised(is_pro)
+        except BaseException:
+            # Never leave the interface claimed after a failed open — the
+            # next open() (or another process) would get "Resource busy".
+            self.close()
+            raise
+
+    def _open_initialised(self, is_pro: bool) -> None:
+        """Init sequence after the USB device is open (see :meth:`open`)."""
+        if not self.ffc_file:
+            self._load_saved_flat_field()
 
         # Load additional FFC image if provided
         if self.ffc_file:
@@ -651,7 +756,8 @@ class LibSeekCamera:
                     if ffc.shape == (self._raw_height, self._raw_width):
                         ffc = ffc[ry:ry + rh, rx:rx + rw]
                     if ffc.shape == (self._height, self._width):
-                        self._additional_ffc = ffc
+                        f = ffc.astype(np.float32)
+                        self._additional_ffc = f - float(np.median(f))
                         logger.info("Loaded additional FFC from %s", self.ffc_file)
                     else:
                         logger.warning(
@@ -725,6 +831,8 @@ class LibSeekCamera:
         self._dev = None  # type: ignore[assignment]
         self._is_opened = False
         self._ffc_frame = None
+        self._bad_mask = None
+        self._bad_votes = []
         self._dead_pixel_mask = None
         self._dead_pixel_list = []
         logger.info("LibSeekCamera closed")
@@ -761,11 +869,70 @@ class LibSeekCamera:
         if not self._do_grab():
             raise RuntimeError("Frame acquisition failed")
 
-        # Return just the ROI-cropped raw data without calibration
-        raw = self._get_frame()
-        if raw is None:
-            raise RuntimeError("Frame acquisition failed")
-        return self._crop_roi(raw)
+        # _do_grab() already stored the ROI-cropped image frame; fetching
+        # another one here would return an arbitrary frame type (id 1/4/...).
+        return self._last_raw.copy()
+
+    # ── user flat-field (vignetting / corner glow removal) ──────────
+
+    def _load_saved_flat_field(self) -> None:
+        path = default_flat_field_path(self.camera_type)
+        if not path.is_file():
+            return
+        try:
+            ff = np.load(path).astype(np.float32)
+        except Exception as exc:
+            logger.warning("Ignoring unreadable flat-field %s: %s", path, exc)
+            return
+        if ff.shape == (self._height, self._width):
+            self._additional_ffc = ff
+            logger.info("Loaded saved flat-field %s", path)
+        else:
+            logger.warning("Flat-field %s has shape %s, expected %s — ignored",
+                           path, ff.shape, (self._height, self._width))
+
+    def capture_flat_field(self, n_frames: int = 20, save: bool = True) -> dict[str, Any]:
+        """Learn a flat-field map: aim at a uniform surface, average n frames.
+
+        The zero-mean residual is subtracted from every later frame, removing
+        lens vignetting (warm edges) and residual fixed pattern.  Saved to
+        :func:`default_flat_field_path` and auto-loaded on the next open().
+        """
+        if not self._is_opened:
+            raise RuntimeError("Camera not open. Call open() first.")
+        n_frames = max(4, min(100, int(n_frames)))
+        prev, self._additional_ffc = self._additional_ffc, None
+        try:
+            acc = np.zeros((self._height, self._width), np.float64)
+            for _ in range(n_frames):
+                acc += self.grab().astype(np.float64)
+        except Exception:
+            self._additional_ffc = prev
+            raise
+        avg = (acc / n_frames).astype(np.float32)
+        residual = avg - float(np.median(avg))
+        self._additional_ffc = residual
+        info: dict[str, Any] = {
+            "frames": n_frames,
+            "residual_std_counts": round(float(residual.std()), 2),
+            "residual_p2p_counts": round(float(np.ptp(residual)), 1),
+        }
+        if save:
+            path = default_flat_field_path(self.camera_type)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            np.save(path, residual)
+            info["path"] = str(path)
+        logger.info("Flat-field captured: %s", info)
+        return info
+
+    def clear_flat_field(self) -> None:
+        """Forget the user flat-field (and delete the saved file)."""
+        self._additional_ffc = None
+        path = default_flat_field_path(self.camera_type)
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
 
     def grab_temperature_frame(self) -> np.ndarray:
         """Grab a frame and convert to approximate temperatures (°C).
@@ -803,89 +970,71 @@ class LibSeekCamera:
         return arr
 
     def _do_grab(self) -> bool:
-        """Grab frames until we get an image frame (id=3 or id=6).
+        """Read frames until a scene image (id=3) arrives; track shutter frames.
 
-        The Compact stream interleaves three kinds of frames:
-          * id=3 — raw sensor image
-          * id=6 — the same scene after the camera's internal flat-field
-                   correction has been applied (empirically ~450 raw units
-                   higher, i.e. the calibrated radiometric frame)
-          * id=1 — FFC reference capture
-
-        We prefer an id=6 frame when one arrives in this cycle because it is
-        already internally calibrated; otherwise we fall back to id=3 and let
-        _retrieve() apply our own (sanity-checked) correction.
-        Tries up to 40 times (matching C++ logic).
+        The Compact stream cycles ``3,3,3,3,3,6,1,3,...``:
+          * id=3 — scene image (raw sensor counts, huge per-pixel offsets)
+          * id=6 — pre-shutter frame, same content as id=1 (ignored)
+          * id=1 — shutter-closed reference used for flat-field correction
+        Tries up to 40 frames (matching the C++ logic).
         """
-        got_raw_image = False
         for _ in range(40):
             raw_data = self._get_frame()
             if raw_data is None:
                 return False
 
             fid = self._frame_id(raw_data)
-
-            if fid == FRAME_ID_IMAGE_CALIBRATED:
-                # Best case: internally calibrated image — use it directly.
-                self._last_raw = self._crop_roi(raw_data)
-                self._last_calibrated = True
-                return True
-
             if fid == FRAME_ID_IMAGE:
                 self._last_raw = self._crop_roi(raw_data)
                 self._last_calibrated = False
-                got_raw_image = True
-                # Keep scanning briefly for a calibrated twin of this frame.
-                continue
-
+                return True
             if fid == FRAME_ID_CALIBRATION:
-                # Update flat-field calibration reference
                 self._ffc_frame = self._crop_roi(raw_data)
-                continue
-
-        return got_raw_image
+        return False
 
     def _retrieve(self) -> np.ndarray:
-        """Apply calibration and dead-pixel filter to the last grabbed frame.
+        """Correct the last grabbed frame -> clean uint16 counts.
 
-        Mimics SeekCam::retrieve():
-            raw_frame += offset - flat_field_calibration_frame
-            apply_dead_pixel_filter()
-            if additional_ffc: dst += offset - additional_ffc
+        1. Flat-field: ``image - shutter + median(shutter)`` removes the
+           per-pixel fixed pattern (measured on a Compact: 1805 -> ~10 counts
+           pixel noise) while keeping the absolute level for the raw->°C
+           conversion.  Without this the Compact image is pure noise.
+        2. Bad pixels: replaced by the mean of their good neighbours.
+        3. Column destriping.
+        4. Optional user flat-field file (corner-gradient removal).
         """
-        frame = self._last_raw.astype(np.int32)
+        img = self._last_raw.astype(np.float32)
+        ffc = self._ffc_frame
+        if ffc is not None and ffc.shape == img.shape:
+            img = img - ffc.astype(np.float32) + float(np.median(ffc))
 
-        # Flat-field calibration — only if we used a raw (id=3) image AND the
-        # reference frame actually looks like a shutter-closed reference.
-        # A "reference" captured while the lens was open is just another scene
-        # image; subtracting it produces a flat ~16k frame (≈200 °C everywhere)
-        # instead of a real picture, so we refuse to apply it in that case.
-        if self._ffc_frame is not None and not getattr(self, "_last_calibrated", False):
-            img_mean = float(self._last_raw.mean())
-            ffc_mean = float(self._ffc_frame.mean())
-            plausible = (img_mean > 0 and
-                         abs(ffc_mean - img_mean) > 0.15 * img_mean)
-            if plausible:
-                frame = frame + FFC_OFFSET - self._ffc_frame.astype(np.int32)
+            if self._bad_mask is None:
+                # Learn the persistent bad-pixel map from the first frames;
+                # meanwhile hide this frame's outliers so nothing flashes.
+                # 5x5 median: robust against clusters of bad pixels.
+                cur = _outliers(img, _median_blur(img, 5), BAD_PIXEL_SIGMA)
+                self._bad_votes.append(cur)
+                if len(self._bad_votes) >= BAD_PIXEL_FRAMES:
+                    self._bad_mask = np.logical_and.reduce(self._bad_votes)
+                    self._bad_votes = []
+                    logger.info("Seek bad-pixel map: %d pixels (%.2f%%)",
+                                int(self._bad_mask.sum()), 100 * self._bad_mask.mean())
             else:
-                logger.warning(
-                    "FFC reference looks like a scene image (img=%.0f ffc=%.0f); "
-                    "skipping flat-field correction", img_mean, ffc_mean)
+                cur = self._bad_mask
+            img = _fill_bad(img, cur)
+            img = _destripe_columns(img)
+        elif self._dead_pixel_mask is not None and self._dead_pixel_list:
+            # No shutter reference yet (first frames): basic dead-pixel fill.
+            img = _apply_dead_pixel_filter(
+                np.clip(img, 0, 65535).astype(np.uint16),
+                self._dead_pixel_mask, self._dead_pixel_list,
+            ).astype(np.float32)
 
-        frame = np.clip(frame, 0, 65535).astype(np.uint16)
-
-        # Dead pixel filter
-        if self._dead_pixel_mask is not None:
-            frame = _apply_dead_pixel_filter(
-                frame, self._dead_pixel_mask, self._dead_pixel_list
-            )
-
-        # Additional FFC (user-provided flat-field for corner gradient removal)
         if self._additional_ffc is not None:
-            f32 = frame.astype(np.int32) + FFC_OFFSET - self._additional_ffc.astype(np.int32)
-            frame = np.clip(f32, 0, 65535).astype(np.uint16)
+            # zero-mean residual map (vignetting / corner glow / residual FPN)
+            img = img - self._additional_ffc
 
-        return frame
+        return np.clip(np.rint(img), 0, 65535).astype(np.uint16)
 
     # ── context manager ──────────────────────────────────────────────
 

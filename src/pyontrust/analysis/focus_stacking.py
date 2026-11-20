@@ -414,8 +414,32 @@ def generate_synthetic_stack(
 # Real capture over ADB (phone as the AOI camera)
 # ──────────────────────────────────────────────────────────────────────
 
+def _adb_base() -> list[str]:
+    """``adb`` argv prefix pinned to one device.
+
+    Uses ``PYONTRUST_ADB_SERIAL`` / ``ADB_SERIAL`` when set, otherwise the
+    single *online* device.  Without ``-s`` adb aborts with "more than one
+    device/emulator" as soon as a second (even unauthorized/offline) device
+    is attached.
+    """
+    import os
+
+    serial = os.environ.get("PYONTRUST_ADB_SERIAL") or os.environ.get("ADB_SERIAL")
+    if not serial:
+        try:
+            out = subprocess.run(["adb", "devices"], capture_output=True, text=True,
+                                 timeout=10).stdout
+            online = sorted(line.split("\t")[0] for line in out.splitlines()[1:]
+                            if line.endswith("\tdevice"))
+            if len(online) == 1:
+                serial = online[0]
+        except Exception:
+            serial = None
+    return ["adb", "-s", serial] if serial else ["adb"]
+
+
 def _adb(*args: str, timeout: int = 30) -> str:
-    r = subprocess.run(["adb", *args], capture_output=True, text=True, timeout=timeout)
+    r = subprocess.run([*_adb_base(), *args], capture_output=True, text=True, timeout=timeout)
     out = (r.stdout or "") + (r.stderr or "")
     if r.returncode != 0 and "error" in out.lower():
         raise RuntimeError(f"adb {' '.join(args[:4])} failed: {out.strip()[:200]}")
@@ -484,14 +508,14 @@ def capture_focus_series(
                  "-d", f"file:///{remote_dir}/frame_{i:02d}.jpg", timeout=45)
             time.sleep(8)  # capture is async on-device; ~1-3s typical, allow headroom
             with open(local, "wb") as fh:
-                subprocess.run(f'adb shell cat {remote_dir}/frame_{i:02d}.jpg',
-                               shell=True, stdout=fh, timeout=60)
+                subprocess.run([*_adb_base(), "exec-out", "cat",
+                                f"{remote_dir}/frame_{i:02d}.jpg"], stdout=fh, timeout=60)
         else:
             # termux-camera-photo v0.5x CLI: single positional <file>; default camera 0 (back).
             _adb("shell", "run-as", "com.termux.api", TERMUX_BIN, remote, timeout=90)
             with open(local, "wb") as fh:
-                subprocess.run(f"adb shell run-as com.termux.api cat {remote}",
-                               shell=True, stdout=fh, timeout=60)
+                subprocess.run([*_adb_base(), "exec-out", "run-as", "com.termux.api",
+                                "cat", remote], stdout=fh, timeout=60)
         if not local.exists() or local.stat().st_size == 0:
             raise RuntimeError(f"capture {i} failed (no file pulled)")
         img = cv2.imread(str(local))
