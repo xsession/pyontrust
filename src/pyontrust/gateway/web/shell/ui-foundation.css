@@ -1,15 +1,7 @@
 /* pyontrust shared UI foundation
  * Accessibility, interaction and responsive primitives shared by all web tools.
  */
-:root {
-  --bg2: #252538;
-  --radius: 7px;
-  --fg-dim: #a6adc8;
-  --border: #585b70;
-  --focus-ring: #f9e2af;
-  --focus-shadow: rgba(249, 226, 175, 0.28);
-  --control-h: 34px;
-}
+/* Tokens (focus ring, control height, colours) live in tokens.css. */
 
 html {
   color-scheme: dark;

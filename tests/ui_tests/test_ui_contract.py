@@ -15,36 +15,17 @@ from urllib.parse import urlsplit
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WEB_ROOT = REPO_ROOT / "src" / "pyontrust" / "gateway" / "web"
 
-PAGES = {
-    "shell": WEB_ROOT / "shell" / "index.html",
-    "diagnostic": WEB_ROOT / "diagnostic" / "index.html",
-    "hil": WEB_ROOT / "hil" / "index.html",
-    "csv": WEB_ROOT / "csv" / "index.html",
-    "bench": WEB_ROOT / "bench" / "index.html",
-    "flowlab": WEB_ROOT / "flowlab" / "index.html",
-    "can": WEB_ROOT / "can" / "index.html",
-    "thermal": WEB_ROOT / "thermal" / "index.html",
-    "ifdoc": WEB_ROOT / "ifdoc" / "index.html",
-    "artifacts": WEB_ROOT / "artifacts" / "index.html",
-    "config": WEB_ROOT / "config" / "index.html",
+# Single source of truth: the gateway's tool registry (pure Python, no Flask).
+import sys  # noqa: E402
+
+sys.path.insert(0, str(REPO_ROOT / "src"))
+from pyontrust.gateway import tools as registry  # noqa: E402
+
+PAGES = {"shell": WEB_ROOT / "shell" / "index.html"} | {
+    t.id: WEB_ROOT / t.web_dir / "index.html" for t in registry.TOOLS
 }
 
-EXPECTED_SHELL_ROUTES = {
-    "diag": "/diag/",
-    "hil": "/hil/",
-    "csv": "/csv/",
-    "bench": "/bench/",
-    "flowlab": "/flowlab/",
-    "can": "/can/",
-    "thermal": "/thermal/",
-    "micro": "/micro/",
-    "scan3d": "/scan3d/",
-    "spec": "/spec/",
-    "waveforms": "/waveforms/",
-    "ifdoc": "/ifdoc/",
-    "artifacts": "/artifacts/",
-    "config": "/config/",
-}
+EXPECTED_SHELL_ROUTES = {t.id: t.url for t in registry.TOOLS}
 
 
 class UiParser(HTMLParser):
@@ -99,7 +80,10 @@ class UiParser(HTMLParser):
 
 def parse(path: Path) -> UiParser:
     parser = UiParser()
-    parser.feed(path.read_text(encoding="utf-8"))
+    text = path.read_text(encoding="utf-8")
+    if path == PAGES["shell"]:
+        text = registry.render_shell(text)   # nav is rendered from the registry
+    parser.feed(text)
     return parser
 
 
@@ -163,12 +147,12 @@ def test_every_page_uses_shared_accessibility_foundation() -> None:
 def test_shell_routes_and_default_state_match_content() -> None:
     shell = parse(PAGES["shell"])
     assert shell.nav_routes == EXPECTED_SHELL_ROUTES
-    assert shell.active_tools == ["diag"]
-    assert shell.iframe_src == "/diag/"
+    assert shell.active_tools == [registry.DEFAULT_TOOL]
+    assert shell.iframe_src == registry.get(registry.DEFAULT_TOOL).url
 
 
 def test_management_destinations_have_real_interfaces() -> None:
-    shell_source = PAGES["shell"].read_text(encoding="utf-8")
+    shell_source = registry.render_shell(PAGES["shell"].read_text(encoding="utf-8"))
     assert 'href="/artifacts/"' in shell_source
     assert 'href="/config/"' in shell_source
     assert "/config/api/profiles" not in shell_source
@@ -185,3 +169,46 @@ def test_hil_dashboard_has_no_required_chart_cdn() -> None:
     source = PAGES["hil"].read_text(encoding="utf-8").lower()
     assert "cdn.plot.ly" not in source
     assert "new tracechart" in source
+
+
+def test_registry_is_consistent() -> None:
+    ids = [t.id for t in registry.TOOLS]
+    assert len(ids) == len(set(ids)), "duplicate tool ids"
+    assert registry.DEFAULT_TOOL in ids
+    assert {t.group for t in registry.TOOLS} <= {g for g, _ in registry.GROUPS}
+    icons = [t.icon for t in registry.TOOLS]
+    assert len(icons) == len(set(icons)), "two tools share an icon"
+    for t in registry.TOOLS:
+        module = t.blueprint.split(":")[0].replace(".", "/") + ".py"
+        assert (REPO_ROOT / "src" / module).is_file(), f"{t.id}: missing blueprint {module}"
+
+
+def test_every_page_uses_the_shared_design_system() -> None:
+    failures = []
+    for name, path in PAGES.items():
+        assets = parse(path).assets
+        for required in ("/static/shell/tokens.css", "/static/shell/components.css"):
+            if required not in assets:
+                failures.append(f"{name}: missing {required}")
+        if name != "shell" and "/static/shell/shell.css" in assets:
+            failures.append(f"{name}: links shell chrome (shell.css) — use tokens/components")
+    assert not failures, "\n".join(failures)
+
+
+def test_design_tokens_defined_once() -> None:
+    """Core tokens live only in tokens.css; pages may alias, never redefine."""
+    offenders = []
+    for path in list(WEB_ROOT.glob("*/*.css")) + list(WEB_ROOT.glob("*/index.html")):
+        if path.name == "tokens.css":
+            continue
+        text = path.read_text(encoding="utf-8")
+        for token in ("--bg:", "--fg:", "--accent:", "--border:", "--fg-dim:"):
+            if token in text:
+                offenders.append(f"{path.relative_to(WEB_ROOT)} redefines {token}")
+    assert not offenders, "\n".join(offenders)
+
+
+def test_tool_pages_mark_their_title_for_embedding() -> None:
+    missing = [name for name, path in PAGES.items()
+               if name != "shell" and "data-page-title" not in path.read_text(encoding="utf-8")]
+    assert not missing, f"pages without data-page-title: {missing}"

@@ -228,6 +228,16 @@
     enhanceGraphics(root);
   }
 
+  // Inside the app shell's iframe the shell header already shows the tool
+  // title (from the tool registry): mark the page so it can hide its own.
+  function markEmbedded() {
+    let embedded = false;
+    try { embedded = window.self !== window.top && window.top.location.origin === window.location.origin; }
+    catch { embedded = false; }
+    document.documentElement.classList.toggle('is-embedded', embedded);
+  }
+  markEmbedded();
+
   function start() {
     enhance();
     let scheduled = false;

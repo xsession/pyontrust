@@ -1,4 +1,5 @@
-/** pyontrust app shell: responsive navigation, deep-linking, and platform status. */
+/** pyontrust app shell: responsive navigation, deep-linking, bench activity.
+ *  Nav entries are rendered server-side from pyontrust.gateway.tools. */
 (() => {
   'use strict';
 
@@ -110,25 +111,29 @@
   window.addEventListener('hashchange', () => selectTool(location.hash, {updateHistory: false}));
   window.addEventListener('popstate', event => selectTool(event.state?.tool || location.hash, {updateHistory: false}));
 
+  // Bench-wide activity: one endpoint reports every busy tool (registry-driven).
   async function pollStatus() {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 4000);
     try {
-      const response = await fetch('/hil/api/status', {headers: {'Accept': 'application/json'}, signal: controller.signal});
+      const response = await fetch('/api/activity', {headers: {'Accept': 'application/json'}, signal: controller.signal});
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data = await response.json();
-      const state = String(data.state || 'idle').toLowerCase();
-      status.dataset.state = state;
-      statusLabel.textContent = state === 'running' ? 'HIL run active'
-        : state === 'stopping' ? 'HIL run stopping'
-        : state === 'error' ? 'HIL run error'
-        : 'HIL ready';
-      const profile = data.profile || data.current_profile || '';
-      statusDetail.textContent = profile ? `${state} · ${profile}` : state;
+      const busy = (await response.json()).activity || {};
+      links.forEach(link => {
+        const entry = busy[link.dataset.tool];
+        if (entry) { link.dataset.activity = entry.state; link.title = entry.label; }
+        else { delete link.dataset.activity; link.removeAttribute('title'); }
+      });
+      const entries = Object.entries(busy);
+      const errors = entries.filter(([, e]) => e.state === 'error');
+      status.dataset.state = errors.length ? 'error' : entries.length ? 'running' : 'idle';
+      statusLabel.textContent = errors.length ? 'Attention needed'
+        : entries.length ? `${entries.length} task${entries.length > 1 ? 's' : ''} running` : 'Bench idle';
+      statusDetail.textContent = entries.length ? entries.map(([, e]) => e.label).join(' · ') : 'No measurement, capture or run active';
     } catch (error) {
       status.dataset.state = 'offline';
       statusLabel.textContent = 'Gateway unavailable';
-      statusDetail.textContent = error.name === 'AbortError' ? 'Status request timed out' : 'HIL status could not be read';
+      statusDetail.textContent = error.name === 'AbortError' ? 'Status request timed out' : 'Activity could not be read';
     } finally {
       clearTimeout(timeout);
     }
@@ -138,5 +143,5 @@
   history.replaceState({tool: initial}, '', `#${initial}`);
   selectTool(initial, {updateHistory: false});
   pollStatus();
-  window.setInterval(pollStatus, 5000);
+  window.setInterval(pollStatus, 3000);
 })();

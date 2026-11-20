@@ -1,0 +1,48 @@
+/* pyontrust design tokens — the single source of truth for colour, type,
+ * spacing and shape.  Every page links this first; pages must not redefine
+ * these variables (use the semantic aliases below in new code). */
+:root {
+  color-scheme: dark;
+  --bg: #1e1e2e;
+  --bg2: #252538;
+  --bg3: #2d2d44;
+  --bg4: #353550;
+  --fg: #cdd6f4;
+  --fg-dim: #a6adc8;
+  --accent: #89b4fa;
+  --green: #a6e3a1;
+  --red: #f38ba8;
+  --yellow: #f9e2af;
+  --peach: #fab387;
+  --mauve: #cba6f7;
+  --pink: #f5c2e7;
+  --teal: #94e2d5;
+  --border: #585b70;
+  --radius: 7px;
+  --sidebar-w: 232px;
+  --header-h: 58px;
+  --shadow: 0 18px 48px rgba(8, 8, 18, 0.34);
+
+  /* semantic aliases */
+  --surface: var(--bg2);          /* panels, cards */
+  --surface-raised: var(--bg3);   /* inputs, stat boxes, rows */
+  --surface-sunken: #11111b;      /* image / plot backgrounds */
+  --text: var(--fg);
+  --text-dim: var(--fg-dim);
+  --ok: var(--green);
+  --warn: var(--yellow);
+  --danger: var(--red);
+  --info: var(--accent);
+  --heading: var(--mauve);
+
+  /* accessibility */
+  --focus-ring: #f9e2af;
+  --focus-shadow: rgba(249, 226, 175, 0.28);
+  --control-h: 34px;
+
+  /* type & spacing */
+  --font-sans: Inter, "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: ui-monospace, "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  --text-xs: 11px; --text-sm: 12px; --text-md: 13px; --text-lg: 15px; --text-xl: 20px;
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 24px;
+}

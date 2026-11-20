@@ -4,12 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CAN Diagnostic — pyontrust</title>
-  <link rel="stylesheet" href="/static/shell/shell.css">
+  <link rel="stylesheet" href="/static/shell/tokens.css">
+  <link rel="stylesheet" href="/static/shell/components.css">
   <style>
     /* ── Layout ───────────────────────────────────────────────── */
-    :root{--can-green:#a6e3a1;--can-yellow:#f9e2af;--can-red:#f38ba8;
-          --can-blue:#89b4fa;--can-mauve:#cba6f7;--can-teal:#94e2d5;
-          --can-peach:#fab387;--can-flamingo:#f2cdcd;}
+    /* page palette = aliases of the shared tokens (tokens.css) */
+    :root{--can-green:var(--green);--can-yellow:var(--yellow);--can-red:var(--red);
+          --can-blue:var(--accent);--can-mauve:var(--mauve);--can-teal:var(--teal);
+          --can-peach:var(--peach);--can-flamingo:#f2cdcd;}
     *{box-sizing:border-box;margin:0;padding:0;}
     body{font-family:'JetBrains Mono','Fira Code','SF Mono',monospace;
          font-size:12px;background:var(--bg);color:var(--fg);
@@ -196,7 +198,7 @@
 
 <!-- ═══════════════════ TOOLBAR ═══════════════════════════════════ -->
 <div id="toolbar">
-  <h1 class="title">🔌 CAN Diagnostic</h1>
+  <h1 data-page-title class="title">🔌 CAN Diagnostic</h1>
   <div class="toolbar-group connection-group" aria-label="CAN connection settings">
     <label for="sel-interface">Interface</label>
     <select id="sel-interface">

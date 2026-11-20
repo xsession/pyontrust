@@ -1,7 +1,7 @@
 """Flask gateway — unified application factory.
 
-Assembles all Blueprints (HIL, CSV Plotter, Pin Config, SDR, Waveforms,
-Lab-Bench, Artifacts) under one Flask app with a shared app-shell.
+Assembles every tool declared in :mod:`pyontrust.gateway.tools` (the single
+source of truth for tools) under one Flask app with a shared app-shell.
 
 Run standalone::
 
@@ -118,38 +118,13 @@ def create_app(
     # Ensure default event channels exist
     app.extensions["log_service"].ensure_channels()
 
-    # ── Register built-in Blueprints ────────────────────────────────
+    # ── Register built-in Blueprints (from the tool registry) ───────
+    from pyontrust.gateway import tools as tool_registry
     from pyontrust.gateway.blueprints.shell import bp as shell_bp
-    from pyontrust.gateway.blueprints.hil import bp as hil_bp
-    from pyontrust.gateway.blueprints.csv_plotter import bp as csv_bp
-    from pyontrust.gateway.blueprints.bench import bp as bench_bp
-    from pyontrust.gateway.blueprints.artifacts import bp as artifacts_bp
-    from pyontrust.gateway.blueprints.config import bp as config_bp
-    from pyontrust.gateway.blueprints.flowlab import bp as flowlab_bp
-    from pyontrust.gateway.blueprints.diagnostic import bp as diag_bp
-    from pyontrust.gateway.blueprints.can_diag import bp as can_bp
-    from pyontrust.gateway.blueprints.thermal_measurement import bp as thermal_bp
-    from pyontrust.gateway.blueprints.microscopy import bp as micro_bp
-    from pyontrust.gateway.blueprints.scan3d import bp as scan3d_bp
-    from pyontrust.gateway.blueprints.spectroscopy import bp as spec_bp
-    from pyontrust.gateway.blueprints.ifdoc import bp as ifdoc_bp
-    from pyontrust.gateway.blueprints.waveforms import bp as waveforms_bp
 
     app.register_blueprint(shell_bp)  # serves / and /static/shell/
-    app.register_blueprint(diag_bp, url_prefix="/diag")
-    app.register_blueprint(hil_bp, url_prefix="/hil")
-    app.register_blueprint(csv_bp, url_prefix="/csv")
-    app.register_blueprint(bench_bp, url_prefix="/bench")
-    app.register_blueprint(artifacts_bp, url_prefix="/artifacts")
-    app.register_blueprint(config_bp, url_prefix="/config")
-    app.register_blueprint(flowlab_bp, url_prefix="/flowlab")
-    app.register_blueprint(can_bp, url_prefix="/can")
-    app.register_blueprint(thermal_bp, url_prefix="/thermal")
-    app.register_blueprint(micro_bp, url_prefix="/micro")
-    app.register_blueprint(scan3d_bp, url_prefix="/scan3d")
-    app.register_blueprint(spec_bp, url_prefix="/spec")
-    app.register_blueprint(ifdoc_bp, url_prefix="/ifdoc")
-    app.register_blueprint(waveforms_bp, url_prefix="/waveforms")
+    for tool in tool_registry.TOOLS:
+        app.register_blueprint(tool_registry.load(tool.blueprint), url_prefix=f"/{tool.id}")
 
     # ── Auto-discover plugin Blueprints ─────────────────────────────
     try:
@@ -172,6 +147,18 @@ def create_app(
     @app.route("/api/health")
     def health():
         return {"status": "ok", "version": _get_version()}
+
+    @app.route("/api/tools")
+    def tools_index():
+        """The tool registry (navigation, titles, URLs) as JSON."""
+        return {"default": tool_registry.DEFAULT_TOOL,
+                "groups": [{"id": k, "title": t} for k, t in tool_registry.GROUPS],
+                "tools": [t.to_dict() for t in tool_registry.TOOLS]}
+
+    @app.route("/api/activity")
+    def tools_activity():
+        """Busy tools right now: ``{tool_id: {state, label}}`` (idle tools omitted)."""
+        return {"activity": tool_registry.activity(), "version": _get_version()}
 
     logger.info("Gateway app created — %d blueprints registered", len(app.blueprints))
     return app

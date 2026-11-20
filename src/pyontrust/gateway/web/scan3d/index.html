@@ -4,14 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>🧊 3D Scan — pyontrust</title>
+<link rel="stylesheet" href="/static/shell/tokens.css">
+<link rel="stylesheet" href="/static/shell/components.css">
 <style>
-:root {
-  --bg: #1e1e2e; --bg2: #252538; --bg3: #2d2d44; --bg4: #353550;
-  --fg: #cdd6f4; --fg-dim: #6c7086;
-  --accent: #89b4fa; --green: #a6e3a1; --red: #f38ba8;
-  --yellow: #f9e2af; --peach: #fab387; --mauve: #cba6f7;
-  --teal: #94e2d5; --border: #45475a; --radius: 6px;
-}
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--fg); overflow-x: hidden; }
 
@@ -60,13 +55,14 @@ header .sub { color: var(--fg-dim); font-size: 12px; }
 .msg.error { color: var(--red); }
 .file-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
 </style>
+<link rel="stylesheet" href="/static/shell/ui-foundation.css">
 </head>
 <body>
-<div class="container">
+<main class="container">
   <header>
     <div>
-      <h1>🧊 3D Scan — Stereo Depth &amp; Point Cloud</h1>
-      <p class="sub">Stereo pair → SGBM disparity → metric depth (Z = fx·B/d) → XYZ point cloud</p>
+      <h1 data-page-title>🧊 3D Scan — Stereo Depth &amp; Point Cloud</h1>
+      <p class="sub" data-page-subtitle>Stereo pair → SGBM disparity → metric depth (Z = fx·B/d) → XYZ point cloud</p>
     </div>
     <span class="status-pill idle" id="run-status">Idle</span>
   </header>
@@ -121,7 +117,7 @@ header .sub { color: var(--fg-dim); font-size: 12px; }
       <div class="image-card"><h4>Disparity map (px, normalized)</h4><img id="img-disp" alt="disparity map"></div>
     </div>
   </section>
-</div>
+</main>
 
 <script>
 const $ = (id) => document.getElementById(id);
@@ -214,5 +210,6 @@ $('run-btn').addEventListener('click', runScan);
 // Live by default: run the scan immediately on load.
 runScan();
 </script>
+<script src="/static/shell/ui-foundation.js"></script>
 </body>
 </html>

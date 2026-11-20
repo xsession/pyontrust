@@ -4,14 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>⌁ Waveforms — pyontrust</title>
+<link rel="stylesheet" href="/static/shell/tokens.css">
+<link rel="stylesheet" href="/static/shell/components.css">
 <style>
-:root {
-  --bg: #1e1e2e; --bg2: #252538; --bg3: #2d2d44; --bg4: #353550;
-  --fg: #cdd6f4; --fg-dim: #6c7086;
-  --accent: #89b4fa; --green: #a6e3a1; --red: #f38ba8;
-  --yellow: #f9e2af; --peach: #fab387; --mauve: #cba6f7;
-  --teal: #94e2d5; --border: #45475a; --radius: 6px;
-}
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--fg); overflow-x: hidden; }
 
@@ -61,11 +56,12 @@ table.peaks td.f { color: var(--teal); }
 .disabled-note { background: rgba(108,112,134,.12); border: 1px dashed var(--border); border-radius: var(--radius); padding: 12px; font-size: 12px; color: var(--fg-dim); margin-top: 10px; }
 .check { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--fg-dim); cursor: pointer; user-select: none; }
 </style>
+<link rel="stylesheet" href="/static/shell/ui-foundation.css">
 </head>
 <body>
-<div class="container">
+<main class="container">
   <header>
-    <h1>⌁ Waveforms</h1>
+    <h1 data-page-title>⌁ Waveforms</h1>
     <span class="status-pill idle" id="status-pill">loading devices…</span>
     <div class="form-group" style="margin-left:auto; min-width:260px;">
       <label for="device-select">Device</label>
@@ -159,7 +155,7 @@ table.peaks td.f { color: var(--teal); }
   </section>
 
   <p class="msg" id="page-msg"></p>
-</div>
+</main>
 
 <script>
 "use strict";
@@ -394,5 +390,6 @@ $("gen-stop").addEventListener("click", () => genCall("/stop", {}).then(ok => { 
 
 init();
 </script>
+<script src="/static/shell/ui-foundation.js"></script>
 </body>
 </html>
