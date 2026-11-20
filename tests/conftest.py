@@ -6,7 +6,14 @@ station files — at a per-test temporary directory.
 """
 from __future__ import annotations
 
+import os
+
 import pytest
+
+# Simulated devices are test doubles: the product refuses them
+# (pyontrust.core.simulation_guard); the test suite opts in.  Set at import
+# time because some test modules build fixtures while being collected.
+os.environ["PYONTRUST_ALLOW_SIMULATION"] = "1"
 
 
 @pytest.fixture(autouse=True)

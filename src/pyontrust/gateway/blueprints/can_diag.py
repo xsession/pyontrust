@@ -90,8 +90,8 @@ def start_capture():
     svc = _get_service()
     body = request.get_json(silent=True) or {}
     result = svc.start(
-        interface=body.get("interface", "pcan"),
-        channel=body.get("channel", "PCAN_USBBUS1"),
+        interface=body.get("interface") or "auto",
+        channel=body.get("channel") or None,         # None: the detected adapter's channel
         bitrate=int(body.get("bitrate", 500000)),
         fd=bool(body.get("fd", False)),
     )
@@ -250,6 +250,10 @@ def canopen_start_sim():
 
         {"nodes": [1, 2], "heartbeat_ms": 200}
     """
+    from pyontrust.core.simulation_guard import allowed
+    if not allowed():
+        return jsonify({"ok": False, "error": "CANopen simulation was removed — connect real CANopen nodes "
+                                              "through a CAN adapter and use NMT / SDO on the live bus"}), 400
     from pyontrust.services.canopen_service import SIM_CHANNEL
     body = request.get_json(silent=True) or {}
     try:
@@ -317,7 +321,7 @@ def canopen_nmt():
             command = _parse_int(cmd_raw, "command")
     except (ValueError, TypeError) as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
-    res = _get_canopen_service().nmt_command(node_id, command)
+    res = _get_canopen_service().nmt_command(node_id, command, monitor=_get_service())
     return jsonify(res), (200 if res.get("ok") else 400)
 
 
@@ -336,7 +340,7 @@ def canopen_sdo_read():
         subindex = _parse_int(body.get("subindex", 0), "subindex")
     except (ValueError, TypeError) as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
-    res = _get_canopen_service().sdo_read(node_id, index, subindex)
+    res = _get_canopen_service().sdo_read(node_id, index, subindex, monitor=_get_service())
     if not res.get("ok") and "error_code" in res:
         from pyontrust.analysis.canopen import SDO_ABORT_CODES
         res["abort"] = SDO_ABORT_CODES.get(res["error_code"],
@@ -360,7 +364,7 @@ def canopen_sdo_write():
         value = _parse_int(body.get("value", 0), "value")
     except (ValueError, TypeError) as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
-    res = _get_canopen_service().sdo_write(node_id, index, subindex, value)
+    res = _get_canopen_service().sdo_write(node_id, index, subindex, value, monitor=_get_service())
     return jsonify(res), (200 if res.get("ok") else 400)
 
 

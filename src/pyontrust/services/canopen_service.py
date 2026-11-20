@@ -21,7 +21,7 @@ Classes
 
 Wire format follows CiA 301 as implemented by CANopenNode (CO_SDOclient.c /
 CO_SDOserver.c): byte-0 command classes are ``0x20`` initiate download,
-``0xC0`` initiate upload, ``0x43|((4-n)<<2)`` expedited upload response,
+``0x40`` initiate upload, ``0x43|((4-n)<<2)`` expedited upload response,
 ``0x60`` download ack and ``0x80`` abort.
 """
 from __future__ import annotations
@@ -179,7 +179,7 @@ class CanopenSlaveSimulator:
         index = struct.unpack_from("<H", data, 1)[0]
         subindex = data[3]
 
-        if (b0 & 0xF0) == 0xC0:                     # initiate upload (read)
+        if (b0 & 0xE0) == 0x40:                     # initiate upload (read), ccs = 2
             ok, value = self.node.sdo_read(index, subindex)
             if not ok:
                 self._sdo_abort(index, subindex, SDO_ABORT_OBJECT_MISSING)
@@ -190,11 +190,11 @@ class CanopenSlaveSimulator:
                 + (value & 0xFFFFFFFF).to_bytes(4, "little")[:nbytes].ljust(4, b"\x00")
             self._send_frame(SDO_CLIENT_BASE + self.node_id, payload)
 
-        elif (b0 & 0xF0) == 0x20:                   # initiate download (write)
+        elif (b0 & 0xE0) == 0x20:                   # initiate download (write), ccs = 1
             value = int.from_bytes(data[4:8], "little") if len(data) >= 8 else 0
             ok = self.node.sdo_write(index, subindex, value)
             if ok:
-                payload = bytes([0x60]) + struct.pack("<HB", index & 0xFFFF, subindex)
+                payload = bytes([0x60]) + struct.pack("<HB", index & 0xFFFF, subindex) + bytes(4)
                 self._send_frame(SDO_CLIENT_BASE + self.node_id, payload)
             else:
                 code = SDO_ABORT_WRITE_DENIED
@@ -226,9 +226,15 @@ class CanopenMaster:
     are serialized with a lock and matched by response COB-ID.
     """
 
-    def __init__(self, channel: str = SIM_CHANNEL, timeout_s: float = 1.0) -> None:
+    def __init__(self, channel: str = SIM_CHANNEL, timeout_s: float = 1.0, transport: Any = None) -> None:
         self.channel = channel
         self.timeout_s = timeout_s
+        # transport: a running CanDiagService (real adapter) — frames are sent
+        # through it and received from its subscriber queues.  None = own
+        # virtual-bus instance (test simulation only).
+        self.transport = transport
+        self._rx: Any = None
+        self._sniff_rx: Any = None
         self._bus: Any = None
         self._lock = threading.Lock()
         # node_id -> (heartbeat_state_name, last_seen_ts); filled by the sniffer
@@ -239,6 +245,19 @@ class CanopenMaster:
     # ── lifecycle -------------------------------------------------------
     def start(self) -> dict:
         if self._bus is not None:
+            return {"ok": True}
+        if self.transport is not None:
+            if not self.transport.is_running:
+                return {"ok": False, "error": "CAN bus not running — start capture on an adapter first"}
+            self._bus = self.transport
+            self._rx = self.transport.subscribe()
+            self._sniff_rx = self.transport.subscribe()
+            self.node_hb.clear()
+            self._sniff_thread = threading.Thread(target=self._sniff_loop, daemon=True,
+                                                  name="canopen-hb-sniffer")
+            self._sniff_thread.start()
+            logger.info("CANopen master attached to the live bus (%s)",
+                        getattr(self.transport, "_interface", "adapter"))
             return {"ok": True}
         try:
             import can  # noqa: F401
@@ -263,6 +282,14 @@ class CanopenMaster:
         return {"ok": True}
 
     def stop(self) -> None:
+        if self.transport is not None and self._bus is not None:
+            for q in (self._rx, self._sniff_rx):
+                if q is not None:
+                    self.transport.unsubscribe(q)
+            self._rx = self._sniff_rx = None
+            self._bus = None
+            self.node_hb.clear()
+            return
         for bus in (self._bus, self._sniff_bus):
             if bus is not None:
                 try:
@@ -280,9 +307,16 @@ class CanopenMaster:
     # ── heartbeat sniffer --------------------------------------------------
     def _sniff_loop(self) -> None:
         """Passively record node heartbeats (COB-ID 0x701..0x780)."""
-        while self._sniff_bus is not None:
+        while self._sniff_bus is not None or self._sniff_rx is not None:
             try:
-                msg = self._sniff_bus.recv(timeout=0.05)
+                if self._sniff_rx is not None:
+                    import queue as _queue
+                    try:
+                        msg = self._sniff_rx.get(timeout=0.05)
+                    except _queue.Empty:
+                        msg = None
+                else:
+                    msg = self._sniff_bus.recv(timeout=0.05)
             except Exception:  # pragma: no cover - defensive
                 break
             if msg is None:
@@ -301,8 +335,18 @@ class CanopenMaster:
             bus = self._bus
             if bus is None:
                 return {"ok": False, "error": "master not started"}
+            rx = self._rx
+            if rx is not None:                       # real bus: drop stale frames first
+                while not rx.empty():
+                    try:
+                        rx.get_nowait()
+                    except Exception:
+                        break
             try:
-                bus.send(can.Message(arbitration_id=arb_id, data=data))
+                if rx is not None:
+                    bus.send(arb_id, data)
+                else:
+                    bus.send(can.Message(arbitration_id=arb_id, data=data))
             except Exception as exc:
                 return {"ok": False, "error": f"send failed: {exc}"}
 
@@ -312,7 +356,14 @@ class CanopenMaster:
             deadline = time.time() + self.timeout_s
             while time.time() < deadline:
                 try:
-                    msg = bus.recv(timeout=0.02)
+                    if rx is not None:
+                        import queue as _queue
+                        try:
+                            msg = rx.get(timeout=0.02)
+                        except _queue.Empty:
+                            msg = None
+                    else:
+                        msg = bus.recv(timeout=0.02)
                 except Exception as exc:  # pragma: no cover - defensive
                     return {"ok": False, "error": f"recv failed: {exc}"}
                 if msg is None:
@@ -425,21 +476,36 @@ class CanopenService:
     def running(self) -> bool:
         return self.master.running or bool(self.slaves)
 
+    # ── real bus ------------------------------------------------------------
+    def attach(self, monitor: Any) -> dict:
+        """Use the CAN monitor's live adapter for NMT / SDO with real nodes."""
+        with self._lock:
+            if self.master.running and self.master.transport is monitor:
+                return {"ok": True}
+            if self.slaves:
+                return {"ok": False, "error": "a simulated segment is running — stop it first"}
+            self.master.stop()
+            self.master = CanopenMaster(transport=monitor)
+            return self.master.start()
+
+    def _ensure(self, monitor: Any = None) -> dict | None:
+        if self.master.running and (monitor is None or self.master.transport is monitor
+                                    or self.master.transport is None):
+            return None
+        if monitor is not None and monitor.is_running:
+            res = self.attach(monitor)
+            return None if res.get("ok") else res
+        return {"ok": False, "error": "CAN bus not running — start capture on a CAN adapter first"}
+
     # ── master operations --------------------------------------------------
-    def nmt_command(self, node_id: int, command: int) -> dict:
-        if not self.master.running:
-            return {"ok": False, "error": "bus not running — start simulation first"}
-        return self.master.nmt_command(node_id, command)
+    def nmt_command(self, node_id: int, command: int, monitor: Any = None) -> dict:
+        return self._ensure(monitor) or self.master.nmt_command(node_id, command)
 
-    def sdo_read(self, node_id: int, index: int, subindex: int) -> dict:
-        if not self.master.running:
-            return {"ok": False, "error": "bus not running — start simulation first"}
-        return self.master.sdo_read(node_id, index, subindex)
+    def sdo_read(self, node_id: int, index: int, subindex: int, monitor: Any = None) -> dict:
+        return self._ensure(monitor) or self.master.sdo_read(node_id, index, subindex)
 
-    def sdo_write(self, node_id: int, index: int, subindex: int, value: int) -> dict:
-        if not self.master.running:
-            return {"ok": False, "error": "bus not running — start simulation first"}
-        return self.master.sdo_write(node_id, index, subindex, value)
+    def sdo_write(self, node_id: int, index: int, subindex: int, value: int, monitor: Any = None) -> dict:
+        return self._ensure(monitor) or self.master.sdo_write(node_id, index, subindex, value)
 
     # ── node state ----------------------------------------------------------
     def get_nodes(self, snapshot: dict | None = None) -> list[dict]:

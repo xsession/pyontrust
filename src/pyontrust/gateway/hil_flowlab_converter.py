@@ -90,7 +90,7 @@ _HIL_TO_BLOCK: dict[str, dict[str, Any]] = {
         "params_map": {"seconds": "seconds"},
     },
     "measure": {
-        "type": "simulated_power",
+        "type": "ppk2_meter",
         "params_map": {
             "duration_s": "duration_s",
             "sample_rate_hz": "sample_rate_hz",
@@ -508,20 +508,16 @@ def _detect_instruments(blocks: list[dict[str, Any]]) -> dict[str, Any]:
             }
         elif btype in ("aoi_camera", "aoi_inspect"):
             instruments["aoi_camera"] = {
-                "type": params.get("mode", "simulated"),
+                "type": params.get("mode", "webcam"),
                 "params": {},
             }
         elif btype in ("seek_thermal", "thermal_analyze"):
             instruments["seek_thermal"] = {
-                "type": params.get("mode", "simulated"),
+                "type": params.get("mode", "seek"),
                 "params": {},
             }
         elif btype in ("sleep_test", "tx_burst_test"):
-            instruments.setdefault("power_meter", {"type": "simulated", "params": {}})
-
-    # Always ensure at least a simulated power meter
-    if not instruments:
-        instruments["power_meter"] = {"type": "simulated", "params": {}}
+            instruments.setdefault("power_meter", {"type": "ppk2", "params": {}})
 
     return instruments
 
@@ -565,7 +561,7 @@ def hil_to_diagram(profile: dict[str, Any]) -> dict[str, Any]:
     inst_y = Y_START
 
     for inst_name, inst_cfg in instruments.items():
-        inst_type = inst_cfg.get("type", "simulated") if isinstance(inst_cfg, dict) else "simulated"
+        inst_type = inst_cfg.get("type", "") if isinstance(inst_cfg, dict) else ""
         inst_params = inst_cfg.get("params", {}) if isinstance(inst_cfg, dict) else {}
 
         block_type = _instrument_to_block(inst_name, inst_type)
@@ -687,8 +683,10 @@ def _instrument_to_block(name: str, inst_type: str) -> str:
         return "aoi_camera"
     if "thermal" in name or "seek" in name:
         return "seek_thermal"
-    # Default: simulated power meter
-    return "simulated_power"
+    if inst_type.lower() == "simulated":       # legacy profiles (test doubles)
+        return "simulated_power"
+    # Default: the real power meter (PPK2)
+    return "ppk2_meter"
 
 
 def _merge_instrument_params(name: str, inst_type: str, params: dict) -> dict[str, Any]:
@@ -756,8 +754,8 @@ def _action_to_block(
                     "max_avg_ma": 5,
                 }, None, "trace")
             else:
-                # Generic measurement block
-                return ("simulated_power", {
+                # Generic measurement block — the real power meter
+                return ("ppk2_meter", {
                     "duration_s": dur,
                     "sample_rate_hz": 1000,
                 }, None, "trace")
@@ -787,7 +785,7 @@ def _action_to_block(
 
     if a_type == "snapshot":
         return ("aoi_camera", {
-            "mode": "simulated",
+            "mode": "webcam",
             "width": 640,
             "height": 480,
         }, None, "frame")
@@ -801,7 +799,7 @@ def _action_to_block(
 
     if a_type == "thermal_capture":
         return ("seek_thermal", {
-            "mode": "simulated",
+            "mode": "seek",
             "base_temp_c": 25,
         }, None, "thermal")
 
@@ -870,7 +868,7 @@ def _empty_profile(name: str = "empty") -> dict[str, Any]:
     return {
         "name": name,
         "description": "Empty profile",
-        "instruments": {"power_meter": {"type": "simulated", "params": {}}},
+        "instruments": {},
         "recorders": [],
         "steps": [],
     }

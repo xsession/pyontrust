@@ -511,8 +511,8 @@ class TestHelpers:
     def test_detect_instruments_empty_defaults(self):
         blocks = [{"id": "b1", "type": "stats", "params": {}}]
         instr = _detect_instruments(blocks)
-        # Should still provide a default simulated meter
-        assert "power_meter" in instr
+        # No instrument is invented (and never a simulated one)
+        assert instr == {}
 
     def test_flatten_profile_flat_format(self):
         profile = {"actions": [{"type": "mark", "label": "a"}, {"type": "sleep", "seconds": 1}]}

@@ -6,389 +6,80 @@
 <title>🔬 Microscopy — pyontrust</title>
 <link rel="stylesheet" href="/static/shell/tokens.css">
 <link rel="stylesheet" href="/static/shell/components.css">
-<style>
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--fg); overflow-x: hidden; }
-
-.container { max-width: 1400px; margin: 0 auto; padding: 16px 20px; }
-header { display: flex; align-items: center; gap: 16px; padding-bottom: 14px; border-bottom: 2px solid var(--accent); margin-bottom: 16px; flex-wrap: wrap; }
-header h1 { color: var(--accent); font-size: 22px; }
-header .sub { color: var(--fg-dim); font-size: 12px; }
-.status-pill { padding: 3px 12px; border-radius: 12px; font-size: 11px; font-weight: 600; margin-left: auto; }
-.status-pill.idle { background: rgba(108,112,134,.15); color: var(--fg-dim); }
-.status-pill.running { background: rgba(249,226,175,.15); color: var(--yellow); }
-.status-pill.done { background: rgba(166,227,161,.15); color: var(--green); }
-.status-pill.error { background: rgba(243,139,168,.15); color: var(--red); }
-
-.card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 14px; }
-.card h3 { color: var(--mauve); font-size: 14px; margin-bottom: 10px; }
-
-.form-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-bottom: 10px; }
-.form-group { display: flex; flex-direction: column; gap: 3px; }
-.form-group label { font-size: 11px; color: var(--fg-dim); font-weight: 600; }
-.form-group input, .form-group select { background: var(--bg3); border: 1px solid var(--border); color: var(--fg); padding: 6px 10px; border-radius: 4px; font-size: 12px; font-family: monospace; }
-.form-group input:focus, .form-group select:focus { outline: none; border-color: var(--accent); }
-
-.btn { padding: 8px 20px; border: none; border-radius: var(--radius); font-weight: 600; font-size: 13px; cursor: pointer; transition: .15s; }
-.btn-primary { background: var(--accent); color: var(--bg); }
-.btn-primary:hover { filter: brightness(1.15); }
-.btn-secondary { background: var(--bg3); color: var(--fg); border: 1px solid var(--border); }
-.btn-secondary:hover { border-color: var(--accent); }
-.btn:disabled { opacity: .4; cursor: not-allowed; }
-.btn-bar { display: flex; gap: 8px; margin-top: 12px; align-items: center; }
-
-.stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; margin: 12px 0; }
-.stat-box { background: var(--bg3); border-radius: var(--radius); padding: 12px; text-align: center; }
-.stat-box .val { font-size: 20px; font-weight: 700; color: var(--accent); font-family: monospace; word-break: break-all; }
-.stat-box .lbl { font-size: 10px; color: var(--fg-dim); margin-top: 2px; }
-
-.images-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px; }
-.image-card { background: var(--bg3); border-radius: var(--radius); padding: 10px; }
-.image-card h4 { font-size: 12px; color: var(--teal); margin-bottom: 8px; }
-.image-card img { width: 100%; border-radius: 4px; display: block; background: #11111b; }
-
-.progress-bar { height: 6px; background: var(--bg3); border-radius: 3px; margin: 12px 0; overflow: hidden; }
-.progress-bar .fill { height: 100%; width: 40%; background: var(--accent); border-radius: 3px; animation: slide 1.2s ease-in-out infinite alternate; }
-@keyframes slide { from { margin-left: 0; } to { margin-left: 60%; } }
-
-.msg { font-size: 12px; color: var(--fg-dim); min-height: 16px; }
-.msg.error { color: var(--red); }
-
-.seg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 12px; }
-.seg button { background: var(--bg3); color: var(--fg-dim); border: none; padding: 7px 16px; font-size: 12px; font-weight: 600; cursor: pointer; }
-.seg button.active { background: var(--accent); color: var(--bg); }
-.cam-grid { display: grid; grid-template-columns: minmax(320px, 2fr) minmax(240px, 1fr); gap: 14px; }
-@media (max-width: 860px) { .cam-grid { grid-template-columns: 1fr; } }
-.preview-wrap { background: #11111b; border-radius: 4px; min-height: 200px; display: flex; align-items: center; justify-content: center; }
-.preview-wrap img { width: 100%; display: block; border-radius: 4px; }
-.meter { height: 10px; background: var(--bg3); border-radius: 5px; overflow: hidden; margin-top: 6px; }
-.meter .fill { height: 100%; width: 0; background: linear-gradient(90deg, var(--peach), var(--green)); transition: width .25s; }
-.thumbs { display: flex; gap: 6px; overflow-x: auto; padding: 6px 0; min-height: 70px; }
-.thumbs figure { flex: 0 0 auto; text-align: center; font-size: 10px; color: var(--fg-dim); }
-.thumbs img { height: 60px; border-radius: 3px; display: block; border: 1px solid var(--border); }
-.btn-danger { background: rgba(243,139,168,.15); color: var(--red); border: 1px solid rgba(243,139,168,.4); }
-.export-link { color: var(--accent); text-decoration: none; margin-right: 14px; }
-.export-link:hover { text-decoration: underline; }
-</style>
+<link rel="stylesheet" href="/micro/static/micro.css">
 <link rel="stylesheet" href="/static/shell/ui-foundation.css">
 </head>
 <body>
 <main class="container">
-  <header>
-    <div>
-      <h1 data-page-title>🔬 Microscopy — Focus Stacking &amp; Depth</h1>
-      <p class="sub" data-page-subtitle>Multi-focus capture → sharp composite → metric height map (µm) + STL surface export</p>
-    </div>
-    <span class="status-pill idle" id="run-status">Idle</span>
-  </header>
 
-  <div class="seg" role="tablist" aria-label="Frame source">
-    <button type="button" class="active" data-src="synthetic" role="tab">🧪 Synthetic scene</button>
-    <button type="button" data-src="captured" role="tab">📷 Camera / 📱 phone</button>
+<header class="page-head">
+  <h1 data-page-title>🔬 Microscopy — Focus Stacking &amp; Depth</h1>
+  <span id="run-status" class="chip">idle</span>
+</header>
+
+<!-- 1 · cameras -->
+<section class="panel">
+  <div class="panel-head"><h2>Cameras</h2>
+    <span class="muted">select one or more — they run side by side and capture together</span>
+    <button class="btn btn-secondary" id="rescan" type="button" title="Rescan phones and USB cameras">↻ Rescan</button></div>
+  <div id="camera-list" class="camera-list"><p class="muted">Scanning phones and USB cameras…</p></div>
+  <div class="form-grid compact">
+    <label>Rotate<select id="rotate"><option value="0">0°</option><option value="90">90°</option><option value="180">180°</option><option value="270">270°</option></select></label>
+    <label title="Long edge of captured frames — 12 MP phone stills stack slowly">Stack resolution
+      <select id="max-px"><option value="1280">1280 px (fast)</option><option value="2000" selected>2000 px</option><option value="3000">3000 px</option><option value="0">Full</option></select></label>
   </div>
+</section>
 
-  <!-- Camera capture: USB microscope / UVC camera, or an Android phone's back camera (ADB + Termux:API) -->
-  <section class="card" id="camera-card" hidden>
-    <h3>Camera capture</h3>
-    <div class="form-row">
-      <div class="form-group" style="grid-column: span 2;">
-        <label for="cam-device">Camera</label>
-        <div style="display:flex; gap:6px;">
-          <select id="cam-device" style="flex:1; min-width:0;"><option value="">— scanning… —</option></select>
-          <button class="btn btn-secondary" id="cam-rescan" type="button" title="Rescan cameras and phones">↻</button>
-        </div>
-      </div>
-      <div class="form-group"><label for="cam-rotate">Rotate</label>
-        <select id="cam-rotate"><option value="0">0°</option><option value="90">90°</option><option value="180">180°</option><option value="270">270°</option></select></div>
-      <div class="form-group"><label for="cam-maxpx">Stack resolution</label>
-        <select id="cam-maxpx" title="Long edge of captured frames — full-size phone stills (12 MP) make stacking slow">
-          <option value="1280">1280 px (fast)</option><option value="2000" selected>2000 px</option><option value="3000">3000 px</option><option value="0">Full</option></select></div>
-      <div class="form-group"><label>Burst frames</label><input id="burst-n" type="number" min="2" max="32" value="8"></div>
-      <div class="form-group"><label>Burst interval (s)</label><input id="burst-dt" type="number" min="0.2" step="0.1" value="1.5"></div>
-    </div>
-    <div class="cam-grid">
-      <div>
-        <div class="preview-wrap"><img id="cam-preview" alt="live camera preview"><span id="cam-placeholder" class="msg">Pick a device to start the preview.</span></div>
-        <div class="msg" id="cam-meta" style="margin-top:6px;"></div>
-      </div>
-      <div>
-        <div class="form-group"><label>Focus sharpness (variance of Laplacian — turn the focus knob to peak it)</label></div>
-        <div style="font-family:monospace; font-size:22px; color:var(--accent);" id="sharp-val">—</div>
-        <div class="meter"><div class="fill" id="sharp-fill"></div></div>
-        <div class="msg" id="sharp-peak" style="margin-top:4px;"></div>
-        <canvas id="sharp-plot" width="320" height="80" style="width:100%; margin-top:8px; background:var(--bg3); border-radius:4px;"></canvas>
-        <div class="btn-bar" style="flex-wrap:wrap;">
-          <button class="btn btn-primary" id="cap-btn" type="button">📸 Capture plane</button>
-          <button class="btn btn-secondary" id="burst-btn" type="button">⏱ Timed burst</button>
-          <button class="btn btn-secondary" id="undo-btn" type="button">↶ Undo</button>
-          <button class="btn btn-danger" id="clear-btn" type="button">✕ Clear</button>
-        </div>
-        <p class="msg" style="margin-top:8px;">Step the focus in <strong>one direction</strong> between captures — frame <em>i</em> is assigned height Z₀ + i·Z-step.</p>
+<!-- 2 · live -->
+<section class="live-grid" id="live-grid"></section>
+
+<!-- 3 · capture -->
+<section class="panel">
+  <div class="panel-head"><h2>Capture</h2><span class="muted" id="capture-hint"></span></div>
+  <div class="capture-row">
+    <div class="capture-box">
+      <h3>📸 Planes by hand</h3>
+      <p class="muted">Step the focus (or the stage) in one direction between captures. Every selected camera takes a still at the same moment.</p>
+      <div class="run-bar">
+        <button class="btn btn-primary" data-action="capture" type="button">📸 Capture plane</button>
+        <button class="btn btn-secondary" data-action="undo" type="button">↶ Undo</button>
+        <button class="btn btn-ghost" data-action="clear" type="button">✕ Clear stacks</button>
       </div>
     </div>
-    <h3 style="margin-top:12px;">Capture stack <span id="stack-count" class="msg">(0 frames)</span></h3>
-    <div class="thumbs" id="stack-thumbs"></div>
-  </section>
-
-  <section class="card">
-    <h3>Stacking &amp; depth parameters</h3>
-    <div class="form-row">
-      <div class="form-group synth-only"><label>Focus frames (n)</label><input id="p-nframes" type="number" min="2" max="32" step="1" value="8"></div>
-      <div class="form-group"><label>Z-step (µm)</label><input id="p-step-um" type="number" min="0.1" step="0.5" value="2"></div>
-      <div class="form-group"><label>Z₀ offset (µm)</label><input id="p-z0-um" type="number" step="1" value="0"></div>
-      <div class="form-group"><label>Pitch px→µm</label><input id="p-px-um" type="number" min="0.05" step="0.1" value="1"></div>
-      <div class="form-group synth-only"><label>Width (px)</label><input id="p-width" type="number" min="64" max="1920" step="8" value="480"></div>
-      <div class="form-group synth-only"><label>Height (px)</label><input id="p-height" type="number" min="64" max="1920" step="8" value="360"></div>
-      <div class="form-group synth-only"><label>Scene seed</label><input id="p-seed" type="number" step="1" value="7"></div>
-      <div class="form-group"><label>Align frames</label><select id="p-align"><option value="1" selected>Yes (handheld / drift)</option><option value="0">No (rigid stand)</option></select></div>
+    <div class="capture-box" id="sweep-box">
+      <h3>🎯 Automatic focus sweep <span class="muted">(phone cameras)</span></h3>
+      <p class="muted">The phone drives its lens from far to near in even steps and takes a full-resolution still at each — on every selected phone in parallel. Heights are metric (from the focus distances).</p>
+      <div class="form-grid compact">
+        <label>Planes<input id="sweep-n" type="number" min="2" max="32" value="10"></label>
+        <label>Near (mm)<input id="sweep-near" type="number" min="10" step="5" value="100"></label>
+        <label>Far (mm)<input id="sweep-far" type="number" min="15" step="5" value="200"></label>
+        <label>Settle (ms)<input id="sweep-settle" type="number" min="100" max="3000" step="50" value="400"></label>
+      </div>
+      <div class="run-bar"><button class="btn btn-primary" data-action="sweep" type="button">🎯 Run focus sweep</button></div>
     </div>
-    <div class="btn-bar">
-      <button class="btn btn-primary" id="run-btn" type="button">▶ Run stack + depth</button>
-      <span class="msg" id="run-msg">Synthetic multi-depth PCB scene (3 planes) — no camera required.</span>
-    </div>
-  </section>
+  </div>
+  <div id="stacks"></div>
+  <p class="status-line" id="msg"></p>
+</section>
 
+<!-- 4 · depth -->
+<section class="panel">
+  <div class="panel-head"><h2>Stack &amp; depth</h2><span class="muted">for hand-captured planes; sweeps use their measured focus distances</span></div>
+  <div class="form-grid compact">
+    <label>Z-step (µm)<input id="p-step-um" type="number" min="0.1" step="0.5" value="2"></label>
+    <label>Z₀ offset (µm)<input id="p-z0-um" type="number" step="1" value="0"></label>
+    <label>Pixel pitch (µm)<input id="p-px-um" type="number" min="0.05" step="0.1" value="1"></label>
+    <label>Align frames<select id="p-align"><option value="1" selected>Yes (handheld / drift)</option><option value="0">No (rigid stand)</option></select></label>
+  </div>
+  <div class="run-bar"><button class="btn btn-primary" data-action="run" type="button">▶ Stack + depth</button></div>
   <div class="progress-bar" id="progress" hidden><div class="fill"></div></div>
+</section>
 
-  <section class="card" id="results-card" hidden>
-    <h3>Results</h3>
-    <div class="stats-grid" id="stats-grid"></div>
-    <div class="images-grid">
-      <div class="image-card"><h4>Stacked composite (all planes sharp)</h4><img id="img-stacked" alt="stacked image"></div>
-      <div class="image-card"><h4>Metric height map (µm, colormap)</h4><img id="img-heightmap" alt="height map"></div>
-    </div>
-  </section>
+<section id="results"></section>
 
-  <section class="card">
-    <h3>Exports</h3>
-    <p style="font-size:12px; color:var(--fg-dim); margin-bottom:8px;">Each run writes the stacked composite, PNG height map, STL surface mesh and a JSON report.</p>
-    <div id="exports-list" style="font-family:monospace; font-size:12px;"></div>
-  </section>
 </main>
-
-<script>
-const $ = (id) => document.getElementById(id);
-let source = 'synthetic';
-
-function setPill(state, text) {
-  const el = $('run-status');
-  el.className = 'status-pill ' + state;
-  el.textContent = text;
-}
-function msg(text, isErr = false) {
-  const m = $('run-msg');
-  m.textContent = text;
-  m.className = 'msg' + (isErr ? ' error' : '');
-}
-async function api(url, opts) {
-  const r = await fetch(url, opts);
-  let d = {};
-  try { d = await r.json(); } catch (_) { /* non-JSON error page */ }
-  if (!r.ok || d.ok === false) throw new Error(d.error || ('HTTP ' + r.status));
-  return d;
-}
-const post = (url, body) => api(url, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body || {}) });
-
-/* ── source switch ─────────────────────────────────────────────── */
-function setSource(src) {
-  source = src;
-  document.querySelectorAll('.seg button').forEach(b => b.classList.toggle('active', b.dataset.src === src));
-  $('camera-card').hidden = src !== 'captured';
-  document.querySelectorAll('.synth-only').forEach(el => el.hidden = src !== 'synthetic');
-  if (src === 'captured') {
-    msg('Capture ≥ 2 focus planes, then run the stack.');
-    if (!$('cam-device').dataset.loaded) loadCameras();
-    else startPreview();
-    refreshStack();
-  } else {
-    stopPreview();
-    post('/micro/api/release').catch(() => {});
-    msg('Synthetic multi-depth PCB scene (3 planes) — no camera required.');
-  }
-}
-document.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => setSource(b.dataset.src)));
-
-/* ── camera list + preview ─────────────────────────────────────── */
-async function loadCameras(refresh = false) {
-  const sel = $('cam-device');
-  try {
-    sel.innerHTML = '<option value="">— scanning cameras and phones… —</option>';
-    const d = await api('/micro/api/cameras' + (refresh ? '?refresh=1' : ''));
-    const esc = t => String(t).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
-    const opt = c => c.source
-      ? `<option value="${esc(c.source)}">${esc(c.label)}</option>`
-      : `<option value="" disabled>${esc(c.label)}</option>`;   // e.g. phone waiting for USB-debugging approval
-    const phones = d.cameras.filter(c => c.kind === 'phone'), usb = d.cameras.filter(c => c.kind === 'usb');
-    sel.innerHTML = (phones.length ? `<optgroup label="Android phones (back cameras)">${phones.map(opt).join('')}</optgroup>` : '')
-      + (usb.length ? `<optgroup label="USB cameras">${usb.map(opt).join('')}</optgroup>` : '')
-      || '<option value="">No camera found</option>';
-    sel.dataset.loaded = '1';
-    // Prefer a phone back camera, then an external USB camera / microscope over a built-in webcam.
-    const pick = phones.find(c => c.source) || usb.find(c => !/integrated|built-?in|facetime/i.test(c.name)) || usb[0];
-    if (pick) sel.value = pick.source;
-    startPreview();
-  } catch (e) {
-    sel.innerHTML = '<option value="">Camera scan failed</option>';
-    $('cam-meta').textContent = '⚠ ' + e.message;
-  }
-}
-$('cam-device').addEventListener('change', () => { sharpHist = []; sharpPeak = 0; startPreview(); });
-$('cam-rotate').addEventListener('change', startPreview);
-$('cam-rescan').addEventListener('click', () => loadCameras(true));
-const isPhone = () => $('cam-device').value.startsWith('phone:');
-
-let previewTimer = null, sharpHist = [], sharpPeak = 0;
-// Live MJPEG video in the <img>; a light stats poll drives the focus meter.
-function startPreview() {
-  stopPreview();
-  const dev = $('cam-device').value;
-  if (dev === '') return;
-  $('cam-preview').src = `/micro/api/stream?source=${encodeURIComponent(dev)}&rotate=${$('cam-rotate').value}&_=${Date.now()}`;
-  $('cam-placeholder').hidden = true;
-  pollStats();
-  previewTimer = setInterval(pollStats, 250);
-}
-function stopPreview() {
-  if (previewTimer) { clearInterval(previewTimer); previewTimer = null; }
-  if ($('cam-preview').getAttribute('src')) $('cam-preview').removeAttribute('src');  // closes the stream
-}
-document.addEventListener('visibilitychange', () => {
-  if (source !== 'captured') return;
-  if (document.hidden) stopPreview(); else startPreview();
-});
-
-async function pollStats() {
-  try {
-    const d = await api('/micro/api/live_stats');
-    if (d.error) { $('cam-meta').textContent = '⚠ ' + d.error; return; }
-    if (!d.active) { $('cam-meta').textContent = 'Connecting to camera…'; return; }
-    $('cam-meta').textContent = `● live · ${d.width}×${d.height}px preview · ${isPhone() ? 'phone stills ~1/s' : 'USB video'}` + (d.fps ? ` · ${d.fps} fps` : '');
-    showSharpness(d.sharpness);
-  } catch (e) {
-    $('cam-meta').textContent = '⚠ ' + e.message;
-  }
-}
-
-function showSharpness(v) {
-  sharpHist.push(v);
-  if (sharpHist.length > 120) sharpHist.shift();
-  sharpPeak = Math.max(sharpPeak * 0.995, v);   // slowly decaying peak hold
-  $('sharp-val').textContent = v.toFixed(1);
-  $('sharp-fill').style.width = Math.min(100, 100 * v / (sharpPeak || 1)) + '%';
-  $('sharp-peak').textContent = `peak ${sharpPeak.toFixed(1)} · ${(100 * v / (sharpPeak || 1)).toFixed(0)}% of peak`;
-  const cv = $('sharp-plot'), g = cv.getContext('2d');
-  g.clearRect(0, 0, cv.width, cv.height);
-  const mx = Math.max(...sharpHist, 1);
-  g.strokeStyle = '#a6e3a1'; g.lineWidth = 1.5; g.beginPath();
-  sharpHist.forEach((s, i) => {
-    const x = i * cv.width / 119, y = cv.height - 4 - (s / mx) * (cv.height - 8);
-    i ? g.lineTo(x, y) : g.moveTo(x, y);
-  });
-  g.stroke();
-}
-
-/* ── capture stack ─────────────────────────────────────────────── */
-function renderStack(d) {
-  $('stack-count').textContent = `(${d.count} frame${d.count === 1 ? '' : 's'}${d.width ? ` · ${d.width}×${d.height}` : ''})`;
-  $('stack-thumbs').innerHTML = (d.thumbs || []).map((t, i) =>
-    `<figure><img src="data:image/jpeg;base64,${t}" alt="plane ${i}"><figcaption>#${i} · ${d.sharpness[i]}</figcaption></figure>`).join('')
-    || '<span class="msg">No frames yet.</span>';
-}
-async function refreshStack() {
-  try { renderStack(await api('/micro/api/stack')); } catch (e) { /* ignore */ }
-}
-async function captureOne() {
-  const dev = $('cam-device').value;
-  if (dev === '') throw new Error('No camera selected');
-  await post('/micro/api/capture', { source: dev, rotate: +$('cam-rotate').value, max_px: +$('cam-maxpx').value });
-  await refreshStack();
-}
-$('cap-btn').addEventListener('click', async () => {
-  $('cap-btn').disabled = true;
-  try { await captureOne(); msg('Captured — step the focus and capture the next plane.'); }
-  catch (e) { msg(e.message, true); }
-  finally { $('cap-btn').disabled = false; }
-});
-$('burst-btn').addEventListener('click', async () => {
-  const n = Math.max(2, Math.min(32, +$('burst-n').value || 8));
-  const dt = Math.max(0.2, +$('burst-dt').value || 1.5);
-  const btns = ['cap-btn', 'burst-btn', 'undo-btn', 'clear-btn', 'run-btn'].map($);
-  btns.forEach(b => b.disabled = true);
-  try {
-    for (let i = 0; i < n; i++) {
-      msg(`Burst ${i + 1}/${n} — keep turning the focus slowly in one direction…`);
-      await captureOne();
-      if (i < n - 1) await new Promise(r => setTimeout(r, dt * 1000));
-    }
-    msg(`Burst done: ${n} frames captured.`);
-  } catch (e) { msg('Burst stopped: ' + e.message, true); }
-  finally { btns.forEach(b => b.disabled = false); }
-});
-$('undo-btn').addEventListener('click', async () => { await post('/micro/api/stack/undo').catch(() => {}); refreshStack(); });
-$('clear-btn').addEventListener('click', async () => { await post('/micro/api/stack/clear').catch(() => {}); refreshStack(); });
-
-/* ── pipeline run ──────────────────────────────────────────────── */
-async function runPipeline() {
-  const btn = $('run-btn');
-  btn.disabled = true;
-  $('progress').hidden = false;
-  setPill('running', 'Running…');
-  msg('');
-  try {
-    const body = {
-      source,
-      n_frames: +$('p-nframes').value,
-      step_um: +$('p-step-um').value,
-      z0_um: +$('p-z0-um').value,
-      px_um: +$('p-px-um').value,
-      width: +$('p-width').value,
-      height: +$('p-height').value,
-      seed: +$('p-seed').value,
-      align: $('p-align').value === '1',
-    };
-    const d = await post('/micro/api/run', body);
-
-    $('results-card').hidden = false;
-    $('img-stacked').src = 'data:image/png;base64,' + d.stacked_png_b64;
-    if (d.heightmap_png_b64) $('img-heightmap').src = 'data:image/png;base64,' + d.heightmap_png_b64;
-
-    const s = d.stats || {};
-    const range = (s.height_max_um ?? 0) - (s.height_min_um ?? 0);
-    const stats = [
-      ['Source', s.source],
-      ['Frames', s.n_frames],
-      ['Z range (µm)', range.toFixed(1)],
-      ['Min height (µm)', s.height_min_um?.toFixed(2)],
-      ['Max height (µm)', s.height_max_um?.toFixed(2)],
-      ['Mean height (µm)', s.height_mean_um?.toFixed(2)],
-      ['Confidence', s.confidence_mean?.toFixed(3)],
-      ['Elapsed (s)', s.elapsed_s],
-    ];
-    $('stats-grid').innerHTML = stats.map(([l, v]) =>
-      `<div class="stat-box"><div class="val">${v ?? '—'}</div><div class="lbl">${l}</div></div>`).join('');
-
-    const labels = { stacked_png: 'Stacked PNG', heightmap_png: 'Height map PNG', mesh_stl: 'Surface STL', report_json: 'Report JSON' };
-    const urls = d.export_urls || {};
-    $('exports-list').innerHTML = Object.keys(urls).map(k =>
-      `<a class="export-link" href="${urls[k]}" download>⬇ ${labels[k] || k}</a>`).join('')
-      + Object.entries(d.exports || {}).map(([k, v]) => `<div class="msg">${k}: ${v}</div>`).join('');
-
-    setPill('done', 'Done');
-    msg(`Stacked ${s.n_frames} frames → ${range.toFixed(1)} µm height range in ${s.elapsed_s}s`);
-  } catch (e) {
-    setPill('error', 'Failed');
-    msg(String(e.message || e), true);
-  } finally {
-    btn.disabled = false;
-    $('progress').hidden = true;
-  }
-}
-
-$('run-btn').addEventListener('click', runPipeline);
-window.addEventListener('beforeunload', () => navigator.sendBeacon && navigator.sendBeacon('/micro/api/release'));
-// Live by default: show a synthetic result immediately on load.
-runPipeline();
-</script>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<script type="module" src="/micro/static/micro.js"></script>
 <script src="/static/shell/ui-foundation.js"></script>
 </body>
 </html>

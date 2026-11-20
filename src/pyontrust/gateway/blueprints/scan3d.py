@@ -1,35 +1,49 @@
-"""3D Scan GUI backend — stereo depth, disparity and point cloud.
+"""3D Scan — live stereo depth from two real cameras.
 
-Wraps :class:`pyontrust.analysis.stereo.StereoAnalyzer` (rectify -> SGBM
-disparity -> metric depth ``Z = fx*B/d`` -> XYZ point cloud) behind a small
-JSON API for the ``/scan3d`` web page.
+Left / right cameras are any two sources of the shared camera layer
+(:mod:`pyontrust.services.camera_sources`) — typically the back cameras of
+two Android phones side by side, or two USB cameras.  No simulated scenes.
 
-Two input modes:
-  * ``simulated`` — a synthetic textured scene with objects at known depths
-    (works out of the box, no hardware needed);
-  * ``upload``    — base64-encoded left/right images from a real stereo rig.
+Routes (under ``/scan3d``)
+--------------------------
+GET  /api/cameras                         available sources
+GET  /api/stream?source=…&rotate=         live MJPEG of one camera
+GET  /api/live_stats?source=…             live-feed statistics
+GET  /api/intrinsics?source=…&width=      focal length in px from lens + sensor size (phones)
+GET  /api/depth_stream?left=…&right=…     live depth video from the newest frame pair
+GET  /api/depth_stats                     latest live-depth statistics
+POST /api/capture                         {left, right, still, rotate, …} → full analysis of a synchronised pair
+POST /api/run                             {left_b64, right_b64, …} → analysis of an uploaded pair (stereo rig)
 """
 from __future__ import annotations
 
 import base64
 import logging
 import time
+from pathlib import Path
 from typing import Any
 
 import numpy as np
-from flask import Blueprint, Response, jsonify, request, send_from_directory
-from pathlib import Path
+from flask import Blueprint, Response, jsonify, request, send_from_directory, stream_with_context
+
+from pyontrust.services.camera_sources import (_key, _prepare, _source_arg, grab_simultaneous, list_sources,
+                                               live_stats as _live_stats, mjpeg_stream)
 
 logger = logging.getLogger("pyontrust.gateway.scan3d")
 
 _WEB_DIR = Path(__file__).resolve().parent.parent / "web" / "scan3d"
-bp = Blueprint(
-    "scan3d", __name__, static_folder=str(_WEB_DIR), static_url_path="/static",
-)
+bp = Blueprint("scan3d", __name__, static_folder=str(_WEB_DIR), static_url_path="/static")
+
+_DEPTH_LIVE: dict[str, Any] = {"t": 0.0}
 
 
-def _json_body() -> dict[str, Any]:
-    return request.get_json(silent=True) or {}
+def _body() -> dict[str, Any]:
+    data = request.get_json(silent=True)
+    return data if isinstance(data, dict) else {}
+
+
+def _err(msg: str, status: int) -> tuple[Response, int]:
+    return jsonify({"ok": False, "error": msg}), status
 
 
 def _b64_png(arr: np.ndarray) -> str:
@@ -44,71 +58,77 @@ def _b64_png(arr: np.ndarray) -> str:
 def _decode_image(b64: str) -> np.ndarray:
     import cv2
 
-    raw = base64.b64decode(b64)
-    arr = np.frombuffer(raw, dtype=np.uint8)
-    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    img = cv2.imdecode(np.frombuffer(base64.b64decode(b64), np.uint8), cv2.IMREAD_COLOR)
     if img is None:
         raise ValueError("could not decode image (expected PNG/JPEG)")
     return img
 
 
-def _synthetic_pair(cfg: Any, width: int = 480, height: int = 360, seed: int = 11):
-    """Textured scene with three objects at known depths + a far background.
+def _config(params: dict[str, Any], shape: tuple[int, ...]) -> Any:
+    """StereoConfig from request params; principal point defaults to the image centre."""
+    from pyontrust.analysis.stereo import StereoConfig
 
-    The texture is low-frequency value noise (smooth gradients), which SGBM
-    block matching handles well — pure white noise would defeat it.  Every
-    region gets its true disparity ``d = fx * baseline / Z`` applied in the
-    right image, so the recovered depth map shows flat plateaus at each
-    object's depth and a plateau at the background depth (5 m).
-    """
+    h, w = shape[:2]
+    fx = float(params.get("fx") or 0) or 0.9 * w            # sensible fallback, never a fake scene
+    num_disp = int(params.get("num_disp", 96))
+    return StereoConfig(fx=fx, fy=float(params.get("fy") or fx),
+                        cx=float(params.get("cx") or w / 2), cy=float(params.get("cy") or h / 2),
+                        baseline_m=float(params.get("baseline_mm", 120.0)) / 1000.0,
+                        num_disp=max(16, (num_disp // 16) * 16), block_size=int(params.get("block_size", 7)),
+                        min_disparity=0)
+
+
+def _match_size(left: np.ndarray, right: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Two different phones may deliver different sizes: bring right to left's size."""
     import cv2
 
-    rng = np.random.default_rng(seed)
-
-    # Structured texture: small random grid upscaled with cubic interpolation.
-    gw, gh = max(8, width // 16), max(8, height // 16)
-    coarse = rng.integers(40, 220, (gh, gw)).astype(np.float32)
-    gray = cv2.resize(coarse, (width, height), interpolation=cv2.INTER_CUBIC)
-    gray = np.clip(gray.astype(np.uint8), 0, 255)
-    left = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
-
-    objects = [
-        dict(x=int(width * 0.25), y=int(height * 0.30), ow=90, oh=70, z_m=0.5),   # near (d≈86px)
-        dict(x=int(width * 0.45), y=int(height * 0.15), ow=120, oh=90, z_m=1.0),  # mid  (d≈43px)
-        dict(x=int(width * 0.70), y=int(height * 0.55), ow=75, oh=65, z_m=2.0),   # far  (d≈22px)
-    ]
-
-    right = left.copy()
-
-    def shift_region(img_l: np.ndarray, img_r: np.ndarray, x0: int, y0: int, ow: int, oh: int, d_px: float) -> None:
-        """Copy region from left into right shifted left by round(d_px)."""
-        shift = int(round(d_px))
-        if shift <= 0:
-            return
-        dx0, dx1 = max(0, x0 - shift), min(width, x0 + ow - shift)
-        if dx1 <= dx0:
-            return
-        cx0 = x0 + (dx0 - (x0 - shift))  # source column aligned to clipped dest
-        for c in range(3):
-            img_r[y0:y0 + oh, dx0:dx1, c] = img_l[y0:y0 + oh, cx0:cx0 + (dx1 - dx0), c]
-
-    # Background first: treat as a plane at 5 m so it gets a finite disparity.
-    bg_d = float(cfg.fx) * float(cfg.baseline_m) / 5.0
-    if int(round(bg_d)) > 0:
-        for c in range(3):
-            right[:, : width - int(round(bg_d)), c] = left[:, int(round(bg_d)):, c]
-
-    # Objects on top: flat shaded patches (easy to match) at their true depths.
-    for o in objects:
-        shade = int(rng.integers(140, 230))
-        patch = rng.integers(max(0, shade - 25), min(255, shade + 25), (o["oh"], o["ow"]), dtype=np.uint8)
-        x0, y0, ow, oh = o["x"], o["y"], o["ow"], o["oh"]
-        for c in range(3):
-            left[y0:y0 + oh, x0:x0 + ow, c] = patch
-        d_px = float(cfg.fx) * float(cfg.baseline_m) / o["z_m"]
-        shift_region(left, right, x0, y0, ow, oh, d_px)
-
+    if right.shape[:2] != left.shape[:2]:
+        right = cv2.resize(right, (left.shape[1], left.shape[0]), interpolation=cv2.INTER_AREA)
     return left, right
+
+
+def _depth_colour(res: Any) -> tuple[np.ndarray, dict[str, Any]]:
+    import cv2
+
+    valid, depth = res.valid_mask, res.depth_m
+    with np.errstate(invalid="ignore"):
+        dmin = float(np.nanpercentile(depth[valid], 2)) if valid.any() else None
+        dmax = float(np.nanpercentile(depth[valid], 98)) if valid.any() else None
+        dmed = float(np.nanmedian(depth[valid])) if valid.any() else None
+    lo, hi = (dmin, dmax) if (dmin is not None and dmax and dmax > dmin) else (0.0, 1.0)
+    norm = np.clip((depth - lo) / (hi - lo), 0.0, 1.0)
+    img = cv2.applyColorMap(((1 - np.nan_to_num(norm)) * 255).astype(np.uint8), cv2.COLORMAP_TURBO)  # near = warm
+    img[~valid] = 0
+    stats = {"valid_pct": round(100.0 * float(valid.mean()), 1), "n_points": int(valid.sum()),
+             "depth_min_m": dmin, "depth_max_m": dmax, "depth_median_m": dmed}
+    return img, stats
+
+
+def _analyse(left: np.ndarray, right: np.ndarray, params: dict[str, Any], mode: str) -> dict[str, Any]:
+    import cv2
+
+    from pyontrust.analysis.stereo import StereoAnalyzer
+
+    left, right = _match_size(left, right)
+    cfg = _config(params, left.shape)
+    t0 = time.time()
+    res = StereoAnalyzer(cfg).run(left, right)
+    depth_img, stats = _depth_colour(res)
+    disp = np.where(res.disparity_px > 0, res.disparity_px, 0.0)
+    disp_img = cv2.applyColorMap((np.clip(disp / max(1e-6, float(disp.max() or 1)), 0, 1) * 255).astype(np.uint8),
+                                 cv2.COLORMAP_JET)
+    h, w = depth_img.shape[:2]
+    stats.update(mode=mode, width=int(w), height=int(h), fx_px=round(cfg.fx, 1),
+                 baseline_mm=cfg.baseline_m * 1000.0, elapsed_s=round(time.time() - t0, 3))
+    logger.info("scan3d %s: %.1f%% matched in %.3fs", mode, stats["valid_pct"], stats["elapsed_s"])
+    return {"ok": True, "stats": stats,
+            "images": {"left_b64": _b64_png(res.left_rect), "right_b64": _b64_png(res.right_rect),
+                       "depth_b64": _b64_png(depth_img), "disparity_b64": _b64_png(disp_img)}}
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  Routes
+# ═══════════════════════════════════════════════════════════════════════
 
 
 @bp.route("/")
@@ -116,81 +136,154 @@ def index() -> Response:
     return send_from_directory(str(_WEB_DIR), "index.html")
 
 
-@bp.route("/api/run", methods=["POST"])
-def run_scan() -> Response:
-    """Analyse one stereo pair and return depth/disparity images + stats."""
-    body = _json_body()
-    mode = str(body.get("mode", "simulated"))
+@bp.route("/api/cameras")
+def cameras() -> Response:
+    try:
+        return jsonify({"ok": True, "cameras": list_sources(bool(request.args.get("refresh")))})
+    except ImportError:
+        return _err("OpenCV (cv2) is not installed", 500)
 
-    fx = float(body.get("fx", 600.0))
-    fy = float(body.get("fy", fx))
-    cx = float(body.get("cx", 240.0))
-    cy = float(body.get("cy", 180.0))
-    baseline_m = float(body.get("baseline_mm", 120.0)) / 1000.0
-    num_disp = int(body.get("num_disp", 96))
 
-    from pyontrust.analysis.stereo import StereoAnalyzer, StereoConfig
+@bp.route("/api/stream")
+def stream() -> Response:
+    try:
+        return mjpeg_stream(_key(_source_arg(request.args.get("source"))), int(request.args.get("rotate", 0)))
+    except ValueError as exc:
+        return _err(str(exc), 400)
 
-    cfg = StereoConfig(
-        fx=fx, fy=fy, cx=cx, cy=cy, baseline_m=baseline_m,
-        num_disp=max(16, (num_disp // 16) * 16), block_size=7, min_disparity=0,
-    )
 
-    t0 = time.time()
-    if mode == "upload":
-        left_b64 = str(body.get("left_b64") or "")
-        right_b64 = str(body.get("right_b64") or "")
-        if not left_b64 or not right_b64:
-            return jsonify({"ok": False, "error": "upload mode requires left_b64 and right_b64"}), 400
-        left = _decode_image(left_b64)
-        right = _decode_image(right_b64)
-    else:
-        width = max(128, min(1920, int(body.get("width", 480))))
-        height = max(96, min(1920, int(body.get("height", 360))))
-        seed = int(body.get("seed", 11))
-        left, right = _synthetic_pair(cfg, width=width, height=height, seed=seed)
+@bp.route("/api/live_stats")
+def live_stats() -> Response:
+    return jsonify(_live_stats(request.args.get("source", "")))
 
-    res = StereoAnalyzer(cfg).run(left, right)
 
-    valid = res.valid_mask
-    depth = res.depth_m
-    with np.errstate(invalid="ignore"):
-        dmin = float(np.nanmin(depth)) if valid.any() else None
-        dmax = float(np.nanmax(depth)) if valid.any() else None
-        dmed = float(np.nanmedian(depth)) if valid.any() else None
+@bp.route("/api/intrinsics")
+def intrinsics() -> Response:
+    """fx in pixels for an image of ``width`` px: focal_mm / sensor_width_mm × width."""
+    try:
+        src = _source_arg(request.args.get("source"))
+        width = int(request.args.get("width", 1280))
+    except ValueError as exc:
+        return _err(str(exc), 400)
+    if src[0] != "phone":
+        return jsonify({"ok": True, "known": False, "note": "USB camera: enter fx from a calibration"})
+    from pyontrust.instruments import phone_camera as pc
 
-    # depth map -> colormap (invalid pixels black)
+    try:
+        cam = next(c for c in pc.cameras(src[1]) if str(c["id"]) == src[2])
+    except StopIteration:
+        return _err("camera not found on the phone", 404)
+    except Exception as exc:
+        return _err(str(exc), 502)
+    sensor = (cam.get("sensor_mm") or [0, 0])[0]
+    if not cam.get("focal_mm") or not sensor:
+        return jsonify({"ok": True, "known": False, "note": "phone does not report focal length / sensor size"})
+    return jsonify({"ok": True, "known": True, "fx_px": round(cam["focal_mm"] / sensor * width, 1),
+                    "focal_mm": cam["focal_mm"], "sensor_mm": cam["sensor_mm"], "width": width})
+
+
+@bp.route("/api/depth_stream")
+def depth_stream() -> Response:
+    """Live depth video: SGBM on the newest left/right live frames (~5 fps at 640 px)."""
     import cv2
 
-    h, w = depth.shape
-    lo, hi = (dmin, dmax) if (dmin is not None and dmax is not None and dmax > dmin) else (0.0, 1.0)
-    norm = np.clip((depth - lo) / (hi - lo), 0.0, 1.0)
-    depth_img = cv2.applyColorMap((np.nan_to_num(norm) * 255).astype(np.uint8), cv2.COLORMAP_JET)
-    depth_img[~valid] = 0
+    from pyontrust.analysis.stereo import StereoAnalyzer
 
-    disp = np.where(res.disparity_px > 0, res.disparity_px, 0.0)
-    dmax_disp = float(disp.max()) if disp.size else 1.0
-    disp_img = cv2.applyColorMap((np.clip(disp / max(1e-6, dmax_disp), 0.0, 1.0) * 255).astype(np.uint8), cv2.COLORMAP_JET)
+    try:
+        left_src = _key(_source_arg(request.args.get("left")))
+        right_src = _key(_source_arg(request.args.get("right")))
+        rotate = int(request.args.get("rotate", 0))
+        width = max(320, min(1280, int(request.args.get("width", 640))))
+    except ValueError as exc:
+        return _err(str(exc), 400)
+    if left_src == right_src:
+        return _err("Left and right must be two different cameras", 400)
+    params = request.args.to_dict()
 
-    stats: dict[str, Any] = {
-        "mode": mode,
-        "width": int(w), "height": int(h),
-        "valid_pct": round(100.0 * float(valid.mean()), 2),
-        "n_points": int(valid.sum()),
-        "depth_min_m": dmin, "depth_max_m": dmax, "depth_median_m": dmed,
-        "baseline_mm": baseline_m * 1000.0,
-        "elapsed_s": round(time.time() - t0, 3),
-    }
+    def gen():
+        analyzer, n, t_fps = None, 0, time.time()
+        while True:
+            t0 = time.time()
+            try:
+                frames = grab_simultaneous([left_src, right_src])
+                left = _prepare(frames[left_src], rotate, width)
+                right = _prepare(frames[right_src], rotate, width)
+                left, right = _match_size(left, right)
+                if analyzer is None or analyzer.cfg.cx * 2 != left.shape[1]:
+                    p = dict(params)
+                    if p.get("fx"):   # fx was given for the full-width image: scale to the stream width
+                        p["fx"] = float(p["fx"]) * left.shape[1] / float(p.get("fx_width", 1280))
+                    analyzer = StereoAnalyzer(_config(p, left.shape))
+                res = analyzer.run(left, right)
+                img, stats = _depth_colour(res)
+                n += 1
+                if time.time() - t_fps >= 1.0:
+                    _DEPTH_LIVE["fps"] = round(n / (time.time() - t_fps), 1)
+                    n, t_fps = 0, time.time()
+                _DEPTH_LIVE.update(stats, t=time.time(), error=None, compute_ms=round((time.time() - t0) * 1000))
+                ok, buf = cv2.imencode(".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+                if ok:
+                    yield (b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: " + str(len(buf)).encode()
+                           + b"\r\n\r\n" + buf.tobytes() + b"\r\n")
+            except Exception as exc:
+                _DEPTH_LIVE.update(t=time.time(), error=str(exc))
+                time.sleep(1.0)
+            time.sleep(max(0.0, 0.2 - (time.time() - t0)))
 
-    logger.info("scan3d run (%s): %.1f%% matched in %.3fs", mode, stats["valid_pct"], stats["elapsed_s"])
+    return Response(stream_with_context(gen()), mimetype="multipart/x-mixed-replace; boundary=frame",
+                    headers={"Cache-Control": "no-store"})
 
-    return jsonify({
-        "ok": True,
-        "stats": stats,
-        "images": {
-            "left_b64": _b64_png(res.left_rect),
-            "right_b64": _b64_png(res.right_rect),
-            "depth_b64": _b64_png(depth_img),
-            "disparity_b64": _b64_png(disp_img),
-        },
-    })
+
+@bp.route("/api/depth_stats")
+def depth_stats() -> Response:
+    d = dict(_DEPTH_LIVE)
+    d["ok"] = True
+    d["active"] = time.time() - d.get("t", 0.0) < 3.0
+    return jsonify(d)
+
+
+@bp.route("/api/capture", methods=["POST"])
+def capture_pair() -> Response:
+    """Grab left + right at the same moment (live frames or full-res stills) and analyse."""
+    body = _body()
+    try:
+        left_src = _key(_source_arg(body.get("left")))
+        right_src = _key(_source_arg(body.get("right")))
+        rotate = int(body.get("rotate", 0))
+        max_px = int(body.get("max_px", 1600))
+    except (TypeError, ValueError) as exc:
+        return _err(str(exc), 400)
+    if left_src == right_src:
+        return _err("Left and right must be two different cameras", 400)
+    still = bool(body.get("still", False))
+    try:
+        frames = grab_simultaneous([left_src, right_src], still=still)
+    except Exception as exc:
+        return _err(f"Capture failed: {exc}", 502)
+    left = _prepare(frames[left_src], rotate, max_px)
+    right = _prepare(frames[right_src], rotate, max_px)
+    if body.get("fx") and body.get("fx_width"):
+        body["fx"] = float(body["fx"]) * left.shape[1] / float(body["fx_width"])
+    out = _analyse(left, right, body, "still pair" if still else "live pair")
+    from pyontrust.gateway import context
+    from pyontrust.gateway.blueprints.station import runs
+
+    runs().record("scan3d", "stereo", "done", context.actor(),
+                  {**out["stats"], "left": left_src, "right": right_src})
+    return jsonify(out)
+
+
+@bp.route("/api/run", methods=["POST"])
+def run_scan() -> Response:
+    """Analyse an uploaded stereo pair (images from a calibrated stereo rig)."""
+    body = _body()
+    if str(body.get("mode", "upload")) != "upload":
+        return _err("Simulated scenes were removed — use live cameras (/api/capture) or upload a real pair", 400)
+    left_b64, right_b64 = str(body.get("left_b64") or ""), str(body.get("right_b64") or "")
+    if not left_b64 or not right_b64:
+        return _err("upload mode requires left_b64 and right_b64", 400)
+    try:
+        left, right = _decode_image(left_b64), _decode_image(right_b64)
+    except ValueError as exc:
+        return _err(str(exc), 400)
+    return jsonify(_analyse(left, right, body, "upload"))

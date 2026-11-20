@@ -146,13 +146,15 @@ def lux_measure():
         torch_off_s=float(body.get("torch_off_s", 3.0)),
         n_cycles=int(body.get("n_cycles", 3)),
         pre_capture_s=float(body.get("pre_capture_s", 1.0)),
-        android_mode=str(body.get("android_mode", "simulated")),
+        android_mode=str(body.get("android_mode", "adb")),
         android_sample_rate_hz=float(body.get("android_rate_hz", 10.0)),
         lux_scale=float(body.get("lux_scale", 2.0)),
         lux_offset=float(body.get("lux_offset", 0.0)),
     )
-    use_real = cfg.android_mode != "simulated"
-    result = measure_parallel_lux(cfg, use_real_torch=use_real)
+    from pyontrust.core.simulation_guard import allowed
+    if cfg.android_mode == "simulated" and not allowed():
+        return jsonify({"ok": False, "error": "Simulated phones were removed — connect a phone (USB debugging)"}), 400
+    result = measure_parallel_lux(cfg, use_real_torch=cfg.android_mode != "simulated")
 
     report_dir = pathlib.Path("test_reports")
     report_path = build_lux_report(
@@ -245,9 +247,8 @@ def _read_sensor_once(
             AndroidSensorInstrument,
         )
         # Pick mode: if a real device serial is provided and ADB works, use adb
-        if mode == "auto":
-            from pyontrust.instruments.android_sensors import _adb_available
-            mode = "adb" if _adb_available() else "simulated"
+        if mode in ("auto", ""):
+            mode = "adb"          # real phone only — no silent fallback to simulated data
 
         inst = AndroidSensorInstrument(mode=mode)
         inst.open()
@@ -327,7 +328,7 @@ def live_stream():
         hw_type  — hardware type (android_sensors, webcam, …)
         sensor   — sensor name (accelerometer, light, 0, …)
         rate_ms  — sample interval in ms (default 500)
-        mode     — "auto", "simulated", "adb" (default auto)
+        mode     — "adb" (real phone; "auto" means the same — no simulated fallback)
     """
     hw_type = request.args.get("hw_type", "android_sensors")
     sensor = request.args.get("sensor", "accelerometer")
@@ -347,10 +348,9 @@ def live_stream():
                 from pyontrust.instruments.android_sensors import (
                     AndroidSensorInstrument, _adb_available,
                 )
-                effective_mode = mode
-                if effective_mode == "auto":
-                    effective_mode = "adb" if _adb_available() else "simulated"
-                inst = AndroidSensorInstrument(mode=effective_mode)
+                if not _adb_available():
+                    raise RuntimeError("No phone on ADB — connect a phone and allow USB debugging")
+                inst = AndroidSensorInstrument(mode="adb")
                 inst.open()
 
             seq = 0

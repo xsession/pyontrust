@@ -1228,7 +1228,7 @@ def folder_browse() -> Response:
 
 
 # ═══════════════════════════════════════════════════════════════
-# Live sensor feed — stream real/simulated sensor samples into the
+# Live sensor feed — stream real sensor samples (phone over ADB) into the
 # plotter dataset so every element works on live data by default.
 # ═══════════════════════════════════════════════════════════════
 

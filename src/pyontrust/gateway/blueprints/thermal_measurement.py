@@ -36,19 +36,18 @@ Camera tools
     POST /api/calibrate          one-point reference offset (or clear)
     POST /api/flat_field         learn / clear the flat-field map
 
-The GUI works with the real Seek camera only.  The simulated camera is
-available to automated tests (Flask ``TESTING``) or headless CI
-(``PYONTRUST_THERMAL_SIMULATOR=1``) and is refused otherwise.
+The GUI works with the real Seek camera only.  The simulated camera is a
+test double (``PYONTRUST_ALLOW_SIMULATION=1``, set by the test suite) and is
+refused otherwise.
 """
 from __future__ import annotations
 
 import logging
-import os
 import pathlib
 import time
 from typing import Any
 
-from flask import (Blueprint, Response, current_app, jsonify, request, send_file,
+from flask import (Blueprint, Response, jsonify, request, send_file,
                    send_from_directory, stream_with_context)
 
 from pyontrust.services.thermal_job import MeasurementJob
@@ -90,12 +89,10 @@ def _error(message: str, status: int, **extra: Any) -> tuple[Response, int]:
 
 
 def _sim_allowed() -> bool:
-    if os.environ.get("PYONTRUST_THERMAL_SIMULATOR") == "1":
-        return True
-    try:
-        return bool(current_app.testing)
-    except RuntimeError:  # outside an app context
-        return False
+    """Simulated cameras exist only as test doubles (see core.simulation_guard)."""
+    from pyontrust.core.simulation_guard import allowed
+
+    return allowed()
 
 
 def _wants_sim(cam_cfg: Any) -> bool:

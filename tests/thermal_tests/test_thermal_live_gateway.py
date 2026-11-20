@@ -150,7 +150,7 @@ def prod_client(monkeypatch):
 
     import pyontrust.gateway.blueprints.thermal_measurement as tm
 
-    monkeypatch.delenv("PYONTRUST_THERMAL_SIMULATOR", raising=False)
+    monkeypatch.delenv("PYONTRUST_ALLOW_SIMULATION", raising=False)
     app = Flask(__name__)
     app.register_blueprint(tm.bp, url_prefix="/thermal")
     with app.test_client() as c:

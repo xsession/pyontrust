@@ -72,6 +72,8 @@ spectroscopy = [
 ]
 power = [
     "docopt>=0.6.2",
+    "ppk2-api>=0.9",          # Nordic PPK2 power profiler (real driver)
+    "pyserial>=3.5",          # PPK2 serial-port auto-discovery
 ]
 dev = [
     "pytest>=8.2",

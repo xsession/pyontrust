@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any, Iterable
 
 from pyontrust.core.models import PowerSample
+from pyontrust.core.simulation_guard import require as _require_simulation
 
 
 @dataclass
@@ -52,6 +53,9 @@ class SimulatedPowerMeter:
             yield PowerSample(t_s=(now - self._t0), current_a=max(0.0, base + noise), voltage_v=self.voltage_v)
             time.sleep(max(0.0, dt))
             t = time.perf_counter()
+
+    def __post_init__(self) -> None:
+        _require_simulation("Simulated power meter")
 
 
 def create(config: dict[str, Any]) -> SimulatedPowerMeter:

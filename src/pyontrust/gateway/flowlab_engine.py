@@ -59,23 +59,54 @@ class ExecContext:
 # Block handlers
 # ══════════════════════════════════════════════════════════════════════
 
-def _blk_simulated_power(params: dict, inputs: dict, ctx: ExecContext) -> dict:
-    """Generate a synthetic current trace."""
-    import numpy as np
+def _capture_power_trace(type_name: str, cfg: dict, duration_s: float, ctx: ExecContext, label: str) -> dict:
+    """Capture a current/voltage trace from a real power instrument.
 
-    rate  = float(params.get("sample_rate_hz", 1000))
-    dur   = float(params.get("duration_s", 2))
-    base  = float(params.get("base_current_a", 0.001))
-    noise = float(params.get("noise_a", 0.0001))
+    Uses the instrument registry (real drivers).  A missing instrument or
+    driver fails the block with an actionable message — it never produces
+    made-up numbers.
+    """
+    from pyontrust.instruments import create_instrument
 
-    n = int(rate * dur)
-    t = np.linspace(0, dur, n)
-    current = base + np.random.normal(0, noise, n)
-
-    trace = {"time_s": t.tolist(), "current_a": current.tolist(),
-             "sample_rate_hz": rate, "n_samples": n}
-    ctx.log(f"📊 Simulated trace: {n} samples, {dur}s @ {rate} Hz")
+    meter = create_instrument(type_name, cfg)
+    try:
+        meter.open()
+        samples = list(meter.capture(duration_s))
+    except ImportError as exc:
+        raise RuntimeError(f"{label}: driver not installed ({exc})") from exc
+    finally:
+        try:
+            meter.close()
+        except Exception:
+            pass
+    if not samples:
+        raise RuntimeError(f"{label}: no samples captured — check the connection")
+    t0 = samples[0].t_s
+    trace = {"time_s": [round(s_.t_s - t0, 9) for s_ in samples],
+             "current_a": [s_.current_a for s_ in samples],
+             "voltage_v": [s_.voltage_v for s_ in samples],
+             "sample_rate_hz": round(len(samples) / max(duration_s, 1e-9), 1),
+             "n_samples": len(samples), "instrument": type_name}
+    mean_a = sum(trace["current_a"]) / len(samples)
+    ctx.log(f"⚡ {label}: {len(samples)} samples in {duration_s}s, mean {mean_a * 1e3:.4f} mA")
     return {"trace": trace}
+
+def _blk_simulated_power(params: dict, inputs: dict, ctx: ExecContext) -> dict:
+    """Legacy block id (diagrams saved before real-hardware-only): refused."""
+    from pyontrust.core.simulation_guard import allowed
+
+    if not allowed():
+        raise RuntimeError("The 'Simulated power' block was removed — use the PPK2 or AD3 meter block "
+                           "with the real instrument")
+    import numpy as np                     # test double (PYONTRUST_ALLOW_SIMULATION=1)
+
+    rate = float(params.get("sample_rate_hz", 1000))
+    dur = float(params.get("duration_s", 2))
+    n = int(rate * dur)
+    current = float(params.get("base_current_a", 0.001)) + np.random.normal(0, float(params.get("noise_a", 0.0001)), n)
+    ctx.log(f"🧪 Test-double trace: {n} samples")
+    return {"trace": {"time_s": np.linspace(0, dur, n).tolist(), "current_a": current.tolist(),
+                      "sample_rate_hz": rate, "n_samples": n}}
 
 
 def _blk_csv_file(params: dict, inputs: dict, ctx: ExecContext) -> dict:
@@ -103,10 +134,10 @@ def _blk_csv_file(params: dict, inputs: dict, ctx: ExecContext) -> dict:
 
 
 def _blk_aoi_camera(params: dict, inputs: dict, ctx: ExecContext) -> dict:
-    """Grab a frame from the AOI camera (simulated or real)."""
+    """Grab a frame from the AOI camera (GenICam or webcam)."""
     from pyontrust.instruments.aoi_camera import create as create_aoi
     cfg = {
-        "mode": str(params.get("mode", "simulated")),
+        "mode": str(params.get("mode", "webcam")),
         "width": int(params.get("width", 640)),
         "height": int(params.get("height", 480)),
     }
@@ -127,32 +158,21 @@ def _blk_seek_thermal(params: dict, inputs: dict, ctx: ExecContext) -> dict:
     from pyontrust.instruments.seek_thermal import create as create_thermal
     import numpy as np
 
-    mode = str(params.get("mode", "simulated"))
+    mode = str(params.get("mode", "seek"))
     cfg: dict = {
         "mode": mode,
         "base_temp_c": float(params.get("base_temp_c", 25)),
         "inject_hotspot": bool(params.get("inject_hotspot", False)),
-        "camera_type": str(params.get("camera_type", "compact")),
+        "camera_type": str(params.get("camera_type", "auto")),
     }
     ffc = params.get("ffc_file")
     if ffc:
         cfg["ffc_file"] = str(ffc)
 
-    # If real hardware is requested but unavailable (missing driver, or no
-    # camera connected), log clearly and fall back to simulated mode rather
-    # than crashing the whole flow run.
-    try:
-        cam = create_thermal(cfg)
-        cam.open()
-    except Exception as exc:
-        if mode != "simulated":
-            ctx.log(f"⚠️ Seek Thermal hardware requested but unavailable: {exc}")
-            ctx.log("🌡️ Falling back to simulated mode — connect the camera or install pyusb for the libseek driver")
-            cfg["mode"] = "simulated"
-            cam = create_thermal(cfg)
-            cam.open()
-        else:
-            raise
+    # Real camera only: a missing camera fails this block with the driver's
+    # message (no silent switch to synthetic temperatures).
+    cam = create_thermal(cfg)
+    cam.open()
 
     try:
         frame = cam.grab_temperature_frame()
@@ -379,7 +399,7 @@ def _blk_android_rotation(params: dict, inputs: dict, ctx: ExecContext) -> dict:
 def _blk_android_torch(params: dict, inputs: dict, ctx: ExecContext) -> dict:
     """Toggle Android phone flashlight (torch) via ADB."""
     from pyontrust.analysis.lux_measurement import SimulatedTorch, torch_on, torch_off
-    mode = str(params.get("mode", "simulated"))
+    mode = str(params.get("mode", "adb"))
     state = str(params.get("state", "on")).lower()
     if mode == "simulated":
         t = SimulatedTorch()
@@ -404,12 +424,12 @@ def _blk_lux_measure(params: dict, inputs: dict, ctx: ExecContext) -> dict:
         torch_off_s=float(params.get("torch_off_s", 3)),
         n_cycles=int(params.get("n_cycles", 3)),
         pre_capture_s=float(params.get("pre_capture_s", 1)),
-        android_mode=str(params.get("android_mode", "simulated")),
+        android_mode=str(params.get("android_mode", "adb")),
         android_sample_rate_hz=float(params.get("android_rate_hz", 10)),
         lux_scale=float(params.get("lux_scale", 2.0)),
         lux_offset=float(params.get("lux_offset", 0.0)),
     )
-    use_real = str(params.get("android_mode", "simulated")) != "simulated"
+    use_real = str(params.get("android_mode", "adb")) != "simulated"
     result = measure_parallel_lux(cfg, use_real_torch=use_real)
     ctx.log(
         f"💡 Lux: webcam_Δ={result.webcam_lux_delta:.1f}, "
@@ -523,7 +543,7 @@ def _blk_thermal_measure(params: dict, inputs: dict, ctx: ExecContext) -> dict:
         "duration_s": float(params.get("duration_s", 10)),
         "capture_interval_s": float(params.get("capture_interval_s", 0.5)),
         "warmup_frames": int(params.get("warmup_frames", 3)),
-        "camera": {"mode": str(params.get("camera_mode", "simulated")),
+        "camera": {"mode": str(params.get("camera_mode", "seek")),
                    "base_temp_c": float(params.get("base_temp_c", 25)),
                    "inject_hotspot": bool(params.get("inject_hotspot", False)),
                    "camera_type": str(params.get("camera_type", "compact"))},
@@ -554,7 +574,7 @@ def _blk_thermal_soak(params: dict, inputs: dict, ctx: ExecContext) -> dict:
         "soak_stable_window_s": float(params.get("stable_window_s", 10)),
         "soak_stable_threshold_c": float(params.get("stable_threshold_c", 0.5)),
         "soak_timeout_s": float(params.get("timeout_s", 300)),
-        "camera": {"mode": str(params.get("camera_mode", "simulated")),
+        "camera": {"mode": str(params.get("camera_mode", "seek")),
                    "base_temp_c": float(params.get("base_temp_c", 35)),
                    "camera_type": str(params.get("camera_type", "compact"))},
         "zones": inputs.get("zones", []),
@@ -581,7 +601,7 @@ def _blk_thermal_delta(params: dict, inputs: dict, ctx: ExecContext) -> dict:
         "delta_pause_s": float(params.get("pause_s", 3)),
         "capture_interval_s": float(params.get("capture_interval_s", 0.5)),
         "warmup_frames": int(params.get("warmup_frames", 3)),
-        "camera": {"mode": str(params.get("camera_mode", "simulated")),
+        "camera": {"mode": str(params.get("camera_mode", "seek")),
                    "base_temp_c": float(params.get("base_temp_c", 25)),
                    "camera_type": str(params.get("camera_type", "compact"))},
         "zones": inputs.get("zones", []),
@@ -606,7 +626,7 @@ def _blk_thermal_gradient(params: dict, inputs: dict, ctx: ExecContext) -> dict:
         "warmup_frames": int(params.get("warmup_frames", 3)),
         "max_gradient_c_per_mm": float(params.get("max_gradient_c_per_mm", 0)),
         "pixel_pitch_mm": float(params.get("pixel_pitch_mm", 0.17)),
-        "camera": {"mode": str(params.get("camera_mode", "simulated")),
+        "camera": {"mode": str(params.get("camera_mode", "seek")),
                    "base_temp_c": float(params.get("base_temp_c", 25)),
                    "camera_type": str(params.get("camera_type", "compact"))},
         "board_id": str(params.get("board_id", "")),
@@ -826,33 +846,21 @@ def _blk_csv_replay(params: dict, inputs: dict, ctx: ExecContext) -> dict:
 
 
 def _blk_ppk2_meter(params: dict, inputs: dict, ctx: ExecContext) -> dict:
-    """PPK2 source-meter (simulated if hardware unavailable)."""
-    import numpy as np
-
-    rate = float(params.get("sample_rate_hz", 100000))
-    dur = float(params.get("duration_s", 2))
-    n = int(rate * dur)
-    t = np.linspace(0, dur, n)
-    # Simulated PPK2-like trace (~5µA sleep with occasional spikes)
-    current = 5e-6 + np.random.normal(0, 0.5e-6, n)
-    ctx.log(f"⚡ PPK2 (simulated): {n} samples, {dur}s @ {rate/1000:.0f}kHz")
-    return {"trace": {"time_s": t.tolist(), "current_a": current.tolist(),
-                       "sample_rate_hz": rate, "n_samples": n}}
+    """Nordic PPK2 source/ampere meter — real hardware (ppk2-api)."""
+    cfg = {"serial_port": str(params.get("serial_port", "auto")),
+           "mode": str(params.get("mode", "ampere")),
+           "source_voltage_mv": int(params.get("source_voltage_mv", 3300)),
+           "sample_rate_hz": float(params.get("sample_rate_hz", 100000))}
+    return _capture_power_trace("ppk2", cfg, float(params.get("duration_s", 2)), ctx, "PPK2")
 
 
 def _blk_ad3_dwf_meter(params: dict, inputs: dict, ctx: ExecContext) -> dict:
-    """Analog Discovery 3 meter (simulated if hardware unavailable)."""
-    import numpy as np
-
-    rate = float(params.get("sample_rate_hz", 10000))
-    dur = float(params.get("duration_s", 2))
+    """Digilent Analog Discovery 3 as a power meter (shunt on CH1) — real hardware."""
     shunt = float(params.get("shunt_ohm", 1.0))
-    n = int(rate * dur)
-    t = np.linspace(0, dur, n)
-    current = 0.005 + np.random.normal(0, 0.0005, n)
-    ctx.log(f"📟 AD3/DWF (simulated): {n} samples, shunt={shunt}Ω")
-    return {"trace": {"time_s": t.tolist(), "current_a": current.tolist(),
-                       "sample_rate_hz": rate, "n_samples": n}}
+    cfg = {"sample_rate_hz": float(params.get("sample_rate_hz", 10000)),
+           "device_index": int(params.get("device_index", -1)),
+           "current_a_per_v": 1.0 / shunt if shunt > 0 else 1.0}
+    return _capture_power_trace("ad3_dwf", cfg, float(params.get("duration_s", 2)), ctx, f"AD3 (shunt {shunt} Ω)")
 
 
 def _blk_waveform_gen(params: dict, inputs: dict, ctx: ExecContext) -> dict:
@@ -1945,8 +1953,8 @@ def _blk_can_send(params: dict, inputs: dict, ctx: ExecContext) -> dict:
     try:
         from pyontrust.services.can_service import CanDiagService
         svc = CanDiagService()
-        interface = str(params.get("interface", "virtual"))
-        channel = str(params.get("channel", "vcan0"))
+        interface = str(params.get("interface", "auto"))
+        channel = str(params.get("channel", ""))
         bitrate = int(params.get("bitrate", 500000))
         arb_id = int(str(params.get("arb_id", inputs.get("arb_id", "0x100"))), 0)
         data_hex = str(params.get("data", inputs.get("data", "DEADBEEF")))
@@ -1974,8 +1982,8 @@ def _blk_can_receive(params: dict, inputs: dict, ctx: ExecContext) -> dict:
         import time as _time
 
         svc = CanDiagService()
-        interface = str(params.get("interface", "virtual"))
-        channel = str(params.get("channel", "vcan0"))
+        interface = str(params.get("interface", "auto"))
+        channel = str(params.get("channel", ""))
         bitrate = int(params.get("bitrate", 500000))
         duration = float(params.get("duration_s", 2.0))
         id_filter = params.get("id_filter", None)
@@ -2036,8 +2044,8 @@ def _blk_can_analyze(params: dict, inputs: dict, ctx: ExecContext) -> dict:
         import time as _time
 
         svc = CanDiagService()
-        interface = str(params.get("interface", "virtual"))
-        channel = str(params.get("channel", "vcan0"))
+        interface = str(params.get("interface", "auto"))
+        channel = str(params.get("channel", ""))
         bitrate = int(params.get("bitrate", 500000))
         target_id = int(str(params.get("arb_id", inputs.get("arb_id", "0x100"))), 0)
         duration = float(params.get("duration_s", 5.0))
@@ -2064,8 +2072,8 @@ def _blk_can_replay(params: dict, inputs: dict, ctx: ExecContext) -> dict:
         import time as _time
 
         svc = CanDiagService()
-        interface = str(params.get("interface", "virtual"))
-        channel = str(params.get("channel", "vcan0"))
+        interface = str(params.get("interface", "auto"))
+        channel = str(params.get("channel", ""))
         bitrate = int(params.get("bitrate", 500000))
         messages = inputs.get("messages", [])
         speed_factor = float(params.get("speed_factor", 1.0))

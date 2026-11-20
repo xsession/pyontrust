@@ -13,7 +13,7 @@ lab_bench/power_test_framework/
 ├── reporting.py         # CSV, JSON, Markdown artifact writers
 ├── instruments/
 │   ├── base.py          # PowerMeter Protocol
-│   ├── simulated.py     # Simulated meter (CI/dev)
+│   ├── simulated.py     # Simulated meter (test double only)
 │   ├── ad3_dwf.py       # Single Analog Discovery 3 (polling)
 │   ├── ad3_cluster.py   # Multi-AD3 cluster (buffered acquisition)
 │   ├── ppk2.py          # Nordic PPK2 (ppk2-api)
@@ -21,7 +21,7 @@ lab_bench/power_test_framework/
 │   ├── jlink_ctrl.py    # SEGGER J-Link (flash/reset/RTT)
 │   ├── hackrf_instrument.py  # HackRF One (IQ capture + sweep)
 │   ├── webcam_instrument.py  # Webcam (snapshot + recording + vision)
-│   ├── aoi_camera.py        # Industrial AOI camera (GenICam / webcam / simulated)
+│   ├── aoi_camera.py        # Industrial AOI camera (GenICam / webcam)
 │   └── seek_thermal.py      # Seek Thermal USB camera (radiometric)
 └── recorders/
     ├── base.py          # Recorder Protocol
@@ -35,19 +35,27 @@ lab_bench/power_test_framework/
 
 ## Getting started
 
-### Quick start (no hardware)
+### Real hardware only
 
-Run the simulated example (creates an `artifacts/` folder):
+pyontrust measures real devices.  Every tool, API, FlowLab block and profile
+uses the real drivers, and a missing device is reported as missing — it is
+never silently replaced by synthetic data.  The simulator classes
+(`SimulatedPowerMeter`, `SimulatedThermalCamera`, the virtual CAN bus, …) are
+**test doubles only**: constructing one raises `SimulationDisabled` unless
+`PYONTRUST_ALLOW_SIMULATION=1`, which the test suite sets in
+`tests/conftest.py`.
 
-```powershell
-python scripts\power_tests\example_sleep_current.py
+Run the tests:
+
+```bash
+python -m pytest tests/ -q
 ```
 
-Run unit tests (148 tests):
+Hardware access on Linux:
 
-```powershell
-python -m pytest tests/ -v
-```
+- **PPK2 / serial devices** — add yourself to `dialout` (`sudo usermod -aG dialout $USER`, then log in again).
+- **PEAK PCAN-USB** (kernel `peak_usb`) — bring the link up once: `sudo ip link set can0 up type can bitrate 500000`.
+- **Android phones** — enable USB debugging and tap *Allow USB debugging* on the phone.
 
 ### Lab bench configuration
 
@@ -127,7 +135,6 @@ Board-level temperature monitoring during test runs using Seek Thermal USB camer
 - **Colourised heatmaps** — inferno/jet/hot/rainbow/turbo palettes with zone overlays
 - **Background recorder** — `thermal` recorder captures + analyses at configurable intervals
 - **Service façade** — `ThermalService` for gateway / CLI integration
-- **Simulated mode** — runs without hardware for CI testing (synthetic thermal noise + hotspot injection)
 
 The AOI camera also supports a **webcam mode** (`mode="webcam"`) using OpenCV `VideoCapture`
 for visual inspection without a GenICam industrial camera.
@@ -150,7 +157,31 @@ for visual inspection without a GenICam industrial camera.
 | Seek Thermal Compact/Pro/XR | Thermal imaging | `seek_thermal` | `seekcamera-python` or `seek_thermal` |
 | AOI Recorder | Background capture | `aoi` recorder | `numpy` |
 | Thermal Recorder | Background thermal logging | `thermal` recorder | `numpy`, `opencv-python` (optional) |
-| Simulated | CI testing | `simulated` | — (stdlib only) |
+| Android phone back cameras | Microscopy, 3D scan, spectroscopy | `phone_camera` (pyontrust camera app, ADB) | Android SDK build-tools (to build the app) |
+
+## Cameras: Android phones and USB microscopes
+
+Microscopy, 3D Scan and Spectroscopy use any mix of cameras **at the same
+time**, each with a live feed: every back camera of every connected Android
+phone (`phone:<serial>:<camera id>`) and USB/UVC cameras (`usb:<index>`).
+
+Phones stream through the **pyontrust camera app** (`android-camera/`, plain
+Java, Camera2): MJPEG preview at ~25 fps, full-resolution stills and manual
+lens focus over HTTP on the phone, reached through `adb forward`.  The gateway
+installs and starts the app automatically on every authorised phone; to build
+it (needs the Android SDK `build-tools` and `platforms;android-34`):
+
+```bash
+cd android-camera && ./build.sh            # → build/pyontrust-camera.apk
+./build.sh install                         # install on every authorised phone
+```
+
+- **Microscopy** — tick several cameras; *Capture* takes one still from each
+  simultaneously into per-camera stacks.  *Focus sweep* drives each phone's
+  lens from far to near (diopters = 1000 / mm) for a metric height map.
+- **3D Scan** — left/right cameras (two phones by default), both live, plus a
+  live SGBM depth map; capture a synchronised live pair or full-res stills.
+  fx is derived from the phone's lens and sensor size.
 
 ## Lab Bench gateway (web UI)
 

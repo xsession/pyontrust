@@ -22,6 +22,7 @@ import re
 import struct
 from dataclasses import dataclass, field
 from typing import Any
+from pyontrust.core.simulation_guard import require as _require_simulation
 
 # ── CANopen COB-ID ranges (CiA 301) ───────────────────────────────────
 NMT_COB_ID = 0x000
@@ -108,14 +109,17 @@ def nmt_frame(node_id: int, command: int) -> tuple[int, bytes]:
 def sdo_upload_request(node_id: int, index: int, subindex: int) -> tuple[int, bytes]:
     """SDO expedited upload (read) request — client→server, COB-ID 0x600+N.
 
-    Byte layout per CiA 301 / CANopenNode ``CO_SDOclient.c``::
+    Byte layout per CiA 301 (initiate upload, ccs = 2; SDO frames are
+    always 8 bytes, reserved bytes zero)::
 
-        [0xC0, index_lo, index_hi, subindex]          DLC 4
+        [0x40, index_lo, index_hi, subindex, 0, 0, 0, 0]   DLC 8
+
+    (0xC0 would be ccs = 6, *block download* — real nodes abort it.)
     """
     if not (1 <= node_id <= 127):
         raise ValueError("node_id must be 1..127")
-    return SDO_SERVER_BASE + node_id, bytes([0xC0]) + struct.pack(
-        "<HB", index & 0xFFFF, subindex & 0xFF)
+    return SDO_SERVER_BASE + node_id, bytes([0x40]) + struct.pack(
+        "<HB", index & 0xFFFF, subindex & 0xFF) + bytes(4)
 
 
 def sdo_download_request(node_id: int, index: int, subindex: int, value: int) -> tuple[int, bytes]:
@@ -389,6 +393,7 @@ class SimulatedCanopenNode:
     """
 
     def __init__(self, node_id: int = 1) -> None:
+        _require_simulation("Simulated CANopen node")
         self.node_id = node_id
         self.state = "Pre-Operational"          # NMT state name
         self._od: dict[tuple[int, int], int] = {

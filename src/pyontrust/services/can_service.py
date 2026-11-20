@@ -394,7 +394,9 @@ class CanDiagService:
         chans = cls._linux_can_interfaces()
         if chans:
             return "socketcan", chans[0]
-        return "virtual", "vcan0"
+        from pyontrust.core.simulation_guard import allowed
+        # No adapter: report it.  The software 'virtual' bus is a test double only.
+        return ("virtual", "vcan0") if allowed() else ("none", "")
 
     @staticmethod
     def _friendly_open_error(exc: Exception, interface: str, channel: str) -> str:
@@ -428,6 +430,10 @@ class CanDiagService:
         """
         if self._running:
             return {"ok": False, "error": "Already running — stop first"}
+        from pyontrust.core.simulation_guard import allowed
+        if interface == "virtual" and not allowed():
+            return {"ok": False, "error": "The virtual CAN bus is a software simulation — connect a CAN "
+                                          "adapter (PEAK PCAN, SocketCAN, Vector, Kvaser, IXXAT)"}
 
         # Resolve auto-detection up front so the UI can show what we'll try.
         if interface == "auto" or not channel:
@@ -436,6 +442,9 @@ class CanDiagService:
                 interface = det_iface
             if not channel:
                 channel = det_chan
+        if interface == "none":
+            return {"ok": False, "error": "No CAN adapter found — connect a PEAK PCAN-USB (or bring up a "
+                                          "SocketCAN interface: `sudo ip link set can0 up type can bitrate 500000`)"}
 
         self._interface = interface
         self._channel = channel
@@ -535,6 +544,41 @@ class CanDiagService:
 
     # ── Capture loop ─────────────────────────────────────────────────
 
+    # ── Shared access to the live bus (CANopen master etc.) ─────────
+
+    def subscribe(self, maxsize: int = 2000) -> Any:
+        """Receive a copy of every frame read from the bus (until unsubscribed)."""
+        import queue as _queue
+
+        q: _queue.Queue = _queue.Queue(maxsize=maxsize)
+        with self._lock:
+            self.__dict__.setdefault("_subscribers", []).append(q)
+        return q
+
+    def unsubscribe(self, q: Any) -> None:
+        with self._lock:
+            subs = self.__dict__.get("_subscribers", [])
+            if q in subs:
+                subs.remove(q)
+
+    def send(self, arbitration_id: int, data: bytes, is_extended_id: bool = False) -> None:
+        """Transmit one frame on the running bus (raises if not running)."""
+        import can
+
+        if not self._running or self._bus is None:
+            raise RuntimeError("CAN bus not running — start capture on an adapter first")
+        self._bus.send(can.Message(arbitration_id=arbitration_id, data=data, is_extended_id=is_extended_id))
+
+    def _publish(self, msg: Any) -> None:
+        subs = self.__dict__.get("_subscribers")
+        if not subs:
+            return
+        for q in list(subs):
+            try:
+                q.put_nowait(msg)
+            except Exception:  # full: a slow consumer drops frames, never blocks capture
+                pass
+
     def _capture_loop(self) -> None:
         """Background thread: read frames, update stats, fill ring buffer."""
         while self._running and self._bus is not None:
@@ -542,6 +586,7 @@ class CanDiagService:
                 msg = self._bus.recv(timeout=0.1)
                 if msg is None:
                     continue
+                self._publish(msg)
                 if msg.is_error_frame:
                     self._error_count += 1
                     with self._lock:

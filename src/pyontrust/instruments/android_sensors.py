@@ -38,6 +38,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
+from pyontrust.core.simulation_guard import require as _require_simulation
 
 logger = logging.getLogger("pyontrust.instruments.android_sensors")
 
@@ -414,6 +415,9 @@ class SimulatedAndroidSensors:
             "status": "charging",
             "health": "good",
         }
+
+    def __post_init__(self) -> None:
+        _require_simulation("Simulated Android sensors")
 
 
 # ═══════════════════════════════════════════════════════════════════════

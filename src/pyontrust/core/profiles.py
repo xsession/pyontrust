@@ -17,7 +17,6 @@ from typing import Any, Callable, Optional
 from pyontrust.core.models import PowerTest, TestContext, TestStep
 from pyontrust.core.runner import PowerTestRunner
 from pyontrust.instruments import create_instrument
-from pyontrust.instruments.simulated import SimulatedPowerMeter
 from pyontrust.recorders import create_recorder
 
 
@@ -78,13 +77,11 @@ def _build_instruments(cfg: dict[str, Any]) -> dict[str, Any]:
     for name, inst_cfg in cfg.items():
         if not isinstance(inst_cfg, dict):
             continue
-        p_type = inst_cfg.get("type", "simulated")
+        p_type = inst_cfg.get("type")
+        if not p_type:
+            raise ValueError(f"Instrument {name!r} has no 'type' — name the real driver (e.g. ppk2, ad3_dwf)")
         params = {k: v for k, v in inst_cfg.items() if k != "type"}
         instruments[name] = create_instrument(p_type, params)
-
-    # Legacy fallback
-    if "power_meter" not in instruments and not cfg:
-        instruments["power_meter"] = SimulatedPowerMeter()
 
     return instruments
 

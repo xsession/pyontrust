@@ -75,10 +75,10 @@ class TestNmt:
 
 class TestSdoCodec:
     def test_upload_request_bytes(self):
-        # CiA 301 / CANopenNode CO_SDOclient.c: expedited upload request = 0xC0
+        # CiA 301: initiate upload request = 0x40 (ccs 2), always 8 bytes
         arb, data = sdo_upload_request(3, 0x2000, 0)
         assert arb == 0x600 + 3
-        assert data == bytes([0xC0, 0x00, 0x20, 0x00])
+        assert data == bytes([0x40, 0x00, 0x20, 0x00, 0, 0, 0, 0])
 
     def test_download_request_bytes(self):
         # byte0 = 0x20|0x02(expedited)|0x01(size-ind)|((4-nbytes)<<2)

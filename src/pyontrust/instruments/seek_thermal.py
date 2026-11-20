@@ -34,6 +34,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from pyontrust.hal.thermal_camera import ThermalCameraInfo
+from pyontrust.core.simulation_guard import require as _require_simulation
 
 logger = logging.getLogger("pyontrust.instruments.seek_thermal")
 
@@ -144,6 +145,9 @@ class SimulatedThermalCamera:
             frame_rate_hz=9.0,
             temperature_range_c=(-40.0, 330.0),
         )
+
+    def __post_init__(self) -> None:
+        _require_simulation("Simulated thermal camera")
 
 
 # ═══════════════════════════════════════════════════════════════════════

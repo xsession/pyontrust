@@ -7,11 +7,30 @@ only the factory function is new for the entry-point system.
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
 from typing import Any
+
+
+def _lab_bench_on_path() -> None:
+    """The real drivers live in ``tools/lab_bench`` (source checkout).
+
+    Make them importable when pyontrust runs from the repository (gateway,
+    FlowLab) without requiring a separate install.
+    """
+    try:
+        import lab_bench  # noqa: F401
+        return
+    except ImportError:
+        pass
+    tools = Path(__file__).resolve().parents[3] / "tools"
+    if (tools / "lab_bench").is_dir() and str(tools) not in sys.path:
+        sys.path.insert(0, str(tools))
 
 
 # --- AD3 Cluster ---
 def _create_ad3_cluster(config: dict[str, Any]) -> Any:
+    _lab_bench_on_path()
     from lab_bench.power_test_framework.instruments.ad3_cluster import (
         Ad3ClusterPowerMeter,
         Ad3DeviceConfig,
@@ -27,6 +46,7 @@ def _create_ad3_cluster(config: dict[str, Any]) -> Any:
 
 # --- PPK2 ---
 def _create_ppk2(config: dict[str, Any]) -> Any:
+    _lab_bench_on_path()
     from lab_bench.power_test_framework.instruments.ppk2 import Ppk2PowerMeter
 
     return Ppk2PowerMeter(
@@ -39,6 +59,7 @@ def _create_ppk2(config: dict[str, Any]) -> Any:
 
 # --- SK120 PSU ---
 def _create_sk120(config: dict[str, Any]) -> Any:
+    _lab_bench_on_path()
     from lab_bench.power_test_framework.instruments.sk120_psu import Sk120PowerSupply
 
     return Sk120PowerSupply(
@@ -53,6 +74,7 @@ def _create_sk120(config: dict[str, Any]) -> Any:
 
 # --- J-Link ---
 def _create_jlink(config: dict[str, Any]) -> Any:
+    _lab_bench_on_path()
     from lab_bench.power_test_framework.instruments.jlink_ctrl import JLinkController
 
     return JLinkController(
@@ -66,6 +88,7 @@ def _create_jlink(config: dict[str, Any]) -> Any:
 
 # --- HackRF ---
 def _create_hackrf(config: dict[str, Any]) -> Any:
+    _lab_bench_on_path()
     from lab_bench.power_test_framework.instruments.hackrf_instrument import HackRfInstrument
 
     return HackRfInstrument(
@@ -80,6 +103,7 @@ def _create_hackrf(config: dict[str, Any]) -> Any:
 
 # --- Webcam ---
 def _create_webcam(config: dict[str, Any]) -> Any:
+    _lab_bench_on_path()
     from lab_bench.power_test_framework.instruments.webcam_instrument import WebcamInstrument
 
     return WebcamInstrument(
@@ -116,6 +140,7 @@ def _create_csv_replay(config: dict[str, Any]) -> Any:
 
 # --- nRF52840 Dongle ---
 def _create_nrf52840_dongle(config: dict[str, Any]) -> Any:
+    _lab_bench_on_path()
     from lab_bench.drivers.nrf52840_dongle import Nrf52840Dongle
 
     return Nrf52840Dongle(

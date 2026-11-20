@@ -6,9 +6,10 @@ spatial smoothing -> nm-grid resampling) behind a small JSON API for the
 ``/spec`` web page, plus peak detection with reference-line labelling from
 ``pyontrust.mobile.spectroscopy.known_lines``.
 
-The default source is a synthetic slit image (diffraction-grating style) with
-the selected lamp's emission lines, so the tool works out of the box without
-camera hardware; real slit images can be uploaded in ``upload`` mode.
+Sources are real only: a live camera looking at the spectrometer's slit
+(phone back camera or USB camera, via the shared camera layer — with an
+optional slit-row band) or an uploaded slit image.  The reference lamp only
+labels detected peaks with the nearest known emission line.
 """
 from __future__ import annotations
 
@@ -38,46 +39,28 @@ def index() -> Response:
     return send_from_directory(str(_WEB_DIR), "index.html")
 
 
+@bp.route("/api/cameras")
+def cameras() -> Response:
+    from pyontrust.services.camera_sources import list_sources
+
+    return jsonify({"ok": True, "cameras": list_sources(bool(request.args.get("refresh")))})
+
+
+@bp.route("/api/stream")
+def stream() -> Response:
+    from pyontrust.services.camera_sources import _key, _source_arg, mjpeg_stream
+
+    try:
+        return mjpeg_stream(_key(_source_arg(request.args.get("source"))), int(request.args.get("rotate", 0)))
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+
 @bp.route("/api/lamps")
 def lamps() -> Response:
     from pyontrust.mobile.spectroscopy.known_lines import KNOWN_LINES_NM
 
     return jsonify({"ok": True, "lamps": sorted(KNOWN_LINES_NM.keys())})
-
-
-def _synthetic_slit_image(
-    lamp_lines: list[float], width: int = 512, height: int = 64, seed: int = 7,
-) -> np.ndarray:
-    """Diffraction-grating slit image with the lamp's emission lines.
-
-    Column i maps linearly to ``nm_min + (nm_max - nm_min) * i / (width - 1)``
-    over [380, 750] nm — matching the calibration used in :func:`run_spectrum`.
-    Each line is a Gaussian on top of a smooth continuum; per-pixel values are
-    identical across RGB channels (the pipeline sums all three).
-    """
-    rng = np.random.default_rng(seed)
-    nm_min, nm_max = 380.0, 750.0
-
-    nms = nm_min + (nm_max - nm_min) * np.arange(width) / max(1, width - 1)
-    # smooth continuum background (~12% of full scale with a gentle slope)
-    spec = 0.10 + 0.04 * (nms - nm_min) / (nm_max - nm_min)
-
-    bins_per_nm = max(1, width - 1) / (nm_max - nm_min)
-    for line in lamp_lines:
-        if not (nm_min <= line <= nm_max):
-            continue
-        amp = float(rng.uniform(0.55, 1.0))
-        sigma_nm = float(rng.uniform(1.2, 2.6))
-        spec += amp * np.exp(-0.5 * ((nms - line) / (sigma_nm * bins_per_nm)) ** 2)
-
-    spec += rng.normal(0.0, 0.004, width)
-    col = np.clip(spec, 0.0, 1.0)
-
-    img = np.zeros((height, width, 3), dtype=np.uint8)
-    for c in range(3):
-        # slight per-channel gain so RGB weighting is exercised realistically
-        img[:, :, c] = (col * rng.uniform(200, 255)).astype(np.uint8)
-    return img
 
 
 def _decode_image(b64: str) -> np.ndarray:
@@ -95,7 +78,7 @@ def _decode_image(b64: str) -> np.ndarray:
 def run_spectrum() -> Response:
     """Run one slit image through the full pipeline; return spectrum + peaks."""
     body = _json_body()
-    mode = str(body.get("mode", "simulated"))
+    mode = str(body.get("mode", "camera"))
 
     nm_min = float(body.get("nm_min", 380.0))
     nm_max = float(body.get("nm_max", 750.0))
@@ -115,12 +98,29 @@ def run_spectrum() -> Response:
         if not img_b64:
             return jsonify({"ok": False, "error": "upload mode requires image_b64"}), 400
         image = _decode_image(img_b64)
+    elif mode == "camera":
+        from pyontrust.services.camera_sources import _prepare, _source_arg, _still, _live_frame
+
+        try:
+            src = _source_arg(body.get("source"))
+            frame = _still(src) if body.get("still") else _live_frame(src)
+            frame = _prepare(frame, body.get("rotate", 0), 0)
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        except Exception as exc:
+            return jsonify({"ok": False, "error": f"Camera capture failed: {exc}"}), 502
+        h = frame.shape[0]
+        y0 = int(np.clip(float(body.get("band_y0", 0.0)), 0, 1) * h)
+        y1 = int(np.clip(float(body.get("band_y1", 1.0)), 0, 1) * h)
+        if y1 - y0 < 2:
+            return jsonify({"ok": False, "error": "slit band must be at least 2 rows"}), 400
+        image = frame[y0:y1, :, ::-1]                       # slit band, BGR -> RGB
     else:
-        lamp = str(body.get("lamp", "mercury"))
-        if lamp not in KNOWN_LINES_NM:
-            return jsonify({"ok": False, "error": f"unknown lamp '{lamp}'"}), 400
-        seed = int(body.get("seed", 7))
-        image = _synthetic_slit_image(KNOWN_LINES_NM[lamp], width=512, height=64, seed=seed)
+        return jsonify({"ok": False, "error": "mode must be 'camera' or 'upload' "
+                                              "(simulated slit images were removed)"}), 400
+    lamp = str(body.get("lamp", "mercury"))
+    if lamp not in KNOWN_LINES_NM:
+        return jsonify({"ok": False, "error": f"unknown reference lamp '{lamp}'"}), 400
 
     # Linear calibration: sensor bin i <-> nm over [nm_min, nm_max] (width-1 bins).
     n_cols = int(image.shape[1])
@@ -141,7 +141,7 @@ def run_spectrum() -> Response:
     # only peaks at >= 20% of the strongest peak (real emission lines).
     sig_floor = 0.2 * float(spectrum.max()) if spectrum.size else 0.0
     peaks_raw = [(i, v) for i, v in peaks_raw if v >= sig_floor]
-    lamp_for_label = str(body.get("lamp", "mercury")) if mode == "simulated" else "mercury"
+    lamp_for_label = lamp
     peaks: list[dict[str, Any]] = []
     for idx, value in peaks_raw:
         nm = float(grid_nm[idx])
@@ -156,7 +156,7 @@ def run_spectrum() -> Response:
 
     s = spectrum
     stats: dict[str, Any] = {
-        "mode": mode,
+        "mode": mode, "reference_lamp": lamp,
         "n_bins": int(n_bins),
         "nm_min": nm_min, "nm_max": nm_max,
         "n_peaks": len(peaks),

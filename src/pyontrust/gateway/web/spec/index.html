@@ -70,7 +70,14 @@ table.lines td.nm { color: var(--teal); }
   <section class="card">
     <h3>Source &amp; processing parameters</h3>
     <div class="form-row">
-      <div class="form-group"><label>Lamp (simulated)</label>
+      <div class="form-group" style="grid-column: span 2;"><label for="sp-source">Camera (looking at the slit)</label>
+        <div style="display:flex;gap:6px;"><select id="sp-source" style="flex:1;min-width:0"><option value="">— scanning… —</option></select>
+        <button class="btn btn-secondary" id="sp-rescan" type="button">↻</button></div>
+      </div>
+      <div class="form-group"><label for="sp-band0">Slit band top (%)</label><input id="sp-band0" type="number" min="0" max="99" step="1" value="40"></div>
+      <div class="form-group"><label for="sp-band1">Slit band bottom (%)</label><input id="sp-band1" type="number" min="1" max="100" step="1" value="60"></div>
+      <div class="form-group"><label for="sp-still">Image</label><select id="sp-still"><option value="0">Live frame (fast)</option><option value="1">Full-res still</option></select></div>
+      <div class="form-group"><label>Reference lines</label>
         <select id="sp-lamp">
           <option value="mercury" selected>Mercury</option>
           <option value="sodium">Sodium</option>
@@ -84,11 +91,18 @@ table.lines td.nm { color: var(--teal); }
       <div class="form-group"><label>Spectrum bins</label><input id="sp-bins" type="number" min="64" max="1024" step="32" value="256"></div>
       <div class="form-group"><label>Smoothing k (0.05–1)</label><input id="sp-kfilter" type="number" min="0.05" max="1" step="0.05" value="0.5"></div>
       <div class="form-group"><label>Average frames</label><input id="sp-avg-n" type="number" min="1" max="32" step="1" value="1"></div>
-      <div class="form-group"><label>Noise seed</label><input id="sp-seed" type="number" step="1" value="7"></div>
     </div>
     <div class="btn-bar">
       <button class="btn btn-primary" id="run-btn" type="button">▶ Acquire spectrum</button>
-      <span class="msg" id="run-msg">Simulated slit image — emission lines of the selected lamp.</span>
+      <span class="msg" id="run-msg">Point a camera at the spectrometer slit, set the band, then acquire.</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h3>Live slit view</h3>
+    <div style="position:relative;max-width:900px">
+      <img id="sp-live" alt="live camera view of the slit" style="width:100%;display:block;border-radius:6px;background:#11111b;min-height:120px">
+      <div id="sp-band" style="position:absolute;left:0;right:0;border:2px solid #a6e3a1;background:rgba(166,227,161,.12);pointer-events:none"></div>
     </div>
   </section>
 
@@ -168,15 +182,19 @@ async function runSpectrum() {
   $('run-msg').textContent = '';
   $('run-msg').className = 'msg';
   try {
+    if (!$('sp-source').value) throw new Error('Select a camera that looks at the slit');
     const body = {
-      mode: 'simulated',
+      mode: 'camera',
+      source: $('sp-source').value,
+      still: $('sp-still').value === '1',
+      band_y0: +$('sp-band0').value / 100,
+      band_y1: +$('sp-band1').value / 100,
       lamp: $('sp-lamp').value,
       nm_min: +$('sp-nm-min').value,
       nm_max: +$('sp-nm-max').value,
       n_bins: +$('sp-bins').value,
       kfilter: +$('sp-kfilter').value,
       average_n: +$('sp-avg-n').value,
-      seed: +$('sp-seed').value,
     };
     const r = await fetch('/spec/api/run', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
     const d = await r.json();
@@ -203,7 +221,7 @@ async function runSpectrum() {
     $('lines-body').innerHTML = rows || '<tr><td colspan="5" style="color:var(--fg-dim)">no peaks detected</td></tr>';
 
     setPill('done', 'Done');
-    $('run-msg').textContent = `${st.n_peaks} emission line(s) detected for ${body.lamp.toUpperCase()} in ${st.elapsed_s}s`;
+    $('run-msg').textContent = `${st.n_peaks} line(s) detected in ${st.elapsed_s}s (labelled against ${body.lamp} reference lines)`;
   } catch (e) {
     setPill('error', 'Failed');
     const m = $('run-msg');
@@ -216,8 +234,33 @@ async function runSpectrum() {
 }
 
 $('run-btn').addEventListener('click', runSpectrum);
-// Live by default: acquire a spectrum immediately on load.
-runSpectrum();
+
+// ── Camera source + live slit view ───────────────────────────────────
+async function loadSources(refresh = false) {
+  const d = await (await fetch('/spec/api/cameras' + (refresh ? '?refresh=1' : ''))).json().catch(() => ({ cameras: [] }));
+  const esc = v => String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  $('sp-source').innerHTML = (d.cameras || []).map(c => c.source
+    ? `<option value="${esc(c.source)}">${esc(c.label)}</option>` : `<option disabled>${esc(c.label)}</option>`).join('')
+    || '<option value="">No camera — connect a phone or USB camera</option>';
+  const first = (d.cameras || []).find(c => c.source);
+  if (first) $('sp-source').value = first.source;
+  startLive();
+}
+function startLive() {
+  const src = $('sp-source').value;
+  if (src) $('sp-live').src = `/spec/api/stream?source=${encodeURIComponent(src)}&_=${Date.now()}`;
+  else $('sp-live').removeAttribute('src');
+  drawBand();
+}
+function drawBand() {
+  const t = +$('sp-band0').value, b = +$('sp-band1').value;
+  Object.assign($('sp-band').style, { top: `${t}%`, height: `${Math.max(0, b - t)}%` });
+}
+$('sp-source').addEventListener('change', startLive);
+$('sp-rescan').addEventListener('click', () => loadSources(true));
+['sp-band0', 'sp-band1'].forEach(id => $(id).addEventListener('input', drawBand));
+document.addEventListener('visibilitychange', () => document.hidden ? $('sp-live').removeAttribute('src') : startLive());
+loadSources();
 </script>
 <script src="/static/shell/ui-foundation.js"></script>
 </body>

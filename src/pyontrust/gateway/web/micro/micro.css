@@ -1,0 +1,52 @@
+/* Microscopy page — layout only (tokens/components from /static/shell). */
+body { font-size: var(--text-md); }
+.container { max-width: 1500px; margin: 0 auto; padding: 14px 18px 40px; }
+[hidden] { display: none !important; }
+.page-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.page-head h1 { font-size: var(--text-xl); color: var(--accent); margin-right: auto; }
+.chip.running { background: rgba(249,226,175,.14); color: var(--warn); }
+
+label { display: flex; flex-direction: column; gap: 3px; font-size: var(--text-xs); color: var(--text-dim); font-weight: 650; }
+.form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--space-3); margin-top: var(--space-3); }
+.form-grid.compact { grid-template-columns: repeat(auto-fill, minmax(130px, 180px)); }
+.run-bar { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-3); }
+
+.camera-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 6px; }
+.cam-opt { display: flex; flex-direction: row; align-items: center; gap: 8px; padding: 8px 10px; border-radius: var(--radius);
+  background: var(--surface-raised); color: var(--text); font-size: var(--text-sm); font-weight: 500; cursor: pointer; }
+.cam-opt input { margin: 0; }
+.cam-opt.disabled { opacity: .6; cursor: not-allowed; color: var(--warn); }
+
+.live-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: var(--space-3); margin-bottom: var(--space-3); }
+.live-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-3); }
+.live-card h3 { font-size: var(--text-sm); margin: 0 0 8px; color: var(--teal); font-weight: 650; }
+.live-card img { width: 100%; display: block; border-radius: 6px; background: var(--surface-sunken); min-height: 160px; object-fit: contain; }
+.live-meta { display: flex; justify-content: space-between; gap: 8px; margin-top: 6px; font-size: var(--text-xs); color: var(--text-dim); }
+.meter { height: 6px; background: var(--bg3); border-radius: 3px; overflow: hidden; margin-top: 6px; }
+.meter > span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--peach), var(--green)); transition: width .25s; }
+
+.capture-row { display: grid; grid-template-columns: 1fr 1.4fr; gap: var(--space-3); }
+@media (max-width: 1000px) { .capture-row { grid-template-columns: 1fr; } }
+.capture-box { background: var(--surface-raised); border-radius: var(--radius); padding: var(--space-3); }
+.capture-box h3 { font-size: var(--text-md); margin: 0 0 4px; }
+.capture-box.disabled { opacity: .5; }
+
+.stack-row { margin-top: var(--space-3); }
+.stack-row h4 { font-size: var(--text-sm); margin: 0 0 4px; color: var(--teal); }
+.thumbs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; }
+.thumbs figure { flex: 0 0 auto; text-align: center; font-size: 10px; color: var(--text-dim); margin: 0; }
+.thumbs img { height: 64px; border-radius: 4px; display: block; border: 1px solid var(--border); }
+
+.progress-bar { height: 6px; background: var(--bg3); border-radius: 3px; margin: 12px 0; overflow: hidden; }
+.progress-bar .fill { height: 100%; width: 40%; background: var(--accent); animation: slide 1.2s ease-in-out infinite alternate; }
+@keyframes slide { from { margin-left: 0; } to { margin-left: 60%; } }
+
+.result { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-4); margin-bottom: var(--space-3); }
+.result h2 { font-size: var(--text-md); color: var(--heading); margin: 0 0 8px; }
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; margin: 8px 0 12px; }
+.stat-box { background: var(--surface-raised); border-radius: 6px; padding: 10px; text-align: center; }
+.stat-box .val { font-size: 17px; font-weight: 700; color: var(--accent); font-family: var(--font-mono); }
+.stat-box .lbl { font-size: 10px; color: var(--text-dim); margin-top: 2px; }
+.images { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: var(--space-3); }
+.images img { width: 100%; border-radius: 6px; background: var(--surface-sunken); }
+.exports a { color: var(--accent); margin-right: 14px; text-decoration: none; }

@@ -208,7 +208,6 @@
       <option value="vector">Vector</option>
       <option value="kvaser">Kvaser</option>
       <option value="ixxat">IXXAT</option>
-      <option value="virtual">Virtual</option>
     </select>
     <label for="inp-channel">Channel</label>
     <input type="text" id="inp-channel" value="" placeholder="(auto)">
@@ -316,8 +315,8 @@
     <div id="node-map" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;"></div>
   </div>
 
-  <!-- ── Simulation control ─────────────────────────────────── -->
-  <div id="co-sim" style="margin-top:10px;padding:8px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+  <!-- Simulation removed from the product (real buses only); kept hidden so the script's element lookups stay valid. -->
+  <div id="co-sim" hidden style="margin-top:10px;padding:8px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
     <strong style="color:var(--accent);">🧪 Simulation</strong>
     <label for="co-sim-nodes">Nodes</label>
     <input type="text" id="co-sim-nodes" value="1" style="width:90px;" placeholder="1,2,3">

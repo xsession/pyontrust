@@ -18,6 +18,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Any, Callable, Dict, Iterator, List, Optional, Protocol, Sequence
+from pyontrust.core.simulation_guard import require as _require_simulation
 
 logger = logging.getLogger("pyontrust.hil_bridge")
 
@@ -329,6 +330,7 @@ class MockBackend:
     """Mock backend for unit testing."""
     
     def __init__(self):
+        _require_simulation("Mock HIL backend")
         self._pin_states: Dict[str, PinState] = {}
         self._is_open = False
     

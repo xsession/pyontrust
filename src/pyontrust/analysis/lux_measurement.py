@@ -45,6 +45,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Optional, Sequence
+from pyontrust.core.simulation_guard import require as _require_simulation
 
 logger = logging.getLogger("pyontrust.analysis.lux_measurement")
 
@@ -310,6 +311,7 @@ class SimulatedTorch:
     """
 
     def __init__(self) -> None:
+        _require_simulation("Simulated torch")
         self._on = False
         self._events: list[dict[str, Any]] = []
         self._t0 = time.perf_counter()

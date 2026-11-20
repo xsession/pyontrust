@@ -364,7 +364,12 @@ def generate_synthetic_stack(
 
     Returns ``(frames, meta)`` where ``meta`` carries the schedule and each
     plane's box + the frame index at which that plane is best focused.
+
+    Test fixture only — refused outside the test suite (real cameras only).
     """
+    from pyontrust.core.simulation_guard import require
+
+    require("Synthetic focus stack")
     _require_cv2()
     h, w = size
     rng = np.random.default_rng(seed)

@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from pyontrust.hal.industrial_camera import CameraInfo
+from pyontrust.core.simulation_guard import require as _require_simulation
 
 logger = logging.getLogger("pyontrust.instruments.aoi_camera")
 
@@ -107,6 +108,9 @@ class SimulatedAOICamera:
             vendor="pyontrust",
             transport="Simulated",
         )
+
+    def __post_init__(self) -> None:
+        _require_simulation("Simulated AOI camera")
 
 
 # ═══════════════════════════════════════════════════════════════════════
