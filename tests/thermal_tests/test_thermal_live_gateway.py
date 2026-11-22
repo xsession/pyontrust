@@ -203,3 +203,21 @@ def test_zone_readings_without_live_frame(client, monkeypatch):
 
     monkeypatch.setattr(tm, "_feed", tm.LiveFeed())
     assert client.post("/thermal/api/zone_readings", json={"zones": []}).status_code == 409
+
+
+def test_frame_raw_is_float32_celsius(client):
+    import numpy as np
+
+    import pyontrust.gateway.blueprints.thermal_measurement as tm
+    from pyontrust.instruments.seek_thermal import create
+
+    tm._live._factory = create
+    try:
+        r = client.get("/thermal/api/frame_raw?mode=simulated")
+        assert r.status_code == 200, r.data[:200]
+        w, h = int(r.headers["X-Width"]), int(r.headers["X-Height"])
+        temps = np.frombuffer(r.data, "<f4").reshape(h, w)
+        assert r.headers["X-Simulated"] == "1"
+        assert -40 < float(temps.mean()) < 200
+    finally:
+        tm._live._factory = None

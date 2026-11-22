@@ -52,6 +52,68 @@ def _not_found(category: str, hw_type: str, name: str, icon: str) -> dict:
             "error": None, "test_result": None}
 
 
+_IS_WINDOWS = os.name == "nt"
+_SYS_USB = "/sys/bus/usb/devices"
+_SYS_NET = "/sys/class/net"
+
+
+def _read_sys(path: str) -> str:
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            return fh.read().strip()
+    except OSError:
+        return ""
+
+
+def _usb_devices() -> list[dict]:
+    """All USB devices from Linux sysfs (no device I/O, no permissions needed).
+
+    Each entry: ``vid``, ``pid`` (int), ``manufacturer``, ``product``,
+    ``serial``, ``path`` (USB port path, e.g. ``1-2.4``), ``node``
+    (``/dev/bus/usb/BBB/DDD``) and ``writable`` (can this user open it).
+    """
+    out: list[dict] = []
+    try:
+        names = os.listdir(_SYS_USB)
+    except OSError:
+        return out
+    for name in sorted(names):
+        if ":" in name:                       # interfaces, not devices
+            continue
+        base = os.path.join(_SYS_USB, name)
+        vid, pid = _read_sys(f"{base}/idVendor"), _read_sys(f"{base}/idProduct")
+        if not vid or not pid:
+            continue
+        bus, dev = _read_sys(f"{base}/busnum"), _read_sys(f"{base}/devnum")
+        node = f"/dev/bus/usb/{int(bus):03d}/{int(dev):03d}" if bus and dev else ""
+        out.append({
+            "vid": int(vid, 16), "pid": int(pid, 16), "path": name,
+            "manufacturer": _read_sys(f"{base}/manufacturer"),
+            "product": _read_sys(f"{base}/product"),
+            "serial": _read_sys(f"{base}/serial"),
+            "node": node,
+            "writable": bool(node) and os.access(node, os.R_OK | os.W_OK),
+        })
+    return out
+
+
+def _usb_find(vid: int, pids: set[int] | None = None) -> list[dict]:
+    return [d for d in _usb_devices() if d["vid"] == vid and (pids is None or d["pid"] in pids)]
+
+
+def _usb_details(d: dict) -> dict:
+    """Card details for a sysfs USB device."""
+    return {"vid_pid": f"{d['vid']:04X}:{d['pid']:04X}", "usb_path": d["path"],
+            "manufacturer": d["manufacturer"], "product": d["product"],
+            "serial": d["serial"], "node": d["node"], "usb_access": d["writable"]}
+
+
+def _udev_hint(what: str, vid: int) -> str:
+    return (f"no USB access to the {what} for this user — install its udev rule "
+            f"(e.g. SUBSYSTEM==\"usb\", ATTR{{idVendor}}==\"{vid:04x}\", MODE=\"0660\", GROUP=\"plugdev\" "
+            "in /etc/udev/rules.d/, then sudo udevadm control --reload && sudo udevadm trigger) and replug it")
+
+
 def _probe_usb_vid_pid(
     vid: int, pids: set[int],
     category: str, hw_type: str, name: str, icon: str,
@@ -63,6 +125,8 @@ def _probe_usb_vid_pid(
     """
     import re as _re
     results: list[dict] = []
+    if not _IS_WINDOWS:
+        return results
     try:
         vid_hex = f"{vid:04X}"
         proc = subprocess.Popen(
@@ -123,7 +187,14 @@ def _probe_serial_ports() -> list[dict]:
         import serial.tools.list_ports
         ports = list(serial.tools.list_ports.comports())
         for p in ports:
+            # Linux lists every legacy 8250 UART slot (/dev/ttyS0..31) — only real hardware counts
+            if not _IS_WINDOWS and (p.hwid or "n/a") == "n/a":
+                continue
             desc = p.description or p.device
+            if desc == "n/a":
+                desc = p.device
+            elif p.device not in desc:
+                desc = f"{desc} ({p.device})"
             vid_pid = ""
             if p.vid and p.pid:
                 vid_pid = f"VID:{p.vid:04X} PID:{p.pid:04X}"
@@ -308,8 +379,15 @@ def _adb_list_sensors(adb: str, serial: str) -> list[str]:
     """Query the Android sensor list via ``dumpsys sensorservice``.
 
     Returns a list of human-readable sensor names (e.g. ``"Accelerometer"``).
+    The pyontrust phone app is asked first — it lists exactly the sensors that
+    Live Data can read; ``dumpsys`` is the fallback.
     """
     sensors: list[str] = []
+    try:
+        from pyontrust.instruments import phone_camera
+        return [s["type"] for s in phone_camera.sensors(serial)]
+    except Exception:
+        pass
     try:
         proc = subprocess.Popen(
             [adb, "-s", serial, "shell", "dumpsys", "sensorservice"],
@@ -352,24 +430,59 @@ def _adb_list_sensors(adb: str, serial: str) -> list[str]:
     return sensors[:30]  # cap to prevent huge payloads
 
 
-def _probe_webcams() -> list[dict]:
-    """Enumerate available webcams via OpenCV.
+def _v4l2_cameras() -> list[dict]:
+    """Linux capture devices from sysfs: one entry per physical camera.
 
-    On Windows with DSHOW, ``cv2.VideoCapture(idx)`` for a non-existent
-    index can block for many seconds.  We only probe index 0 quickly;
-    if it works we try 1–3 as well.
+    UVC cameras register two nodes (image + metadata); the capture node is the
+    one with ``index`` 0."""
+    import glob
+    import re as _re
+
+    cams = []
+    for d in glob.glob("/sys/class/video4linux/video*"):
+        if _read_sys(f"{d}/index") not in ("0", ""):
+            continue
+        m = _re.search(r"(\d+)$", d)
+        if not m:
+            continue
+        num = int(m.group(1))
+        name = _read_sys(f"{d}/name").split(":")[0].strip() or f"video{num}"
+        usb = os.path.basename(os.path.realpath(f"{d}/device")).split(":")[0]
+        cams.append({"index": num, "device": f"/dev/video{num}", "name": name, "usb_path": usb})
+    return sorted(cams, key=lambda c: c["index"])
+
+
+def _open_capture(idx: int):
+    """``cv2.VideoCapture`` with the native backend of this OS."""
+    import cv2
+
+    api = cv2.CAP_DSHOW if _IS_WINDOWS else getattr(cv2, "CAP_V4L2", cv2.CAP_ANY)
+    return cv2.VideoCapture(idx, api)
+
+
+def _probe_webcams() -> list[dict]:
+    """Enumerate webcams.
+
+    Linux: sysfs (instant, no device is opened — other tools may be streaming).
+    Windows: ``cv2.VideoCapture`` with DSHOW; indices are contiguous so the
+    scan stops at the first missing one (a missing index can block for seconds).
     """
     results = []
+    if not _IS_WINDOWS:
+        for cam in _v4l2_cameras():
+            results.append(_ok("camera", "webcam", f"{cam['name']} ({cam['device']})", "📷", cam))
+        if not results:
+            results.append(_not_found("camera", "webcam", "No webcams found", "📷"))
+        return results
     try:
         import cv2
 
         for idx in range(4):
             try:
-                # Use CAP_DSHOW on Windows for device-name support
-                cap = cv2.VideoCapture(idx, cv2.CAP_DSHOW)
+                cap = _open_capture(idx)
                 if not cap.isOpened():
                     cap.release()
-                    break  # Stop at first missing index — they are contiguous
+                    break
                 w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
                 h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
                 fps = cap.get(cv2.CAP_PROP_FPS)
@@ -394,22 +507,54 @@ def _probe_webcams() -> list[dict]:
     return results
 
 
+_DWF = None
+
+
+def load_dwf():
+    """The Digilent WaveForms runtime (``libdwf``) via ctypes, or raise OSError."""
+    global _DWF
+    if _DWF is not None:
+        return _DWF
+    import ctypes
+    import sys
+
+    try:
+        from pyontrust.hal.dwf_loader import dwf  # type: ignore[import-not-found]
+        _DWF = dwf
+        return dwf
+    except ImportError:
+        pass
+    if _IS_WINDOWS:
+        names = ["dwf"]
+    elif sys.platform == "darwin":
+        names = ["/Library/Frameworks/dwf.framework/dwf"]
+    else:
+        names = ["libdwf.so", "/usr/lib/libdwf.so"]
+    last: Exception | None = None
+    for n in names:
+        try:
+            _DWF = ctypes.cdll.LoadLibrary(n) if _IS_WINDOWS else ctypes.CDLL(n)
+            return _DWF
+        except OSError as exc:
+            last = exc
+    raise OSError(f"Digilent WaveForms runtime (libdwf) not found: {last}")
+
+
 def _probe_dwf_devices() -> list[dict]:
     """Enumerate Analog Discovery / WaveForms SDK devices."""
+    import ctypes
+
     results = []
     try:
-        # Try loading the DWF library
         try:
-            from pyontrust.hal.dwf_loader import dwf
-        except ImportError:
-            try:
-                import ctypes
-                dwf = ctypes.cdll.dwf  # type: ignore[attr-defined]
-            except OSError:
-                return [_not_found("instruments", "ad3_dwf",
-                                   "Digilent WaveForms SDK not found", "📟")]
+            dwf = load_dwf()
+        except OSError:
+            if _usb_find(0x1443):
+                return [_err("instruments", "ad3_dwf", "Digilent device (USB)", "📟",
+                             "Digilent device on USB but the WaveForms runtime (libdwf) is not installed")]
+            return [_not_found("instruments", "ad3_dwf",
+                               "Digilent WaveForms SDK not found", "📟")]
 
-        import ctypes
         c_count = ctypes.c_int(0)
         dwf.FDwfEnum(ctypes.c_int(0), ctypes.byref(c_count))
         count = c_count.value
@@ -423,26 +568,29 @@ def _probe_dwf_devices() -> list[dict]:
             serial_buf = ctypes.create_string_buffer(64)
             dev_id = ctypes.c_int(0)
             dev_rev = ctypes.c_int(0)
+            in_use = ctypes.c_int(0)
 
             dwf.FDwfEnumDeviceType(ctypes.c_int(i),
                                    ctypes.byref(dev_id), ctypes.byref(dev_rev))
             try:
                 dwf.FDwfEnumDeviceName(ctypes.c_int(i), name_buf)
                 dwf.FDwfEnumSN(ctypes.c_int(i), serial_buf)
+                dwf.FDwfEnumDeviceIsOpened(ctypes.c_int(i), ctypes.byref(in_use))
             except Exception:
                 pass
 
             dev_name = name_buf.value.decode("utf-8", errors="replace").strip()
-            dev_sn = serial_buf.value.decode("utf-8", errors="replace").strip()
+            dev_sn = serial_buf.value.decode("utf-8", errors="replace").strip().removeprefix("SN:")
 
             results.append(_ok(
                 "instruments", "ad3_dwf",
-                dev_name or f"DWF Device #{i}", "📟",
+                f"{dev_name or 'DWF device'} ({dev_sn})" if dev_sn else (dev_name or f"DWF Device #{i}"), "📟",
                 {"index": i, "name": dev_name, "serial": dev_sn,
-                 "device_id": dev_id.value, "revision": dev_rev.value},
+                 "device_id": dev_id.value, "revision": dev_rev.value,
+                 "in_use": bool(in_use.value)},
             ))
     except Exception as exc:
-        results.append(_err("instruments", "ad3_dwf", "DWF probe", "📟", str(exc)))
+        results.append(_err("instruments", "ad3_dwf", "DWF probe", "📟", f"{type(exc).__name__}: {exc}"))
 
     return results
 
@@ -541,17 +689,47 @@ _PCAN_PID_NAMES: dict[int, str] = {
 }
 
 
+def _socketcan_pcan() -> list[dict]:
+    """PEAK adapters bound to the Linux ``peak_usb`` driver show up as SocketCAN
+    interfaces (``can0`` …)."""
+    found = []
+    base = _SYS_NET
+    try:
+        names = sorted(os.listdir(base))
+    except OSError:
+        return found
+    for name in names:
+        drv = os.path.basename(os.path.realpath(f"{base}/{name}/device/driver"))
+        if _read_sys(f"{base}/{name}/type") != "280" or drv not in ("peak_usb", "peak_pci", "peak_pciefd"):
+            continue
+        usb_path = os.path.basename(os.path.realpath(f"{base}/{name}/device")).split(":")[0]
+        usb = next((d for d in _usb_devices() if d["path"] == usb_path), None)
+        model = _PCAN_PID_NAMES.get(usb["pid"], "PCAN") if usb else "PCAN"
+        state = _read_sys(f"{base}/{name}/operstate") or "unknown"
+        found.append({"channel": name, "interface": "socketcan", "driver": drv, "model": model,
+                      "state": state, "usb_path": usb_path,
+                      "serial": (usb or {}).get("serial", "")})
+    return found
+
+
 def _probe_pcan() -> list[dict]:
     """Detect PEAK-CAN USB adapters.
 
     Strategy:
-      1. Try python-can detect_available_configs for pcan interface.
-      2. Fall back to USB VID/PID scanning (VID 0x0C72).
+      1. Linux: SocketCAN interfaces of the ``peak_usb`` driver (``can0``).
+      2. python-can detect_available_configs for the pcan interface (PCAN-Basic).
+      3. USB VID 0x0C72 (sysfs on Linux, WMI on Windows).
     """
     try:
         results: list[dict] = []
 
-        # Strategy 1: python-can detection
+        if not _IS_WINDOWS:
+            for c in _socketcan_pcan():
+                results.append(_ok("bus", "pcan", f"{c['model']} ({c['channel']}, {c['state']})", "🔌",
+                                   {**c, "source": "socketcan"}))
+            if results:
+                return results
+
         try:
             import can  # type: ignore[import-untyped]
             configs = can.detect_available_configs(interfaces=["pcan"])
@@ -567,7 +745,13 @@ def _probe_pcan() -> list[dict]:
         if results:
             return results
 
-        # Strategy 2: USB VID/PID enumeration
+        for d in _usb_find(_PCAN_VID, set(_PCAN_PID_NAMES)):
+            results.append(_err("bus", "pcan", f"{_PCAN_PID_NAMES[d['pid']]} (USB)", "🔌",
+                                "adapter on USB but no CAN interface — load the driver: sudo modprobe peak_usb"))
+            results[-1]["details"] = _usb_details(d)
+        if results:
+            return results
+
         try:
             usb_results = _probe_usb_vid_pid(
                 _PCAN_VID, set(_PCAN_PID_NAMES.keys()),
@@ -585,10 +769,8 @@ def _probe_pcan() -> list[dict]:
         except Exception:
             pass
 
-        # Strategy 3: check if PCAN driver DLL is installed (Windows)
         try:
-            import platform
-            if platform.system() == "Windows":
+            if _IS_WINDOWS:
                 import ctypes
                 try:
                     ctypes.windll.LoadLibrary("PCANBasic")  # type: ignore[attr-defined]
@@ -606,33 +788,63 @@ def _probe_pcan() -> list[dict]:
         return [_err("bus", "pcan", "PCAN probe", "🔌", str(exc))]
 
 
+_SEGGER_VID = 0x1366
+_HACKRF_VID = 0x1D50
+_HACKRF_PIDS = {0x6089: "HackRF One", 0x604B: "HackRF Jawbreaker", 0xCC15: "rad1o"}
+
+
 def _probe_jlink() -> list[dict]:
-    """Check for SEGGER J-Link probes."""
+    """SEGGER J-Link probes: found on USB directly (VID 1366), no SEGGER software needed."""
+    results = []
+    for d in _usb_find(_SEGGER_VID):
+        sn = d["serial"].lstrip("0") or d["serial"]
+        results.append(_ok("debug", "jlink", f"{d['product'] or 'J-Link'} (SN {sn})", "🔧",
+                           {**_usb_details(d), "serial": sn}))
+    if results:
+        return results
+
     jlink_exe = shutil.which("JLink") or shutil.which("JLinkExe")
     if jlink_exe:
         return [_ok("debug", "jlink", "SEGGER J-Link", "🔧",
                      {"path": jlink_exe})]
 
-    # Try pylink
     try:
         import pylink
         jl = pylink.JLink()
-        if jl.connected_emulators():
-            emus = jl.connected_emulators()
-            results = []
-            for emu in emus:
-                results.append(_ok("debug", "jlink",
-                                  f"J-Link SN:{emu}", "🔧",
-                                  {"serial": str(emu)}))
+        emus = jl.connected_emulators()
+        for emu in emus:
+            results.append(_ok("debug", "jlink",
+                              f"J-Link SN:{emu}", "🔧",
+                              {"serial": str(emu)}))
+        if results:
             return results
     except Exception:
         pass
 
+    if _IS_WINDOWS:
+        results = _probe_usb_vid_pid(_SEGGER_VID, set(range(0x0101, 0x0110)) | {0x1015, 0x1051, 0x1061},
+                                     "debug", "jlink", "SEGGER J-Link (USB)", "🔧")
+        if results:
+            return results
     return [_not_found("debug", "jlink", "No J-Link probes", "🔧")]
 
 
 def _probe_hackrf() -> list[dict]:
-    """Check for HackRF SDR devices."""
+    """HackRF SDR devices: found on USB directly (VID 1D50), no host tools needed."""
+    results = []
+    for d in _usb_find(_HACKRF_VID, set(_HACKRF_PIDS)):
+        sn = d["serial"].lstrip("0") or d["serial"]
+        details = {**_usb_details(d), "serial": d["serial"]}
+        name = f"{_HACKRF_PIDS[d['pid']]} (…{sn[-8:]})" if sn else _HACKRF_PIDS[d["pid"]]
+        if not d["writable"]:
+            r = _err("sdr", "hackrf", name, "📡", _udev_hint("HackRF", _HACKRF_VID))
+            r["details"] = details
+            results.append(r)
+        else:
+            results.append(_ok("sdr", "hackrf", name, "📡", details))
+    if results:
+        return results
+
     hackrf_exe = shutil.which("hackrf_info")
     if hackrf_exe:
         try:
@@ -648,33 +860,9 @@ def _probe_hackrf() -> list[dict]:
         except Exception as exc:
             return [_err("sdr", "hackrf", "HackRF", "📡", str(exc))]
 
-    # Try SoapySDR
-    try:
-        import SoapySDR
-        devs = SoapySDR.Device.enumerate("driver=hackrf")
-        if devs:
-            return [_ok("sdr", "hackrf", "HackRF via SoapySDR", "📡",
-                        {"devices": len(devs)})]
-    except Exception:
-        pass
-
-    # Fallback: check USB VID/PID (HackRF VID=1D50, PID=6089/604B/CC15)
-    try:
-        import serial.tools.list_ports
-        for p in serial.tools.list_ports.comports():
-            if p.vid == 0x1D50 and p.pid in (0x6089, 0x604B, 0xCC15):
-                return [_ok("sdr", "hackrf",
-                            f"HackRF One ({p.device})", "📡",
-                            {"port": p.device,
-                             "vid_pid": f"{p.vid:04X}:{p.pid:04X}",
-                             "serial_number": p.serial_number or ""})]
-    except ImportError:
-        pass
-
-    # Fallback: check all USB devices via WMI (Windows) for VID 1D50
     try:
         _usb_results = _probe_usb_vid_pid(
-            0x1D50, {0x6089, 0x604B, 0xCC15},
+            _HACKRF_VID, set(_HACKRF_PIDS),
             "sdr", "hackrf", "HackRF One (USB)", "📡",
         )
         if _usb_results:
@@ -724,6 +912,13 @@ def _classify_nordic_cdc() -> tuple[list[dict], set[str]]:
     return ppk2_serials, dict(port_groups)
 
 
+def _usb_iface(port: Any) -> int:
+    import re as _re
+
+    m = _re.search(r":\d+\.(\d+)$", getattr(port, "location", None) or "")
+    return int(m.group(1)) if m else 99
+
+
 def _probe_ppk2() -> list[dict]:
     """Check for Nordic PPK2 devices on serial ports or USB.
 
@@ -746,8 +941,9 @@ def _probe_ppk2() -> list[dict]:
         _seen_serials: set[str] = set()
         for sn in ppk2_serials:
             ports = port_groups[sn]
-            # Pick the lowest-numbered COM port as the "data" port
-            ports_sorted = sorted(ports, key=lambda p: p.device)
+            # The data/command port is the CDC interface with the lower USB
+            # interface number (…:1.1, not …:1.3) — not necessarily the lower tty number
+            ports_sorted = sorted(ports, key=lambda p: (_usb_iface(p), p.device))
             data_port = ports_sorted[0]
             ctrl_port = ports_sorted[-1] if len(ports_sorted) > 1 else None
             details: dict[str, Any] = {
@@ -829,6 +1025,12 @@ def _probe_nrf52840_dongle() -> list[dict]:
     except ImportError:
         pass
 
+    # A dongle without a serial port: Nordic bootloader / custom firmware (USB only)
+    if not results and not _IS_WINDOWS:
+        for d in _usb_find(0x1915, {0x521F, 0xCAFE, 0x520F}):
+            results.append(_ok("ble", "nrf52840_dongle", f"{d['product'] or 'nRF52840'} (USB, no serial port)",
+                               "📶", _usb_details(d)))
+
     if not results:
         return [_not_found("ble", "nrf52840_dongle", "No nRF52840 dongles", "📶")]
     return results
@@ -868,130 +1070,289 @@ def _test_serial_port(hw: dict) -> dict:
 
 
 def _test_adb_device(hw: dict) -> dict:
-    """Quick test: read sensors list from Android device."""
+    """Quick test: ADB shell round trip + the sensors the phone app can read."""
     dev_serial = hw["details"].get("serial", "")
     adb = os.environ.get("ADB_PATH", "adb")
     try:
-        # Test basic shell access with Popen for reliable kill
         proc = subprocess.Popen(
             [adb, "-s", dev_serial, "shell", "echo", "pyontrust_ping"],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
         )
         try:
-            out, _ = proc.communicate(timeout=5)
+            out, err = proc.communicate(timeout=5)
         except subprocess.TimeoutExpired:
             proc.kill()
             proc.communicate()
             return {"passed": False, "message": "ADB shell timed out"}
-
         if "pyontrust_ping" not in out:
-            return {"passed": False, "message": "Shell echo failed"}
+            return {"passed": False, "message": f"ADB shell failed: {(err or out).strip()[:200]}"}
 
-        # Get sensor list
-        proc2 = subprocess.Popen(
-            [adb, "-s", dev_serial, "shell", "dumpsys", "sensorservice"],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-        )
         try:
-            sensors_out, _ = proc2.communicate(timeout=5)
-        except subprocess.TimeoutExpired:
-            proc2.kill()
-            proc2.communicate()
-            return {"passed": True, "message": "Shell OK, sensor query timed out"}
-        sensor_count = sum(1 for l in sensors_out.splitlines()
-                          if "| " in l and "handle" in l.lower())
-
-        # Get available sensors summary
-        sensor_names = []
-        for line in sensors_out.splitlines():
-            if "| " in line and ("Accel" in line or "Gyro" in line or
-                                  "Magnet" in line or "Proximity" in line or
-                                  "Light" in line or "Pressure" in line or
-                                  "Gravity" in line or "Rotation" in line):
-                name = line.split("|")[1].strip() if "|" in line else line.strip()
-                if name:
-                    sensor_names.append(name[:50])
-
-        return {"passed": True,
-                "message": f"Shell OK, ~{sensor_count} sensors detected",
-                "sensors": sensor_names[:20]}
+            from pyontrust.instruments import phone_camera
+            sensors = phone_camera.sensors(dev_serial)
+            names = [s["type"] for s in sensors]
+            return {"passed": True,
+                    "message": f"Shell OK, phone app OK — {len(names)} live sensors",
+                    "sensors": names}
+        except Exception as exc:
+            names = _adb_list_sensors(adb, dev_serial)
+            return {"passed": True,
+                    "message": f"Shell OK; phone app not reachable ({exc}) — {len(names)} sensors via dumpsys",
+                    "sensors": names[:20]}
     except Exception as exc:
         return {"passed": False, "message": str(exc)}
+
+
+def webcam_frame(index: int):
+    """One frame from a webcam, through the camera pool the Microscopy and 3D
+    pages use (so the device is shared, never opened twice)."""
+    try:
+        from pyontrust.services.camera_sources import _camera
+    except ImportError:
+        _camera = None
+    if _camera is not None:
+        return _camera.grab(int(index))
+    cap = _open_capture(int(index))
+    try:
+        if not cap.isOpened():
+            raise RuntimeError(f"Cannot open video device {index}")
+        for _ in range(5):                     # first frames of some UVC cameras are empty
+            ok, frame = cap.read()
+            if ok and frame is not None:
+                return frame
+        raise RuntimeError(f"Video device {index} returned no frame")
+    finally:
+        cap.release()
 
 
 def _test_webcam(hw: dict) -> dict:
-    """Quick test: capture one frame from webcam."""
+    """Quick test: capture one frame from the webcam."""
     idx = hw["details"].get("index", 0)
+    dev = hw["details"].get("device", f"#{idx}")
     try:
-        import cv2
-        cap = cv2.VideoCapture(idx, cv2.CAP_DSHOW)
-        if not cap.isOpened():
-            return {"passed": False, "message": f"Cannot open camera #{idx}"}
-        ret, frame = cap.read()
-        cap.release()
-        if ret and frame is not None:
-            return {"passed": True,
-                    "message": f"Captured frame: {frame.shape[1]}x{frame.shape[0]} "
-                               f"({frame.dtype})"}
-        return {"passed": False, "message": "read() returned empty frame"}
+        frame = webcam_frame(int(idx))
+        return {"passed": True,
+                "message": f"Captured frame {frame.shape[1]}x{frame.shape[0]} from {dev}"}
     except Exception as exc:
-        return {"passed": False, "message": str(exc)}
+        return {"passed": False, "message": f"{dev}: {exc}"}
+
+
+def dwf_open(index: int):
+    """Open a WaveForms device -> ``(dwf, handle)``; raises RuntimeError with the SDK's reason."""
+    import ctypes
+
+    dwf = load_dwf()
+    count = ctypes.c_int()
+    dwf.FDwfEnum(ctypes.c_int(0), ctypes.byref(count))
+    if index >= count.value:
+        raise RuntimeError(f"Analog Discovery #{index} is no longer connected")
+    in_use = ctypes.c_int()
+    dwf.FDwfEnumDeviceIsOpened(ctypes.c_int(index), ctypes.byref(in_use))
+    if in_use.value:
+        raise RuntimeError("device is open in another program (WaveForms, Lab Bench …)")
+    hdwf = ctypes.c_int()
+    dwf.FDwfDeviceOpen(ctypes.c_int(index), ctypes.byref(hdwf))
+    if hdwf.value == 0:
+        msg = ctypes.create_string_buffer(512)
+        dwf.FDwfGetLastErrorMsg(msg)
+        raise RuntimeError(f"FDwfDeviceOpen failed: {msg.value.decode(errors='replace').strip() or 'unknown error'}")
+    return dwf, hdwf
+
+
+def dwf_monitor(dwf, hdwf) -> dict[str, float]:
+    """System monitor of an open WaveForms device (USB voltage/current, temperature …)."""
+    import ctypes
+
+    vals: dict[str, float] = {}
+    dwf.FDwfAnalogIOStatus(hdwf)
+    n_ch = ctypes.c_int()
+    dwf.FDwfAnalogIOChannelCount(hdwf, ctypes.byref(n_ch))
+    for ch in range(n_ch.value):
+        name, label = ctypes.create_string_buffer(32), ctypes.create_string_buffer(16)
+        dwf.FDwfAnalogIOChannelName(hdwf, ctypes.c_int(ch), name, label)
+        if b"System" not in name.value and b"USB" not in name.value:
+            continue
+        n_node = ctypes.c_int()
+        dwf.FDwfAnalogIOChannelInfo(hdwf, ctypes.c_int(ch), ctypes.byref(n_node))
+        for node in range(n_node.value):
+            nn, unit = ctypes.create_string_buffer(32), ctypes.create_string_buffer(16)
+            dwf.FDwfAnalogIOChannelNodeName(hdwf, ctypes.c_int(ch), ctypes.c_int(node), nn, unit)
+            v = ctypes.c_double()
+            dwf.FDwfAnalogIOChannelNodeStatus(hdwf, ctypes.c_int(ch), ctypes.c_int(node), ctypes.byref(v))
+            vals[nn.value.decode(errors="replace")] = v.value
+    return vals
 
 
 def _test_dwf_device(hw: dict) -> dict:
-    """Quick test: open + close DWF device."""
-    idx = hw["details"].get("index", 0)
+    """Quick test: open the device, read its system monitor, close."""
+    idx = int(hw["details"].get("index", 0))
     try:
-        import ctypes
+        dwf, hdwf = dwf_open(idx)
         try:
-            from pyontrust.hal.dwf_loader import dwf
-        except ImportError:
-            dwf = ctypes.cdll.dwf  # type: ignore[attr-defined]
-
-        hdwf = ctypes.c_int()
-        ok = dwf.FDwfDeviceOpen(ctypes.c_int(idx), ctypes.byref(hdwf))
-        if ok and hdwf.value != 0:
-            # Read supply voltage as a simple health check
-            v_pos = ctypes.c_double()
-            v_neg = ctypes.c_double()
-            dwf.FDwfAnalogIOChannelNodeStatus(
-                hdwf, ctypes.c_int(0), ctypes.c_int(0), ctypes.byref(v_pos))
+            mon = dwf_monitor(dwf, hdwf)
+        finally:
             dwf.FDwfDeviceClose(hdwf)
-            return {"passed": True,
-                    "message": f"Opened device #{idx}, USB voltage ≈ {v_pos.value:.2f}V"}
-        return {"passed": False, "message": "FDwfDeviceOpen failed"}
+        parts = []
+        if "VUSB" in mon:
+            parts.append(f"USB {mon['VUSB']:.2f} V")
+        if "IUSB" in mon:
+            parts.append(f"{mon['IUSB'] * 1000:.0f} mA")
+        if "Temp" in mon:
+            parts.append(f"{mon['Temp']:.1f} °C")
+        return {"passed": True, "message": f"Opened device #{idx}" + (": " + ", ".join(parts) if parts else "")}
     except Exception as exc:
         return {"passed": False, "message": str(exc)}
 
 
-def _test_seek_thermal(hw: dict) -> dict:
-    """Quick test: try simulated grab."""
+def thermal_frame():
+    """One °C frame from the real Seek camera, shared with the Thermal workspace."""
     try:
-        from pyontrust.instruments.seek_thermal import create
-        cam = create({"mode": "simulated"})
-        cam.open()
+        from pyontrust.gateway.blueprints.thermal_measurement import _arbiter
+        from pyontrust.services.thermal_live import FrameError
+    except ImportError:
+        _arbiter = None
+    if _arbiter is not None:
         try:
-            frame = cam.grab_temperature_frame()
-            import numpy as np
-            return {"passed": True,
-                    "message": f"Simulated OK: shape={frame.shape}, "
-                               f"mean={float(np.mean(frame)):.1f}°C"}
-        finally:
-            cam.close()
+            return _arbiter.display_frame("seek")[0]
+        except FrameError as exc:
+            raise RuntimeError(exc.message) from exc
+    from pyontrust.instruments.seek_thermal import create
+    cam = create({"mode": "seek"})
+    cam.open()
+    try:
+        return cam.grab_temperature_frame()
+    finally:
+        cam.close()
+
+
+def _test_seek_thermal(hw: dict) -> dict:
+    """Quick test: grab one real thermal frame."""
+    try:
+        import numpy as np
+
+        frame = thermal_frame()
+        return {"passed": True,
+                "message": f"Frame {frame.shape[1]}x{frame.shape[0]}: "
+                           f"{float(np.min(frame)):.1f} … {float(np.max(frame)):.1f} °C, "
+                           f"mean {float(np.mean(frame)):.1f} °C"}
     except Exception as exc:
         return {"passed": False, "message": str(exc)}
 
 
 def _test_pcan(hw: dict) -> dict:
-    """Quick test: try opening a PCAN channel in loopback / virtual mode."""
+    """Quick test: SocketCAN interface state (Linux) or open a PCAN-Basic channel."""
+    d = hw.get("details", {})
+    if d.get("interface") == "socketcan":
+        ch = d.get("channel", "can0")
+        state = _read_sys(f"{_SYS_NET}/{ch}/operstate") or "gone"
+        if state == "gone":
+            return {"passed": False, "message": f"{ch} disappeared — adapter unplugged?"}
+        if state != "up":
+            return {"passed": True,
+                    "message": f"{d.get('model', 'PCAN')} ready on {ch} (driver {d.get('driver')}); the bus is "
+                               f"{state} — to use it: sudo ip link set {ch} up type can bitrate 500000"}
+        try:
+            import can  # type: ignore[import-untyped]
+            bus = can.Bus(interface="socketcan", channel=ch)
+            bus.shutdown()
+            return {"passed": True, "message": f"{ch} is up and opened OK"}
+        except Exception as exc:
+            return {"passed": False, "message": f"{ch} is up but cannot be opened: {exc}"}
     try:
         import can  # type: ignore[import-untyped]
-        channel = hw.get("details", {}).get("channel", "PCAN_USBBUS1")
+        channel = d.get("channel", "PCAN_USBBUS1")
         bus = can.Bus(interface="pcan", channel=channel, bitrate=500000)
         bus.shutdown()
         return {"passed": True, "message": f"Opened {channel} OK"}
     except Exception as exc:
         return {"passed": False, "message": str(exc)}
+
+
+def _test_jlink(hw: dict) -> dict:
+    """Quick test: firmware version and target voltage over USB (read-only)."""
+    if not hw.get("details", {}).get("vid_pid"):
+        return _test_noop(hw)
+    try:
+        from pyontrust.instruments.jlink_usb import JLinkUsb
+
+        with JLinkUsb(hw["details"].get("serial", "")) as jl:
+            fw, st = jl.firmware(), jl.hw_status()
+        target = (f"target {st['vtarget_v']:.2f} V" if st["vtarget_v"] > 0.3
+                  else "no target voltage (target unpowered or not connected)")
+        return {"passed": True, "message": f"{fw}; {target}"}
+    except Exception as exc:
+        return {"passed": False, "message": str(exc)}
+
+
+def _test_hackrf(hw: dict) -> dict:
+    """Quick test: board id + firmware version via USB vendor requests (read-only)."""
+    d = hw.get("details", {})
+    if not d.get("vid_pid"):
+        return _test_noop(hw)
+    if not d.get("usb_access", True):
+        return {"passed": False, "message": _udev_hint("HackRF", _HACKRF_VID)}
+    try:
+        import usb.core
+
+        dev = usb.core.find(idVendor=_HACKRF_VID,
+                            custom_match=lambda x: not d.get("serial") or x.serial_number == d["serial"])
+        if dev is None:
+            return {"passed": False, "message": "HackRF not found on USB"}
+        try:
+            board = bytes(dev.ctrl_transfer(0xC0, 14, 0, 0, 1))[0]
+            version = bytes(dev.ctrl_transfer(0xC0, 15, 0, 0, 255)).decode(errors="replace").strip("\0 ")
+        finally:
+            usb.util.dispose_resources(dev)
+        boards = {0: "Jellybean", 1: "Jawbreaker", 2: "HackRF One", 3: "rad1o", 4: "HackRF One r9"}
+        return {"passed": True, "message": f"{boards.get(board, f'board id {board}')}, firmware {version}"}
+    except Exception as exc:
+        if "Access denied" in str(exc) or "langid" in str(exc):
+            return {"passed": False, "message": _udev_hint("HackRF", _HACKRF_VID)}
+        return {"passed": False, "message": str(exc)}
+
+
+def _test_ppk2(hw: dict) -> dict:
+    """Quick test: open the PPK2 and read its calibration (no measurement, DUT power untouched)."""
+    port = hw.get("details", {}).get("port", "")
+    if not port:
+        return {"passed": False, "message": "No PPK2 port"}
+    try:
+        try:
+            from ppk2_api import PPK2_API
+        except ImportError:
+            from ppk2_api.ppk2_api import PPK2_API
+    except ImportError:
+        return {"passed": False, "message": "ppk2-api is not installed (pip install ppk2-api)"}
+    try:
+        ppk = PPK2_API(port, timeout=1)
+    except Exception as exc:
+        if "Permission denied" in str(exc):
+            return {"passed": False, "message": f"{port}: permission denied — add the user to the 'dialout' group"}
+        return {"passed": False, "message": f"{port}: {exc}"}
+    try:
+        ppk.stop_measuring()
+        old, ppk.ser.timeout = ppk.ser.timeout, 0.3
+        end = time.time() + 3
+        while time.time() < end and ppk.ser.read(65536):   # drain samples still in flight
+            pass
+        ppk.ser.timeout = old
+        if not ppk.get_modifiers():
+            return {"passed": False, "message": f"{port} opened but the PPK2 sent no calibration data"}
+        return {"passed": True, "message": f"Opened {port}, calibration read OK (DUT power untouched)"}
+    except Exception as exc:
+        return {"passed": False, "message": f"{port}: {exc}"}
+    finally:
+        try:
+            ppk.ser.close()
+        except Exception:
+            pass
+
+
+def _test_nordic_serial(hw: dict) -> dict:
+    d = hw.get("details", {})
+    if not d.get("port"):
+        return _test_noop(hw)
+    return _test_serial_port({"details": {"device": d["port"]}})
 
 
 def _test_noop(hw: dict) -> dict:
@@ -1006,10 +1367,10 @@ _TEST_RUNNERS: dict[str, Any] = {
     "ad3_dwf": _test_dwf_device,
     "seek_thermal": _test_seek_thermal,
     "pcan": _test_pcan,
-    "jlink": _test_noop,
-    "hackrf": _test_noop,
-    "ppk2": _test_noop,
-    "nrf52840_dongle": _test_noop,
+    "jlink": _test_jlink,
+    "hackrf": _test_hackrf,
+    "ppk2": _test_ppk2,
+    "nrf52840_dongle": _test_nordic_serial,
     "network": _test_noop,
 }
 

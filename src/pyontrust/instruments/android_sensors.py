@@ -49,11 +49,11 @@ logger = logging.getLogger("pyontrust.instruments.android_sensors")
 _ADB = os.environ.get("ADB_PATH", "adb")
 
 
-def _run_adb(*args: str, timeout: float = 10.0) -> str:
-    """Run an ADB command (targeting the resolved serial) and return stdout."""
+def _run_adb(*args: str, timeout: float = 10.0, serial: str | None = None) -> str:
+    """Run an ADB command (on ``serial``, else the resolved default phone) and return stdout."""
     cmd = [_ADB]
     if args[0] != "devices":  # -s is meaningless for `adb devices` itself
-        serial = _adb_resolve_serial()
+        serial = serial or _adb_resolve_serial()
         if serial:
             cmd += ["-s", serial]
     cmd += list(args)
@@ -105,13 +105,13 @@ def _adb_available() -> bool:
         return False
 
 
-def _adb_device_info() -> dict[str, str]:
+def _adb_device_info(serial: str | None = None) -> dict[str, str]:
     """Get basic device information via ADB."""
     try:
-        model = _run_adb("shell", "getprop", "ro.product.model", timeout=5)
-        brand = _run_adb("shell", "getprop", "ro.product.brand", timeout=5)
-        sdk = _run_adb("shell", "getprop", "ro.build.version.sdk", timeout=5)
-        serial = _run_adb("get-serialno", timeout=5)
+        model = _run_adb("shell", "getprop", "ro.product.model", timeout=5, serial=serial)
+        brand = _run_adb("shell", "getprop", "ro.product.brand", timeout=5, serial=serial)
+        sdk = _run_adb("shell", "getprop", "ro.build.version.sdk", timeout=5, serial=serial)
+        serial = _run_adb("get-serialno", timeout=5, serial=serial)
         return {
             "model": model, "brand": brand, "sdk_version": sdk,
             "serial": serial,
@@ -120,10 +120,10 @@ def _adb_device_info() -> dict[str, str]:
         return {"error": str(exc)}
 
 
-def _adb_get_battery() -> dict[str, Any]:
+def _adb_get_battery(serial: str | None = None) -> dict[str, Any]:
     """Read battery stats via ``adb shell dumpsys battery``."""
     try:
-        out = _run_adb("shell", "dumpsys", "battery", timeout=5)
+        out = _run_adb("shell", "dumpsys", "battery", timeout=5, serial=serial)
         info: dict[str, Any] = {}
         for line in out.splitlines():
             line = line.strip()
@@ -159,6 +159,7 @@ SENSOR_TYPES = {
     "barometer":     {"android_type": 6, "axes": ["pressure"], "unit": "hPa"},
     "gravity":       {"android_type": 9, "axes": ["x", "y", "z"], "unit": "m/s²"},
     "rotation":      {"android_type": 11, "axes": ["x", "y", "z", "w"], "unit": ""},
+    "linear_acceleration": {"android_type": 10, "axes": ["x", "y", "z"], "unit": "m/s²"},
 }
 
 
@@ -429,16 +430,20 @@ class SimulatedAndroidSensors:
 class AdbAndroidSensors:
     """Read sensors from a real Android phone over ADB USB.
 
-    Supports two backend strategies:
-        - **bridge**: JSON-over-TCP via ADB port forwarding (preferred)
+    Backends:
+        - **app** (default): the pyontrust camera app (android-camera/) that
+          is already used for the phone cameras — Android's SensorManager over
+          the same ``adb forward`` link; installed/started automatically.
+          Falls back to termux if the app cannot be reached.
+        - **bridge**: JSON-over-TCP via ADB port forwarding
         - **termux**: Direct ``adb shell`` commands with termux-sensor
 
-    For the bridge mode, the phone must be running the sensor server
-    (either the pyontrust helper APK or a Termux script).
+    ``serial`` picks the phone; ``None`` = the default (first) phone.
     """
 
-    backend: str = "termux"  # "bridge" or "termux"
+    backend: str = "app"  # "app", "bridge" or "termux"
     local_port: int = _DEFAULT_BRIDGE_PORT
+    serial: str | None = None
     _bridge: AdbSensorBridge | None = None
     _opened: bool = False
     _device_info: dict[str, str] = field(default_factory=dict)
@@ -452,13 +457,14 @@ class AdbAndroidSensors:
                 "  3. 'adb devices' shows your device\n"
                 "  4. ADB is installed (Android SDK Platform-Tools)"
             )
-        self._device_info = _adb_device_info()
+        self.serial = self.serial or _adb_resolve_serial()
+        self._device_info = _adb_device_info(self.serial)
         logger.info(
-            "ADB Android Sensors: %s %s (SDK %s) [serial=%s]",
+            "ADB Android Sensors: %s %s (SDK %s) [serial=%s, backend=%s]",
             self._device_info.get("brand", "?"),
             self._device_info.get("model", "?"),
             self._device_info.get("sdk_version", "?"),
-            _adb_resolve_serial() or "?",
+            self.serial or "?", self.backend,
         )
 
         if self.backend == "bridge":
@@ -494,8 +500,43 @@ class AdbAndroidSensors:
 
         if self.backend == "bridge" and self._bridge:
             return self._read_sensor_bridge(sensor_type, duration_s)
-        else:
-            return self._read_sensor_termux(sensor_type, duration_s)
+        if self.backend == "app":
+            from pyontrust.instruments.phone_camera import PhoneCameraError
+            try:
+                return self._read_sensor_app(sensor_type, duration_s)
+            except PhoneCameraError as exc:
+                if "no " in str(exc) and " sensor" in str(exc):   # the phone simply lacks it
+                    return {"sensor": sensor_type, "error": str(exc), "n_samples": 0}
+                logger.warning("phone app sensor read failed (%s) — trying termux", exc)
+        return self._read_sensor_termux(sensor_type, duration_s)
+
+    def _read_sensor_app(self, sensor_type: str, duration_s: float) -> dict[str, Any]:
+        """Read via the pyontrust camera app (Android SensorManager)."""
+        from pyontrust.instruments import phone_camera
+
+        if not self.serial:
+            raise phone_camera.PhoneCameraError("no phone selected")
+        raw = phone_camera.read_sensor(self.serial, sensor_type, int(duration_s * 1000))
+        samples = raw.get("samples") or []
+        info = SENSOR_TYPES.get(sensor_type, {"axes": ["value"], "unit": ""})
+        result: dict[str, Any] = {
+            "sensor": sensor_type,
+            "sensor_name": raw.get("name", ""),
+            "unit": info["unit"],
+            "n_samples": len(samples),
+            "sample_rate_hz": (0.0 if raw.get("stale") else len(samples) / duration_s) if duration_s > 0 else 0,
+            "duration_s": duration_s,
+            "stale": bool(raw.get("stale")),
+            "time_s": [r[0] for r in samples],
+        }
+        if not samples:
+            result["error"] = "sensor reported no value yet"
+            return result
+        n_vals = max(len(r) for r in samples) - 1
+        axes = list(info["axes"])[:n_vals] or ["value"]
+        for i, axis in enumerate(axes):
+            result[axis] = [r[i + 1] if i + 1 < len(r) and r[i + 1] is not None else 0.0 for r in samples]
+        return result
 
     def _read_sensor_bridge(
         self, sensor_type: str, duration_s: float,
@@ -744,7 +785,7 @@ class AdbAndroidSensors:
 
     def read_battery(self) -> dict[str, Any]:
         """Read battery status via ``adb shell dumpsys battery``."""
-        return _adb_get_battery()
+        return _adb_get_battery(self.serial)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -760,9 +801,10 @@ class AndroidSensorInstrument:
     :class:`AdbAndroidSensors` based on the ``mode`` parameter.
     """
 
-    mode: str = "simulated"  # "simulated", "adb", "adb_bridge"
+    mode: str = "simulated"  # "simulated", "adb", "adb_bridge", "adb_termux"
     sample_rate_hz: float = 50.0
     adb_port: int = _DEFAULT_BRIDGE_PORT
+    serial: str | None = None   # which phone (None = the first one)
     _impl: SimulatedAndroidSensors | AdbAndroidSensors | None = None
 
     def open(self) -> None:
@@ -770,10 +812,11 @@ class AndroidSensorInstrument:
             self._impl = SimulatedAndroidSensors(
                 sample_rate_hz=self.sample_rate_hz,
             )
-        elif self.mode in ("adb", "adb_bridge"):
+        elif self.mode in ("adb", "adb_bridge", "adb_termux"):
             self._impl = AdbAndroidSensors(
-                backend="bridge" if self.mode == "adb_bridge" else "termux",
+                backend={"adb_bridge": "bridge", "adb_termux": "termux"}.get(self.mode, "app"),
                 local_port=self.adb_port,
+                serial=self.serial,
             )
         else:
             raise ValueError(f"Unknown mode: {self.mode}")
@@ -856,4 +899,5 @@ def create(config: dict[str, Any]) -> AndroidSensorInstrument:
         mode=str(config.get("mode", "simulated")),
         sample_rate_hz=float(config.get("sample_rate_hz", 50)),
         adb_port=int(config.get("adb_port", _DEFAULT_BRIDGE_PORT)),
+        serial=config.get("serial") or None,
     )

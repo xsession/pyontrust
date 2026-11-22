@@ -59,6 +59,8 @@ class StereoConfig:
     num_disp: int = 64
     block_size: int = 7
     min_disparity: int = 0
+    #: disparity removed by an image shift (auto-alignment) — added back for depth
+    disparity_offset_px: float = 0.0
 
     def validate(self) -> None:
         if self.fx <= 0 or self.fy <= 0:
@@ -154,9 +156,10 @@ def depth_from_disparity(disparity_px: np.ndarray, cfg: StereoConfig) -> np.ndar
     _require_cv2()
     cfg.validate()
     d = np.asarray(disparity_px, dtype=np.float32)
+    true_d = d + float(cfg.disparity_offset_px)
     with np.errstate(divide="ignore", invalid="ignore"):
-        z = (float(cfg.fx) * float(cfg.baseline_m)) / d
-    return np.where(d > 0.5, z, np.nan).astype(np.float32)
+        z = (float(cfg.fx) * float(cfg.baseline_m)) / true_d
+    return np.where((d > 0.5) & (true_d > 0.5), z, np.nan).astype(np.float32)
 
 
 def points_from_depth(depth_m: np.ndarray, cfg: StereoConfig) -> np.ndarray:

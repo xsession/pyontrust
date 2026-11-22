@@ -3,7 +3,8 @@
 Mounts at ``/hil/`` and provides:
 
 - ``GET  /hil/``                  → SPA dashboard
-- ``POST /hil/api/start``         → start a profile run
+- ``GET  /hil/api/profiles``      → available profiles (the default one first)
+- ``POST /hil/api/start``         → start a profile run (no profile → the default)
 - ``POST /hil/api/stop``          → request stop
 - ``GET  /hil/api/status``        → current run status
 - ``GET  /hil/api/history``       → run history
@@ -35,12 +36,17 @@ def index():
 
 # ── Test execution API ──────────────────────────────────────────────────
 
+@bp.route("/api/profiles")
+def profiles():
+    from pyontrust.services.test_service import DEFAULT_PROFILE, list_profiles
+
+    return jsonify({"default": DEFAULT_PROFILE, "profiles": list_profiles()})
+
+
 @bp.route("/api/start", methods=["POST"])
 def start_test():
-    body = request.get_json(force=True)
-    profile_path = body.get("profile")
-    if not profile_path:
-        return jsonify({"error": "Missing 'profile' field"}), 400
+    body = request.get_json(silent=True) or {}
+    profile_path = body.get("profile") or ""      # empty → the default profile
 
     test_svc = current_app.extensions.get("test_service")
     if test_svc is None:
@@ -51,9 +57,15 @@ def start_test():
         bench_overrides=body.get("bench_overrides"),
         meta=body.get("meta"),
     )
-    status_code = 409 if "error" in result else 200
-    if status_code == 200:
-        _track_run(test_svc, result.get("run_id", ""), profile_path)
+    if "error" in result:
+        status_code = 404 if "not found" in result["error"] else 409
+    else:
+        status_code = 200
+        try:
+            _track_run(test_svc, result.get("run_id", ""), result.get("profile", profile_path))
+        except Exception:      # the run has started; station bookkeeping must not turn it into an error
+            current_app.logger.warning("HIL run %s not recorded in the run registry",
+                                       result.get("run_id"), exc_info=True)
     return jsonify(result), status_code
 
 

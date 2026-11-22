@@ -136,6 +136,35 @@ Board-level temperature monitoring during test runs using Seek Thermal USB camer
 - **Background recorder** — `thermal` recorder captures + analyses at configurable intervals
 - **Service façade** — `ThermalService` for gateway / CLI integration
 
+### pyontrust Thermal — Android app (`android-thermal/`)
+
+The Thermal workspace on a phone. Two image sources:
+
+- **Seek camera on the phone (USB OTG).** The driver is a Java port of `libseek_driver.py`: the same init sequence, shutter flat-field, bad-pixel map, destriping and raw → °C mapping. The app opens by itself when the camera is plugged in.
+- **Seek camera on the lab PC**, through the gateway's `GET /thermal/api/frame_raw` (float32 °C). Over the cable, `adb reverse tcp:5210 tcp:5210` makes the gateway reachable at `http://127.0.0.1:5210`.
+
+```bash
+cd android-thermal && ./build.sh install   # build, install on every adb phone, set up adb reverse
+```
+
+**Features shared with the PC workspace:**
+- point and area regions with warn/max limits;
+- tracking to CSV, with the same columns as the PC;
+- continuous, soak, delta and gradient measurements, each with an HTML report;
+- one-point calibration and a learnt flat-field;
+- region import from the gateway and export to it.
+
+**Added in the app:**
+- 9 palettes and a manual or locked range;
+- isotherms (above / below / between);
+- line profiles and a histogram;
+- emissivity with a material table, plus the reflected temperature;
+- high/low and per-region alarms with sound and vibration;
+- tap-to-read spot, hottest/coldest/centre markers, °C/°F;
+- rotate/mirror, pinch zoom, and temporal noise reduction;
+- **radiometric** snapshots and recordings (`.thr`, every pixel's °C). These reopen in the Gallery and can be re-measured with new regions, palettes or emissivity.
+- sharing of images, CSVs and reports.
+
 The AOI camera also supports a **webcam mode** (`mode="webcam"`) using OpenCV `VideoCapture`
 for visual inspection without a GenICam industrial camera.
 
@@ -176,6 +205,12 @@ cd android-camera && ./build.sh            # → build/pyontrust-camera.apk
 ./build.sh install                         # install on every authorised phone
 ```
 
+- **Every camera of a phone** — main, other back cameras (wide/tele/depth,
+  including vendor cameras Android hides from apps, opened directly) and
+  front.  A phone runs one of its cameras at a time, so each phone gets a
+  camera switcher; cameras without manual focus are skipped by focus sweeps.
+- **App updates** — bump `android-camera/VERSION` when the app changes; the
+  gateway upgrades phones running an older version automatically.
 - **Microscopy** — tick several cameras; *Capture* takes one still from each
   simultaneously into per-camera stacks.  *Focus sweep* drives each phone's
   lens from far to near (diopters = 1000 / mm) for a metric height map.

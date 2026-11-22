@@ -334,6 +334,31 @@ def live_frame() -> Response:
                     **meta, "mode": source})
 
 
+@bp.route("/api/frame_raw")
+def live_frame_raw() -> Response:
+    """One radiometric frame: little-endian float32 °C, row-major.
+
+    For clients that do their own rendering and measuring (the pyontrust
+    Thermal Android app).  Size and source travel in headers:
+    ``X-Width``, ``X-Height``, ``X-Source``, ``X-Simulated``.
+    """
+    import numpy as np
+
+    try:
+        temp, source = _arbiter.display_frame(_resolve_mode(request.args.get("mode")))
+    except FrameError as exc:
+        extra = {"busy": True} if exc.busy else {}
+        return _error(str(exc), exc.status, **extra)
+    arr = np.ascontiguousarray(np.asarray(temp, dtype="<f4"))
+    h, w = arr.shape[:2]
+    _feed.update(arr, {"width": int(w), "height": int(h), "mode": source,
+                       "min_c": round(float(arr.min()), 2), "max_c": round(float(arr.max()), 2)})
+    return Response(arr.tobytes(), mimetype="application/octet-stream", headers={
+        "X-Width": str(w), "X-Height": str(h), "X-Source": source,
+        "X-Simulated": "1" if _arbiter.is_simulated(source) else "0",
+        "Cache-Control": "no-store"})
+
+
 @bp.route("/api/zone_readings", methods=["POST"])
 def zone_readings() -> Response:
     """Min / mean / max °C inside each rectangle, from the latest live frame.

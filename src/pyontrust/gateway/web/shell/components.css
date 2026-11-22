@@ -74,6 +74,14 @@ tbody tr:hover td { background: rgba(53, 53, 80, 0.56); }
 .status-line { font-size: var(--text-sm); min-height: 1em; }
 .status-line.ok { color: var(--ok); } .status-line.err { color: var(--danger); } .status-line.info { color: var(--text-dim); }
 
+/* ── Segmented control: pick one of a few options (aria-pressed marks the active one) ── */
+.segmented { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 2px; border-radius: var(--radius); background: var(--bg3); }
+.segmented button { border: 0; border-radius: calc(var(--radius) - 2px); padding: 4px 10px; background: transparent; color: var(--text-dim);
+  font: inherit; font-size: var(--text-xs); font-weight: 600; cursor: pointer; white-space: nowrap; }
+.segmented button:hover { color: var(--text); }
+.segmented button[aria-pressed="true"] { background: var(--accent); color: var(--bg); }
+.segmented button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
 /* ── Toasts ─────────────────────────────────────────────────────────── */
 .toasts { position: fixed; right: var(--space-4); bottom: var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); z-index: 50; max-width: min(420px, calc(100vw - 32px)); }
 .toast { background: var(--bg3); border: 1px solid var(--border); border-left: 4px solid var(--info); border-radius: var(--radius); padding: 10px 14px; font-size: var(--text-md); box-shadow: var(--shadow); cursor: pointer; }

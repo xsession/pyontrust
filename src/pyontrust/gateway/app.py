@@ -113,6 +113,8 @@ def create_app(
     app.extensions["log_service"] = LogService()
     app.extensions["artifact_service"] = ArtifactService(root=artifacts_root)
     app.extensions["bench_service"] = BenchService(bench_path=bench_path)
+    # default bench (data/benches/default.json or PYONTRUST_BENCH) — only parsed, instruments open on Connect
+    app.extensions["bench_service"].load()
     app.extensions["config_service"] = ConfigService(base_dir="data")
 
     # Ensure default event channels exist

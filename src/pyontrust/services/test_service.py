@@ -21,6 +21,37 @@ from pyontrust.core.profiles import Profile, load_profile, run_profile
 
 logger = logging.getLogger("pyontrust.services.test_service")
 
+PROFILES_DIR = pathlib.Path("data/profiles")
+DEFAULT_PROFILE = "default"
+
+
+def resolve_profile_path(profile: str | None) -> pathlib.Path:
+    """``None``/"" → the default profile; a bare name → ``data/profiles/<name>.json``."""
+    ref = (profile or "").strip() or DEFAULT_PROFILE
+    p = pathlib.Path(ref)
+    if p.is_file():
+        return p
+    for cand in (PROFILES_DIR / ref, PROFILES_DIR / f"{ref}.json", PROFILES_DIR / p.name):
+        if cand.is_file():
+            return cand
+    raise FileNotFoundError(f"Profile not found: {ref}")
+
+
+def list_profiles() -> list[dict[str, Any]]:
+    """Profiles in ``data/profiles`` (default first)."""
+    out: list[dict[str, Any]] = []
+    if PROFILES_DIR.is_dir():
+        for f in sorted(PROFILES_DIR.glob("*.json")):
+            try:
+                raw = json.loads(f.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            out.append({"name": f.stem, "path": str(f), "title": raw.get("name", f.stem),
+                        "description": raw.get("description", ""), "default": f.stem == DEFAULT_PROFILE,
+                        "steps": len(raw.get("steps") or [])})
+    out.sort(key=lambda d: (not d["default"], d["name"].startswith("_"), d["name"]))
+    return out
+
 
 class RunState(enum.Enum):
     IDLE = "idle"
@@ -107,6 +138,10 @@ class TestService:
 
         Returns ``{"run_id": ..., "state": "running"}`` immediately.
         """
+        try:
+            profile_path = str(resolve_profile_path(profile_path))
+        except FileNotFoundError as exc:
+            return {"error": str(exc), "state": self._state.value}
         with self._lock:
             if self._state == RunState.RUNNING:
                 return {"error": "A test is already running", "state": self._state.value}
@@ -126,8 +161,9 @@ class TestService:
             )
             try:
                 result = run_profile(
-                    profile_path,
-                    artifacts_root=str(self._artifacts_root),
+                    load_profile(profile_path),
+                    ".",
+                    artifacts_root=self._artifacts_root,
                 )
                 record.artifacts_dir = str(result) if result else None
                 record.state = RunState.FINISHED
@@ -151,7 +187,7 @@ class TestService:
             self._current_thread = t
 
         self._fire_state_change(RunState.RUNNING, {"run_id": run_id})
-        return {"run_id": run_id, "state": RunState.RUNNING.value}
+        return {"run_id": run_id, "state": RunState.RUNNING.value, "profile": profile_path}
 
     def start_test(
         self,
@@ -162,6 +198,10 @@ class TestService:
         meta: dict[str, Any] | None = None,
     ) -> dict[str, str]:
         """Start a PowerTest directly (non-profile path)."""
+        try:
+            profile_path = str(resolve_profile_path(profile_path))
+        except FileNotFoundError as exc:
+            return {"error": str(exc), "state": self._state.value}
         with self._lock:
             if self._state == RunState.RUNNING:
                 return {"error": "A test is already running", "state": self._state.value}

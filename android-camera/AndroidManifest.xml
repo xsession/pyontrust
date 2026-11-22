@@ -1,9 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- pyontrust camera — streams the phone's cameras to the lab PC over USB (adb forward). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.pyontrust.cam"
-    android:versionCode="1"
-    android:versionName="1.0">
+    package="com.pyontrust.cam">
 
     <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="34" />
 

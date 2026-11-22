@@ -42,10 +42,11 @@ def run_profile(
     repo_root: str | os.PathLike[str],
     *,
     lab_bench_path: Optional[str | os.PathLike[str]] = None,
+    artifacts_root: Optional[str | os.PathLike[str]] = None,
 ) -> pathlib.Path:
     """Execute a test profile and return the artifacts directory."""
     repo_root = pathlib.Path(repo_root)
-    artifacts_root = profile.raw.get("artifacts_root") or str(repo_root / "artifacts")
+    artifacts_root = profile.raw.get("artifacts_root") or artifacts_root or str(repo_root / "artifacts")
 
     # Merge lab bench + profile instruments
     bench_instruments: dict[str, Any] = {}

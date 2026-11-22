@@ -16,6 +16,9 @@ label { display: flex; flex-direction: column; gap: 3px; font-size: var(--text-x
   background: var(--surface-raised); color: var(--text); font-size: var(--text-sm); font-weight: 500; cursor: pointer; }
 .cam-opt input { margin: 0; }
 .cam-opt.disabled { opacity: .6; cursor: not-allowed; color: var(--warn); }
+.dev-row { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border-radius: var(--radius); background: var(--surface-raised); }
+.dev-row .cam-opt { padding: 0; background: none; }
+.dev-row.off .segmented { opacity: .55; }
 
 .live-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: var(--space-3); margin-bottom: var(--space-3); }
 .live-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-3); }

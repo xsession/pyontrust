@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Seek Thermal Compact / CompactXR (0x0010) and CompactPRO (0x0011): vendor 0x289D = 10397 -->
+<resources>
+    <usb-device vendor-id="10397" product-id="16" />
+    <usb-device vendor-id="10397" product-id="17" />
+</resources>

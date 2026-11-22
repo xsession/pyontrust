@@ -23,7 +23,11 @@
     .hil-identity h1 { margin: 0; color: var(--fg); font-size: 16px; line-height: 1.15; white-space: nowrap; }
     .profile-field { min-width: 240px; flex: 1 1 420px; display: grid; gap: 4px; }
     .profile-field label { color: var(--fg-dim); font-size: 10px; font-weight: 650; }
-    .profile-field input { width: min(100%, 620px); }
+    .profile-field input, .profile-field select { width: min(100%, 620px); }
+    .profile-pick { display: flex; gap: 6px; flex-wrap: wrap; }
+    .profile-pick select { flex: 0 1 260px; }
+    .profile-pick input { flex: 1 1 260px; }
+    .profile-desc { color: var(--fg-dim); font-size: 10px; min-height: 12px; }
     .run-actions { display: flex; gap: 7px; }
     .run-summary { margin-left: auto; display: flex; align-items: center; gap: 8px; align-self: center; }
     #hil-message { min-width: min(340px, 100%); flex: 1 1 100%; margin: 0; }
@@ -77,8 +81,12 @@
       <h1 data-page-title>HIL Dashboard</h1>
     </div>
     <div class="profile-field">
-      <label for="profile-input">Profile JSON path</label>
-      <input type="text" id="profile-input" placeholder="profiles/sleep_current.json" autocomplete="off">
+      <label for="profile-select">Profile</label>
+      <div class="profile-pick">
+        <select id="profile-select" aria-describedby="profile-desc"><option value="">Loading profiles…</option></select>
+        <input type="text" id="profile-input" placeholder="data/profiles/my_profile.json" autocomplete="off" hidden aria-label="Custom profile JSON path">
+      </div>
+      <small id="profile-desc" class="profile-desc"></small>
     </div>
     <div class="run-actions">
       <button class="btn btn-primary" id="btn-start" type="button">▶ Start run</button>
@@ -129,6 +137,48 @@
   const btnStart = document.getElementById('btn-start');
   const btnStop = document.getElementById('btn-stop');
   const profileInput = document.getElementById('profile-input');
+  const profileSelect = document.getElementById('profile-select');
+  const profileDesc = document.getElementById('profile-desc');
+  const CUSTOM = '__custom__';
+  const STORE_KEY = 'pyontrust.hil.profile';
+  let profileList = [];
+
+  function describeProfile() {
+    const custom = profileSelect.value === CUSTOM;
+    profileInput.hidden = !custom;
+    const p = profileList.find(item => item.path === profileSelect.value);
+    profileDesc.textContent = custom ? 'Path to a profile JSON file.'
+      : p ? `${p.default ? 'Default profile · ' : ''}${p.steps} step${p.steps === 1 ? '' : 's'}${p.description ? ' · ' + p.description : ''}` : '';
+  }
+
+  async function loadProfiles() {
+    try {
+      const data = await request('/profiles');
+      profileList = data.profiles || [];
+      profileSelect.replaceChildren();
+      for (const p of profileList) {
+        const opt = document.createElement('option');
+        opt.value = p.path; opt.textContent = p.default ? `${p.name} (default)` : p.name;
+        profileSelect.append(opt);
+      }
+      const custom = document.createElement('option'); custom.value = CUSTOM; custom.textContent = 'Custom path…';
+      profileSelect.append(custom);
+      const saved = localStorage.getItem(STORE_KEY);
+      const def = profileList.find(p => p.default);
+      if (saved && profileList.some(p => p.path === saved)) profileSelect.value = saved;
+      else if (def) profileSelect.value = def.path;
+      else if (!profileList.length) profileSelect.value = CUSTOM;
+    } catch (error) {
+      profileSelect.innerHTML = `<option value="${CUSTOM}">Custom path…</option>`;
+      setMessage(`Profiles unavailable: ${error.message}`, 'error');
+    }
+    describeProfile();
+  }
+  profileSelect.addEventListener('change', () => {
+    describeProfile();
+    if (profileSelect.value !== CUSTOM) localStorage.setItem(STORE_KEY, profileSelect.value);
+    else profileInput.focus();
+  });
   const runState = document.getElementById('run-state');
   const eventLog = document.getElementById('event-log');
   const message = document.getElementById('hil-message');
@@ -182,7 +232,7 @@
   const rfChart = new TraceChart(document.getElementById('rf-chart'), document.getElementById('rf-empty'), '#a6e3a1', 'dBm');
 
   btnStart.addEventListener('click', async () => {
-    const profile = profileInput.value.trim();
+    const profile = profileSelect.value === CUSTOM ? profileInput.value.trim() : profileSelect.value;
     if (!profile) { setMessage('Enter a profile JSON path before starting.', 'error'); profileInput.focus(); return; }
     btnStart.disabled = true; setMessage(`Starting ${profile}…`);
     try {
@@ -268,6 +318,7 @@
   }
 
   pollStatus(); pollEvents(); pollHistory();
+  loadProfiles();
   setInterval(pollStatus, 3000); setInterval(pollEvents, 1200); setInterval(pollHistory, 10000);
 })();
 </script>

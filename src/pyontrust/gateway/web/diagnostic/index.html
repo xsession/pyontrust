@@ -490,9 +490,13 @@ function renderDevices(devices) {
     debug: '🔧 Debug Probes',
     sdr: '📡 SDR / Radio',
     ble: '📶 BLE / Wireless',
+    bus: '🚌 CAN / Fieldbus',
     network: '🌐 Network',
+    system: '⚠️ Probe Problems',
   };
-  const catOrder = ['android', 'serial', 'camera', 'instruments', 'thermal', 'debug', 'sdr', 'ble', 'network', 'other'];
+  const catOrder = ['android', 'serial', 'camera', 'instruments', 'thermal', 'bus', 'debug', 'sdr', 'ble', 'network', 'other', 'system'];
+  // never drop a device just because its category is new to this page
+  for (const cat of Object.keys(groups)) if (!catOrder.includes(cat)) catOrder.splice(catOrder.length - 1, 0, cat);
 
   let html = '';
   for (const cat of catOrder) {
@@ -574,7 +578,7 @@ function renderCard(d) {
   if (d.status === 'ok') {
     actionsHtml = `<div class="hw-card-actions">
       <button class="btn btn-test" onclick="testSingleDevice(${d._index})">🧪 Quick Test</button>
-      <button class="btn btn-live" onclick="openLivePanel('${escAttr(d.type)}', '${escAttr(d.details?.serial || '')}', ${JSON.stringify(d.details?.sensors || []).replace(/'/g, '\\x27')})">📡 Live Data</button>
+      ${(LIVE_CHANNELS[d.type] || []).length ? `<button class="btn btn-live" onclick="openLivePanel(${d._index})">📡 Live Data</button>` : ''}
     </div>`;
   } else if (d.status === 'error' && d.details?.adb_state) {
     actionsHtml = `<div class="hw-card-actions">
@@ -641,67 +645,54 @@ function escAttr(s) {
 
 // ═══ Live Data Panel ═══
 
-const ANDROID_SENSORS = [
-  { id: 'accelerometer', label: 'Accelerometer', unit: 'm/s²', axes: ['x','y','z'] },
-  { id: 'gyroscope',     label: 'Gyroscope',     unit: 'rad/s', axes: ['x','y','z'] },
-  { id: 'magnetometer',  label: 'Magnetometer',  unit: 'µT',    axes: ['x','y','z'] },
-  { id: 'light',         label: 'Light',          unit: 'lux',   axes: ['lux'] },
-  { id: 'proximity',     label: 'Proximity',      unit: 'cm',    axes: ['distance'] },
-  { id: 'barometer',     label: 'Barometer',      unit: 'hPa',   axes: ['pressure'] },
-  { id: 'gravity',       label: 'Gravity',        unit: 'm/s²', axes: ['x','y','z'] },
-  { id: 'rotation',      label: 'Rotation Vec',   unit: '',      axes: ['x','y','z','w'] },
-  { id: 'battery',       label: 'Battery',        unit: '',      axes: ['level_pct','voltage_mv','temperature_c'] },
-  { id: 'gps',           label: 'GPS',            unit: '',      axes: ['latitude','longitude','altitude_m'] },
-];
-
-const WEBCAM_SENSORS = [
-  { id: '0', label: 'Camera #0', unit: '', axes: ['brightness','mean_r','mean_g','mean_b'] },
-  { id: '1', label: 'Camera #1', unit: '', axes: ['brightness','mean_r','mean_g','mean_b'] },
-];
+// What each device type can stream — from the server (/diag/api/live/channels)
+let LIVE_CHANNELS = {};
+async function loadLiveChannels() {
+  try { LIVE_CHANNELS = await fetch(API + '/live/channels').then(r => r.json()); }
+  catch (e) { LIVE_CHANNELS = {}; }
+}
 
 const CHART_COLORS = ['#89b4fa','#a6e3a1','#f9e2af','#f38ba8','#cba6f7','#94e2d5','#fab387','#f2cdcd'];
 
 let liveState = {
-  hwType: '', serial: '', streaming: false, eventSource: null,
+  hwType: '', serial: '', details: {}, sensors: [], streaming: false, eventSource: null,
   sampleCount: 0, startTime: 0, history: {}, maxHistory: 200,
   currentSensor: null,
 };
 
-function openLivePanel(hwType, serial, sensorNames) {
+function openLivePanel(index) {
+  const d = lastScan?.devices?.[index];
+  if (!d) return;
+  const hwType = d.type;
+  const serial = hwType === 'android_sensors' ? (d.details?.serial || '') : '';
   liveState.hwType = hwType;
   liveState.serial = serial;
-
-  // Populate sensor dropdown
-  const sel = document.getElementById('live-sensor');
-  sel.innerHTML = '';
-
-  let sensors = [];
-  if (hwType === 'android_sensors') {
-    sensors = ANDROID_SENSORS;
-  } else if (hwType === 'webcam') {
-    sensors = WEBCAM_SENSORS;
-  } else {
-    sensors = [{ id: 'default', label: hwType, unit: '', axes: ['value'] }];
+  // device details the server needs to open it (port, index, channel …) — small fields only
+  liveState.details = {};
+  for (const [k, v] of Object.entries(d.details || {})) {
+    if (v === null || typeof v !== 'object') liveState.details[k] = v;
   }
 
+  const sel = document.getElementById('live-sensor');
+  sel.innerHTML = '';
+  let sensors = LIVE_CHANNELS[hwType] || [];
+  // phones: only the sensors this phone has (battery / GPS come from ADB, always offered)
+  const have = d.details?.sensors || [];
+  if (hwType === 'android_sensors' && have.length) {
+    sensors = sensors.filter(s => have.includes(s.id) || s.id === 'battery' || s.id === 'gps');
+  }
+  liveState.sensors = sensors;
   for (const s of sensors) {
     const opt = document.createElement('option');
     opt.value = s.id;
-    opt.textContent = `${s.label} (${s.unit || s.id})`;
+    opt.textContent = s.unit ? `${s.label} (${s.unit})` : s.label;
     sel.appendChild(opt);
   }
-
-  // Auto-select mode based on device
   const modeSel = document.getElementById('live-mode');
-  if (hwType === 'android_sensors' && serial) {
-    modeSel.value = 'adb';
-  } else if (hwType === 'android_sensors') {
-    modeSel.value = 'auto';
-  }
+  modeSel.style.display = modeSel.previousElementSibling.style.display = hwType === 'android_sensors' ? '' : 'none';
 
   const title = document.getElementById('live-title');
-  title.textContent = `📡 Live Data — ${hwType.replace(/_/g, ' ')}`;
-  if (serial) title.textContent += ` (${serial.slice(0, 16)})`;
+  title.textContent = `📡 Live Data — ${d.name || hwType.replace(/_/g, ' ')}`;
 
   clearLiveData();
   onLiveSensorChange();
@@ -717,12 +708,12 @@ function closeLivePanel() {
 
 function onLiveSensorChange() {
   const sensorId = document.getElementById('live-sensor').value;
-  let sensors = liveState.hwType === 'android_sensors' ? ANDROID_SENSORS
-    : liveState.hwType === 'webcam' ? WEBCAM_SENSORS
-    : [{ id: 'default', label: liveState.hwType, unit: '', axes: ['value'] }];
-
-  liveState.currentSensor = sensors.find(s => s.id === sensorId) || sensors[0];
+  const sensors = liveState.sensors || [];
+  liveState.currentSensor = sensors.find(s => s.id === sensorId) || sensors[0] || null;
+  const wasStreaming = liveState.streaming;
+  if (wasStreaming) stopStream();
   clearLiveData();
+  if (wasStreaming) startStream();
 }
 
 function clearLiveData() {
@@ -742,6 +733,7 @@ function toggleStream() {
 }
 
 function startStream() {
+  if (!liveState.hwType || !liveState.currentSensor) return;
   const sensor = document.getElementById('live-sensor').value;
   const rateMs = document.getElementById('live-rate').value;
   const mode = document.getElementById('live-mode').value;
@@ -753,6 +745,7 @@ function startStream() {
     mode: mode,
   });
   if (liveState.serial) params.set('serial', liveState.serial);
+  if (liveState.details && Object.keys(liveState.details).length) params.set('dev', JSON.stringify(liveState.details));
 
   liveState.eventSource = new EventSource(`${API}/live/stream?${params}`);
   liveState.streaming = true;
@@ -767,6 +760,13 @@ function startStream() {
   liveState.eventSource.onmessage = (evt) => {
     try {
       const msg = JSON.parse(evt.data);
+      if (msg.fatal) {                       // device could not be opened — stop, show why
+        const err = msg.data?.error || 'device not available';
+        stopStream();
+        document.getElementById('stream-status').textContent = 'Error';
+        showLiveError(err);
+        return;
+      }
       liveState.sampleCount++;
       processLiveSample(msg);
     } catch (e) {
@@ -796,10 +796,23 @@ function stopStream() {
   document.getElementById('stream-status').textContent = 'Stopped';
 }
 
+function showLiveError(text) {
+  document.getElementById('live-values').innerHTML =
+    `<div class="live-val-card" style="grid-column:1/-1; text-align:left; color:var(--red)">⚠ ${escHtml(text)}</div>`;
+}
+
 function processLiveSample(msg) {
   const data = msg.data || {};
   const sensorDef = liveState.currentSensor;
   if (!sensorDef) return;
+  if (data.error) {
+    showLiveError(data.error);
+    document.getElementById('stream-status').textContent = 'Streaming (read error)';
+    const rawEl = document.getElementById('live-raw');
+    rawEl.textContent = (rawEl.textContent + '\n' + JSON.stringify(data)).split('\n').filter(Boolean).slice(-5).join('\n');
+    return;
+  }
+  document.getElementById('stream-status').textContent = data.note ? `Streaming — ${data.note}` : 'Streaming';
 
   const ts = msg.ts || (Date.now() / 1000);
   const axes = sensorDef.axes;
@@ -943,9 +956,8 @@ document.getElementById('live-overlay').addEventListener('click', (e) => {
   if (e.target.id === 'live-overlay') closeLivePanel();
 });
 
-// Auto-scan on load + stream live sensor data by default
-scanHardware();
-startStream();
+// Auto-scan on load (live data starts from a device card's 📡 button)
+loadLiveChannels().then(scanHardware);
 </script>
   <script src="/static/shell/ui-foundation.js"></script>
 </body>

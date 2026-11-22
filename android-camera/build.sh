@@ -16,6 +16,7 @@ export JAVA_HOME="${JAVA_HOME:-$HOME/.local/jdk17}"
 export PATH="$JAVA_HOME/bin:$PATH"
 KEYSTORE="${PYONTRUST_CAM_KEYSTORE:-$HOME/.android/pyontrust-camera.jks}"
 OUT=build
+VERSION="$(tr -dc 0-9 < VERSION)"      # bump on every app change: the gateway upgrades older installs
 
 for f in "$BT/aapt2" "$BT/d8" "$BT/zipalign" "$BT/apksigner" "$JAR"; do
   [[ -e "$f" ]] || { echo "missing $f — install platforms;android-34 and build-tools;34.0.0" >&2; exit 1; }
@@ -25,7 +26,7 @@ rm -rf "$OUT"; mkdir -p "$OUT/classes" "$OUT/dex"
 
 # 1. manifest → base APK
 "$BT/aapt2" link -I "$JAR" --manifest AndroidManifest.xml -o "$OUT/base.apk" \
-  --min-sdk-version 21 --target-sdk-version 34 --version-code 1 --version-name 1.0
+  --min-sdk-version 21 --target-sdk-version 34 --version-code "$VERSION" --version-name "1.$VERSION"
 
 # 2. Java → classes (Java 8 bytecode, Android API 34 as the boot classpath)
 javac -source 8 -target 8 -bootclasspath "$JAR:$BT/core-lambda-stubs.jar" -Xlint:-options -encoding UTF-8 \

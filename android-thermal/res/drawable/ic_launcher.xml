@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- pyontrust Thermal launcher icon: heat gradient disc with a thermometer -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#1E1E2E" android:pathData="M54,4a50,50 0,1 1,0 100a50,50 0,1 1,0 -100z" />
+    <path android:fillColor="#320A5E" android:pathData="M54,14a40,40 0,1 1,0 80a40,40 0,1 1,0 -80z" />
+    <path android:fillColor="#BC3754" android:pathData="M54,24a30,30 0,1 1,0 60a30,30 0,1 1,0 -60z" />
+    <path android:fillColor="#ED6925" android:pathData="M54,34a20,20 0,1 1,0 40a20,20 0,1 1,0 -40z" />
+    <path android:fillColor="#FBB61A" android:pathData="M54,44a10,10 0,1 1,0 20a10,10 0,1 1,0 -20z" />
+    <!-- thermometer -->
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M48,22a6,6 0,0 1,12 0v40a12,12 0,1 1,-12 0z" />
+    <path android:fillColor="#F38BA8"
+        android:pathData="M51,40h6v24a8,8 0,1 1,-6 0z" />
+</vector>

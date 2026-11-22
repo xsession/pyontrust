@@ -16,6 +16,9 @@
   .depth-card .legend span:first-child::before { content: "■ "; color: #d23; }
   .depth-card .legend span:last-child::before { content: "■ "; color: #33a; }
   .note { font-size: var(--text-xs); color: var(--text-dim); margin-top: 6px; }
+  .inline-check { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; font-weight: 600; }
+  #align-preview .images { display: grid; grid-template-columns: 1fr; gap: var(--space-2); margin-top: var(--space-2); }
+  #align-preview img { width: 100%; border-radius: var(--radius-sm, 4px); }
 </style>
 </head>
 <body>
@@ -35,10 +38,28 @@
     <label>Right camera<select id="right"></select></label>
     <label title="Distance between the two lenses">Baseline (mm)<input id="baseline" type="number" min="5" step="1" value="120"></label>
     <label title="Focal length in pixels at the full preview width (auto for phones)">fx (px @ 1280)<input id="fx" type="number" min="50" step="1"></label>
-    <label title="Search range; raise it for close objects">Disparities<select id="num-disp"><option>64</option><option selected>96</option><option>128</option><option>192</option><option>256</option></select></label>
+    <label title="Search range; 'auto' sizes it from the aligned scene">Disparities<select id="num-disp"><option value="auto" selected>auto</option><option>64</option><option>96</option><option>128</option><option>192</option><option>256</option></select></label>
     <label>Rotate<select id="rotate"><option value="0">0°</option><option value="90">90°</option><option value="180">180°</option><option value="270">270°</option></select></label>
   </div>
   <p class="note" id="fx-note"></p>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><h2>Camera position compensation</h2>
+    <span class="muted">matches features in both views and corrects lens zoom, roll, height offset and the depth window</span></div>
+  <div class="run-bar">
+    <button class="btn btn-primary" data-action="align" type="button" title="Point both cameras at the same textured scene, keep them still">🎯 Auto-align cameras</button>
+    <button class="btn btn-secondary" data-action="swap" type="button" title="Exchange left and right">⇄ Swap</button>
+    <button class="btn btn-secondary" data-action="align-clear" type="button">Reset</button>
+    <label class="inline-check" title="Live placement guide; aligns by itself once the views overlap and follows a nudged phone"><input type="checkbox" id="track" checked> auto-align &amp; follow drift</label>
+    <label class="inline-check" title="Optional: distance to the scene's middle — makes depth absolute (needs fx and baseline)">reference distance (mm)
+      <input id="ref-mm" type="number" min="20" step="1" placeholder="optional" style="width:90px"></label>
+  </div>
+  <p class="status-line" id="align-status">not aligned — press 🎯 Auto-align</p>
+  <p class="status-line" id="placement"></p>
+  <details id="align-preview" hidden><summary>Before / after (guide lines must cross the same features in both halves)</summary>
+    <div class="images"><div><h4 class="muted">Before</h4><img id="al-before" alt="before alignment"></div>
+      <div><h4 class="muted">After</h4><img id="al-after" alt="after alignment"></div></div></details>
 </section>
 
 <section class="pair">

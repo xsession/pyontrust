@@ -268,8 +268,35 @@ def _prepare(frame: np.ndarray, rotate: Any = 0, max_px: Any = 0) -> np.ndarray:
     return frame
 
 
+def _fov_deg(cam: dict[str, Any]) -> float | None:
+    """Horizontal field of view from focal length and sensor width."""
+    import math
+
+    f, sw = cam.get("focal_mm") or 0, (cam.get("sensor_mm") or [0])[0] or 0
+    return round(math.degrees(2 * math.atan(sw / (2 * f)))) if f and sw else None
+
+
+def _camera_roles(cams: list[dict[str, Any]]) -> list[tuple[dict[str, Any], str]]:
+    """Order a phone's cameras main → other back cameras (widest first) → front, with a role name."""
+    back = [c for c in cams if c.get("facing") in ("back", "external")]
+    front = [c for c in cams if c.get("facing") == "front"]
+    if not back:
+        return [(c, "front" if i == 0 else f"front {c['id']}") for i, c in enumerate(front)]
+    # main = first camera the phone lists itself (what its own camera app opens)
+    main = next((c for c in back if c.get("listed", True) and not c.get("physical_of")), back[0])
+    others = sorted((c for c in back if c is not main), key=lambda c: -(_fov_deg(c) or 0))
+    main_fov = _fov_deg(main) or 0
+    out = [(main, "main")]
+    for c in others:
+        fov = _fov_deg(c) or 0
+        role = "mono" if c.get("mono") else ("wide" if fov > main_fov + 8 else "tele" if fov and fov < main_fov - 8 else "back")
+        out.append((c, f"{role} {c['id']}" if role == "back" else role))
+    out += [(c, "front" if i == 0 else f"front {c['id']}") for i, c in enumerate(front)]
+    return out
+
+
 def _probe_phones() -> list[dict[str, Any]]:
-    """Back cameras of every phone; phones that can't be used are listed with a hint."""
+    """Every camera of every phone (main, other back cameras, front); unusable phones get a hint."""
     from pyontrust.instruments import phone_camera as pc
 
     out: list[dict[str, Any]] = []
@@ -278,20 +305,25 @@ def _probe_phones() -> list[dict[str, Any]]:
             out.append({"source": None, "kind": "phone", "label": f"📱 {ph.label} — {ph.hint}", "hint": ph.hint})
             continue
         try:
-            cams = [c for c in pc.cameras(ph.serial) if c["facing"] in ("back", "external")]
+            cams = pc.cameras(ph.serial)
         except Exception as exc:
             out.append({"source": None, "kind": "phone", "label": f"📱 {ph.label} — {exc}", "hint": str(exc)})
             continue
-        for c in cams:
+        for c, role in _camera_roles(cams):
             size = "×".join(str(v) for v in c.get("max_size") or [] if v)
-            focal = f" · {c['focal_mm']:.1f} mm" if c.get("focal_mm") else ""
+            fov = _fov_deg(c)
+            old_api = c.get("api") == "camera1"
+            manual = bool(c.get("min_focus_diopters")) and not old_api
+            detail = " · ".join(x for x in (f"{c['focal_mm']:.1f} mm" if c.get("focal_mm") else "",
+                                            f"{fov}°" if fov else "", size) if x)
             out.append({"source": f"phone:{ph.serial}:{c['id']}", "kind": "phone", "serial": ph.serial,
-                        "label": f"📱 {ph.label} · back camera {c['id']}{focal}" + (f" · {size}" if size else ""),
-                        "manual_focus": bool(c.get("min_focus_diopters")),
-                        "min_focus_mm": round(1000 / c["min_focus_diopters"]) if c.get("min_focus_diopters") else None})
+                        "phone": ph.label, "camera_id": str(c["id"]), "role": role,
+                        "facing": c.get("facing", "back"), "fov_deg": fov, "hidden": not c.get("listed", True),
+                        "label": f"📱 {ph.label} · {role} camera" + (f" ({detail})" if detail else ""),
+                        "short": f"{role} · {detail}" if detail else role,
+                        "manual_focus": manual,
+                        "min_focus_mm": round(1000 / c["min_focus_diopters"]) if manual else None})
     return out
-
-
 
 
 def _error_jpeg(text: str, w: int = 640, h: int = 480) -> bytes:

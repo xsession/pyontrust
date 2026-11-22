@@ -2,6 +2,9 @@
  * Design tokens: tokens.css · shared components: components.css */
 
 
+/* The shell fills the window: <html> needs a height too, or body's 100% collapses to its
+   content and the tool frame shrinks to the iframe default (150 px). */
+html.shell-html { height: 100%; }
 body.shell-body { height: 100%; overflow: hidden; }
 
 /* operator / DUT session chip (fed by /api/activity) */

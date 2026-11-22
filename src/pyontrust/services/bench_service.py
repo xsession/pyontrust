@@ -110,18 +110,18 @@ class BenchService:
         self._instrument_errors.clear()
         results: dict[str, str] = {}
 
-        for cfg in self._bench.instruments:
+        for cfg in self._bench.instruments.values():
             if not cfg.enabled:
-                results[cfg.type] = "disabled"
+                results[cfg.name] = "disabled"
                 continue
             try:
                 inst = create_instrument(cfg.type, cfg.params)
-                self._instruments[cfg.type] = inst
-                results[cfg.type] = "ok"
+                self._instruments[cfg.name] = inst
+                results[cfg.name] = "ok"
             except Exception as exc:
-                self._instrument_errors[cfg.type] = str(exc)
-                results[cfg.type] = f"error: {exc}"
-                logger.warning("Failed to instantiate %s: %s", cfg.type, exc)
+                self._instrument_errors[cfg.name] = str(exc)
+                results[cfg.name] = f"error: {exc}"
+                logger.warning("Failed to instantiate %s: %s", cfg.name, exc)
 
         return results
 
@@ -134,14 +134,15 @@ class BenchService:
         if self._bench is None:
             return []
         statuses: list[dict[str, Any]] = []
-        for cfg in self._bench.instruments:
+        for cfg in self._bench.instruments.values():
             entry: dict[str, Any] = {
+                "name": cfg.name,
                 "type": cfg.type,
                 "enabled": cfg.enabled,
                 "params": cfg.params,
             }
-            if cfg.type in self._instruments:
-                inst = self._instruments[cfg.type]
+            if cfg.name in self._instruments:
+                inst = self._instruments[cfg.name]
                 entry["status"] = "connected"
                 # Probe health if the instrument supports it
                 if hasattr(inst, "info"):
@@ -150,9 +151,9 @@ class BenchService:
                         entry["info"] = str(info)
                     except Exception:
                         entry["info"] = "unavailable"
-            elif cfg.type in self._instrument_errors:
+            elif cfg.name in self._instrument_errors:
                 entry["status"] = "error"
-                entry["error"] = self._instrument_errors[cfg.type]
+                entry["error"] = self._instrument_errors[cfg.name]
             else:
                 entry["status"] = "not_instantiated"
             statuses.append(entry)
@@ -178,7 +179,7 @@ class BenchService:
             "loaded": True,
             "path": str(self._bench_path) if self._bench_path else None,
             "instruments": [
-                {"type": c.type, "enabled": c.enabled, "params": c.params}
-                for c in self._bench.instruments
+                {"name": c.name, "type": c.type, "enabled": c.enabled, "params": c.params}
+                for c in self._bench.instruments.values()
             ],
         }

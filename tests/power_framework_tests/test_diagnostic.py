@@ -796,7 +796,7 @@ class TestLiveDataUI(unittest.TestCase):
         r = self.client.get("/diag/")
         html = r.data.decode("utf-8")
         self.assertIn("live-sensor", html)
-        self.assertIn("ANDROID_SENSORS", html)
+        self.assertIn("LIVE_CHANNELS", html)        # sensor menu comes from /diag/api/live/channels
 
     def test_page_has_stream_controls(self):
         r = self.client.get("/diag/")

@@ -18,6 +18,10 @@
     .path-field { min-width: 0; display: grid; gap: 4px; }
     .path-field label { color: var(--fg-dim); font-size: 10px; font-weight: 650; }
     .path-field input { width: 100%; }
+    .bench-pick { display: flex; gap: 6px; }
+    .bench-pick select { flex: 0 0 190px; }
+    .bench-pick input { flex: 1 1 auto; min-width: 0; }
+    .bench-desc { color: var(--fg-dim); font-size: 10px; min-height: 12px; }
     .bench-grid { display: grid; grid-template-columns: minmax(0,1fr) 280px; align-items: start; gap: 10px; }
     .section-card { min-width: 0; padding: 0; overflow: hidden; }
     .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 42px; padding: 8px 11px; border-bottom: 1px solid var(--border); }
@@ -59,7 +63,14 @@
   </header>
 
   <section class="bench-actions" aria-label="Bench actions">
-    <div class="path-field"><label for="bench-path">Bench JSON path</label><input type="text" id="bench-path" placeholder="benches/default.json" autocomplete="off"></div>
+    <div class="path-field">
+      <label for="bench-path">Bench</label>
+      <div class="bench-pick">
+        <select id="bench-select" aria-label="Saved benches"><option value="">Loading…</option></select>
+        <input type="text" id="bench-path" placeholder="benches/default.json" autocomplete="off" aria-label="Bench JSON path">
+      </div>
+      <small id="bench-desc" class="bench-desc"></small>
+    </div>
     <button class="btn" id="btn-load" type="button">Load</button>
     <button class="btn" id="btn-save" type="button">Save</button>
     <button class="btn btn-primary" id="btn-connect" type="button">Connect all</button>
@@ -103,6 +114,32 @@
     if (!response.ok || data?.error) throw new Error(data?.error || `Request failed (${response.status})`);
     return data;
   }
+  const benchSelect = document.getElementById('bench-select');
+  const benchDesc = document.getElementById('bench-desc');
+
+  async function loadBenchList() {
+    let loadedPath = null;
+    try { const summary = await api('/summary'); loadedPath = summary.loaded ? summary.path : null; } catch { /* shown by status */ }
+    let benches = [];
+    try { const r = await fetch('/config/api/benches'); benches = r.ok ? await r.json() : []; } catch { benches = []; }
+    benchSelect.replaceChildren();
+    for (const b of Array.isArray(benches) ? benches : []) {
+      const opt = document.createElement('option');
+      const isDefault = b.name === 'default.json';
+      opt.value = b.path; opt.textContent = b.name.replace(/\.json$/, '') + (isDefault ? ' (default)' : '');
+      benchSelect.append(opt);
+    }
+    const custom = document.createElement('option'); custom.value = ''; custom.textContent = 'Custom path…'; benchSelect.append(custom);
+    const match = [...benchSelect.options].find(o => o.value && loadedPath && o.value.endsWith(loadedPath.replace(/^\.\//, '')));
+    const def = [...benchSelect.options].find(o => o.textContent.endsWith('(default)'));
+    benchSelect.value = (match || def || custom).value;
+    if (!pathInput.value) pathInput.value = loadedPath || benchSelect.value;
+    benchDesc.textContent = loadedPath ? `Loaded: ${loadedPath}` : 'No bench loaded — choose one and press Load.';
+  }
+  benchSelect.addEventListener('change', () => {
+    if (benchSelect.value) pathInput.value = benchSelect.value; else { pathInput.value = ''; pathInput.focus(); }
+  });
+
   function requestBody() { const path = pathInput.value.trim(); return path ? {path} : {}; }
 
   async function runButton(button, label, task) {
@@ -114,7 +151,7 @@
 
   document.getElementById('btn-load').addEventListener('click', event => runButton(event.currentTarget, 'Loading bench definition…', async () => {
     await api('/load', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(requestBody())});
-    await refreshStatus(); setMessage('Bench loaded.', 'success');
+    await refreshStatus(); await loadBenchList(); setMessage('Bench loaded.', 'success');
   }));
   document.getElementById('btn-save').addEventListener('click', event => runButton(event.currentTarget, 'Saving bench definition…', async () => {
     await api('/save', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(requestBody())});
@@ -172,6 +209,7 @@
     names.forEach(name => { const badge = document.createElement('span'); badge.className = 'badge badge-info'; badge.textContent = name; target.append(badge); });
   }
 
+  loadBenchList();
   refreshStatus();
   setInterval(refreshStatus, 3000); // live status by default
 })();

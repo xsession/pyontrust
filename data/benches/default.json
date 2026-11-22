@@ -1,15 +1,30 @@
 {
   "name": "default_bench",
-  "description": "Default lab bench with simulated instruments for development",
+  "description": "Default lab bench: the instruments of this station (PPK2 power meter, Seek thermal camera, Android phone sensors). Instruments are only created on Connect, not opened.",
   "instruments": [
     {
-      "type": "simulated",
+      "type": "ppk2",
       "enabled": true,
       "params": {
-        "sample_rate_hz": 1000,
-        "base_current_a": 0.00001,
-        "noise_amplitude_a": 0.000001,
-        "voltage_v": 3.3
+        "serial_port": "auto",
+        "mode": "ampere",
+        "sample_rate_hz": 100000
+      }
+    },
+    {
+      "type": "seek_thermal",
+      "enabled": true,
+      "params": {
+        "mode": "seek",
+        "camera_type": "auto",
+        "emissivity": 0.95
+      }
+    },
+    {
+      "type": "android_sensors",
+      "enabled": true,
+      "params": {
+        "mode": "adb"
       }
     }
   ]

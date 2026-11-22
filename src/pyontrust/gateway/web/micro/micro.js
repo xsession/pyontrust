@@ -32,6 +32,11 @@ const labelOf = src => cameras.find(c => c.source === src)?.label || src;
 const params = () => ({ rotate: +$('rotate').value, max_px: +$('max-px').value });
 
 // ── cameras ────────────────────────────────────────────────────────────
+// A phone runs one of its cameras at a time: one row per phone with a camera switcher;
+// USB cameras are independent devices (one checkbox each).
+const phoneCam = {};                       // serial → chosen source (kept while the phone is off)
+const phoneOf = s => (s || '').startsWith('phone:') ? s.split(':')[1] : null;
+
 async function loadCameras(refresh = false) {
   $('camera-list').innerHTML = '<p class="muted">Scanning phones and USB cameras…</p>';
   try {
@@ -41,31 +46,56 @@ async function loadCameras(refresh = false) {
     return;
   }
   const usable = cameras.filter(c => c.source);
+  const phones = [...new Set(usable.filter(c => c.kind === 'phone').map(c => c.serial))];
+  for (const ser of phones) {             // default camera per phone: its main camera (listed first)
+    if (!usable.some(c => c.source === phoneCam[ser])) phoneCam[ser] = usable.find(c => c.serial === ser).source;
+  }
   if (!selected.length || selected.some(s => !usable.some(c => c.source === s))) {
-    // default: every phone's first back camera (both phones together); else first external USB camera
-    const firstPerPhone = Object.values(Object.fromEntries(
-      usable.filter(c => c.kind === 'phone').reverse().map(c => [c.serial, c.source])));
-    selected = firstPerPhone.length ? firstPerPhone
+    // default: every phone (both together); else the first external USB camera
+    selected = phones.length ? phones.map(ser => phoneCam[ser])
       : usable.filter(c => c.kind === 'usb' && !/integrated|built-?in|facetime/i.test(c.name)).slice(0, 1).map(c => c.source);
   }
-  $('camera-list').innerHTML = cameras.length ? cameras.map(c => c.source
-    ? `<label class="cam-opt"><input type="checkbox" value="${esc(c.source)}" ${selected.includes(c.source) ? 'checked' : ''}>${esc(c.label)}</label>`
-    : `<div class="cam-opt disabled" title="${esc(c.hint || '')}">${esc(c.label)}</div>`).join('')
-    : '<p class="muted">No camera found — connect a phone (USB debugging) or a USB microscope, then ↻ Rescan.</p>';
+  selected.forEach(s => { if (phoneOf(s)) phoneCam[phoneOf(s)] = s; });
+  renderCameraList();
   renderLive();
 }
+
+function renderCameraList() {
+  const usable = cameras.filter(c => c.source);
+  const phones = [...new Set(usable.filter(c => c.kind === 'phone').map(c => c.serial))];
+  const rows = phones.map(ser => {
+    const cams = usable.filter(c => c.serial === ser);
+    const on = selected.some(s => phoneOf(s) === ser);
+    const btns = cams.map(c => `<button type="button" data-cam="${esc(c.source)}" aria-pressed="${phoneCam[ser] === c.source}"
+        title="${esc(c.label)}${c.hidden ? ' — vendor camera opened directly' : ''}${c.manual_focus ? '' : ' — no manual focus (no focus sweep)'}">${esc(c.short || c.role)}</button>`).join('');
+    return `<div class="dev-row ${on ? '' : 'off'}">
+      <label class="cam-opt"><input type="checkbox" data-phone="${esc(ser)}" ${on ? 'checked' : ''}>📱 ${esc(cams[0].phone || ser)}</label>
+      <div class="segmented" role="group" aria-label="camera of ${esc(cams[0].phone || ser)}">${btns}</div></div>`;
+  });
+  const usb = usable.filter(c => c.kind !== 'phone').map(c =>
+    `<label class="cam-opt"><input type="checkbox" value="${esc(c.source)}" ${selected.includes(c.source) ? 'checked' : ''}>${esc(c.label)}</label>`);
+  const hints = cameras.filter(c => !c.source).map(c =>
+    `<div class="cam-opt disabled" title="${esc(c.hint || '')}">${esc(c.label)}</div>`);
+  $('camera-list').innerHTML = rows.concat(usb, hints).join('')
+    || '<p class="muted">No camera found — connect a phone (USB debugging) or a USB microscope, then ↻ Rescan.</p>';
+}
+
+$('camera-list').addEventListener('click', e => {
+  const b = e.target.closest('button[data-cam]');
+  if (!b) return;
+  const src = b.dataset.cam, ser = phoneOf(src);
+  phoneCam[ser] = src;                     // switch this phone to that camera (and use the phone)
+  selected = selected.filter(s => phoneOf(s) !== ser).concat(src);
+  renderCameraList();
+  renderLive();
+});
 $('camera-list').addEventListener('change', e => {
   if (e.target.type !== 'checkbox') return;
-  const phoneOf = s => s.startsWith('phone:') ? s.split(':')[1] : null;
-  if (e.target.checked) {
-    // a phone runs one camera at a time: selecting another camera of the same phone replaces it
-    const ph = phoneOf(e.target.value);
-    selected = selected.filter(s => !ph || phoneOf(s) !== ph);
-    selected.push(e.target.value);
-  } else {
-    selected = selected.filter(s => s !== e.target.value);
-  }
-  document.querySelectorAll('#camera-list input').forEach(i => { i.checked = selected.includes(i.value); });
+  const ser = e.target.dataset.phone;
+  const src = ser ? phoneCam[ser] : e.target.value;
+  selected = selected.filter(s => (ser ? phoneOf(s) !== ser : s !== src));
+  if (e.target.checked) selected.push(src);
+  renderCameraList();
   renderLive();
 });
 $('rescan').addEventListener('click', () => loadCameras(true));
@@ -82,7 +112,7 @@ function renderLive() {
       <div class="meter"><span></span></div>
       <div class="live-meta"><span class="meta">connecting…</span><span class="sharp"></span></div></div>`).join('');
   selected.forEach((s, i) => { liveTimers[s] = setInterval(() => pollLive(s, grid.children[i]), 400); });
-  const phones = selected.filter(s => s.startsWith('phone:'));
+  const phones = sweepable();
   $('sweep-box').classList.toggle('disabled', !phones.length);
   $('capture-hint').textContent = selected.length ? `${selected.length} camera(s) selected` : 'select a camera above';
   refreshStacks();
@@ -128,9 +158,14 @@ async function capture() {
   finally { busy(false); refreshStacks(); }
 }
 
+// focus sweeps drive the lens: only phone cameras with manual focus
+const sweepable = () => selected.filter(s => cameras.find(c => c.source === s)?.manual_focus);
+
 async function sweep() {
-  const phones = selected.filter(s => s.startsWith('phone:'));
-  if (!phones.length) return toast('Focus sweeps need a phone camera', 'err');
+  const phones = sweepable();
+  if (!phones.length) return toast('Focus sweeps need a phone camera with manual focus', 'err');
+  const skipped = selected.filter(s => s.startsWith('phone:') && !phones.includes(s));
+  if (skipped.length) toast(`No manual focus — not swept: ${skipped.map(labelOf).join(', ')}`, 'warn');
   busy(true, 'focus sweep…');
   msg(`Sweeping focus on ${phones.length} phone(s)… keep them still.`);
   try {

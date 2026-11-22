@@ -33,6 +33,8 @@ import java.util.Map;
  * GET /frame?camera=0&w=1280&h=720             latest preview frame (JPEG)
  * GET /photo?camera=0                          full-resolution still (JPEG)
  * GET /focus?mode=auto|manual|continuous&d=4.5 focus control (d = diopters)
+ * GET /sensors                                JSON list of phone sensors
+ * GET /sensor?type=accelerometer&ms=150       samples from one sensor (see SensorHub)
  * </pre>
  */
 public class StreamService extends Service {
@@ -42,6 +44,7 @@ public class StreamService extends Service {
 
     private ServerSocket server;
     private CameraEngine engine;
+    private SensorHub sensors;
     private PowerManager.WakeLock wake;
     private volatile boolean running;
 
@@ -53,6 +56,7 @@ public class StreamService extends Service {
         super.onCreate();
         startInForeground();
         engine = new CameraEngine(this);
+        sensors = new SensorHub(this);
         PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
         wake = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "pyontrust:stream");
         wake.acquire();
@@ -70,6 +74,7 @@ public class StreamService extends Service {
         running = false;
         try { if (server != null) server.close(); } catch (IOException ignored) { }
         engine.close();
+        sensors.close();
         if (wake != null && wake.isHeld()) wake.release();
         super.onDestroy();
     }
@@ -131,6 +136,8 @@ public class StreamService extends Service {
                 case "/frame": frame(out, q); break;
                 case "/photo": photo(out, q); break;
                 case "/focus": json(out, engine.focus(q.get("mode"), q.get("d"))); break;
+                case "/sensors": json(out, sensors.listJson()); break;
+                case "/sensor": json(out, sensors.readJson(q.get("type"), parseInt(q.get("ms"), 150))); break;
                 default: send(out, "404 Not Found", "application/json",
                         "{\"ok\":false,\"error\":\"not found\"}".getBytes(StandardCharsets.UTF_8));
             }

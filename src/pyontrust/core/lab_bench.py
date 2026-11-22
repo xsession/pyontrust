@@ -98,16 +98,34 @@ class LabBench:
         name = str(raw.get("name", "unnamed_bench"))
 
         # --- instruments ---
+        # Accepted shapes: {"name": {"type": .., "enabled": .., **params}} or
+        # [{"type": .., "name"?: .., "enabled": .., "params": {..}}, …]
+        raw_insts = raw.get("instruments") or {}
+        if isinstance(raw_insts, list):
+            pairs = []
+            for i, item in enumerate(raw_insts):
+                if isinstance(item, dict):
+                    base = str(item.get("name") or item.get("type") or f"instrument_{i}")
+                    key, n = base, 2
+                    while key in {k for k, _ in pairs}:
+                        key, n = f"{base}_{n}", n + 1
+                    pairs.append((key, item))
+        else:
+            pairs = list(raw_insts.items())
         instruments: dict[str, InstrumentConfig] = {}
-        for inst_name, inst_cfg in (raw.get("instruments") or {}).items():
+        for inst_name, inst_cfg in pairs:
             if not isinstance(inst_cfg, dict):
                 continue
-            inst_type = str(inst_cfg.pop("type", "unknown"))
-            enabled = bool(inst_cfg.pop("enabled", True))
+            cfg = dict(inst_cfg)
+            inst_type = str(cfg.pop("type", "unknown"))
+            enabled = bool(cfg.pop("enabled", True))
+            cfg.pop("name", None)
+            nested = cfg.pop("params", None)
+            params = {**cfg, **nested} if isinstance(nested, dict) else cfg
             instruments[inst_name] = InstrumentConfig(
                 name=inst_name,
                 type=inst_type,
-                params=dict(inst_cfg),
+                params=params,
                 enabled=enabled,
             )
 

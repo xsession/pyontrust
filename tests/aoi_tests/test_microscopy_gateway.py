@@ -71,7 +71,7 @@ def test_prepare_rotates_and_caps_size():
         _prepare(f, 45)
 
 
-def test_cameras_lists_phone_back_cameras_first(client, monkeypatch):
+def test_cameras_lists_every_phone_camera_with_roles(client, monkeypatch):
     from pyontrust.instruments import phone_camera as pc
     from pyontrust.services import camera_sources as cs
 
@@ -79,13 +79,18 @@ def test_cameras_lists_phone_back_cameras_first(client, monkeypatch):
     monkeypatch.setattr(pc, "list_phones", lambda: [pc.Phone("SER1", "device", "EVA_L09"),
                                                     pc.Phone("SER2", "unauthorized")])
     monkeypatch.setattr(pc, "cameras", lambda serial: [
-        {"id": "0", "facing": "back", "focal_mm": 4.5, "max_size": [3968, 2976], "min_focus_diopters": 10},
-        {"id": "1", "facing": "front", "focal_mm": 3.0, "max_size": [3264, 2448]},
-        {"id": "2", "facing": "back", "focal_mm": 2.2, "max_size": [4000, 3000]}])
+        {"id": "0", "facing": "back", "focal_mm": 3.82, "sensor_mm": [4.98, 3.73], "max_size": [4000, 3000],
+         "min_focus_diopters": 10, "listed": True},
+        {"id": "1", "facing": "front", "focal_mm": 2.64, "sensor_mm": [2.75, 1.99], "max_size": [2592, 1944],
+         "listed": True},
+        {"id": "2", "facing": "back", "focal_mm": 2.19, "sensor_mm": [4.4, 3.3], "max_size": [2592, 1944],
+         "listed": False, "api": "camera1", "min_focus_diopters": 10}])
     cams = client.get("/micro/api/cameras").get_json()["cameras"]
-    assert [c["source"] for c in cams] == ["phone:SER1:0", "phone:SER1:2", None, "usb:2"]
-    assert "Allow USB debugging" in cams[2]["label"]
-    assert cams[0]["manual_focus"] and cams[0]["min_focus_mm"] == 100
+    assert [c["source"] for c in cams] == ["phone:SER1:0", "phone:SER1:2", "phone:SER1:1", None, "usb:2"]
+    assert [c.get("role") for c in cams[:3]] == ["main", "wide", "front"]   # wide: larger field of view
+    assert cams[0]["fov_deg"] == 66 and cams[0]["manual_focus"] and cams[0]["min_focus_mm"] == 100
+    assert cams[1]["hidden"] and cams[1]["manual_focus"] is False, "old-API camera: no manual focus"
+    assert "Allow USB debugging" in cams[3]["label"]
 
 
 # ── simultaneous capture ───────────────────────────────────────────────

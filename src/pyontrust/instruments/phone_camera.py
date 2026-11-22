@@ -21,6 +21,7 @@ import logging
 import shutil
 import subprocess
 import threading
+import re
 import time
 import urllib.request
 from dataclasses import dataclass, field
@@ -35,7 +36,23 @@ APP_PACKAGE = "com.pyontrust.cam"
 APP_ACTIVITY = f"{APP_PACKAGE}/.MainActivity"
 DEVICE_PORT = 8090
 IDLE_S = 20.0
-_APK = Path(__file__).resolve().parents[3] / "android-camera" / "build" / "pyontrust-camera.apk"
+_APP_DIR = Path(__file__).resolve().parents[3] / "android-camera"
+_APK = _APP_DIR / "build" / "pyontrust-camera.apk"
+
+
+def _app_version() -> int:
+    """Version of the app this checkout builds (android-camera/VERSION)."""
+    try:
+        return int((_APP_DIR / "VERSION").read_text().strip())
+    except (OSError, ValueError):
+        return 0
+
+
+def _installed_version(serial: str) -> int | None:
+    """versionCode of the app on the phone; None when it is not installed."""
+    out = _adb("-s", serial, "shell", "dumpsys", "package", APP_PACKAGE, timeout=15)
+    m = re.search(r"versionCode=(\d+)", out)
+    return int(m.group(1)) if m else None
 
 
 class PhoneCameraError(RuntimeError):
@@ -117,12 +134,14 @@ class _Link:
             return False
 
     def _connect(self) -> None:
-        installed = APP_PACKAGE in _adb("-s", self.serial, "shell", "pm", "list", "packages", APP_PACKAGE, timeout=15)
-        if not installed:
+        have, want = _installed_version(self.serial), _app_version()
+        if have is None or (have < want and _APK.is_file()):
             if not _APK.is_file():
                 raise PhoneCameraError("pyontrust camera app not installed on the phone — "
                                        "build it with android-camera/build.sh")
-            logger.info("Installing pyontrust camera app on %s", self.serial)
+            logger.info("%s pyontrust camera app on %s (v%s → v%s)",
+                        "Installing" if have is None else "Upgrading", self.serial, have, want)
+            _adb("-s", self.serial, "shell", "am", "force-stop", APP_PACKAGE, timeout=10)
             _adb("-s", self.serial, "install", "-r", "-g", str(_APK), timeout=120)
         port = _adb("-s", self.serial, "forward", "tcp:0", f"tcp:{DEVICE_PORT}", timeout=10).strip()
         self.port = int(port)
@@ -189,11 +208,36 @@ def capture(serial: str, camera_id: str = "0", timeout_s: float = 20.0) -> np.nd
 def set_focus(serial: str, mode: str = "continuous", diopters: float | None = None) -> dict[str, Any]:
     """``mode``: continuous | auto | manual (``diopters`` = 1 / distance in m)."""
     q = f"/focus?mode={mode}" + (f"&d={float(diopters):.4f}" if diopters is not None else "")
-    return json.loads(_get(serial, q))
+    out = json.loads(_get(serial, q))
+    if not out.get("ok", True):
+        raise PhoneCameraError(f"phone {serial}: {out.get('error', 'focus change refused')}")
+    return out
 
 
 def status(serial: str) -> dict[str, Any]:
     return json.loads(_get(serial, "/status"))
+
+
+def sensors(serial: str) -> list[dict[str, Any]]:
+    """Sensors the phone app can read (type, name, vendor, range …)."""
+    data = json.loads(_get(serial, "/sensors"))
+    if not data.get("ok"):
+        raise PhoneCameraError(data.get("error", "sensor list failed"))
+    return data["sensors"]
+
+
+def read_sensor(serial: str, sensor_type: str, window_ms: int = 150) -> dict[str, Any]:
+    """Samples of one phone sensor collected over ``window_ms``.
+
+    Returns ``{"type", "name", "stale", "samples": [[t_s, v0, v1, …], …]}``;
+    ``stale`` means the sensor did not report in the window (on-change sensors
+    such as light/proximity) and the single sample is the last known value.
+    """
+    data = json.loads(_get(serial, f"/sensor?type={sensor_type}&ms={int(window_ms)}",
+                           timeout=window_ms / 1000.0 + 10))
+    if not data.get("ok"):
+        raise PhoneCameraError(f"phone {serial}: {data.get('error', 'sensor read failed')}")
+    return data
 
 
 # ── shared live streams ─────────────────────────────────────────────────

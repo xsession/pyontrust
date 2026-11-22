@@ -26,6 +26,48 @@ from ..core import PowerSample
 logger = logging.getLogger("pyontrust.instruments.ppk2")
 
 
+def _drain(k, quiet_s: float = 0.3, max_s: float = 3.0) -> None:
+    """Stop any running measurement and read until the port goes quiet.
+
+    After a stop the PPK2 still delivers the samples already in flight; a single
+    buffer reset is not enough and the leftovers corrupt the next metadata read."""
+    try:
+        k.stop_measuring()
+    except Exception:
+        pass
+    old = k.ser.timeout
+    k.ser.timeout = quiet_s
+    try:
+        end = time.perf_counter() + max_s
+        while time.perf_counter() < end and k.ser.read(65536):
+            pass
+    except Exception:
+        pass
+    finally:
+        k.ser.timeout = old
+
+
+def _pick_data_port(ports: list[str]) -> str:
+    """The PPK2 enumerates as two serial ports (same serial number); measurement data
+    and commands use the one on the lower USB interface number (…:1.1, not …:1.3).
+    Chosen from the USB location only — nothing is sent to the device."""
+    import re
+
+    try:
+        import serial.tools.list_ports
+
+        iface = {}
+        for p in serial.tools.list_ports.comports():
+            m = re.search(r":\d+\.(\d+)$", p.location or "")
+            if p.device in ports and m:
+                iface[p.device] = int(m.group(1))
+        if iface:
+            return min(ports, key=lambda d: (iface.get(d, 99), d))
+    except Exception:
+        pass
+    return sorted(ports)[0]
+
+
 @dataclass
 class Ppk2PowerMeter:
     """PPK2 power meter adapter.
@@ -64,7 +106,17 @@ class Ppk2PowerMeter:
         port = self._resolve_port()
         logger.info("Opening PPK2 on %s (mode=%s, voltage=%d mV)", port, self.mode, self.source_voltage_mv)
 
-        ppk2 = PPK2_API(port)
+        try:
+            ppk2 = PPK2_API(port)
+        except Exception as exc:
+            if "Permission denied" in str(exc):
+                raise PermissionError(
+                    f"PPK2 on {port}: permission denied — add your user to the 'dialout' group "
+                    "(sudo usermod -aG dialout $USER, then log out and in) or install a udev rule "
+                    "for Nordic devices (VID 1915)"
+                ) from exc
+            raise
+        _drain(ppk2)                    # a previous measurement may still be streaming
         ppk2.get_modifiers()
 
         if self.mode == "source":
@@ -73,6 +125,9 @@ class Ppk2PowerMeter:
             ppk2.toggle_DUT_power("ON")
         else:
             ppk2.use_ampere_meter()
+            # ppk2-api refuses start_measuring() without a set voltage, also in ampere mode
+            # (it is the reference for the logic port); DUT power is never switched on here.
+            ppk2.set_source_voltage(self.source_voltage_mv)
 
         self._ppk2 = ppk2
         self._t0 = time.perf_counter()
@@ -147,11 +202,14 @@ class Ppk2PowerMeter:
                 from ppk2_api import PPK2_API
             except ImportError:  # newer ppk2-api keeps the class in a submodule
                 from ppk2_api.ppk2_api import PPK2_API
-            ppk2_port = PPK2_API.list_devices()
-            if ppk2_port:
-                port = ppk2_port[0]
-                logger.info("PPK2 auto-discovered on %s", port)
-                return str(port)
+            ports = sorted({str(p) for p in (PPK2_API.list_devices() or [])})
+            if len(ports) == 1:
+                logger.info("PPK2 auto-discovered on %s", ports[0])
+                return ports[0]
+            if ports:
+                port = _pick_data_port(ports)
+                logger.info("PPK2 auto-discovered on %s (of %s)", port, ", ".join(ports))
+                return port
         except Exception:
             pass
 
